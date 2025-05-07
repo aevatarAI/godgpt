@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   publish:
-    runs-on: ubuntu-latest
+    runs-on: godgpt-runner
     strategy:
       matrix:
         servicename: [
