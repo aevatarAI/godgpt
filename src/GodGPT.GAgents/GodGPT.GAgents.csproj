@@ -19,6 +19,7 @@
         <PackageReference Include="Volo.Abp.AutoMapper" />
         <PackageReference Include="Aevatar.GAgents.AIGAgent" />
         <PackageReference Include="Aevatar.GAgents.AI.Abstractions" />
+        <PackageReference Include="Aevatar.GAgents.ChatAgent" />
         <PackageReference Include="Aevatar.GAgents.SemanticKernel" />
         <PackageReference Include="Aevatar.EventSourcing.Core" />
     </ItemGroup>
@@ -30,12 +31,12 @@
         <PackageReference Include="Microsoft.Extensions.Options" />
         <PackageReference Include="Volo.Abp.Core" />
         <PackageReference Include="Volo.Abp.EventBus.Abstractions" />
-        <PackageReference Include="Aevatar.GAgents.ChatAgent" />
         <PackageReference Include="Microsoft.Orleans.Sdk" />
         <PackageReference Include="Microsoft.Orleans.Reminders" />
         <PackageReference Include="Microsoft.Orleans.Streaming" />
         <PackageReference Include="Microsoft.Orleans.Runtime" />
         <PackageReference Include="Microsoft.Orleans.EventSourcing" />
+        <PackageReference Include="Microsoft.CognitiveServices.Speech" />
     </ItemGroup>
 
     <ItemGroup>
@@ -44,6 +45,11 @@
       <Folder Include="ChatManager\Services" />
       <Folder Include="Common\Extensions" />
       <Folder Include="Common\Utils" />
+      <Folder Include="Speech" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Aevatar.GAgents.Speech\Aevatar.GAgents.Speech.csproj" />
     </ItemGroup>
 
 </Project>

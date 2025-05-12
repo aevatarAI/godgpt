@@ -506,6 +506,43 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     State.RegionProxies[regionProxy.Key] = regionProxy.Value;
                 }
                 break;
+            case AddChatHistoryLogEvent addChatHistoryLogEvent:
+                // Base class has already handled adding messages to ChatHistory
+                
+                // Ensure metadata for historical messages is initialized
+                EnsureMessageInfosComplete();
+                
+                // Now handle metadata for newly added messages
+                if (addChatHistoryLogEvent.ChatList?.Count > 0)
+                {
+                    foreach (var message in addChatHistoryLogEvent.ChatList)
+                    {
+                        // Calculate new message ID: if existing metadata exists, take the last metadata ID+1, otherwise start from 1
+                        var messageId = State.MessageInfos.Count > 0 
+                            ? State.MessageInfos.Last().MessageId + 1 
+                            : 1;
+                        
+                        // Add metadata
+                        State.MessageInfos.Add(new ChatMessageInfo
+                        {
+                            MessageId = messageId,
+                            ExtendedProperties = new Dictionary<string, string>
+                            {
+                                { "ContentLength", message.Content?.Length.ToString() ?? "0" }
+                            }
+                        });
+                    }
+                }
+                
+                // Synchronously handle the case when ChatHistory exceeds maximum length
+                if (State.ChatHistory.Count > State.MaxHistoryCount)
+                {
+                    // Calculate the number of elements to remove
+                    int removeCount = State.ChatHistory.Count - State.MaxHistoryCount;
+                    // Synchronously remove corresponding number of elements from MessageInfos
+                    State.MessageInfos.RemoveRange(0, removeCount);
+                }
+                break;
         }
     }
 
@@ -546,5 +583,176 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var configuration = GetConfiguration();
         var response = await GodChatAsync(await configuration.GetSystemLLM(), content, promptSettings);
         return new Tuple<string, string>(response, title);
+    }
+
+    public async Task SetChatManagerReferenceAsync(Guid chatManagerGuid)
+    {
+        RaiseEvent(new SetChatManagerGuidEventLog
+        {
+            ChatManagerGuid = chatManagerGuid
+        });
+
+        await ConfirmEvents();
+    }
+
+    [Orleans.Concurrency.ReadOnly]
+    public Task<List<ChatMessageWithInfo>> GetEnhancedChatMessagesAsync()
+    {
+        // Check if the two lists have consistent lengths
+        if (State.ChatHistory.Count != State.MessageInfos.Count)
+        {
+            // Try to initialize metadata, which may be caused by uninitialized historical data
+            EnsureMessageInfosComplete();
+            
+            // Check again after initialization
+            if (State.ChatHistory.Count != State.MessageInfos.Count)
+            {
+                // If still inconsistent, throw system exception
+                var errorMessage = $"Message history and metadata length mismatch: ChatHistory={State.ChatHistory.Count}, MessageInfos={State.MessageInfos.Count}";
+                Logger.LogError($"[GodChatGAgent][GetEnhancedChatMessagesAsync] - {errorMessage}");
+                throw new InvalidOperationException(errorMessage);
+            }
+        }
+        
+        var result = new List<ChatMessageWithInfo>();
+        
+        // Lengths are consistent, can safely build the result
+        for (int i = 0; i < State.ChatHistory.Count; i++)
+        {
+            result.Add(new ChatMessageWithInfo
+            {
+                Message = State.ChatHistory[i],
+                Info = State.MessageInfos[i]
+            });
+        }
+        
+        Logger.LogDebug(
+            $"[GodChatGAgent][GetEnhancedChatMessagesAsync] - session:ID {this.GetPrimaryKey().ToString()}, count={result.Count}");
+        
+        return Task.FromResult(result);
+    }
+    
+    [Orleans.Concurrency.ReadOnly]
+    public Task<ChatMessageWithInfo?> FindMessageByMessageIdAsync(long messageId)
+    {
+        // Check if the two lists have consistent lengths
+        if (State.ChatHistory.Count != State.MessageInfos.Count)
+        {
+            // Try to initialize metadata, which may be caused by uninitialized historical data
+            EnsureMessageInfosComplete();
+            
+            // Check again after initialization
+            if (State.ChatHistory.Count != State.MessageInfos.Count)
+            {
+                // If still inconsistent, throw system exception
+                var errorMessage = $"Message history and metadata length mismatch: ChatHistory={State.ChatHistory.Count}, MessageInfos={State.MessageInfos.Count}";
+                Logger.LogError($"[GodChatGAgent][FindMessageByMessageIdAsync] - {errorMessage}");
+                throw new InvalidOperationException(errorMessage);
+            }
+        }
+        
+        // Find message metadata with the specified ID
+        var messageInfoIndex = State.MessageInfos.FindIndex(info => info.MessageId == messageId);
+        if (messageInfoIndex < 0 || messageInfoIndex >= State.ChatHistory.Count)
+        {
+            Logger.LogDebug(
+                $"[GodChatGAgent][FindMessageByMessageIdAsync] - session:ID {this.GetPrimaryKey().ToString()}, messageId={messageId}, not found");
+            return Task.FromResult<ChatMessageWithInfo?>(null);
+        }
+        
+        // Find the corresponding message
+        var messageInfo = new ChatMessageWithInfo
+        {
+            Message = State.ChatHistory[messageInfoIndex],
+            Info = State.MessageInfos[messageInfoIndex]
+        };
+        
+        Logger.LogDebug(
+            $"[GodChatGAgent][FindMessageByMessageIdAsync] - session:ID {this.GetPrimaryKey().ToString()}, messageId={messageId}, found");
+        
+        return Task.FromResult<ChatMessageWithInfo?>(messageInfo);
+    }
+
+    private void EnsureMessageInfosComplete()
+    {
+        // Only initialize when metadata doesn't exist at all
+        if (State.MessageInfos == null || State.MessageInfos.Count == 0)
+        {
+            if (State.ChatHistory == null || State.ChatHistory.Count == 0)
+            {
+                return; // No historical messages, no need to complete
+            }
+            
+            Logger.LogDebug(
+                $"[GodChatGAgent][EnsureMessageInfosComplete] - Initializing metadata, message count: {State.ChatHistory.Count}");
+            
+            // Create metadata for all existing messages
+            for (int i = 0; i < State.ChatHistory.Count; i++)
+            {
+                var message = State.ChatHistory[i];
+                var messageId = i + 1; // Message ID starts from 1 and increments
+                
+                State.MessageInfos.Add(new ChatMessageInfo
+                {
+                    MessageId = messageId,
+                    ExtendedProperties = new Dictionary<string, string>
+                    {
+                        { "ContentLength", message.Content?.Length.ToString() ?? "0" },
+                        { "IsHistoricalData", "true" } // Mark as historical data completion
+                    }
+                });
+            }
+            
+            Logger.LogDebug(
+                $"[GodChatGAgent][EnsureMessageInfosComplete] - Metadata initialization completed, created {State.MessageInfos.Count} metadata entries");
+        }
+        // Handle case where MessageInfos count is greater than ChatHistory (may occur in test scenarios)
+        else if (State.ChatHistory != null && State.MessageInfos.Count > State.ChatHistory.Count)
+        {
+            Logger.LogWarning(
+                $"[GodChatGAgent][EnsureMessageInfosComplete] - Metadata count ({State.MessageInfos.Count}) exceeds message count ({State.ChatHistory.Count}), truncating excess metadata");
+            
+            // Keep only the metadata corresponding to ChatHistory
+            State.MessageInfos.RemoveRange(State.ChatHistory.Count, State.MessageInfos.Count - State.ChatHistory.Count);
+            
+            Logger.LogDebug(
+                $"[GodChatGAgent][EnsureMessageInfosComplete] - Metadata truncation completed, current metadata count: {State.MessageInfos.Count}");
+        }
+    }
+
+    // Modify AddUserMessageToHistoryAsync method to only trigger AddChatHistoryLogEvent event
+    private async Task AddUserMessageToHistoryAsync(string content)
+    {
+        RaiseEvent(new AddChatHistoryLogEvent
+        {
+            ChatList = new List<ChatMessage>()
+            {
+                new ChatMessage
+                {
+                    ChatRole = ChatRole.User,
+                    Content = content
+                }
+            }
+        });
+        
+        await ConfirmEvents();
+    }
+    
+    // Modify AddAssistantMessageAsync method to only trigger AddChatHistoryLogEvent event
+    protected async Task AddAssistantMessageAsync(string content)
+    {
+        RaiseEvent(new AddChatHistoryLogEvent
+        {
+            ChatList = new List<ChatMessage>()
+            {
+                new ChatMessage
+                {
+                    ChatRole = ChatRole.Assistant,
+                    Content = content
+                }
+            }
+        });
+        
+        await ConfirmEvents();
     }
 }

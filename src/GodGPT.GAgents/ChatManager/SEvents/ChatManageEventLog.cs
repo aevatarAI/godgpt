@@ -54,3 +54,11 @@ public class SetMaxShareCountLogEvent : ChatManageEventLog
 {
     [Id(0)] public int MaxShareCount { get; set; }
 }
+
+[GenerateSerializer]
+public class SetSessionSpeechGAgentEventLog : ChatManageEventLog
+{
+    [Id(0)] public Guid SessionId { get; set; }
+    [Id(1)] public string Language { get; set; }
+    [Id(2)] public Guid SpeechGAgentId { get; set; }
+}

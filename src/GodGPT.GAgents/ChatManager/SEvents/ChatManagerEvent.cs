@@ -57,6 +57,8 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
     [Id(5)] public int SerialNumber { get; set; }
 
     [Id(6)] public Guid SessionId { get; set; }
+    
+    [Id(7)] public long MessageId { get; set; }
 
     public ResponseStreamGodChatForHttp ConvertToHttpResponse()
     {
@@ -67,6 +69,7 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
             IsLastChunk = IsLastChunk,
             SerialNumber = SerialNumber,
             SessionId = SessionId,
+            MessageId = MessageId
         };
     }
 }
@@ -80,6 +83,7 @@ public class ResponseStreamGodChatForHttp
     public int SerialNumber { get; set; }
     public int SerialChunk { get; set; }
     public Guid SessionId { get; set; }
+    public long MessageId { get; set; }
 }
 
 [GenerateSerializer]

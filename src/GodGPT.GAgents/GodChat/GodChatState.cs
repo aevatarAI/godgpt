@@ -1,3 +1,4 @@
+using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.ChatAgent.GAgent.State;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
@@ -11,6 +12,9 @@ public class GodChatState:ChatGAgentState
     [Obsolete("This class is deprecated and no longer in use.")]
     [Id(3)] public List<Guid> AIAgentIds { get; set; } = new List<Guid>();
     [Id(4)] public Dictionary<string, List<Guid>> RegionProxies = new ();
+    
+    // Message metadata list
+    [Id(5)] public List<ChatMessageInfo> MessageInfos { get; set; } = new List<ChatMessageInfo>();
 }
 
 [GenerateSerializer]

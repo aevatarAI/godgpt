@@ -6,7 +6,9 @@ using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
+using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
+using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -14,6 +16,7 @@ using Aevatar.GAgents.AIGAgent.Agent;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
+using Aevatar.GAgents.Speech.GAgent;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -353,7 +356,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         });
 
         await ConfirmEvents();
-        await godChat.InitAsync(this.GetPrimaryKey());
+        await godChat.SetChatManagerReferenceAsync(this.GetPrimaryKey());
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
         return godChat.GetPrimaryKey();
@@ -666,6 +669,12 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                     State.CurrentShareCount -= deleteSession.ShareIds.Count;
                 }
                 State.SessionInfoList.RemoveAll(f => f.SessionId == @deleteSessionEventLog.SessionId);
+                
+                // When deleting a session, also clear related speech agent mappings
+                if (State.SessionSpeechAgents != null && State.SessionSpeechAgents.ContainsKey(@deleteSessionEventLog.SessionId))
+                {
+                    State.SessionSpeechAgents.Remove(@deleteSessionEventLog.SessionId);
+                }
                 break;
             case RenameTitleEventLog @renameTitleEventLog:
                 Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] event:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
@@ -682,6 +691,12 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 State.BirthPlace = string.Empty;
                 State.FullName = string.Empty;
                 State.CurrentShareCount = 0;
+                
+                // When clearing all sessions, also clear speech agent mappings
+                if (State.SessionSpeechAgents != null)
+                {
+                    State.SessionSpeechAgents.Clear();
+                }
                 break;
             case SetUserProfileEventLog @setFortuneInfoEventLog:
                 State.Gender = @setFortuneInfoEventLog.Gender;
@@ -705,6 +720,14 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 break;
             case SetMaxShareCountLogEvent setMaxShareCountLogEvent:
                 State.MaxShareCount = setMaxShareCountLogEvent.MaxShareCount;
+                break;
+            case SetSessionSpeechGAgentEventLog setSpeechAgentEvent:
+                // Handle speech agent ID setting event
+                State.SetSessionSpeechGAgentId(
+                    setSpeechAgentEvent.SessionId, 
+                    setSpeechAgentEvent.Language, 
+                    setSpeechAgentEvent.SpeechGAgentId);
+                Logger.LogDebug($"[ChatGAgentManager][SetSessionSpeechGAgentEventLog] Saved session speech agent mapping: SessionID={setSpeechAgentEvent.SessionId}, Language={setSpeechAgentEvent.Language}, SpeechAgentID={setSpeechAgentEvent.SpeechGAgentId}");
                 break;
         }
     }
@@ -744,5 +767,79 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     private IConfigurationGAgent GetConfiguration()
     {
         return GrainFactory.GetGrain<IConfigurationGAgent>(CommonHelper.GetSessionManagerConfigurationId());
+    }
+
+    /// <summary>
+    /// Get the speech agent ID for a session
+    /// </summary>
+    [Orleans.Concurrency.ReadOnly]
+    public async Task<Guid> GetSessionSpeechGAgentIdAsync(Guid sessionId, string language = "zh-CN", string voiceName = "zh-CN-XiaoxiaoNeural")
+    {
+        Logger.LogDebug($"[ChatGAgentManager][GetSessionSpeechGAgentIdAsync] Start: sessionId={sessionId}, language={language}, voiceName={voiceName}");
+        
+        // Get session information, check if session exists
+        var session = State.GetSession(sessionId);
+        if (session == null)
+        {
+            Logger.LogWarning($"[ChatGAgentManager][GetSessionSpeechGAgentIdAsync] Session does not exist: {sessionId}");
+            throw new UserFriendlyException("Sorry, this conversation has been deleted by the owner.");
+        }
+        
+        // Ensure language parameter is not null
+        language = language ?? "en-US";
+        
+        // First check if there is already a SpeechGAgent for this language
+        var existingSpeechGAgentId = State.GetSessionSpeechGAgentId(sessionId, language);
+        if (existingSpeechGAgentId.HasValue)
+        {
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionSpeechGAgentIdAsync] Returning existing speech agent ID: {existingSpeechGAgentId}");
+            return existingSpeechGAgentId.Value;
+        }
+        
+        // If no existing speech agent, generate a new random ID
+        var speechGAgentId = Guid.NewGuid();
+        
+        // Initialize SpeechGAgent
+        try
+        {
+            // Get SpeechGAgent instance, using standard GetGrain method
+            var speechGAgent = GrainFactory.GetGrain<Aevatar.GAgents.Speech.GAgent.ISpeechGAgent>(speechGAgentId);
+            
+            // Create configuration object
+            var config = new Aevatar.GAgents.Speech.GAgent.SpeechGAgentConfiguration
+            {
+                RecognitionLanguage = language,
+                SynthesisLanguage = language,
+                SynthesisVoiceName = voiceName
+            };
+            
+            // Configure SpeechGAgent
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionSpeechGAgentIdAsync] Initializing speech agent: ID={speechGAgentId}, Language={language}, VoiceName={voiceName}");
+            await speechGAgent.ConfigAsync(config);
+            
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionSpeechGAgentIdAsync] Speech agent initialization successful: {speechGAgentId}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"[ChatGAgentManager][GetSessionSpeechGAgentIdAsync] Failed to initialize speech agent: {ex.Message}");
+            // Throw system exception when initialization fails, terminating the process
+            throw new ApplicationException($"Cannot initialize speech agent. Reason: {ex.Message}", ex);
+        }
+        
+        // Save the newly created speech agent ID to state
+        State.SetSessionSpeechGAgentId(sessionId, language, speechGAgentId);
+        RaiseEvent(new SetSessionSpeechGAgentEventLog
+        {
+            SessionId = sessionId,
+            Language = language,
+            SpeechGAgentId = speechGAgentId
+        });
+        await ConfirmEvents();
+        
+        // Log speech agent ID
+        Logger.LogDebug($"[ChatGAgentManager][GetSessionSpeechGAgentIdAsync] Created and saved new speech agent ID: {speechGAgentId}");
+        
+        // Return the generated speech agent ID
+        return speechGAgentId;
     }
 }

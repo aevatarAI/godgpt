@@ -207,5 +207,7 @@
         <PackageVersion Include="xunit.runner.visualstudio" Version="2.5.7" />
         <PackageVersion Include="coverlet.collector" Version="6.0.0" />
         <PackageVersion Include="Microsoft.Orleans.Serialization.TestKit" Version="9.0.1" />
+
+        <PackageVersion Include="Microsoft.CognitiveServices.Speech" Version="1.43.0" />
     </ItemGroup>
 </Project>
