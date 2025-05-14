@@ -40,7 +40,6 @@
 
     <ItemGroup>
       <Folder Include="ChatManager\Common" />
-      <Folder Include="ChatManager\Models" />
       <Folder Include="ChatManager\Services" />
       <Folder Include="Common\Extensions" />
       <Folder Include="Common\Utils" />

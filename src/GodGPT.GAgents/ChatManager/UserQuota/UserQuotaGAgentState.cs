@@ -1,0 +1,31 @@
+using Aevatar.Application.Grains.Common.Constants;
+
+namespace Aevatar.Application.Grains.ChatManager.UserQuota;
+
+[GenerateSerializer]
+public class UserQuotaGAgentState
+{
+    [Id(0)] public int Credits { get; set; } = 0;
+    [Id(1)] public bool HasInitialCredits { get; set; } = false;
+    [Id(2)] public bool HasShownInitialCreditsToast { get; set; } = false;
+    [Id(3)] public SubscriptionInfo Subscription { get; set; } = new SubscriptionInfo();
+    [Id(4)] public Dictionary<string, RateLimitInfo> RateLimits { get; set; } = new Dictionary<string, RateLimitInfo>();
+    
+}
+
+[GenerateSerializer]
+public class SubscriptionInfo
+{
+    [Id(0)] public bool IsActive { get; set; } = false;
+    [Id(1)] public PlanType PlanType { get; set; }
+    [Id(2)] public PaymentStatus Status { get; set; }
+    [Id(3)] public DateTime StartDate { get; set; }
+    [Id(4)] public DateTime EndDate { get; set; }
+}
+
+[GenerateSerializer]
+public class RateLimitInfo
+{
+    [Id(0)] public int Count { get; set; }
+    [Id(1)] public DateTime LastTime { get; set; }
+}

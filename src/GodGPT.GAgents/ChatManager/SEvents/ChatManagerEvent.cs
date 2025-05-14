@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.SignalR;
@@ -185,6 +186,8 @@ public class UserProfileDto
     [Id(1)] public DateTime BirthDate { get; set; }
     [Id(2)] public string BirthPlace { get; set; }
     [Id(3)] public string FullName { get; set; }
+    [Id(4)] public CreditsInfoDto Credits { get; set; }
+    [Id(5)] public SubscriptionInfoDto Subscription { get; set; }
 }
 
 [GenerateSerializer]

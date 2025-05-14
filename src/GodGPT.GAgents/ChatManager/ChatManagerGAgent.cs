@@ -7,6 +7,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -568,12 +569,18 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
     public async Task<UserProfileDto> GetUserProfileAsync()
     {
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var credits = await userQuotaGrain.GetCreditsAsync();
+        var subscriptionInfo = await userQuotaGrain.GetSubscriptionAsync();
+
         return new UserProfileDto
         {
             Gender = State.Gender,
             BirthDate = State.BirthDate,
             BirthPlace = State.BirthPlace,
-            FullName = State.FullName
+            FullName = State.FullName,
+            Credits = credits,
+            Subscription = subscriptionInfo
         };
     }
     

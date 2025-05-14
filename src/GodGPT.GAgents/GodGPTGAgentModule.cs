@@ -1,3 +1,5 @@
+using Aevatar.Application.Grains.Common.Options;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
@@ -14,5 +16,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<AbpAutoMapperOptions>(options => { options.AddMaps<GodGPTGAgentModule>(); });
         
         var configuration = context.Services.GetConfiguration();
+        Configure<CreditsOptions>(configuration.GetSection("Credits"));
+        Configure<RateLimiterOptions>(configuration.GetSection("RateLimit"));
     }
 }
