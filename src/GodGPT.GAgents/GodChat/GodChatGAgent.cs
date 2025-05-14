@@ -61,8 +61,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             Response =
                 "A better experience awaits! Please update to the latest version.",
             ChatId = chatId,
+            NewTitle = "A better experience awaits",
             IsLastChunk = true,
-            SerialNumber = -2
+            SerialNumber = -2,
+            SessionId = @event.SessionId
         };
         Logger.LogDebug(
             $"[GodChatGAgent][RequestStreamChatEvent] decommission :{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
