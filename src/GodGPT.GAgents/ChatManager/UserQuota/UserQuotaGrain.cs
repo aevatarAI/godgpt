@@ -23,7 +23,7 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task<ExecuteActionResultDto> ExecuteActionAsync(string actionType = "conversation");
 }
 
-public class UserQuotaGrain : Grain<UserQuotaGAgentState>, IUserQuotaGrain
+public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 {
     private readonly ILogger<UserQuotaGrain> _logger;
     private readonly IOptionsMonitor<CreditsOptions> _creditsOptions;

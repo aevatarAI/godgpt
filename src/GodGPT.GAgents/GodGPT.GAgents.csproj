@@ -21,6 +21,7 @@
         <PackageReference Include="Aevatar.GAgents.AI.Abstractions" />
         <PackageReference Include="Aevatar.GAgents.SemanticKernel" />
         <PackageReference Include="Aevatar.EventSourcing.Core" />
+        <PackageReference Include="Stripe.net" />
     </ItemGroup>
 
     <ItemGroup>
@@ -36,13 +37,6 @@
         <PackageReference Include="Microsoft.Orleans.Streaming" />
         <PackageReference Include="Microsoft.Orleans.Runtime" />
         <PackageReference Include="Microsoft.Orleans.EventSourcing" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="ChatManager\Common" />
-      <Folder Include="ChatManager\Services" />
-      <Folder Include="Common\Extensions" />
-      <Folder Include="Common\Utils" />
     </ItemGroup>
 
 </Project>

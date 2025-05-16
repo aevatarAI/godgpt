@@ -18,5 +18,6 @@ public class GodGPTGAgentModule : AbpModule
         var configuration = context.Services.GetConfiguration();
         Configure<CreditsOptions>(configuration.GetSection("Credits"));
         Configure<RateLimiterOptions>(configuration.GetSection("RateLimit"));
+        Configure<StripeOptions>(configuration.GetSection("Stripe"));
     }
 }

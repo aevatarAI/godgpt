@@ -3,7 +3,7 @@ using Aevatar.Application.Grains.Common.Constants;
 namespace Aevatar.Application.Grains.ChatManager.UserQuota;
 
 [GenerateSerializer]
-public class UserQuotaGAgentState
+public class UserQuotaState
 {
     [Id(0)] public int Credits { get; set; } = 0;
     [Id(1)] public bool HasInitialCredits { get; set; } = false;
