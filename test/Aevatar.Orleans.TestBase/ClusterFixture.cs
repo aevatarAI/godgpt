@@ -125,7 +125,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .AddMemoryGrainStorageAsDefault()
                 .UseAevatar()
                 .AddLogStorageBasedLogConsistencyProvider("LogStorage")
-                .Configure<StripeOptions>(configuration.GetSection("Stripe"));
+                .Configure<StripeOptions>(configuration.GetSection("Stripe"))
+                .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"));
         }
     }
 

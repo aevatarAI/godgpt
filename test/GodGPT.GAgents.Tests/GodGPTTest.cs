@@ -9,7 +9,10 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Newtonsoft.Json;
 using Shouldly;
 using System.Text;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Tests;
+using Microsoft.AspNetCore.Http;
+using Volo.Abp;
 using Xunit.Abstractions;
 
 namespace Aevatar.GodGPT.Tests;
@@ -45,8 +48,8 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         _testOutputHelper.WriteLine($"ChatId: {chatId.ToString()}");
         
         var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
-        await godChat.GodStreamChatAsync(grainId, "OpenAI", true, "Who are you",
-            chatId.ToString(), null);
+        await godChat.StreamChatWithSessionAsync(grainId, "OpenAI", "Who are you",
+            chatId.ToString(), promptSettings: null, isHttpRequest: false, region: null);
         await Task.Delay(TimeSpan.FromSeconds(20));
         var chatMessage = await godChat.GetChatMessageAsync();
         _testOutputHelper.WriteLine($"chatMessage: {JsonConvert.SerializeObject(chatMessage)}");
@@ -54,6 +57,54 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         chatMessage.Count.ShouldBe(1);
     }
     
+    [Fact]
+    public async Task ChatAsync_RateLime_Test()
+    {
+        var grainId = Guid.NewGuid();
+        _testOutputHelper.WriteLine($"Chat Manager GrainId: {grainId.ToString()}");
+        
+        var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
+        var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, new UserProfileDto
+        {
+            Gender = "Male",
+            BirthDate = DateTime.UtcNow,
+            BirthPlace = "BeiJing",
+            FullName = "Test001"
+        });
+        _testOutputHelper.WriteLine($"God GAgent GrainId: {godGAgentId.ToString()}");
+
+        var chatId = Guid.NewGuid();
+        _testOutputHelper.WriteLine($"ChatId: {chatId.ToString()}");
+        
+        var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
+        await godChat.StreamChatWithSessionAsync(grainId, "OpenAI", "Who are you",
+            chatId.ToString(), promptSettings: null, isHttpRequest: false, region: null);
+        await Task.Delay(TimeSpan.FromSeconds(10));
+        try
+        {
+            await godChat.StreamChatWithSessionAsync(grainId, "OpenAI", "Who are you",
+                chatId.ToString(), promptSettings: null, isHttpRequest: false, region: null);
+        }
+        catch (UserFriendlyException e)
+        {
+            if (int.TryParse(e.Code, out var code))
+            {
+                if (code == ExecuteActionStatus.InsufficientCredits)
+                {
+                    _testOutputHelper.WriteLine($"UserFriendlyException: {JsonConvert.SerializeObject(e)}");
+                } else if (code == ExecuteActionStatus.RateLimitExceeded)
+                {
+                    _testOutputHelper.WriteLine($"UserFriendlyException: {JsonConvert.SerializeObject(e)}");
+                }
+            }
+        }
+        
+        var chatMessage = await godChat.GetChatMessageAsync();
+        _testOutputHelper.WriteLine($"chatMessage: {JsonConvert.SerializeObject(chatMessage)}");
+        chatMessage.ShouldNotBeEmpty();
+        chatMessage.Count.ShouldBe(1);
+    }
+
     [Fact]
     public async Task GodChatAsync_Test()
     {
