@@ -11,7 +11,7 @@ public class CreateCheckoutSessionDto
     /// <summary>
     /// Payment mode: Use values from PaymentMode class (PAYMENT, SETUP, SUBSCRIPTION)
     /// </summary>
-    [Id(2)] public string Mode { get; set; } = PaymentMode.PAYMENT;
+    [Id(2)] public string Mode { get; set; } = PaymentMode.SUBSCRIPTION;
     
     [Id(3)] public long Quantity { get; set; }
     [Id(4)] public string UiMode { get; set; } = StripeUiMode.HOSTED;
