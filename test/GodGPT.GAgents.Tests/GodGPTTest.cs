@@ -85,9 +85,9 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             await godChat.StreamChatWithSessionAsync(grainId, "OpenAI", "Who are you",
                 chatId.ToString(), promptSettings: null, isHttpRequest: false, region: null);
         }
-        catch (UserFriendlyException e)
+        catch (InvalidOperationException e)
         {
-            if (int.TryParse(e.Code, out var code))
+            if (e.Data.Contains("Code") && int.TryParse((string)e.Data["Code"], out var code))
             {
                 if (code == ExecuteActionStatus.InsufficientCredits)
                 {

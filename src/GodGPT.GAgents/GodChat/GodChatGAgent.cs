@@ -121,7 +121,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (!actionResultDto.Success)
         {
             Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} Access restricted");
-            throw new UserFriendlyException(actionResultDto.Message, actionResultDto.Code.ToString());
+            var invalidOperationException = new InvalidOperationException(actionResultDto.Message);
+            invalidOperationException.Data["Code"] = actionResultDto.Code.ToString();
+            throw invalidOperationException;
+            //throw new UserFriendlyException(actionResultDto.Message, actionResultDto.Code.ToString());
         }
 
         var sw = new Stopwatch();
