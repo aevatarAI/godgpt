@@ -1,0 +1,22 @@
+using Aevatar.Application.Grains.Common.Constants;
+
+namespace Aevatar.Application.Grains.ChatManager.Dtos;
+
+[GenerateSerializer]
+public class PaymentDetailsDto
+{
+    [Id(0)] public Guid Id { get; set; }
+    [Id(1)] public Guid? UserId { get; set; }        
+    [Id(2)] public string PriceId { get; set; }
+    [Id(3)] public decimal Amount { get; set; }          
+    [Id(4)] public string Currency { get; set; } = "USD";
+    [Id(5)] public PaymentType PaymentType { get; set; }
+    [Id(6)] public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
+    [Id(7)] public PaymentMethod Method { get; set; } 
+    [Id(8)] public PaymentPlatform Platform { get; set; } = PaymentPlatform.Stripe;
+    [Id(9)] public string Mode { get; set; } = PaymentMode.SUBSCRIPTION;
+    [Id(10)] public string Description { get; set; }
+    [Id(11)] public DateTime CreatedAt { get; set; }
+    [Id(12)] public DateTime? CompletedAt { get; set; }
+    [Id(13)] public DateTime LastUpdated { get; set; }
+}

@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.ChatManager.Dtos;
+using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
 using Microsoft.Extensions.Logging;
@@ -6,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Orleans.Core;
 using Stripe;
 using Stripe.Checkout;
+using PaymentMethod = Aevatar.Application.Grains.Common.Constants.PaymentMethod;
 
 namespace Aevatar.Application.Grains.ChatManager.UserBilling;
 
@@ -13,10 +15,12 @@ public interface IUserBillingGrain : IGrainWithStringKey
 {
     Task<List<StripeProductDto>> GetStripeProductsAsync();
     Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto);
+    
     Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary);
     Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
     Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
-    Task<bool> UpdatePaymentStatusAsync(Guid paymentId, PaymentStatus newStatus);
+    Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
+    Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
 }
 
 public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
@@ -168,7 +172,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     SetupFutureUsage = "off_session",
                     Metadata = new Dictionary<string, string>
                     {
-                        { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty }
+                        { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty },
+                        { "price_id", createCheckoutSessionDto.PriceId },
+                        { "quantity", createCheckoutSessionDto.Quantity.ToString() }
                     }
                 }
                 : null,
@@ -177,7 +183,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 {
                     Metadata = new Dictionary<string, string>
                     {
-                        { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty }
+                        { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty },
+                        { "price_id", createCheckoutSessionDto.PriceId },
+                        { "quantity", createCheckoutSessionDto.Quantity.ToString() }
                     }
                 }
                 : null
@@ -236,24 +244,175 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             throw;
         }
     }
-
-    public Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary)
+    
+    public async Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature)
     {
-        throw new NotImplementedException();
+        _logger.LogInformation("[UserBillingGrain][HandleStripeWebhookEventAsync] Processing Stripe webhook event");
+        
+        if (string.IsNullOrEmpty(jsonPayload) || string.IsNullOrEmpty(stripeSignature))
+        {
+            _logger.LogError("[UserBillingGrain][HandleStripeWebhookEventAsync] Invalid webhook parameters");
+            return false;
+        }
+
+        var paymentGrainId = Guid.NewGuid();
+        var paymentGrain = GrainFactory.GetGrain<IPaymentGrain>(paymentGrainId);
+        var grainResultDto = await paymentGrain.ProcessPaymentCallbackAsync(jsonPayload, stripeSignature);
+        var detailsDto = grainResultDto.Data;
+        if (!grainResultDto.Success || detailsDto == null)
+        {
+            return false;
+        }
+
+        var paymentSummary = await GetPaymentSummaryAsync(detailsDto.Id);
+        if (paymentSummary == null)
+        {
+            // Add to payment history
+            await AddPaymentRecordAsync(new PaymentSummary
+            {
+                PaymentGrainId = detailsDto.Id,
+                OrderId = detailsDto.Id.ToString(),
+                PlanType = PlanType.Day,
+                Amount = detailsDto.Amount,
+                Currency = detailsDto.Currency,
+                CreatedAt = detailsDto.CreatedAt,
+                CompletedAt = detailsDto.CompletedAt,
+                Status = detailsDto.Status,
+                PaymentType = detailsDto.PaymentType,
+                Method = detailsDto.Method,
+                Platform = detailsDto.Platform,
+                IsSubscriptionRenewal = false,
+                LastUpdated = detailsDto.LastUpdated
+            });
+        }
+        else
+        {
+            await UpdatePaymentStatusAsync(paymentSummary, detailsDto.Status);
+        }
+
+        return true;
     }
 
-    public Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId)
+    public async Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary)
     {
-        throw new NotImplementedException();
+        _logger.LogInformation("[UserBillingGrain][AddPaymentRecordAsync] Adding payment record with status {Status} for amount {Amount} {Currency}",
+            paymentSummary.Status, paymentSummary.Amount, paymentSummary.Currency);
+        
+        // Ensure PaymentGrainId is generated if not set
+        if (paymentSummary.PaymentGrainId == Guid.Empty)
+        {
+            paymentSummary.PaymentGrainId = Guid.NewGuid();
+        }
+        
+        // Set created time if not set
+        if (paymentSummary.CreatedAt == default)
+        {
+            paymentSummary.CreatedAt = DateTime.UtcNow;
+        }
+        
+        // Set last updated time
+        paymentSummary.LastUpdated = DateTime.UtcNow;
+        
+        // Set completed time if status is Completed
+        if (paymentSummary.Status == PaymentStatus.Completed && !paymentSummary.CompletedAt.HasValue)
+        {
+            paymentSummary.CompletedAt = DateTime.UtcNow;
+        }
+        
+        // Add to payment history
+        State.PaymentHistory.Add(paymentSummary);
+        
+        // Update counters
+        State.TotalPayments++;
+        if (paymentSummary.Status == PaymentStatus.Refunded)
+        {
+            State.RefundedPayments++;
+        }
+        
+        // Save state
+        await WriteStateAsync();
+        
+        _logger.LogInformation("[UserBillingGrain][AddPaymentRecordAsync] Payment record added with ID: {PaymentId}", 
+            paymentSummary.PaymentGrainId);
+        
+        return paymentSummary.PaymentGrainId;
     }
 
-    public Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
+    public async Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId)
     {
-        throw new NotImplementedException();
+        _logger.LogInformation("[UserBillingGrain][GetPaymentSummaryAsync] Getting payment summary for payment ID: {PaymentId}", paymentId);
+        
+        var payment = State.PaymentHistory.FirstOrDefault(p => p.PaymentGrainId == paymentId);
+        if (payment == null)
+        {
+            _logger.LogWarning("[UserBillingGrain][GetPaymentSummaryAsync] Payment with ID {PaymentId} not found", paymentId);
+            return null;
+        }
+        
+        return payment;
     }
 
-    public Task<bool> UpdatePaymentStatusAsync(Guid paymentId, PaymentStatus newStatus)
+    public async Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
     {
-        throw new NotImplementedException();
+        _logger.LogInformation("[UserBillingGrain][GetPaymentHistoryAsync] Getting payment history page {Page} with size {PageSize}", 
+            page, pageSize);
+        
+        // Ensure valid pagination parameters
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 10;
+        if (pageSize > 100) pageSize = 100;
+        
+        // Calculate skip and take values
+        int skip = (page - 1) * pageSize;
+        
+        // Return paginated results ordered by most recent first
+        return State.PaymentHistory
+            .OrderByDescending(p => p.CreatedAt)
+            .Skip(skip)
+            .Take(pageSize)
+            .ToList();
+    }
+
+    public async Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus)
+    {
+        _logger.LogInformation("[UserBillingGrain][UpdatePaymentStatusAsync] Updating payment status for ID {PaymentId} to {NewStatus}", 
+            payment.PaymentGrainId, newStatus);
+
+        // Skip update if status is already the same
+        if (payment.Status == newStatus)
+        {
+            _logger.LogInformation("[UserBillingGrain][UpdatePaymentStatusAsync] Payment {PaymentId} already has status {Status}", 
+                payment.PaymentGrainId, newStatus);
+            return true;
+        }
+        
+        // Update status
+        var oldStatus = payment.Status;
+        payment.Status = newStatus;
+        payment.LastUpdated = DateTime.UtcNow;
+        
+        // Set completed time if status is being changed to Completed
+        if (newStatus == PaymentStatus.Completed && !payment.CompletedAt.HasValue)
+        {
+            payment.CompletedAt = DateTime.UtcNow;
+        }
+        
+        // Update refunded count if status is being changed to Refunded
+        if (newStatus == PaymentStatus.Refunded && oldStatus != PaymentStatus.Refunded)
+        {
+            State.RefundedPayments++;
+        }
+        else if (oldStatus == PaymentStatus.Refunded && newStatus != PaymentStatus.Refunded)
+        {
+            State.RefundedPayments--;
+        }
+        
+        // Save state
+        await WriteStateAsync();
+        
+        _logger.LogInformation("[UserBillingGrain][UpdatePaymentStatusAsync] Payment status updated from {OldStatus} to {NewStatus} for ID {PaymentId}", 
+            oldStatus, newStatus, payment.PaymentGrainId);
+        
+        return true;
     }
 }
