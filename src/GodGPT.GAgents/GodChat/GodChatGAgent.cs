@@ -54,60 +54,60 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     [EventHandler]
     public async Task HandleEventAsync(RequestStreamChatEvent @event)
     {
-        // var chatId = Guid.NewGuid().ToString();
-        // //Decommission the SignalR conversation interface
-        // var chatMessage = new ResponseStreamGodChat()
-        // {
-        //     Response =
-        //         "A better experience awaits! Please update to the latest version.",
-        //     ChatId = chatId,
-        //     NewTitle = "A better experience awaits",
-        //     IsLastChunk = true,
-        //     SerialNumber = -2,
-        //     SessionId = @event.SessionId
-        // };
-        // Logger.LogDebug(
-        //     $"[GodChatGAgent][RequestStreamChatEvent] decommission :{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
-        // await PublishAsync(chatMessage);
-
-        string chatId = Guid.NewGuid().ToString();
-        Logger.LogDebug(
-            $"[GodChatGAgent][RequestStreamGodChatEvent] start:{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
-        var title = "";
-        var content = "";
-        var isLastChunk = false;
-        
-        try
+        var chatId = Guid.NewGuid().ToString();
+        //Decommission the SignalR conversation interface
+        var chatMessage = new ResponseStreamGodChat()
         {
-            if (State.StreamingModeEnabled)
-            {
-                Logger.LogDebug("State.StreamingModeEnabled is on");
-                await StreamChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content, chatId);
-            }
-            else
-            {
-                var response = await ChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content);
-                content = response.Item1;
-                title = response.Item2;
-                isLastChunk = true;
-            }
-        }
-        catch (Exception e)
-        {
-            Logger.LogError(e, $"[GodChatGAgent][RequestStreamGodChatEvent] handle error:{e.ToString()}");
-        }
-        
-        await PublishAsync(new ResponseStreamGodChat()
-        {
+            Response =
+                "A better experience awaits! Please update to the latest version.",
             ChatId = chatId,
-            Response = content,
-            NewTitle = title,
-            IsLastChunk = isLastChunk,
-            SerialNumber = -1,
+            NewTitle = "A better experience awaits",
+            IsLastChunk = true,
+            SerialNumber = -2,
             SessionId = @event.SessionId
-        });
-        
-        Logger.LogDebug($"[GodChatGAgent][RequestStreamGodChatEvent] end:{JsonConvert.SerializeObject(@event)}");
+        };
+        Logger.LogDebug(
+            $"[GodChatGAgent][RequestStreamChatEvent] decommission :{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
+        await PublishAsync(chatMessage);
+
+        // string chatId = Guid.NewGuid().ToString();
+        // Logger.LogDebug(
+        //     $"[GodChatGAgent][RequestStreamGodChatEvent] start:{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
+        // var title = "";
+        // var content = "";
+        // var isLastChunk = false;
+        //
+        // try
+        // {
+        //     if (State.StreamingModeEnabled)
+        //     {
+        //         Logger.LogDebug("State.StreamingModeEnabled is on");
+        //         await StreamChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content, chatId);
+        //     }
+        //     else
+        //     {
+        //         var response = await ChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content);
+        //         content = response.Item1;
+        //         title = response.Item2;
+        //         isLastChunk = true;
+        //     }
+        // }
+        // catch (Exception e)
+        // {
+        //     Logger.LogError(e, $"[GodChatGAgent][RequestStreamGodChatEvent] handle error:{e.ToString()}");
+        // }
+        //
+        // await PublishAsync(new ResponseStreamGodChat()
+        // {
+        //     ChatId = chatId,
+        //     Response = content,
+        //     NewTitle = title,
+        //     IsLastChunk = isLastChunk,
+        //     SerialNumber = -1,
+        //     SessionId = @event.SessionId
+        // });
+        //
+        // Logger.LogDebug($"[GodChatGAgent][RequestStreamGodChatEvent] end:{JsonConvert.SerializeObject(@event)}");
     }
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
