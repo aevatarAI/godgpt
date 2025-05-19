@@ -256,11 +256,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         var paymentGrainId = Guid.NewGuid();
-        var paymentGrain = GrainFactory.GetGrain<IPaymentGrain>(paymentGrainId);
+        var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
         var grainResultDto = await paymentGrain.ProcessPaymentCallbackAsync(jsonPayload, stripeSignature);
         var detailsDto = grainResultDto.Data;
         if (!grainResultDto.Success || detailsDto == null)
         {
+            _logger.LogError("[UserBillingGrain][HandleStripeWebhookEventAsync] error. {0}", grainResultDto.Message);
             return false;
         }
 

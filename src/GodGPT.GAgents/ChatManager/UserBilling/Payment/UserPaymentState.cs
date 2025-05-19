@@ -3,7 +3,7 @@ using Aevatar.Application.Grains.Common.Constants;
 namespace Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 
 [GenerateSerializer]
-public class PaymentState
+public class UserPaymentState
 {
     // [Id(0)] public string OrderId { get; set; }
     // [Id(1)] public Guid? UserId { get; set; }        

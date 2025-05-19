@@ -9,7 +9,7 @@ using PaymentMethod = Aevatar.Application.Grains.Common.Constants.PaymentMethod;
 
 namespace Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 
-public interface IPaymentGrain : IGrainWithGuidKey
+public interface IUserPaymentGrain : IGrainWithGuidKey
 {
     Task<GrainResultDto<PaymentDetailsDto>> ProcessPaymentCallbackAsync(string jsonPayload, string stripeSignature);
     Task<PaymentDetailsDto> GetPaymentDetailsAsync();
@@ -17,12 +17,12 @@ public interface IPaymentGrain : IGrainWithGuidKey
     
 }
 
-public class PaymentGrain : Grain<PaymentState>, IPaymentGrain
+public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
 {
     private readonly ILogger<UserBillingGrain> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
 
-    public PaymentGrain(ILogger<UserBillingGrain> logger, IOptionsMonitor<StripeOptions> stripeOptions)
+    public UserPaymentGrain(ILogger<UserBillingGrain> logger, IOptionsMonitor<StripeOptions> stripeOptions)
     {
         _logger = logger;
         _stripeOptions = stripeOptions;
