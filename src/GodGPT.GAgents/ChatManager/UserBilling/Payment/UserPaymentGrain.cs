@@ -214,7 +214,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         }
         
         State.Id = this.GetPrimaryKey();
-        State.UserId = !string.IsNullOrEmpty(userId) && Guid.TryParse(userId, out var uid) ? uid : (Guid?)null;
+        State.UserId = Guid.Parse(userId);
         if (canUpdateStatus)
         {
             State.Status = PaymentStatus.Completed;

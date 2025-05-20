@@ -7,7 +7,7 @@ namespace Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 public class UserPaymentState
 {
     [Id(0)] public Guid Id { get; set; }
-    [Id(1)] public Guid? UserId { get; set; }        
+    [Id(1)] public Guid UserId { get; set; }        
     [Id(2)] public string PriceId { get; set; }
     [Id(3)] public decimal Amount { get; set; }          
     [Id(4)] public string Currency { get; set; } = "USD";

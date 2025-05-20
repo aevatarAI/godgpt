@@ -1,5 +1,7 @@
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
 using Microsoft.Extensions.Logging;
@@ -306,20 +308,27 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             return false;
         }
 
-        var paymentSummary = await GetPaymentSummaryAsync(detailsDto.Id);
-        if (paymentSummary == null)
+        //TODO 
+        var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null, null, true, PlanType.Day);
+        if (paymentSummary.Status == PaymentStatus.Completed)
         {
-            // 使用新方法创建或更新PaymentSummary
-            await CreateOrUpdatePaymentSummaryAsync(
-                detailsDto,
-                null, // 没有productConfig
-                null, // 没有session
-                true,
-                PlanType.Day);
-        }
-        else
-        {
-            await UpdatePaymentStatusAsync(paymentSummary, detailsDto.Status);
+            var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(detailsDto.UserId));
+            var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
+            if (subscriptionInfoDto.IsActive)
+            {
+                await userQuotaGrain.UpdateSubscriptionAsync("month", subscriptionInfoDto.EndDate.AddDays(30));
+            }
+            else
+            {
+                await userQuotaGrain.UpdateSubscriptionAsync(new SubscriptionInfoDto
+                {
+                    IsActive = true,
+                    PlanType = PlanType.Month,
+                    Status = PaymentStatus.Completed,
+                    StartDate = DateTime.UtcNow,
+                    EndDate = DateTime.UtcNow.AddDays(30)
+                });
+            }
         }
 
         return true;
@@ -458,8 +467,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var paymentState = new UserPaymentState
         {
             Id = paymentGrainId,
-            UserId = !string.IsNullOrEmpty(createCheckoutSessionDto.UserId) && 
-                Guid.TryParse(createCheckoutSessionDto.UserId, out var uid) ? uid : (Guid?)null,
+            UserId = Guid.Parse(createCheckoutSessionDto.UserId),
             PriceId = createCheckoutSessionDto.PriceId,
             Amount = productConfig.Amount,
             Currency = productConfig.Currency,

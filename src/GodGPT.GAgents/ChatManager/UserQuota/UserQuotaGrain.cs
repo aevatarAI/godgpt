@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace Aevatar.Application.Grains.ChatManager.UserQuota;
 
@@ -17,6 +18,7 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task<bool> IsSubscribedAsync();
     Task<SubscriptionInfoDto> GetSubscriptionAsync();
     Task UpdateSubscriptionAsync(string planType, DateTime endDate);
+    Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto);
     Task CancelSubscriptionAsync();
 
     Task<ExecuteActionResultDto> IsActionAllowedAsync(string actionType = "conversation");
@@ -147,6 +149,19 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         
         _logger.LogInformation("[UserQuotaGrain][UpdateSubscriptionAsync] Updated subscription for user {UserId}: Plan={PlanType}, EndDate={EndDate}", 
             this.GetPrimaryKeyString(), planType, endDate);
+    }
+
+    public async Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto)
+    {
+        _logger.LogInformation("[UserQuotaGrain][UpdateSubscriptionAsync] Updated subscription for user {UserId}: Data={PlanType}", 
+            this.GetPrimaryKeyString(), JsonConvert.SerializeObject(subscriptionInfoDto));
+        
+        State.Subscription.PlanType = subscriptionInfoDto.PlanType;
+        State.Subscription.IsActive = subscriptionInfoDto.IsActive;
+        State.Subscription.StartDate = subscriptionInfoDto.StartDate;
+        State.Subscription.EndDate = subscriptionInfoDto.EndDate;
+        State.Subscription.Status = subscriptionInfoDto.Status;
+        await WriteStateAsync();
     }
 
     public async Task CancelSubscriptionAsync()
