@@ -7,7 +7,7 @@ using Xunit.Abstractions;
 
 namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
 
-public class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
+public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
 {
     private readonly ITestOutputHelper _testOutputHelper;
 

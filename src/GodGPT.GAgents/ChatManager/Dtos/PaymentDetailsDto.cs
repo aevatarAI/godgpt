@@ -19,4 +19,7 @@ public class PaymentDetailsDto
     [Id(11)] public DateTime CreatedAt { get; set; }
     [Id(12)] public DateTime? CompletedAt { get; set; }
     [Id(13)] public DateTime LastUpdated { get; set; }
+    [Id(14)] public string OrderId { get; set; }
+    [Id(15)] public string SubscriptionId { get; set; }
+    [Id(16)] public string InvoiceId { get; set; }
 }

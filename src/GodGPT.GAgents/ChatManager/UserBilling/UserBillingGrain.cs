@@ -143,6 +143,17 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
     public async Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto)
     {
+        var productConfig = _stripeOptions.CurrentValue.Products.FirstOrDefault(p => p.PriceId == createCheckoutSessionDto.PriceId);
+        if (productConfig == null)
+        {
+            _logger.LogError("[UserBillingGrain][CreateCheckoutSessionAsync] Invalid priceId: {PriceId}. Product not found in configuration.", 
+                createCheckoutSessionDto.PriceId);
+            throw new ArgumentException($"Invalid priceId: {createCheckoutSessionDto.PriceId}. Product not found in configuration.");
+        }
+        
+        _logger.LogInformation("[UserBillingGrain][CreateCheckoutSessionAsync] Found product with priceId: {PriceId}, planType: {PlanType}, amount: {Amount} {Currency}",
+            productConfig.PriceId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
+            
         var orderId = Guid.NewGuid().ToString();
         var options = new SessionCreateOptions
         {
@@ -160,7 +171,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             {
                 { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty },
                 { "price_id", createCheckoutSessionDto.PriceId },
-                { "quantity", createCheckoutSessionDto.Quantity.ToString() }
+                { "quantity", createCheckoutSessionDto.Quantity.ToString() },
+                { "order_id", orderId.ToString() }
             },
             SavedPaymentMethodOptions = new SessionSavedPaymentMethodOptionsOptions
             {
@@ -174,7 +186,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     {
                         { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty },
                         { "price_id", createCheckoutSessionDto.PriceId },
-                        { "quantity", createCheckoutSessionDto.Quantity.ToString() }
+                        { "quantity", createCheckoutSessionDto.Quantity.ToString() },
+                        { "order_id", orderId.ToString() }
                     }
                 }
                 : null,
@@ -185,7 +198,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     {
                         { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty },
                         { "price_id", createCheckoutSessionDto.PriceId },
-                        { "quantity", createCheckoutSessionDto.Quantity.ToString() }
+                        { "quantity", createCheckoutSessionDto.Quantity.ToString() },
+                        { "order_id", orderId.ToString() }
                     }
                 }
                 : null
@@ -220,6 +234,17 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         try
         {
             var session = await service.CreateAsync(options);
+            
+            var paymentDetails = await InitializePaymentGrainAsync(orderId, createCheckoutSessionDto, productConfig, session);
+            
+            var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(
+                paymentDetails,
+                productConfig,
+                session,
+                true);
+            
+            _logger.LogInformation("[UserBillingGrain][CreateCheckoutSessionAsync] Created/Updated payment record with ID: {PaymentId} for session: {SessionId}",
+                paymentDetails.Id, session.Id);
 
             if (createCheckoutSessionDto.UiMode == StripeUiMode.EMBEDDED)
             {
@@ -245,6 +270,22 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
     }
     
+
+    private DateTime GetSubscriptionEndDate(PlanType planType, DateTime startDate)
+    {
+        switch (planType)
+        {
+            case PlanType.Day:
+                return startDate.AddDays(1);
+            case PlanType.Month:
+                return startDate.AddMonths(1);
+            case PlanType.Year:
+                return startDate.AddYears(1);
+            default:
+                return startDate.AddDays(1); 
+        }
+    }
+
     public async Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature)
     {
         _logger.LogInformation("[UserBillingGrain][HandleStripeWebhookEventAsync] Processing Stripe webhook event");
@@ -268,23 +309,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var paymentSummary = await GetPaymentSummaryAsync(detailsDto.Id);
         if (paymentSummary == null)
         {
-            // Add to payment history
-            await AddPaymentRecordAsync(new PaymentSummary
-            {
-                PaymentGrainId = detailsDto.Id,
-                OrderId = detailsDto.Id.ToString(),
-                PlanType = PlanType.Day,
-                Amount = detailsDto.Amount,
-                Currency = detailsDto.Currency,
-                CreatedAt = detailsDto.CreatedAt,
-                CompletedAt = detailsDto.CompletedAt,
-                Status = detailsDto.Status,
-                PaymentType = detailsDto.PaymentType,
-                Method = detailsDto.Method,
-                Platform = detailsDto.Platform,
-                IsSubscriptionRenewal = false,
-                LastUpdated = detailsDto.LastUpdated
-            });
+            // 使用新方法创建或更新PaymentSummary
+            await CreateOrUpdatePaymentSummaryAsync(
+                detailsDto,
+                null, // 没有productConfig
+                null, // 没有session
+                true,
+                PlanType.Day);
         }
         else
         {
@@ -310,9 +341,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             paymentSummary.CreatedAt = DateTime.UtcNow;
         }
-        
-        // Set last updated time
-        paymentSummary.LastUpdated = DateTime.UtcNow;
         
         // Set completed time if status is Completed
         if (paymentSummary.Status == PaymentStatus.Completed && !paymentSummary.CompletedAt.HasValue)
@@ -390,7 +418,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         // Update status
         var oldStatus = payment.Status;
         payment.Status = newStatus;
-        payment.LastUpdated = DateTime.UtcNow;
         
         // Set completed time if status is being changed to Completed
         if (newStatus == PaymentStatus.Completed && !payment.CompletedAt.HasValue)
@@ -415,5 +442,133 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             oldStatus, newStatus, payment.PaymentGrainId);
         
         return true;
+    }
+
+    private async Task<PaymentDetailsDto> InitializePaymentGrainAsync(
+        string orderId, 
+        CreateCheckoutSessionDto createCheckoutSessionDto, 
+        StripeProduct productConfig,
+        Session session)
+    {
+
+        var paymentGrainId = Guid.NewGuid();
+        var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
+        
+
+        var paymentState = new UserPaymentState
+        {
+            Id = paymentGrainId,
+            UserId = !string.IsNullOrEmpty(createCheckoutSessionDto.UserId) && 
+                Guid.TryParse(createCheckoutSessionDto.UserId, out var uid) ? uid : (Guid?)null,
+            PriceId = createCheckoutSessionDto.PriceId,
+            Amount = productConfig.Amount,
+            Currency = productConfig.Currency,
+            PaymentType = productConfig.Mode == PaymentMode.SUBSCRIPTION 
+                ? PaymentType.Subscription 
+                : PaymentType.OneTime,
+            Status = PaymentStatus.Processing,
+            Method = PaymentMethod.Card, 
+            Mode = createCheckoutSessionDto.Mode,
+            Platform = PaymentPlatform.Stripe,
+            Description = $"Checkout session for {productConfig.PriceId}",
+            CreatedAt = DateTime.UtcNow,
+            LastUpdated = DateTime.UtcNow,
+            OrderId = orderId,
+            SubscriptionId = session.SubscriptionId, 
+            InvoiceId = null 
+        };
+        
+
+        var initResult = await paymentGrain.InitializePaymentAsync(paymentState);
+        if (!initResult.Success)
+        {
+            _logger.LogError("[UserBillingGrain][InitializePaymentGrainAsync] Failed to initialize payment grain: {ErrorMessage}", 
+                initResult.Message);
+            throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
+        }
+        
+        var paymentDetails = initResult.Data;
+        _logger.LogInformation("[UserBillingGrain][InitializePaymentGrainAsync] Initialized payment grain with ID: {PaymentId}", 
+            paymentDetails.Id);
+        
+        return paymentDetails;
+    }
+
+    private async Task<PaymentSummary> CreateOrUpdatePaymentSummaryAsync(
+        PaymentDetailsDto paymentDetails,
+        StripeProduct productConfig,
+        Session session = null,
+        bool isSubscriptionRenewal = false,
+        PlanType? planType = null)
+    {
+        var existingPaymentSummary = State.PaymentHistory
+            .FirstOrDefault(p => p.PaymentGrainId == paymentDetails.Id || 
+                               (!string.IsNullOrEmpty(paymentDetails.OrderId) && p.OrderId == paymentDetails.OrderId));
+            
+        if (existingPaymentSummary != null)
+        {
+            // 更新现有记录
+            _logger.LogInformation("[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Updating existing payment record with ID: {PaymentId}", 
+                existingPaymentSummary.PaymentGrainId);
+                
+            // 更新可变字段
+            existingPaymentSummary.Amount = paymentDetails.Amount;
+            existingPaymentSummary.Currency = paymentDetails.Currency;
+            existingPaymentSummary.Status = paymentDetails.Status;
+            existingPaymentSummary.PaymentType = paymentDetails.PaymentType;
+            existingPaymentSummary.Platform = paymentDetails.Platform;
+            existingPaymentSummary.SubscriptionId = paymentDetails.SubscriptionId;
+            existingPaymentSummary.OrderId = paymentDetails.OrderId;
+            
+            // 如果状态变为已完成且完成时间未设置，则设置完成时间
+            if (paymentDetails.Status == PaymentStatus.Completed && !existingPaymentSummary.CompletedAt.HasValue)
+            {
+                existingPaymentSummary.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
+            }
+            
+            // 保存状态
+            await WriteStateAsync();
+            
+            _logger.LogInformation("[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Updated payment record with ID: {PaymentId}", 
+                existingPaymentSummary.PaymentGrainId);
+                
+            return existingPaymentSummary;
+        }
+        else
+        {
+            // 创建新记录
+            _logger.LogInformation("[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Creating new payment record for ID: {PaymentId}", 
+                paymentDetails.Id);
+                
+            var newPaymentSummary = new PaymentSummary
+            {
+                PaymentGrainId = paymentDetails.Id,
+                OrderId = paymentDetails.OrderId,
+                PlanType = planType ?? (productConfig != null ? (PlanType)productConfig.PlanType : PlanType.Day),
+                Amount = paymentDetails.Amount,
+                Currency = paymentDetails.Currency,
+                CreatedAt = paymentDetails.CreatedAt,
+                Status = paymentDetails.Status,
+                PaymentType = paymentDetails.PaymentType,
+                Platform = paymentDetails.Platform,
+                IsSubscriptionRenewal = isSubscriptionRenewal,
+                SubscriptionId = paymentDetails.SubscriptionId,
+                SessionId = session?.Id
+            };
+            
+            // 如果状态为已完成，设置完成时间
+            if (paymentDetails.Status == PaymentStatus.Completed)
+            {
+                newPaymentSummary.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
+            }
+            
+            // 添加到支付历史记录
+            await AddPaymentRecordAsync(newPaymentSummary);
+            
+            _logger.LogInformation("[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Created new payment record with ID: {PaymentId}", 
+                newPaymentSummary.PaymentGrainId);
+                
+            return newPaymentSummary;
+        }
     }
 }

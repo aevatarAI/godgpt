@@ -26,6 +26,9 @@ public class PaymentSummary
     [Id(9)] public PaymentMethod Method { get; set; }
     [Id(10)] public PaymentPlatform Platform {get; set;}
     [Id(11)] public bool IsSubscriptionRenewal { get; set; } = false;
-    [Id(12)] public DateTime LastUpdated { get; set; }
+    [Id(12)] public string SubscriptionId { get; set; }
+    [Id(13)] public DateTime SubscriptionStartDate { get; set; }
+    [Id(14)] public DateTime SubscriptionEndDate { get; set; }
+    [Id(15)] public string SessionId { get; set; }
 }
 
