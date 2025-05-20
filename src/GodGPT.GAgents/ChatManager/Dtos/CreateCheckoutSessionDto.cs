@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.Common.Constants;
+using Stripe;
 
 namespace Aevatar.Application.Grains.ChatManager.Dtos;
 
@@ -14,5 +15,21 @@ public class CreateCheckoutSessionDto
     [Id(2)] public string Mode { get; set; } = PaymentMode.SUBSCRIPTION;
     
     [Id(3)] public long Quantity { get; set; }
+    
+    /// HOSTED, EMBEDDED、CUSTOM
     [Id(4)] public string UiMode { get; set; } = StripeUiMode.HOSTED;
+    
+    /// <summary>
+    /// - card、 alipay、wechat_pay、paypal: PayPal、apple_pay: Apple Pay、google_pay: Google Pay、link: Stripe Link
+    /// https://docs.stripe.com/api/payment_methods/object#payment_method_object-type
+    /// </summary>
+    [Id(5)] public List<string> PaymentMethodTypes { get; set; } = new List<string>() { "card", "link" };
+    
+    /// always、automatic
+    [Id(6)] public string PaymentMethodCollection { get; set; } = "always";
+    
+    /// <summary>
+    /// 支付方法配置ID
+    /// </summary>
+    [Id(7)] public string PaymentMethodConfiguration { get; set; }
 }

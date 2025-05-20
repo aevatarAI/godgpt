@@ -155,8 +155,17 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     {
         _logger.LogInformation("[UserQuotaGrain][UpdateSubscriptionAsync] Updated subscription for user {UserId}: Data={PlanType}", 
             this.GetPrimaryKeyString(), JsonConvert.SerializeObject(subscriptionInfoDto));
-        
-        State.Subscription.PlanType = subscriptionInfoDto.PlanType;
+        if (State.Subscription.IsActive)
+        {
+            if (State.Subscription.PlanType < subscriptionInfoDto.PlanType)
+            {
+                State.Subscription.PlanType = subscriptionInfoDto.PlanType;
+            }
+        }
+        else
+        {
+            State.Subscription.PlanType = subscriptionInfoDto.PlanType;
+        }
         State.Subscription.IsActive = subscriptionInfoDto.IsActive;
         State.Subscription.StartDate = subscriptionInfoDto.StartDate;
         State.Subscription.EndDate = subscriptionInfoDto.EndDate;

@@ -22,4 +22,5 @@ public class PaymentDetailsDto
     [Id(14)] public string OrderId { get; set; }
     [Id(15)] public string SubscriptionId { get; set; }
     [Id(16)] public string InvoiceId { get; set; }
+    [Id(17)] public string SessionId { get; set; }
 }

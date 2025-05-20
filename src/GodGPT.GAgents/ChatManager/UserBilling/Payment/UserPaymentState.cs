@@ -23,6 +23,7 @@ public class UserPaymentState
     [Id(14)] public string OrderId { get; set; }
     [Id(15)] public string SubscriptionId { get; set; }
     [Id(16)] public string InvoiceId { get; set; }
+    [Id(17)] public string SessionId { get; set; }
     
     public PaymentDetailsDto ToDto()
     {
@@ -44,7 +45,8 @@ public class UserPaymentState
             LastUpdated = this.LastUpdated,
             OrderId = this.OrderId,
             SubscriptionId = this.SubscriptionId,
-            InvoiceId = this.InvoiceId
+            InvoiceId = this.InvoiceId,
+            SessionId = this.SessionId
         };
     }
     
@@ -68,7 +70,8 @@ public class UserPaymentState
             LastUpdated = dto.LastUpdated,
             OrderId = dto.OrderId,
             SubscriptionId = dto.SubscriptionId,
-            InvoiceId = dto.InvoiceId
+            InvoiceId = dto.InvoiceId,
+            SessionId = dto.SessionId
         };
     }
 }

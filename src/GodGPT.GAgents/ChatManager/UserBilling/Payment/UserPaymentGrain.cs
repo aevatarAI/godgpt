@@ -30,44 +30,30 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
 
     public async Task<GrainResultDto<PaymentDetailsDto>> ProcessPaymentCallbackAsync(string jsonPayload, string stripeSignature)
     {
-        _logger.LogInformation("[PaymentGAgent][ProcessPaymentCallbackAsync] Processing Stripe webhook event");
-        
-        if (string.IsNullOrEmpty(jsonPayload) || string.IsNullOrEmpty(stripeSignature))
-        {
-            _logger.LogError("[PaymentGAgent][ProcessPaymentCallbackAsync] Invalid webhook parameters");
-            return new GrainResultDto<PaymentDetailsDto>
-            {
-                Success = false,
-                Message = "Invalid webhook parameters"
-            };
-        }
-        
         try
         {
-            // Verify the event
-            var webhookSecret = _stripeOptions.CurrentValue.WebhookSecret;
             var stripeEvent = EventUtility.ConstructEvent(
                 jsonPayload,
                 stripeSignature,
-                webhookSecret
+                _stripeOptions.CurrentValue.WebhookSecret
             );
             
-            _logger.LogInformation("[PaymentGAgent][ProcessPaymentCallbackAsync] Received event type: {EventType}", stripeEvent.Type);
-
+            _logger.LogDebug("[PaymentGAgent][ProcessPaymentCallbackAsync] Processing Stripe webhook event, {0}, {1}", stripeEvent.Type, stripeEvent.Id);
+            
             GrainResultDto<PaymentDetailsDto> resultDto =  null;
             switch (stripeEvent.Type)
             {
-                case EventTypes.CheckoutSessionCompleted:
+                //checkout.session.completed
+                case EventTypes.CheckoutSessionCompleted: 
                     resultDto = await ProcessCheckoutSessionCompletedAsync(stripeEvent);
                     break;
-                    
-                case EventTypes.PaymentIntentSucceeded: //"payment_intent.succeeded"
-                    resultDto = await ProcessPaymentIntentSucceededAsync(stripeEvent);
-                    break;
-                    
                 case "invoice.paid":
                     resultDto = await ProcessInvoicePaidAsync(stripeEvent);
                     break;
+                //payment_intent.succeeded
+                // case EventTypes.PaymentIntentSucceeded: 
+                //     resultDto = await ProcessPaymentIntentSucceededAsync(stripeEvent);
+                //     break;
                 //     
                 // case "customer.subscription.created":
                 // case "customer.subscription.updated":
@@ -128,14 +114,14 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         }
         
         var userId = TryGetFromMetadata(session.Metadata, "internal_user_id");
-        var OrderId = TryGetFromMetadata(session.Metadata, "order_id");
+        var orderId = TryGetFromMetadata(session.Metadata, "order_id");
         var priceId = TryGetFromMetadata(session.Metadata, "price_id");
 
         _logger.LogInformation("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Processing completed session {SessionId} for user {UserId}", 
             session.Id, userId);
         
         bool canUpdateStatus = true;
-        if (State.Status > PaymentStatus.Processing)
+        if (State.Status >= PaymentStatus.Completed)
         {
             canUpdateStatus = false;
             _logger.LogWarning("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Cannot update status from {CurrentStatus} to Processing as current status is finalized", 
@@ -149,18 +135,23 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         State.PaymentType = session.Mode == PaymentMode.SUBSCRIPTION 
             ? PaymentType.Subscription 
             : PaymentType.OneTime;
-
         if (canUpdateStatus)
         {
-            State.Status = PaymentStatus.Processing;
+            State.Status = PaymentStatus.Completed;
+            State.CompletedAt = DateTime.UtcNow;
         }
-        
         State.Method = session.PaymentMethodTypes.MapToPaymentMethod();
         State.Mode = session.Mode;
         State.Platform = PaymentPlatform.Stripe;
-        State.LastUpdated = DateTime.UtcNow;
+        if (State.CreatedAt == default)
+        {
+            State.CreatedAt = DateTime.UtcNow;
+        }
         State.SubscriptionId = session.SubscriptionId;
         State.InvoiceId = session.InvoiceId;
+        State.SessionId = session.Id;
+        State.OrderId = orderId;
+        State.LastUpdated = DateTime.UtcNow;
         
         await WriteStateAsync();
 
@@ -173,7 +164,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         };
     }
     
-    private string TryGetFromMetadata(IDictionary<string, string> metadata, string key)
+    private string TryGetFromMetadata(IDictionary<string, string>? metadata, string key)
     {
         if (metadata != null && metadata.TryGetValue(key, out var value) && !string.IsNullOrEmpty(value))
         {
@@ -251,10 +242,13 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             };
         }
         
+        var userId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "internal_user_id");
+        var orderId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "order_id");
+        var priceId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "price_id");
         _logger.LogInformation("[UserBillingGrain][ProcessInvoicePaidAsync] Processing paid invoice {InvoiceId}", invoice.Id);
 
         bool canUpdateStatus = true;
-        if (State.Status > PaymentStatus.Processing)
+        if (State.Status >= PaymentStatus.Completed)
         {
             canUpdateStatus = false;
             _logger.LogWarning("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Cannot update status from {CurrentStatus} to Processing as current status is finalized", 
@@ -262,13 +256,22 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         }
 
         State.Id = this.GetPrimaryKey();
+        State.UserId = Guid.Parse(userId);
+        State.PriceId = priceId;
         if (canUpdateStatus)
         {
             State.Status = PaymentStatus.Completed;
             State.CompletedAt = DateTime.UtcNow;
         }
-        State.LastUpdated = DateTime.UtcNow;
+
+        if (State.CreatedAt == default)
+        {
+            State.CreatedAt = DateTime.UtcNow;
+        }
         State.InvoiceId = invoice.Id;
+        State.SubscriptionId = invoice?.Parent?.SubscriptionDetails?.SubscriptionId;
+        State.OrderId = orderId;
+        State.LastUpdated = DateTime.UtcNow;
         
         await WriteStateAsync();
         
@@ -457,7 +460,6 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
     public async Task<GrainResultDto<PaymentDetailsDto>> InitializePaymentAsync(UserPaymentState paymentState)
     {
         _logger.LogInformation("[PaymentGAgent][InitializePaymentAsync] Initializing payment for order {OrderId}", paymentState.OrderId);
-        
         try
         {
             State = paymentState;
