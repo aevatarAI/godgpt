@@ -17,21 +17,24 @@ public interface IUserBillingGrain : IGrainWithStringKey
 {
     Task<List<StripeProductDto>> GetStripeProductsAsync();
     Task<string> GetOrCreateStripeCustomerAsync(string userId = null);
+    Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null);
     Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto);
+    Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
     Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary);
     Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
     Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
     Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
+    Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
 }
 
 public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 {
     private readonly ILogger<UserBillingGrain> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
-
-    private IStripeClient _client;
-
+    
+    private IStripeClient _client; 
+    
     public UserBillingGrain(ILogger<UserBillingGrain> logger, IOptionsMonitor<StripeOptions> stripeOptions)
     {
         _logger = logger;
@@ -43,7 +46,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         _client ??= new StripeClient(_stripeOptions.CurrentValue.SecretKey);
         _logger.LogDebug("[UserBillingGrain][OnActivateAsync] Activating grain for user {UserId}",
             this.GetPrimaryKeyString());
-
+        
         await ReadStateAsync();
         await base.OnActivateAsync(cancellationToken);
     }
@@ -94,7 +97,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 Currency = product.Currency
             });
         }
-
+        
         _logger.LogDebug("[UserBillingGrain][GetStripeProductsAsync] Successfully retrieved {Count} products",
             productDtos.Count);
         return productDtos;
@@ -143,6 +146,51 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         State.CustomerId = customerId;
         await WriteStateAsync();
         return State.CustomerId;
+    }
+
+    public async Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null)
+    {
+        try
+        {
+            var customerId = await GetOrCreateStripeCustomerAsync(userId);
+            _logger.LogInformation(
+                "[UserBillingGrain][GetStripeCustomerAsync] {userId} Using customer: {CustomerId}",userId, customerId);
+            
+            var ephemeralKeyService = new EphemeralKeyService(_client);
+            var ephemeralKeyOptions = new EphemeralKeyCreateOptions
+            {
+                Customer = customerId,
+                StripeVersion = "2025-04-30.basil",
+            };
+            
+            var ephemeralKey = await ephemeralKeyService.CreateAsync(ephemeralKeyOptions);
+            _logger.LogInformation(
+                "[UserBillingGrain][GetStripeCustomerAsync] {userId} Created ephemeral key with ID: {EphemeralKeyId}",
+                userId, ephemeralKey.Id);
+
+            var response = new GetCustomerResponseDto()
+            {
+                EphemeralKey = ephemeralKey.Secret,
+                Customer = customerId,
+                PublishableKey = _stripeOptions.CurrentValue.PublishableKey
+            };
+            
+            return response;
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][GetStripeCustomerAsync] Stripe error: {ErrorMessage}",
+                ex.StripeError?.Message);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][GetStripeCustomerAsync] error: {ErrorMessage}",
+                ex.Message);
+            throw;
+        }
     }
 
     public async Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto)
@@ -276,7 +324,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 _logger.LogInformation(
                     "[UserBillingGrain][CreateCheckoutSessionAsync] Created hosted checkout session with ID: {SessionId}, returning URL",
                     session.Id);
-                return session.Url;
+            return session.Url;
             }
         }
         catch (StripeException e)
@@ -284,6 +332,312 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogError(e,
                 "[UserBillingGrain][CreateCheckoutSessionAsync] Failed to create checkout session: {ErrorMessage}",
                 e.StripeError.Message);
+            throw;
+        }
+    }
+
+    public async Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto)
+    {
+        _logger.LogInformation("[UserBillingGrain][CreatePaymentSheetAsync] Creating payment sheet for user {UserId}",
+            createPaymentSheetDto.UserId);
+        
+        long amount;
+        string currency;
+        
+        if (createPaymentSheetDto.Amount.HasValue && !string.IsNullOrEmpty(createPaymentSheetDto.Currency))
+        {
+            amount = createPaymentSheetDto.Amount.Value;
+            currency = createPaymentSheetDto.Currency;
+            _logger.LogInformation(
+                "[UserBillingGrain][CreatePaymentSheetAsync] Using explicitly provided amount: {Amount} {Currency}",
+                amount, currency);
+        }
+        else if (!string.IsNullOrEmpty(createPaymentSheetDto.PriceId))
+        {
+            var productConfig = await GetProductConfigAsync(createPaymentSheetDto.PriceId);
+            amount = (long)productConfig.Amount;
+            currency = productConfig.Currency;
+            _logger.LogInformation(
+                "[UserBillingGrain][CreatePaymentSheetAsync] Using amount from product config: {Amount} {Currency}, PriceId: {PriceId}",
+                amount, currency, createPaymentSheetDto.PriceId);
+        }
+        else
+        {
+            var message = "Either Amount+Currency or PriceId must be provided";
+            _logger.LogError("[UserBillingGrain][CreatePaymentSheetAsync] {Message}", message);
+            throw new ArgumentException(message);
+        }
+
+        var orderId = Guid.NewGuid().ToString();
+        
+        try
+        {
+            var customerId = await GetOrCreateStripeCustomerAsync(createPaymentSheetDto.UserId.ToString());
+            _logger.LogInformation(
+                "[UserBillingGrain][CreatePaymentSheetAsync] Using customer: {CustomerId}", customerId);
+            
+            var ephemeralKeyService = new EphemeralKeyService(_client);
+            var ephemeralKeyOptions = new EphemeralKeyCreateOptions
+            {
+                Customer = customerId,
+                StripeVersion = "2025-04-30.basil",
+            };
+            
+            var ephemeralKey = await ephemeralKeyService.CreateAsync(ephemeralKeyOptions);
+            _logger.LogInformation(
+                "[UserBillingGrain][CreatePaymentSheetAsync] Created ephemeral key with ID: {EphemeralKeyId}",
+                ephemeralKey.Id);
+            
+            var paymentIntentService = new PaymentIntentService(_client);
+            var paymentIntentOptions = new PaymentIntentCreateOptions
+            {
+                Amount = amount,
+                Currency = currency,
+                Customer = customerId,
+                Description = createPaymentSheetDto.Description,
+                Metadata = new Dictionary<string, string>
+                {
+                    { "internal_user_id", createPaymentSheetDto.UserId.ToString() },
+                    { "order_id", orderId },
+                    { "price_id", createPaymentSheetDto.PriceId},
+                    { "quantity", "1" }
+                },
+                AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
+                {
+                    Enabled = true,
+                },
+            };
+            
+            if (createPaymentSheetDto.PaymentMethodTypes != null && createPaymentSheetDto.PaymentMethodTypes.Any())
+            {
+                paymentIntentOptions.PaymentMethodTypes = createPaymentSheetDto.PaymentMethodTypes;
+                _logger.LogInformation(
+                    "[UserBillingGrain][CreatePaymentSheetAsync] Using payment method types: {PaymentMethodTypes}",
+                    string.Join(", ", createPaymentSheetDto.PaymentMethodTypes));
+            }
+            
+            var paymentIntent = await paymentIntentService.CreateAsync(paymentIntentOptions);
+            _logger.LogInformation(
+                "[UserBillingGrain][CreatePaymentSheetAsync] Created payment intent with ID: {PaymentIntentId}",
+                paymentIntent.Id);
+            
+            if (!string.IsNullOrEmpty(createPaymentSheetDto.PriceId))
+            {
+                var productConfig = await GetProductConfigAsync(createPaymentSheetDto.PriceId);
+                var paymentGrainId = Guid.NewGuid();
+                var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
+                
+                var paymentState = new UserPaymentState
+                {
+                    Id = paymentGrainId,
+                    UserId = createPaymentSheetDto.UserId,
+                    PriceId = createPaymentSheetDto.PriceId,
+                    Amount = amount,
+                    Currency = currency,
+                    PaymentType = PaymentType.OneTime,
+                    Status = PaymentStatus.Processing,
+                    Mode = PaymentMode.PAYMENT,
+                    Platform = PaymentPlatform.Stripe,
+                    Description = createPaymentSheetDto.Description ?? $"Payment sheet for {amount} {currency}",
+                    CreatedAt = DateTime.UtcNow,
+                    LastUpdated = DateTime.UtcNow,
+                    OrderId = orderId,
+                    SessionId = paymentIntent.Id 
+                };
+                
+                var initResult = await paymentGrain.InitializePaymentAsync(paymentState);
+                if (!initResult.Success)
+                {
+                    _logger.LogError(
+                        "[UserBillingGrain][CreatePaymentSheetAsync] Failed to initialize payment grain: {ErrorMessage}",
+                        initResult.Message);
+                    throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
+                }
+                
+                var paymentDetails = initResult.Data;
+                var paymentSummary = new PaymentSummary
+                {
+                    PaymentGrainId = paymentDetails.Id,
+                    OrderId = orderId,
+                    UserId = createPaymentSheetDto.UserId,
+                    Amount = amount,
+                    Currency = currency,
+                    CreatedAt = DateTime.UtcNow,
+                    Status = PaymentStatus.Processing,
+                    PaymentType = PaymentType.OneTime,
+                    Method = PaymentMethod.Card,
+                    Platform = PaymentPlatform.Stripe,
+                    SessionId = paymentIntent.Id 
+                };
+                
+                await AddPaymentRecordAsync(paymentSummary);
+                _logger.LogInformation(
+                    "[UserBillingGrain][CreatePaymentSheetAsync] Created payment record with ID: {PaymentId}",
+                    paymentDetails.Id);
+            }
+            
+            var response = new PaymentSheetResponseDto
+            {
+                PaymentIntent = paymentIntent.ClientSecret,
+                EphemeralKey = ephemeralKey.Secret,
+                Customer = customerId,
+                PublishableKey = _stripeOptions.CurrentValue.PublishableKey
+            };
+            
+            _logger.LogInformation(
+                "[UserBillingGrain][CreatePaymentSheetAsync] Successfully created payment sheet for order: {OrderId}",
+                orderId);
+            
+            return response;
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][CreatePaymentSheetAsync] Stripe error: {ErrorMessage}",
+                ex.StripeError?.Message);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][CreatePaymentSheetAsync] Error creating payment sheet: {ErrorMessage}",
+                ex.Message);
+            throw;
+        }
+    }
+
+    public async Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto)
+    {
+
+        if (string.IsNullOrEmpty(createSubscriptionDto.PriceId))
+        {
+            throw new ArgumentException("PriceId is required.", nameof(createSubscriptionDto));
+        }
+
+        if (createSubscriptionDto.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("UserId is required.", nameof(createSubscriptionDto));
+        }
+
+        _logger.LogInformation(
+            "[UserBillingGrain][CreateSubscriptionAsync] Creating subscription for user {UserId} with price {PriceId}",
+            createSubscriptionDto.UserId, createSubscriptionDto.PriceId);
+
+        try
+        {
+            var productConfig = await GetProductConfigAsync(createSubscriptionDto.PriceId);
+            
+            await ValidateSubscriptionUpgradePath(createSubscriptionDto.UserId.ToString(), productConfig);
+
+            var customerId = await GetOrCreateStripeCustomerAsync(createSubscriptionDto.UserId.ToString());
+            _logger.LogInformation(
+                "[UserBillingGrain][CreateSubscriptionAsync] Using customer: {CustomerId}",
+                customerId);
+
+            var orderId = Guid.NewGuid().ToString();
+            var options = new SubscriptionCreateOptions
+            {
+                Customer = customerId,
+                Items = new List<SubscriptionItemOptions>
+                {
+                    new SubscriptionItemOptions
+                    {
+                        Price = createSubscriptionDto.PriceId,
+                        Quantity = createSubscriptionDto.Quantity ?? 1
+                    }
+                },
+                PaymentBehavior = "default_incomplete",
+                PaymentSettings = new SubscriptionPaymentSettingsOptions
+                {
+                    SaveDefaultPaymentMethod = "on_subscription"
+                },
+                Metadata = new Dictionary<string, string>
+                {
+                    { "internal_user_id", createSubscriptionDto.UserId.ToString() },
+                    { "price_id", createSubscriptionDto.PriceId },
+                    { "quantity", (createSubscriptionDto.Quantity ?? 1).ToString() },
+                    { "order_id", orderId }
+                },
+                TrialPeriodDays = createSubscriptionDto.TrialPeriodDays,
+                Expand = new List<string> { "latest_invoice.confirmation_secret" }
+            };
+
+            if (!string.IsNullOrEmpty(createSubscriptionDto.PaymentMethodId))
+            {
+                options.DefaultPaymentMethod = createSubscriptionDto.PaymentMethodId;
+            }
+
+            if (createSubscriptionDto.Metadata != null && createSubscriptionDto.Metadata.Count > 0)
+            {
+                foreach (var item in createSubscriptionDto.Metadata)
+                {
+                    options.Metadata[item.Key] = item.Value;
+                }
+            }
+
+            var service = new SubscriptionService(_client);
+            var subscription = await service.CreateAsync(options);
+            _logger.LogInformation(
+                "[UserBillingGrain][CreateSubscriptionAsync] Created subscription with ID: {SubscriptionId}, status: {Status}",
+                subscription.Id, subscription.Status);
+
+            var paymentGrainId = Guid.NewGuid();
+            var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
+            
+            var paymentState = new UserPaymentState
+            {
+                Id = paymentGrainId,
+                UserId = createSubscriptionDto.UserId,
+                PriceId = createSubscriptionDto.PriceId,
+                Amount = productConfig.Amount,
+                Currency = productConfig.Currency,
+                PaymentType = PaymentType.Subscription,
+                Status = PaymentStatus.Processing,
+                Mode = PaymentMode.SUBSCRIPTION,
+                Platform = PaymentPlatform.Stripe,
+                Description = createSubscriptionDto.Description ?? $"Subscription for {createSubscriptionDto.PriceId}",
+                CreatedAt = DateTime.UtcNow,
+                LastUpdated = DateTime.UtcNow,
+                OrderId = orderId,
+                SubscriptionId = subscription.Id,
+                InvoiceId = subscription.LatestInvoiceId
+            };
+            
+            var initResult = await paymentGrain.InitializePaymentAsync(paymentState);
+            if (!initResult.Success)
+            {
+                _logger.LogError(
+                    "[UserBillingGrain][CreateSubscriptionAsync] Failed to initialize payment grain: {ErrorMessage}",
+                    initResult.Message);
+                throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
+            }
+            var paymentDetails = initResult.Data;
+            await CreateOrUpdatePaymentSummaryAsync(paymentDetails, null, true);
+            _logger.LogInformation(
+                "[UserBillingGrain][CreateSubscriptionAsync] Created/Updated payment record with ID: {PaymentId} for session: {subscription}",
+                paymentDetails.Id, subscription.Id);
+            
+            var response = new SubscriptionResponseDto
+            {
+                SubscriptionId = subscription.Id,
+                CustomerId = customerId,
+                ClientSecret = subscription.LatestInvoice.ConfirmationSecret.ClientSecret
+            };
+
+            return response;
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][CreateSubscriptionAsync] Stripe error: {ErrorMessage}",
+                ex.StripeError?.Message);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][CreateSubscriptionAsync] Error creating subscription: {ErrorMessage}",
+                ex.Message);
             throw;
         }
     }
@@ -816,5 +1170,20 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         return string.Empty;
+    }
+
+    private PaymentStatus MapStripeStatusToPaymentStatus(string stripeStatus)
+    {
+        return stripeStatus switch
+        {
+            "trialing" => PaymentStatus.Processing,
+            "active" => PaymentStatus.Completed,
+            "past_due" => PaymentStatus.Failed,
+            "canceled" => PaymentStatus.Cancelled,
+            "incomplete" => PaymentStatus.Processing,
+            "incomplete_expired" => PaymentStatus.Failed,
+            "unpaid" => PaymentStatus.Failed,
+            _ => PaymentStatus.Processing
+        };
     }
 }
