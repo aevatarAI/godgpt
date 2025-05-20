@@ -460,21 +460,15 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         
         try
         {
-            // 保存支付状态
             State = paymentState;
-            
-            // 确保ID被设置
             if (State.Id == Guid.Empty)
             {
                 State.Id = this.GetPrimaryKey();
             }
-            
-            // 设置创建时间和更新时间
             if (State.CreatedAt == default)
             {
                 State.CreatedAt = DateTime.UtcNow;
             }
-            
             State.LastUpdated = DateTime.UtcNow;
             
             await WriteStateAsync();

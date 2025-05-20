@@ -310,6 +310,17 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
         //TODO 
         var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null, null, true, PlanType.Day);
+        var userId = paymentSummary.UserId;
+        if (userId == Guid.Empty)
+        {
+            _logger.LogWarning("[UserBillingGrain][HandleStripeWebhookEventAsync] UserId is empty. {0}", this.GetPrimaryKey());
+            var primaryKey = this.GetPrimaryKeyString();
+            if (!primaryKey.IsNullOrWhiteSpace())
+            {
+                userId = Guid.Parse(primaryKey.Split("_")[0]);
+            }
+        }
+        
         if (paymentSummary.Status == PaymentStatus.Completed)
         {
             var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(detailsDto.UserId));
@@ -515,11 +526,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             
         if (existingPaymentSummary != null)
         {
-            // 更新现有记录
             _logger.LogInformation("[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Updating existing payment record with ID: {PaymentId}", 
                 existingPaymentSummary.PaymentGrainId);
                 
-            // 更新可变字段
             existingPaymentSummary.Amount = paymentDetails.Amount;
             existingPaymentSummary.Currency = paymentDetails.Currency;
             existingPaymentSummary.Status = paymentDetails.Status;
@@ -528,13 +537,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             existingPaymentSummary.SubscriptionId = paymentDetails.SubscriptionId;
             existingPaymentSummary.OrderId = paymentDetails.OrderId;
             
-            // 如果状态变为已完成且完成时间未设置，则设置完成时间
             if (paymentDetails.Status == PaymentStatus.Completed && !existingPaymentSummary.CompletedAt.HasValue)
             {
                 existingPaymentSummary.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
             }
             
-            // 保存状态
             await WriteStateAsync();
             
             _logger.LogInformation("[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Updated payment record with ID: {PaymentId}", 
@@ -544,7 +551,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         else
         {
-            // 创建新记录
             _logger.LogInformation("[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Creating new payment record for ID: {PaymentId}", 
                 paymentDetails.Id);
                 
@@ -552,6 +558,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             {
                 PaymentGrainId = paymentDetails.Id,
                 OrderId = paymentDetails.OrderId,
+                UserId = paymentDetails.UserId,
                 PlanType = planType ?? (productConfig != null ? (PlanType)productConfig.PlanType : PlanType.Day),
                 Amount = paymentDetails.Amount,
                 Currency = paymentDetails.Currency,
@@ -564,13 +571,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 SessionId = session?.Id
             };
             
-            // 如果状态为已完成，设置完成时间
             if (paymentDetails.Status == PaymentStatus.Completed)
             {
                 newPaymentSummary.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
             }
             
-            // 添加到支付历史记录
             await AddPaymentRecordAsync(newPaymentSummary);
             
             _logger.LogInformation("[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Created new payment record with ID: {PaymentId}", 

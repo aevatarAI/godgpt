@@ -30,5 +30,6 @@ public class PaymentSummary
     [Id(13)] public DateTime SubscriptionStartDate { get; set; }
     [Id(14)] public DateTime SubscriptionEndDate { get; set; }
     [Id(15)] public string SessionId { get; set; }
+    [Id(16)] public Guid UserId { get; set; }
 }
 
