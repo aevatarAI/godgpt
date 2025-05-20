@@ -320,10 +320,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 userId = Guid.Parse(primaryKey.Split("_")[0]);
             }
         }
-        
+        _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] payment status{0}, {1}", paymentSummary.Status, userId);
         if (paymentSummary.Status == PaymentStatus.Completed)
         {
-            var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(detailsDto.UserId));
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update User subscription {0}", userId);
+            var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
             var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
             if (subscriptionInfoDto.IsActive)
             {
