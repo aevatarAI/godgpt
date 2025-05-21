@@ -355,12 +355,12 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
     public bool IsAutoRenewalCancelled(Event stripeEvent)
     {
         var subscription = stripeEvent.Data.Object as Subscription;
-        var previousAttributes = stripeEvent.Data.PreviousAttributes as Dictionary<string, object>;
+        dynamic previousAttributes = stripeEvent.Data.PreviousAttributes;
 
         if (subscription != null && previousAttributes != null)
         {
-            if (previousAttributes.TryGetValue("cancel_at_period_end", out object previousValue) &&
-                (bool)previousValue == false &&
+            if (previousAttributes.cancel_at_period_end != null &&
+                (bool)previousAttributes.cancel_at_period_end == false &&
                 subscription.CancelAtPeriodEnd == true)
             {
                 return true;
