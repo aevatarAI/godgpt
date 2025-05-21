@@ -1,0 +1,30 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>Aevatar.Application.Grains</RootNamespace>
+        <AssemblyName>GodGPT.WebHook</AssemblyName>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <RestoreSources>https://www.myget.org/F/aelf-project-dev/api/v3/index.json;https://api.nuget.org/v3/index.json
+        </RestoreSources>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Folder Include="Features\" />
+        <Folder Include="Properties\" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Aevatar.WebHook.SDK" />
+        <PackageReference Include="Stripe.net" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\GodGPT.GAgents\GodGPT.GAgents.csproj" />
+    </ItemGroup>
+
+</Project> 
