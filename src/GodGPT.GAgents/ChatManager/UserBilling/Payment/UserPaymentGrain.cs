@@ -52,14 +52,14 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                     break;
                 //invoice.payment_failed
                 case EventTypes.InvoicePaymentFailed:
-                    await ProcessInvoicePaymentFailedAsync(stripeEvent);
+                    resultDto = await ProcessInvoicePaymentFailedAsync(stripeEvent);
                     break;
                 // case "customer.subscription.created":
                 //customer.subscription.updated
                 case EventTypes.CustomerSubscriptionUpdated:
                 //customer.subscription.deleted
                 case EventTypes.CustomerSubscriptionDeleted:   
-                    await ProcessSubscriptionEventAsync(stripeEvent);
+                    resultDto = await ProcessSubscriptionEventAsync(stripeEvent);
                     break;
                 //payment_intent.succeeded
                 // case EventTypes.PaymentIntentSucceeded: 
@@ -236,7 +236,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         var invoice = stripeEvent.Data.Object as Invoice;
         if (invoice == null)
         {
-            _logger.LogError("[UserBillingGrain][ProcessInvoicePaidAsync] Failed to cast event data to Invoice");
+            _logger.LogError("[PaymentGAgent][ProcessInvoicePaidAsync] Failed to cast event data to Invoice");
             return new GrainResultDto<PaymentDetailsDto>
             {
                 Success = false,
@@ -247,7 +247,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         var userId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "internal_user_id");
         var orderId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "order_id");
         var priceId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "price_id");
-        _logger.LogInformation("[UserBillingGrain][ProcessInvoicePaidAsync] Processing paid invoice {InvoiceId}", invoice.Id);
+        _logger.LogInformation("[PaymentGAgent][ProcessInvoicePaidAsync] Processing paid invoice {InvoiceId}", invoice.Id);
 
         bool canUpdateStatus = true;
         if (State.Status >= PaymentStatus.Completed)
@@ -287,35 +287,49 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         };
     }
     
-    private async Task ProcessInvoicePaymentFailedAsync(Event stripeEvent)
+    private async Task<GrainResultDto<PaymentDetailsDto>> ProcessInvoicePaymentFailedAsync(Event stripeEvent)
     {
         var invoice = stripeEvent.Data.Object as Invoice;
         if (invoice == null)
         {
-            _logger.LogError("[UserBillingGrain][ProcessInvoicePaymentFailedAsync] Failed to cast event data to PaymentIntent");
-            return;
+            _logger.LogError("[PaymentGAgent][ProcessInvoicePaymentFailedAsync] Failed to cast event data to PaymentIntent");
+            return new GrainResultDto<PaymentDetailsDto>
+            {
+                Success = false,
+                Message = "Failed to cast event data to PaymentIntent"
+            };
         }
 
-        _logger.LogDebug($"[UserBillingGrain][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}", 
+        _logger.LogDebug($"[PaymentGAgent][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}", 
            invoice.Parent?.SubscriptionDetails?.SubscriptionId);
         
         State.Status = PaymentStatus.Failed;
         await WriteStateAsync();
         
-        _logger.LogDebug($"[UserBillingGrain][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}, {1}", 
+        _logger.LogDebug($"[PaymentGAgent][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}, {1}", 
             invoice.Parent?.SubscriptionDetails?.SubscriptionId, State.Status);
+        
+        return new GrainResultDto<PaymentDetailsDto>
+        {
+            Success = true,
+            Data = State.ToDto()
+        };
     }
 
-    private async Task ProcessSubscriptionEventAsync(Event stripeEvent)
+    private async Task<GrainResultDto<PaymentDetailsDto>> ProcessSubscriptionEventAsync(Event stripeEvent)
     {
         var subscription = stripeEvent.Data.Object as Subscription;
         if (subscription == null)
         {
-            _logger.LogError("[UserBillingGrain][ProcessSubscriptionEventAsync] Failed to cast event data to Subscription");
-            return;
+            _logger.LogError("[PaymentGAgent][ProcessSubscriptionEventAsync] Failed to cast event data to Subscription");
+            return new GrainResultDto<PaymentDetailsDto>
+            {
+                Success = false,
+                Message = "Failed to cast event data to Subscription"
+            };
         }
         
-        _logger.LogInformation("[UserBillingGrain][ProcessSubscriptionEventAsync] Processing subscription event {EventType} for {SubscriptionId}", 
+        _logger.LogInformation("[PaymentGAgent][ProcessSubscriptionEventAsync] Processing subscription event {EventType} for {SubscriptionId}", 
             stripeEvent.Type, subscription.Id);
 
         if (subscription.Status == "canceled" || IsAutoRenewalCancelled(stripeEvent))
@@ -328,9 +342,14 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             State.SubscriptionId = subscription.Id;
             await WriteStateAsync();
             
-            _logger.LogInformation("[UserBillingGrain][ProcessSubscriptionEventAsync] Subscription canceled {SubscriptionId} status: {Status}", 
+            _logger.LogInformation("[PaymentGAgent][ProcessSubscriptionEventAsync] Subscription canceled {SubscriptionId} status: {Status}", 
                 subscription.Id, subscription.Status);
         }
+        return new GrainResultDto<PaymentDetailsDto>
+        {
+            Success = true,
+            Data = State.ToDto()
+        };
     }
     
     public bool IsAutoRenewalCancelled(Event stripeEvent)
