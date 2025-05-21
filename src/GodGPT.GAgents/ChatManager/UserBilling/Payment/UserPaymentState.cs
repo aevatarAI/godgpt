@@ -24,6 +24,7 @@ public class UserPaymentState
     [Id(15)] public string SubscriptionId { get; set; }
     [Id(16)] public string InvoiceId { get; set; }
     [Id(17)] public string SessionId { get; set; }
+    [Id(18)] public string PaymentIntentId { get; set; }
     
     public PaymentDetailsDto ToDto()
     {

@@ -127,7 +127,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             PlanType = State.Subscription.PlanType,
             Status = State.Subscription.Status,
             StartDate = State.Subscription.StartDate,
-            EndDate = State.Subscription.EndDate
+            EndDate = State.Subscription.EndDate,
+            SubscriptionIds = State.Subscription.SubscriptionIds
         });
     }
 
@@ -170,6 +171,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         State.Subscription.StartDate = subscriptionInfoDto.StartDate;
         State.Subscription.EndDate = subscriptionInfoDto.EndDate;
         State.Subscription.Status = subscriptionInfoDto.Status;
+        State.Subscription.SubscriptionIds = subscriptionInfoDto.SubscriptionIds;
         await WriteStateAsync();
     }
 

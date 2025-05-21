@@ -50,21 +50,23 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                 case "invoice.paid":
                     resultDto = await ProcessInvoicePaidAsync(stripeEvent);
                     break;
+                //invoice.payment_failed
+                case EventTypes.InvoicePaymentFailed:
+                    await ProcessInvoicePaymentFailedAsync(stripeEvent);
+                    break;
+                // case "customer.subscription.created":
+                //customer.subscription.updated
+                case EventTypes.CustomerSubscriptionUpdated:
+                //customer.subscription.deleted
+                case EventTypes.CustomerSubscriptionDeleted:   
+                    await ProcessSubscriptionEventAsync(stripeEvent);
+                    break;
                 //payment_intent.succeeded
                 // case EventTypes.PaymentIntentSucceeded: 
                 //     resultDto = await ProcessPaymentIntentSucceededAsync(stripeEvent);
                 //     break;
-                //     
-                // case "customer.subscription.created":
-                // case "customer.subscription.updated":
-                //     await ProcessSubscriptionEventAsync(stripeEvent);
-                //     break;
-                //     
-                // case "payment_intent.payment_failed":
-                //     await ProcessPaymentFailedAsync(stripeEvent);
-                //     break;
-                    
-                case "charge.refunded":
+                //charge.refunded
+                case EventTypes.ChargeRefunded:
                     resultDto = await ProcessChargeRefundedAsync(stripeEvent);
                     break;
                     
@@ -284,6 +286,25 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             Data = State.ToDto()
         };
     }
+    
+    private async Task ProcessInvoicePaymentFailedAsync(Event stripeEvent)
+    {
+        var invoice = stripeEvent.Data.Object as Invoice;
+        if (invoice == null)
+        {
+            _logger.LogError("[UserBillingGrain][ProcessInvoicePaymentFailedAsync] Failed to cast event data to PaymentIntent");
+            return;
+        }
+
+        _logger.LogDebug($"[UserBillingGrain][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}", 
+           invoice.Parent?.SubscriptionDetails?.SubscriptionId);
+        
+        State.Status = PaymentStatus.Failed;
+        await WriteStateAsync();
+        
+        _logger.LogDebug($"[UserBillingGrain][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}, {1}", 
+            invoice.Parent?.SubscriptionDetails?.SubscriptionId, State.Status);
+    }
 
     private async Task ProcessSubscriptionEventAsync(Event stripeEvent)
     {
@@ -296,73 +317,38 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         
         _logger.LogInformation("[UserBillingGrain][ProcessSubscriptionEventAsync] Processing subscription event {EventType} for {SubscriptionId}", 
             stripeEvent.Type, subscription.Id);
-        
-        // For subscription events, we might need to update an existing payment record
-        // or simply log the event without creating a new payment record
-        // This depends on your business logic
-        
-        // 使用反射安全地获取属性值
-        string periodEnd = "Unknown";
-        try
+
+        if (subscription.Status == "canceled" || IsAutoRenewalCancelled(stripeEvent))
         {
-            var prop = subscription.GetType().GetProperty("CurrentPeriodEnd");
-            if (prop != null)
+            if (State.Status != PaymentStatus.Failed && State.Status != PaymentStatus.Refunded_In_Processing && State.Status != PaymentStatus.Refunded)
             {
-                var value = prop.GetValue(subscription);
-                if (value != null)
-                {
-                    periodEnd = value.ToString();
-                }
+                State.Status = PaymentStatus.Cancelled;
+            }
+            State.LastUpdated = DateTime.UtcNow;
+            State.SubscriptionId = subscription.Id;
+            await WriteStateAsync();
+            
+            _logger.LogInformation("[UserBillingGrain][ProcessSubscriptionEventAsync] Subscription canceled {SubscriptionId} status: {Status}", 
+                subscription.Id, subscription.Status);
+        }
+    }
+    
+    public bool IsAutoRenewalCancelled(Event stripeEvent)
+    {
+        var subscription = stripeEvent.Data.Object as Subscription;
+        var previousAttributes = stripeEvent.Data.PreviousAttributes as Dictionary<string, object>;
+
+        if (subscription != null && previousAttributes != null)
+        {
+            if (previousAttributes.TryGetValue("cancel_at_period_end", out object previousValue) &&
+                (bool)previousValue == false &&
+                subscription.CancelAtPeriodEnd == true)
+            {
+                return true;
             }
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("[UserBillingGrain][ProcessSubscriptionEventAsync] Could not get CurrentPeriodEnd: {Error}", ex.Message);
-        }
-        
-        // For this example, we'll just log the event details
-        _logger.LogInformation("[UserBillingGrain][ProcessSubscriptionEventAsync] Subscription {SubscriptionId} status: {Status}, current period end: {PeriodEnd}", 
-            subscription.Id, subscription.Status, periodEnd);
-    }
 
-    private async Task ProcessPaymentFailedAsync(Event stripeEvent)
-    {
-        var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
-        if (paymentIntent == null)
-        {
-            _logger.LogError("[UserBillingGrain][ProcessPaymentFailedAsync] Failed to cast event data to PaymentIntent");
-            return;
-        }
-        
-        string userId = null;
-        if (paymentIntent.Metadata.TryGetValue("internal_user_id", out var id) && !string.IsNullOrEmpty(id))
-        {
-            userId = id;
-        }
-        
-        _logger.LogInformation("[UserBillingGrain][ProcessPaymentFailedAsync] Processing failed payment {PaymentIntentId} for user {UserId}", 
-            paymentIntent.Id, userId);
-        
-        // Create payment record for failed payment
-        var paymentSummary = new PaymentDetailsDto
-        {
-            Id = Guid.NewGuid(),
-            CreatedAt = DateTime.UtcNow,
-            Status = PaymentStatus.Failed,
-            PaymentType = PaymentType.OneTime, // Default for payment_intent
-            Method = PaymentMethod.Card, // Default to card
-            Platform = PaymentPlatform.Stripe,
-            Amount = paymentIntent.Amount / 100m, // Stripe amounts are in cents
-            Currency = paymentIntent.Currency?.ToUpper() ?? "USD",
-            Description = $"Failed payment {paymentIntent.Id}: {paymentIntent.LastPaymentError?.Message ?? "Unknown error"}",
-            LastUpdated = DateTime.UtcNow
-        };
-        
-        // Add to payment history
-        //await AddPaymentRecordAsync(paymentSummary);
-        
-        _logger.LogInformation("[UserBillingGrain][ProcessPaymentFailedAsync] Recorded failed payment {PaymentId} for payment intent {PaymentIntentId}", 
-            paymentSummary.Id, paymentIntent.Id);
+        return false;
     }
 
     private async Task<GrainResultDto<PaymentDetailsDto>> ProcessChargeRefundedAsync(Event stripeEvent)
@@ -379,23 +365,10 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         }
         
         _logger.LogInformation("[PaymentGAgent][ProcessChargeRefundedAsync] Processing refunded charge {ChargeId}", charge.Id);
-        
-        // 更新State
-        State = new UserPaymentState
-        {
-            Id = Guid.NewGuid(),
-            CreatedAt = DateTime.UtcNow,
-            CompletedAt = DateTime.UtcNow,
-            Status = PaymentStatus.Refunded,
-            PaymentType = PaymentType.Refund,
-            Method = PaymentMethod.Card, // Default to card
-            Platform = PaymentPlatform.Stripe,
-            Amount = charge.Amount / 100m, // Stripe amounts are in cents
-            Currency = charge.Currency?.ToUpper() ?? "USD",
-            Description = $"Refund for charge {charge.Id}, payment intent {charge.PaymentIntentId}",
-            LastUpdated = DateTime.UtcNow
-        };
-        
+
+        State.Status = PaymentStatus.Refunded;
+        State.LastUpdated = DateTime.UtcNow;
+
         await WriteStateAsync();
 
         _logger.LogInformation("[PaymentGAgent][ProcessChargeRefundedAsync] Created new refund record {PaymentId} for charge {ChargeId}", 

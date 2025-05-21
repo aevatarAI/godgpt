@@ -25,7 +25,7 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
     Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
-    Task<object> CancelSubscriptionAsync(object obj);
+    Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
     Task<object> RefundedSubscriptionAsync(object  obj);
 }
 
@@ -644,9 +644,96 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
     }
 
-    public Task<object> CancelSubscriptionAsync(object obj)
+    public async Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto)
     {
-        throw new NotImplementedException();
+        if (cancelSubscriptionDto.UserId == Guid.Empty)
+        {
+            throw new ArgumentException("UserId is required.", nameof(cancelSubscriptionDto));
+        }
+
+        if (string.IsNullOrEmpty(cancelSubscriptionDto.SubscriptionId))
+        {
+            throw new ArgumentException("SubscriptionId is required.", nameof(cancelSubscriptionDto));
+        }
+        
+        _logger.LogInformation(
+            "[UserBillingGrain][CancelSubscriptionAsync] Cancelling subscription {SubscriptionId} for user {UserId}",
+            cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
+
+        var paymentSummary = State.PaymentHistory
+            .FirstOrDefault(p => p.SubscriptionId == cancelSubscriptionDto.SubscriptionId);
+        if (paymentSummary == null)
+        {
+            _logger.LogWarning(
+                "[UserBillingGrain][CancelSubscriptionAsync] SubscriptionId not found {SubscriptionId} for user {UserId}",
+                cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
+            throw new ArgumentException("SubscriptionId not found.", nameof(cancelSubscriptionDto));
+        }
+
+        if (paymentSummary.Status is PaymentStatus.Cancelled_In_Processing or PaymentStatus.Cancelled or PaymentStatus.Refunded_In_Processing or PaymentStatus.Refunded)
+        {
+            _logger.LogWarning(
+                "[UserBillingGrain][CancelSubscriptionAsync] Subscription canceled {SubscriptionId} for user {UserId}",
+                cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
+            throw new ArgumentException("Subscription canceled.", nameof(cancelSubscriptionDto));
+        }
+        
+        try
+        {
+            var service = new SubscriptionService(_client);
+            var options = new SubscriptionUpdateOptions
+            {
+                CancelAtPeriodEnd = cancelSubscriptionDto.CancelAtPeriodEnd
+            };
+
+            var subscription = await service.UpdateAsync(cancelSubscriptionDto.SubscriptionId, options);
+            
+            _logger.LogInformation(
+                "[UserBillingGrain][CancelSubscriptionAsync] Successfully cancelled subscription {SubscriptionId}, status: {Status}",
+                subscription.Id, subscription.Status);
+
+            paymentSummary.Status = PaymentStatus.Cancelled_In_Processing;
+            _logger.LogInformation(
+                "[UserBillingGrain][CancelSubscriptionAsync] Updated payment record {SubscriptionId} status to Cancelled",
+                paymentSummary.SubscriptionId);
+            await WriteStateAsync();
+
+            var response = new CancelSubscriptionResponseDto
+            {
+                Success = true,
+                SubscriptionId = subscription.Id,
+                Status = subscription.Status,
+                CancelledAt = DateTime.UtcNow
+            };
+
+            return response;
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][CancelSubscriptionAsync] Stripe error: {ErrorMessage}",
+                ex.StripeError?.Message);
+            
+            return new CancelSubscriptionResponseDto
+            {
+                Success = false,
+                Message = $"Stripe error: {ex.StripeError?.Message}",
+                SubscriptionId = cancelSubscriptionDto.SubscriptionId
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][CancelSubscriptionAsync] Error cancelling subscription: {ErrorMessage}",
+                ex.Message);
+            
+            return new CancelSubscriptionResponseDto
+            {
+                Success = false,
+                Message = $"Error: {ex.Message}",
+                SubscriptionId = cancelSubscriptionDto.SubscriptionId
+            };
+        }
     }
 
     public Task<object> RefundedSubscriptionAsync(object obj)
@@ -724,16 +811,30 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null, true, subscriptionStartDate, subscriptionEndDate);
         _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] payment status{0}, {1}", paymentSummary.Status, userId);
         
-        if (paymentSummary.Status == PaymentStatus.Completed)
+        var subscriptionIds = subscriptionInfoDto.SubscriptionIds ?? new List<string>();
+        if (paymentSummary.Status == PaymentStatus.Completed && !subscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update User subscription {0}", userId);
-            
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update User subscription {0}, {1}, {2}", userId, paymentSummary.SubscriptionId, paymentSummary.Status);
+            foreach (var subscriptionId in subscriptionIds)
+            {
+                await CancelSubscriptionAsync(new CancelSubscriptionDto
+                {
+                    UserId = userId,
+                    SubscriptionId = subscriptionId,
+                    CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
+                    CancelAtPeriodEnd = true
+                });
+            }
+            subscriptionIds.Clear();
+            subscriptionIds.Add(paymentSummary.SubscriptionId);
+
             if (subscriptionInfoDto.IsActive)
             {
                 subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
                 subscriptionInfoDto.EndDate =
                     GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate);
                 subscriptionInfoDto.Status = PaymentStatus.Completed;
+                subscriptionInfoDto.SubscriptionIds = subscriptionIds;
             }
             else
             {
@@ -743,8 +844,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 subscriptionInfoDto.EndDate =
                     GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate);
                 subscriptionInfoDto.Status = PaymentStatus.Completed;
-                
+                subscriptionInfoDto.SubscriptionIds = subscriptionIds;
             }
+            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+        } else if (paymentSummary.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
+        {
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update User subscription {0}, {1}, {2}", userId, paymentSummary.SubscriptionId, paymentSummary.Status);
+            subscriptionIds.Remove(paymentSummary.SubscriptionId);
             await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
         }
         return true;
@@ -948,6 +1054,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             existingPaymentSummary.PaymentGrainId = paymentDetails.Id;
             existingPaymentSummary.OrderId = paymentDetails.OrderId;
             existingPaymentSummary.UserId = paymentDetails.UserId;
+            existingPaymentSummary.PriceId = paymentDetails.PriceId;
             existingPaymentSummary.PlanType = (PlanType)productConfig.PlanType;
             existingPaymentSummary.Amount = productConfig.Amount;
             existingPaymentSummary.Currency = productConfig.Currency;
@@ -995,6 +1102,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 PaymentGrainId = paymentDetails.Id,
                 OrderId = paymentDetails.OrderId,
                 UserId = paymentDetails.UserId,
+                PriceId = paymentDetails.PriceId,
                 PlanType = (PlanType)productConfig.PlanType,
                 Amount = productConfig.Amount,
                 Currency = productConfig.Currency,
@@ -1148,6 +1256,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 break;
             }
             case "invoice.paid":
+            case "invoice.payment_failed" :
             {
                 var invoice = stripeEvent.Data.Object as Stripe.Invoice;
                 userId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "internal_user_id");
@@ -1155,6 +1264,39 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 priceId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "price_id");
                 break;
             }
+            case "customer.subscription.deleted":
+            case "customer.subscription.updated":
+            {
+                var subscription = stripeEvent.Data.Object as Stripe.Subscription;
+                userId = TryGetFromMetadata(subscription.Metadata, "internal_user_id");
+                orderId = TryGetFromMetadata(subscription.Metadata, "order_id");
+                priceId = TryGetFromMetadata(subscription.Metadata, "price_id");
+                if (userId.IsNullOrWhiteSpace())
+                {
+                    var paymentSummary = State.PaymentHistory.FirstOrDefault(t => t.SubscriptionId == subscription.Id);
+                    if (paymentSummary != null)
+                    {
+                        userId = paymentSummary.UserId.ToString();
+                        orderId = paymentSummary.OrderId;
+                        priceId = paymentSummary.PriceId;
+                    }
+                }
+                break;
+            }
+            case "charge.refunded":
+                var charge = stripeEvent.Data.Object as Stripe.Charge;
+                userId = TryGetFromMetadata(charge.Metadata, "internal_user_id");
+                orderId = TryGetFromMetadata(charge.Metadata, "order_id");
+                priceId = TryGetFromMetadata(charge.Metadata, "price_id");
+                if (userId.IsNullOrWhiteSpace())
+                {
+                    var paymentIntentService = new PaymentIntentService(_client);
+                    var paymentIntent = paymentIntentService.Get(charge.PaymentIntentId);
+                    userId = TryGetFromMetadata(paymentIntent.Metadata, "internal_user_id");
+                    orderId = TryGetFromMetadata(paymentIntent.Metadata, "order_id");
+                    priceId = TryGetFromMetadata(paymentIntent.Metadata, "price_id");
+                }
+                break;
             default:
                 userId = string.Empty;
                 orderId = string.Empty;

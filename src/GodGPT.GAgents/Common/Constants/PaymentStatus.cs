@@ -10,6 +10,7 @@ public enum PaymentStatus
     [Id(4)] Failed = 4,
     [Id(5)] Refunded_In_Processing = 5,
     [Id(6)] Refunded = 6,
-    [Id(7)] Cancelled = 7,
-    [Id(8)] Disputed = 8
+    [Id(7)] Cancelled_In_Processing = 7,
+    [Id(8)] Cancelled = 8,
+    [Id(9)] Disputed = 9
 }
