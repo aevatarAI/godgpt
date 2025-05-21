@@ -6,7 +6,6 @@ using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Orleans.Core;
 using Stripe;
 using Stripe.Checkout;
 using PaymentMethod = Aevatar.Application.Grains.Common.Constants.PaymentMethod;
@@ -26,6 +25,8 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
     Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
+    Task<object> CancelSubscriptionAsync(object obj);
+    Task<object> RefundedSubscriptionAsync(object  obj);
 }
 
 public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
@@ -43,6 +44,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
+        StripeConfiguration.ApiKey = _stripeOptions.CurrentValue.SecretKey;
         _client ??= new StripeClient(_stripeOptions.CurrentValue.SecretKey);
         _logger.LogDebug("[UserBillingGrain][OnActivateAsync] Activating grain for user {UserId}",
             this.GetPrimaryKeyString());
@@ -640,6 +642,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 ex.Message);
             throw;
         }
+    }
+
+    public Task<object> CancelSubscriptionAsync(object obj)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<object> RefundedSubscriptionAsync(object obj)
+    {
+        throw new NotImplementedException();
     }
 
     public async Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature)
