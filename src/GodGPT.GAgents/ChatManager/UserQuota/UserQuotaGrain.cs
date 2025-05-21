@@ -14,15 +14,14 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task<bool> InitializeCreditsAsync();
     Task<CreditsInfoDto> GetCreditsAsync();
     Task SetShownCreditsToastAsync(bool hasShownInitialCreditsToast);
-
     Task<bool> IsSubscribedAsync();
     Task<SubscriptionInfoDto> GetSubscriptionAsync();
     Task UpdateSubscriptionAsync(string planType, DateTime endDate);
     Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto);
     Task CancelSubscriptionAsync();
-
     Task<ExecuteActionResultDto> IsActionAllowedAsync(string actionType = "conversation");
     Task<ExecuteActionResultDto> ExecuteActionAsync(string actionType = "conversation");
+    Task ResetRateLimitsAsync(string actionType = "conversation");
 }
 
 public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
@@ -107,8 +106,14 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         {
             _logger.LogDebug("[UserQuotaGrain][IsSubscribedAsync] Subscription for user {UserId} expired. Start: {StartDate}, End: {EndDate}, Now: {Now}", 
                 this.GetPrimaryKeyString(), State.Subscription.StartDate, State.Subscription.EndDate, now);
+
+            if (State.RateLimits.ContainsKey("conversation"))
+            {
+                State.RateLimits.Remove("conversation");
+            }
             
             State.Subscription.IsActive = false;
+            
             await WriteStateAsync();
         }
         
@@ -116,6 +121,16 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             this.GetPrimaryKeyString(), isSubscribed);
         
         return isSubscribed;
+    }
+
+    public async Task ResetRateLimitsAsync(string actionType = "conversation")
+    {
+        if (State.RateLimits.ContainsKey(actionType))
+        {
+            State.RateLimits.Remove(actionType);
+        }
+        
+        await WriteStateAsync();
     }
 
     public Task<SubscriptionInfoDto> GetSubscriptionAsync()

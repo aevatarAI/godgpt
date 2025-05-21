@@ -845,6 +845,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate);
                 subscriptionInfoDto.Status = PaymentStatus.Completed;
                 subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+
+                await userQuotaGrain.ResetRateLimitsAsync();
             }
             await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
         } else if (paymentSummary.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
@@ -853,6 +855,18 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             subscriptionIds.Remove(paymentSummary.SubscriptionId);
             await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
         }
+        else if (paymentSummary.Status == PaymentStatus.Refunded && subscriptionIds.Contains(paymentSummary.SubscriptionId))
+        {
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update User subscription {0}, {1}, {2}", userId, paymentSummary.SubscriptionId, paymentSummary.Status);
+            var diff = (paymentSummary.SubscriptionEndDate - DateTime.UtcNow).Days;
+            if (diff < 0)
+            {
+                diff = 0;
+            }
+            subscriptionInfoDto.EndDate.AddDays(-diff);
+            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+        }
+        
         return true;
     }
 
@@ -1324,20 +1338,5 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         return string.Empty;
-    }
-
-    private PaymentStatus MapStripeStatusToPaymentStatus(string stripeStatus)
-    {
-        return stripeStatus switch
-        {
-            "trialing" => PaymentStatus.Processing,
-            "active" => PaymentStatus.Completed,
-            "past_due" => PaymentStatus.Failed,
-            "canceled" => PaymentStatus.Cancelled,
-            "incomplete" => PaymentStatus.Processing,
-            "incomplete_expired" => PaymentStatus.Failed,
-            "unpaid" => PaymentStatus.Failed,
-            _ => PaymentStatus.Processing
-        };
     }
 }
