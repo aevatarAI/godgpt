@@ -26,7 +26,7 @@ public class GodGPTWebhookHandler : IWebhookHandler
     }
 
 
-    public string RelativePath => "api/webhooks/godgpt";
+    public string RelativePath => "api/webhooks/godgpt-stripe-payment";
 
     public string HttpMethod => "POST";
 
