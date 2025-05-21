@@ -17,7 +17,8 @@ jobs:
     strategy:
       matrix:
         servicename: [
-          GodGPT.GAgents
+          GodGPT.GAgents,
+          GodGPT.Webhook
         ]
     steps:
       - name: Checkout code

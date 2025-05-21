@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aevatar.TestBase", "test\Ae
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aevatar.Orleans.TestBase", "test\Aevatar.Orleans.TestBase\Aevatar.Orleans.TestBase.csproj", "{41AF597D-A6B1-4520-848F-84B1E2C5D288}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GodGPT.Webhook", "src\GodGPT.Webhook\GodGPT.Webhook.csproj", "{FA9A44C5-111B-404A-B028-17700B382EFD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -37,6 +39,10 @@ Global
 		{41AF597D-A6B1-4520-848F-84B1E2C5D288}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{41AF597D-A6B1-4520-848F-84B1E2C5D288}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{41AF597D-A6B1-4520-848F-84B1E2C5D288}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FA9A44C5-111B-404A-B028-17700B382EFD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FA9A44C5-111B-404A-B028-17700B382EFD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FA9A44C5-111B-404A-B028-17700B382EFD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FA9A44C5-111B-404A-B028-17700B382EFD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

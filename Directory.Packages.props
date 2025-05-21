@@ -212,5 +212,8 @@
         <PackageVersion Include="xunit.runner.visualstudio" Version="2.5.7" />
         <PackageVersion Include="coverlet.collector" Version="6.0.0" />
         <PackageVersion Include="Microsoft.Orleans.Serialization.TestKit" Version="9.0.1" />
+
+        <!--Aevatar Webhook-->
+        <PackageVersion Include="Aevatar.WebHook.SDK" Version="1.1.2" />
     </ItemGroup>
 </Project>
