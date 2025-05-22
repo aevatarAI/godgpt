@@ -17,6 +17,9 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task<List<StripeProductDto>> GetStripeProductsAsync();
     Task<string> GetOrCreateStripeCustomerAsync(string userId = null);
     Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null);
+    /**
+     * web
+     */
     Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto);
     Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
     Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary);
@@ -24,6 +27,10 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
     Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
+    /**
+     * [app]
+     * platform:android/ios
+     */
     Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
     Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
     Task<object> RefundedSubscriptionAsync(object  obj);
@@ -551,14 +558,20 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 PaymentBehavior = "default_incomplete",
                 PaymentSettings = new SubscriptionPaymentSettingsOptions
                 {
-                    SaveDefaultPaymentMethod = "on_subscription"
+                    SaveDefaultPaymentMethod = "on_subscription",
+                    // Set payment methods based on platform, default to card
+                    // "card","apple_pay","google_pay", "bank_transfer","alipay"，"wechat_pay"
+                    PaymentMethodTypes = createSubscriptionDto.Platform?.ToLower() == "ios" 
+                        ? new List<string> { "card", "apple_pay" }
+                        : new List<string> { "card" }
                 },
                 Metadata = new Dictionary<string, string>
                 {
                     { "internal_user_id", createSubscriptionDto.UserId.ToString() },
                     { "price_id", createSubscriptionDto.PriceId },
                     { "quantity", (createSubscriptionDto.Quantity ?? 1).ToString() },
-                    { "order_id", orderId }
+                    { "order_id", orderId },
+                    { "platform", createSubscriptionDto.Platform ?? "android" }
                 },
                 TrialPeriodDays = createSubscriptionDto.TrialPeriodDays,
                 Expand = new List<string> { "latest_invoice.confirmation_secret" }

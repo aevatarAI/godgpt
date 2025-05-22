@@ -18,8 +18,10 @@ namespace Aevatar.Application.Grains.ChatManager.Dtos
         public string Description { get; set; }
         [Id(5)]
         public Dictionary<string, string> Metadata { get; set; }
-        [Id(6)]
+        [Id(6)] 
         public int? TrialPeriodDays { get; set; } = 0;
+        [Id(7)] 
+        public string? Platform { get; set; } = "android"; //android/ios
     }
 
     [GenerateSerializer]
