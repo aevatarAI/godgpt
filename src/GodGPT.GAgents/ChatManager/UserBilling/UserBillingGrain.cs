@@ -18,15 +18,16 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task<string> GetOrCreateStripeCustomerAsync(string userId = null);
     Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null);
     Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto);
+    Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
     Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
     Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary);
     Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
     Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
     Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
-    Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
     Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
     Task<object> RefundedSubscriptionAsync(object  obj);
+    Task ClearAllAsync();
 }
 
 public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
@@ -309,7 +310,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var session = await service.CreateAsync(options);
             var paymentDetails =
                 await InitializePaymentGrainAsync(orderId, createCheckoutSessionDto, productConfig, session);
-            await CreateOrUpdatePaymentSummaryAsync(paymentDetails, session, true);
+            await CreateOrUpdatePaymentSummaryAsync(paymentDetails, session);
             _logger.LogInformation(
                 "[UserBillingGrain][CreateCheckoutSessionAsync] Created/Updated payment record with ID: {PaymentId} for session: {SessionId}",
                 paymentDetails.Id, session.Id);
@@ -561,7 +562,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     { "order_id", orderId }
                 },
                 TrialPeriodDays = createSubscriptionDto.TrialPeriodDays,
-                Expand = new List<string> { "latest_invoice.confirmation_secret" }
+                Expand = new List<string> { "latest_invoice.confirmation_secret" },
             };
 
             if (!string.IsNullOrEmpty(createSubscriptionDto.PaymentMethodId))
@@ -614,7 +615,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
             }
             var paymentDetails = initResult.Data;
-            await CreateOrUpdatePaymentSummaryAsync(paymentDetails, null, true);
+            await CreateOrUpdatePaymentSummaryAsync(paymentDetails, null);
             _logger.LogInformation(
                 "[UserBillingGrain][CreateSubscriptionAsync] Created/Updated payment record with ID: {PaymentId} for session: {subscription}",
                 paymentDetails.Id, subscription.Id);
@@ -648,15 +649,31 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (cancelSubscriptionDto.UserId == Guid.Empty)
         {
-            throw new ArgumentException("UserId is required.", nameof(cancelSubscriptionDto));
+            _logger.LogWarning(
+                "[UserBillingGrain][CancelSubscriptionAsync] UserId is required. {SubscriptionId}",
+                cancelSubscriptionDto.SubscriptionId);
+            return new CancelSubscriptionResponseDto
+            {
+                Success = false,
+                Message = "UserId is required.",
+                SubscriptionId = cancelSubscriptionDto.SubscriptionId
+            };
         }
 
         if (string.IsNullOrEmpty(cancelSubscriptionDto.SubscriptionId))
         {
-            throw new ArgumentException("SubscriptionId is required.", nameof(cancelSubscriptionDto));
+            _logger.LogWarning(
+                "[UserBillingGrain][CancelSubscriptionAsync] SubscriptionId is required. {SubscriptionId}, {UserId}",
+                cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
+            return new CancelSubscriptionResponseDto
+            {
+                Success = false,
+                Message = "SubscriptionId is required.",
+                SubscriptionId = cancelSubscriptionDto.SubscriptionId
+            };
         }
         
-        _logger.LogInformation(
+        _logger.LogDebug(
             "[UserBillingGrain][CancelSubscriptionAsync] Cancelling subscription {SubscriptionId} for user {UserId}",
             cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
 
@@ -667,7 +684,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogWarning(
                 "[UserBillingGrain][CancelSubscriptionAsync] SubscriptionId not found {SubscriptionId} for user {UserId}",
                 cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
-            throw new ArgumentException("SubscriptionId not found.", nameof(cancelSubscriptionDto));
+            return new CancelSubscriptionResponseDto
+            {
+                Success = false,
+                Message = "SubscriptionId not found.",
+                SubscriptionId = cancelSubscriptionDto.SubscriptionId
+            };
         }
 
         if (paymentSummary.Status is PaymentStatus.Cancelled_In_Processing or PaymentStatus.Cancelled or PaymentStatus.Refunded_In_Processing or PaymentStatus.Refunded)
@@ -675,7 +697,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogWarning(
                 "[UserBillingGrain][CancelSubscriptionAsync] Subscription canceled {SubscriptionId} for user {UserId}",
                 cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
-            throw new ArgumentException("Subscription canceled.", nameof(cancelSubscriptionDto));
+            return new CancelSubscriptionResponseDto
+            {
+                Success = false,
+                Message = "Subscription canceled.",
+                SubscriptionId = cancelSubscriptionDto.SubscriptionId
+            };
         }
         
         try
@@ -741,6 +768,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         throw new NotImplementedException();
     }
 
+    public async Task ClearAllAsync()
+    {
+        State = new UserBillingState();
+        await WriteStateAsync();
+    }
+
     public async Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature)
     {
         _logger.LogInformation("[UserBillingGrain][HandleStripeWebhookEventAsync] Processing Stripe webhook event");
@@ -789,11 +822,101 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var detailsDto = grainResultDto.Data;
         if (!grainResultDto.Success || detailsDto == null)
         {
-            _logger.LogError("[UserBillingGrain][HandleStripeWebhookEventAsync] error. {0}", grainResultDto.Message);
+            _logger.LogError("[UserBillingGrain][HandleStripeWebhookEventAsync] error. {0}, {1}",
+                this.GetPrimaryKey(), grainResultDto.Message);
             return false;
         }
-
+        
+        var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null);
+        
         var userId = detailsDto.UserId;
+        var productConfig = await GetProductConfigAsync(detailsDto.PriceId);
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] allocate resource {0}, {1}, {2}, {3})",
+            userId, detailsDto.OrderId, detailsDto.SubscriptionId, detailsDto.InvoiceId);
+        var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
+
+        var subscriptionIds = subscriptionInfoDto.SubscriptionIds ?? new List<string>();
+        var invoiceIds = subscriptionInfoDto.InvoiceIds ?? new List<string>();
+        var invoiceDetail = paymentSummary.InvoiceDetails.LastOrDefault();
+        if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Completed && !invoiceIds.Contains(invoiceDetail.InvoiceId))
+        {
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update for complete invoice {0}, {1}, {2}",
+                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
+            foreach (var subscriptionId in subscriptionIds.Where(subscriptionId => subscriptionId != paymentSummary.SubscriptionId))
+            {
+                await CancelSubscriptionAsync(new CancelSubscriptionDto
+                {
+                    UserId = userId,
+                    SubscriptionId = subscriptionId,
+                    CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
+                    CancelAtPeriodEnd = true
+                });
+            }
+            
+            subscriptionIds.Clear();
+            subscriptionIds.Add(paymentSummary.SubscriptionId);
+            invoiceIds.Add(invoiceDetail.InvoiceId);
+
+            if (subscriptionInfoDto.IsActive)
+            {
+                if (subscriptionInfoDto.PlanType <= (PlanType) productConfig.PlanType)
+                {
+                    subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
+                }
+                subscriptionInfoDto.EndDate =
+                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate);
+            }
+            else
+            {
+                subscriptionInfoDto.IsActive = true;
+                subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
+                subscriptionInfoDto.StartDate = DateTime.UtcNow;
+                subscriptionInfoDto.EndDate =
+                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate);
+                await userQuotaGrain.ResetRateLimitsAsync();
+            }
+            subscriptionInfoDto.Status = PaymentStatus.Completed;
+            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+            subscriptionInfoDto.InvoiceIds = invoiceIds;
+            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+        } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
+        {
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Cancel User subscription {0}, {1}, {2}",
+                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
+            subscriptionIds.Remove(paymentSummary.SubscriptionId);
+            if (subscriptionIds.IsNullOrEmpty())
+            {
+                subscriptionInfoDto.PlanType = PlanType.None;
+            }
+            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+        }
+        else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Refunded && invoiceIds.Contains(invoiceDetail.InvoiceId))
+        {
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Refund User subscription {0}, {1}, {2}",
+                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
+            var diff = (paymentSummary.SubscriptionEndDate - DateTime.UtcNow).Days;
+            if (diff < 0)
+            {
+                diff = 0;
+            }
+            subscriptionInfoDto.EndDate.AddDays(-diff);
+            subscriptionIds.Remove(paymentSummary.SubscriptionId);
+            if (subscriptionIds.IsNullOrEmpty())
+            {
+                subscriptionInfoDto.PlanType = PlanType.None;
+            }
+
+            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+        }
+        
+        return true;
+    }
+
+    private async Task<Tuple<DateTime, DateTime>> CalculateSubscriptionDurationAsync(Guid userId, StripeProduct productConfig)
+    {
         DateTime subscriptionStartDate;
         DateTime subscriptionEndDate;
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
@@ -804,70 +927,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         else
         {
-            subscriptionStartDate = DateTime.UtcNow.Date;
+            subscriptionStartDate = DateTime.UtcNow;
         }
-        var productConfig = await GetProductConfigAsync(detailsDto.PriceId);
-        subscriptionEndDate = GetSubscriptionEndDate((PlanType) productConfig.PlanType, subscriptionStartDate);
-        var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null, true, subscriptionStartDate, subscriptionEndDate);
-        _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] payment status{0}, {1}", paymentSummary.Status, userId);
-        
-        var subscriptionIds = subscriptionInfoDto.SubscriptionIds ?? new List<string>();
-        if (paymentSummary.Status == PaymentStatus.Completed && !subscriptionIds.Contains(paymentSummary.SubscriptionId))
-        {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update User subscription {0}, {1}, {2}", userId, paymentSummary.SubscriptionId, paymentSummary.Status);
-            foreach (var subscriptionId in subscriptionIds)
-            {
-                await CancelSubscriptionAsync(new CancelSubscriptionDto
-                {
-                    UserId = userId,
-                    SubscriptionId = subscriptionId,
-                    CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
-                    CancelAtPeriodEnd = true
-                });
-            }
-            subscriptionIds.Clear();
-            subscriptionIds.Add(paymentSummary.SubscriptionId);
-
-            if (subscriptionInfoDto.IsActive)
-            {
-                subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
-                subscriptionInfoDto.EndDate =
-                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate);
-                subscriptionInfoDto.Status = PaymentStatus.Completed;
-                subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            }
-            else
-            {
-                subscriptionInfoDto.IsActive = true;
-                subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
-                subscriptionInfoDto.StartDate = DateTime.UtcNow.Date;
-                subscriptionInfoDto.EndDate =
-                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate);
-                subscriptionInfoDto.Status = PaymentStatus.Completed;
-                subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-
-                await userQuotaGrain.ResetRateLimitsAsync();
-            }
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
-        } else if (paymentSummary.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
-        {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update User subscription {0}, {1}, {2}", userId, paymentSummary.SubscriptionId, paymentSummary.Status);
-            subscriptionIds.Remove(paymentSummary.SubscriptionId);
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
-        }
-        else if (paymentSummary.Status == PaymentStatus.Refunded && subscriptionIds.Contains(paymentSummary.SubscriptionId))
-        {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update User subscription {0}, {1}, {2}", userId, paymentSummary.SubscriptionId, paymentSummary.Status);
-            var diff = (paymentSummary.SubscriptionEndDate - DateTime.UtcNow).Days;
-            if (diff < 0)
-            {
-                diff = 0;
-            }
-            subscriptionInfoDto.EndDate.AddDays(-diff);
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
-        }
-        
-        return true;
+        subscriptionEndDate = GetSubscriptionEndDate((PlanType)productConfig.PlanType, subscriptionStartDate);
+        return new Tuple<DateTime, DateTime>(subscriptionStartDate, subscriptionEndDate);
     }
 
     public async Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary)
@@ -944,8 +1007,37 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         // Calculate skip and take values
         int skip = (page - 1) * pageSize;
 
+        var paymentHistories = new List<PaymentSummary>();
+        var paymentSummaries = State.PaymentHistory;
+        foreach (var paymentSummary in paymentSummaries)
+        {
+            if (paymentSummary.InvoiceDetails.IsNullOrEmpty())
+            {
+                paymentHistories.Add(paymentSummary);
+            }
+            else
+            {
+                paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail => new PaymentSummary
+                {
+                    PaymentGrainId = paymentSummary.PaymentGrainId,
+                    OrderId = paymentSummary.OrderId,
+                    PlanType = paymentSummary.PlanType,
+                    Amount = paymentSummary.Amount,
+                    Currency = paymentSummary.Currency,
+                    CreatedAt = invoiceDetail.CreatedAt,
+                    CompletedAt = invoiceDetail.CompletedAt,
+                    Status = invoiceDetail.Status,
+                    SubscriptionId = paymentSummary.SubscriptionId,
+                    SubscriptionStartDate = invoiceDetail.SubscriptionStartDate,
+                    SubscriptionEndDate = invoiceDetail.SubscriptionEndDate,
+                    UserId = paymentSummary.UserId,
+                    PriceId = paymentSummary.PriceId
+                }));
+            }
+        }
+
         // Return paginated results ordered by most recent first
-        return State.PaymentHistory
+        return paymentHistories
             .OrderByDescending(p => p.CreatedAt)
             .Skip(skip)
             .Take(pageSize)
@@ -1044,19 +1136,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         return paymentDetails;
     }
     
-    private async Task<PaymentSummary> CreateOrUpdatePaymentSummaryAsync(
-        PaymentDetailsDto paymentDetails,
-        Session session = null,
-        bool? isSubscriptionRenewal = null,
-        DateTime? subscriptionStartDate = null,
-        DateTime? subscriptionEndDate = null
-    )
+    private async Task<PaymentSummary> CreateOrUpdatePaymentSummaryAsync(PaymentDetailsDto paymentDetails, Session session = null)
     {
-        var existingPaymentSummary = State.PaymentHistory
-            .FirstOrDefault(p => p.PaymentGrainId == paymentDetails.Id ||
-                                 (!string.IsNullOrEmpty(paymentDetails.OrderId) &&
-                                  p.OrderId == paymentDetails.OrderId));
-
+        var existingPaymentSummary = State.PaymentHistory.FirstOrDefault(p => p.PaymentGrainId == paymentDetails.Id);
         var productConfig = await GetProductConfigAsync(paymentDetails.PriceId);
 
         if (existingPaymentSummary != null)
@@ -1073,30 +1155,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             existingPaymentSummary.Amount = productConfig.Amount;
             existingPaymentSummary.Currency = productConfig.Currency;
             existingPaymentSummary.Status = paymentDetails.Status;
-            existingPaymentSummary.PaymentType = paymentDetails.PaymentType;
-            existingPaymentSummary.Method = paymentDetails.Method;
-            existingPaymentSummary.Platform = paymentDetails.Platform;
-            if (isSubscriptionRenewal != null)
-            {
-                existingPaymentSummary.IsSubscriptionRenewal = (bool)isSubscriptionRenewal;
-            }
-
             existingPaymentSummary.SubscriptionId = paymentDetails.SubscriptionId;
-            if (subscriptionStartDate != null)
-            {
-                existingPaymentSummary.SubscriptionStartDate = (DateTime)subscriptionStartDate;
-            }
-
-            if (subscriptionEndDate != null)
-            {
-                existingPaymentSummary.SubscriptionEndDate = (DateTime)subscriptionEndDate;
-            }
-
-            if (paymentDetails.Status == PaymentStatus.Completed && !existingPaymentSummary.CompletedAt.HasValue)
-            {
-                existingPaymentSummary.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
-            }
-
+            await CreateOrUpdateInvoiceDetailAsync(paymentDetails, productConfig, existingPaymentSummary);
             await WriteStateAsync();
 
             _logger.LogInformation(
@@ -1122,39 +1182,59 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 Currency = productConfig.Currency,
                 CreatedAt = paymentDetails.CreatedAt,
                 Status = paymentDetails.Status,
-                PaymentType = paymentDetails.PaymentType,
-                Method = paymentDetails.Method,
-                Platform = paymentDetails.Platform,
                 SubscriptionId = paymentDetails.SubscriptionId,
-                SessionId = session?.Id
             };
-            if (isSubscriptionRenewal != null)
-            {
-                newPaymentSummary.IsSubscriptionRenewal = (bool)isSubscriptionRenewal;
-            }
-
-            if (subscriptionStartDate != null)
-            {
-                newPaymentSummary.SubscriptionStartDate = (DateTime)subscriptionStartDate;
-            }
-
-            if (subscriptionEndDate != null)
-            {
-                newPaymentSummary.SubscriptionEndDate = (DateTime)subscriptionEndDate;
-            }
-
-            if (paymentDetails.Status == PaymentStatus.Completed)
-            {
-                newPaymentSummary.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
-            }
-
+            await CreateOrUpdateInvoiceDetailAsync(paymentDetails, productConfig, newPaymentSummary);
             await AddPaymentRecordAsync(newPaymentSummary);
-
             _logger.LogInformation(
                 "[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Created new payment record with ID: {PaymentId}",
                 newPaymentSummary.PaymentGrainId);
 
             return newPaymentSummary;
+        }
+    }
+
+    private async Task CreateOrUpdateInvoiceDetailAsync(PaymentDetailsDto paymentDetails, StripeProduct productConfig,
+        PaymentSummary paymentSummary)
+    {
+        if (paymentDetails.InvoiceId.IsNullOrWhiteSpace())
+        { 
+            return;
+        }
+        
+        var invoiceDetail =
+            paymentSummary.InvoiceDetails.FirstOrDefault(t => t.InvoiceId == paymentDetails.InvoiceId);
+        if (invoiceDetail == null)
+        {
+            invoiceDetail = new UserBillingInvoiceDetail
+            {
+                InvoiceId = paymentDetails.InvoiceId,
+                CreatedAt = paymentDetails.CreatedAt,
+                Status = paymentDetails.Status
+            };
+            if (paymentDetails.Status == PaymentStatus.Completed)
+            {
+                invoiceDetail.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
+                var (subscriptionStartDate, subscriptionEndDate) =
+                    await CalculateSubscriptionDurationAsync(paymentDetails.UserId, productConfig);
+                invoiceDetail.SubscriptionStartDate = subscriptionStartDate;
+                invoiceDetail.SubscriptionEndDate = subscriptionEndDate;
+            }
+            paymentSummary.InvoiceDetails.Add(invoiceDetail);
+        }
+        else
+        {
+            invoiceDetail.Status = paymentDetails.Status;
+            if (paymentDetails.Status == PaymentStatus.Completed)
+            {
+                invoiceDetail.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
+            }
+            if (paymentDetails.Status == PaymentStatus.Completed && invoiceDetail.SubscriptionStartDate == default)
+            {
+                var (subscriptionStartDate, subscriptionEndDate) = await CalculateSubscriptionDurationAsync(paymentDetails.UserId, productConfig);
+                invoiceDetail.SubscriptionStartDate = subscriptionStartDate;
+                invoiceDetail.SubscriptionEndDate = subscriptionEndDate;
+            }
         }
     }
 

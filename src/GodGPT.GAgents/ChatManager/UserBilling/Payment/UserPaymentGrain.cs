@@ -43,7 +43,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             GrainResultDto<PaymentDetailsDto> resultDto =  null;
             switch (stripeEvent.Type)
             {
-                //checkout.session.completed
+                //（Deprecated）checkout.session.completed
                 case EventTypes.CheckoutSessionCompleted: 
                     resultDto = await ProcessCheckoutSessionCompletedAsync(stripeEvent);
                     break;
@@ -118,7 +118,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         var userId = TryGetFromMetadata(session.Metadata, "internal_user_id");
         var orderId = TryGetFromMetadata(session.Metadata, "order_id");
         var priceId = TryGetFromMetadata(session.Metadata, "price_id");
-
+        
         _logger.LogInformation("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Processing completed session {SessionId} for user {UserId}", 
             session.Id, userId);
         
@@ -129,7 +129,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             _logger.LogWarning("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Cannot update status from {CurrentStatus} to Processing as current status is finalized", 
                 State.Status);
         }
-
+        
         State.Id = this.GetPrimaryKey();
         State.PriceId = priceId;
         State.Amount = session.AmountTotal.HasValue ? (decimal)session.AmountTotal.Value / 100 : 0;
@@ -236,26 +236,62 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         var invoice = stripeEvent.Data.Object as Invoice;
         if (invoice == null)
         {
-            _logger.LogError("[PaymentGAgent][ProcessInvoicePaidAsync] Failed to cast event data to Invoice");
+            _logger.LogError("[PaymentGAgent][ProcessInvoicePaidAsync] Failed to cast event data to Invoice. {0}", State.SubscriptionId);
             return new GrainResultDto<PaymentDetailsDto>
             {
                 Success = false,
                 Message = "Failed to cast event data to Invoice"
             };
         }
+
+        if (State.Status is PaymentStatus.Cancelled or PaymentStatus.Refunded)
+        {
+            _logger.LogError("[PaymentGAgent][ProcessInvoicePaidAsync] Subscription has been canceled or refunded.{0}, {1}", State.SubscriptionId, State.Status);
+            return new GrainResultDto<PaymentDetailsDto>
+            {
+                Success = false,
+                Message = "Subscription has been canceled or refunded"
+            };
+        }
+
+        if (State.InvoiceDetails.Exists(t => t.InvoiceId == invoice.Id))
+        {
+            _logger.LogWarning("[PaymentGAgent][ProcessInvoicePaidAsync] Duplicate messages.{0}, {1}", State.SubscriptionId, invoice.Id);
+            return new GrainResultDto<PaymentDetailsDto>
+            {
+                Success = true,
+                Data = State.ToDto()
+            }; 
+        }
         
+        bool canUpdateStatus = true;
+        if (!State.InvoiceId.IsNullOrWhiteSpace() && State.InvoiceId != invoice.Id)
+        {
+            State.InvoiceDetails.Add(new PaymentInvoiceDetail
+            {
+                InvoiceId = State.InvoiceId,
+                Status = State.Status,
+                CreatedAt = State.CreatedAt,
+                CompletedAt = State.CompletedAt
+            });
+            State.CreatedAt = default;
+            
+            canUpdateStatus = true;
+        }
+        else
+        {
+            if (State.Status >= PaymentStatus.Completed)
+            {
+                canUpdateStatus = false;
+                _logger.LogWarning("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Cannot update status from {CurrentStatus} to Processing as current status is finalized", 
+                    State.Status);
+            }
+        }
+
         var userId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "internal_user_id");
         var orderId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "order_id");
         var priceId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "price_id");
         _logger.LogInformation("[PaymentGAgent][ProcessInvoicePaidAsync] Processing paid invoice {InvoiceId}", invoice.Id);
-
-        bool canUpdateStatus = true;
-        if (State.Status >= PaymentStatus.Completed)
-        {
-            canUpdateStatus = false;
-            _logger.LogWarning("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Cannot update status from {CurrentStatus} to Processing as current status is finalized", 
-                State.Status);
-        }
 
         State.Id = this.GetPrimaryKey();
         State.UserId = Guid.Parse(userId);
@@ -265,18 +301,16 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             State.Status = PaymentStatus.Completed;
             State.CompletedAt = DateTime.UtcNow;
         }
-
         if (State.CreatedAt == default)
         {
             State.CreatedAt = DateTime.UtcNow;
         }
-        State.InvoiceId = invoice.Id;
         State.SubscriptionId = invoice?.Parent?.SubscriptionDetails?.SubscriptionId;
+        State.InvoiceId = invoice.Id;
         State.OrderId = orderId;
         State.LastUpdated = DateTime.UtcNow;
         
         await WriteStateAsync();
-        
         _logger.LogInformation("[UserBillingGrain][ProcessInvoicePaidAsync] Recorded payment {PaymentId} for invoice {InvoiceId}", 
             State.Id, invoice.Id);
             
@@ -300,10 +334,27 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             };
         }
 
-        _logger.LogDebug($"[PaymentGAgent][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}", 
-           invoice.Parent?.SubscriptionDetails?.SubscriptionId);
-        
-        State.Status = PaymentStatus.Failed;
+        _logger.LogDebug($"[PaymentGAgent][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}, {1}", 
+           invoice.Parent?.SubscriptionDetails?.SubscriptionId, invoice.Id);
+
+        if (State.InvoiceId.IsNullOrWhiteSpace() || State.InvoiceId == invoice.Id)
+        {
+            State.Status = PaymentStatus.Failed;
+        }
+        else
+        {
+            var paymentInvoiceDetail = State.InvoiceDetails.FirstOrDefault(t => t.InvoiceId == invoice.Id);
+            if (paymentInvoiceDetail != null)
+            {
+                paymentInvoiceDetail.Status = PaymentStatus.Failed;
+            }
+            else
+            {
+                _logger.LogWarning($"[PaymentGAgent][ProcessInvoicePaymentFailedAsync] Invoice does not exist. {0}, {1}", 
+                    invoice.Parent?.SubscriptionDetails?.SubscriptionId, invoice.Id);
+            }
+        }
+
         await WriteStateAsync();
         
         _logger.LogDebug($"[PaymentGAgent][ProcessInvoicePaymentFailedAsync] Processing failed payment {0}, {1}", 
@@ -410,18 +461,15 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         _logger.LogInformation("[PaymentGAgent][UpdatePaymentStatusAsync] Updating payment {PaymentId} status to {NewStatus}", 
             this.GetPrimaryKey(), newStatus);
         
-        // 判断是否可以更新状态
         bool canUpdateStatus = true;
         if (State.Status > PaymentStatus.Processing && State.Status != newStatus)
         {
-            // 特殊允许的状态转换
             bool isSpecialAllowedTransition = 
                 (State.Status == PaymentStatus.Completed && newStatus == PaymentStatus.Refunded) ||
                 (State.Status == PaymentStatus.Completed && newStatus == PaymentStatus.Disputed);
             
             if (!isSpecialAllowedTransition)
             {
-                // 如果当前状态已经大于Processing且不是特殊允许的转换，不允许更新
                 canUpdateStatus = false;
                 _logger.LogWarning("[PaymentGAgent][UpdatePaymentStatusAsync] Cannot update status from {CurrentStatus} to {NewStatus} as current status is finalized", 
                     State.Status, newStatus);
@@ -429,7 +477,6 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             }
         }
         
-        // 只有在允许更新状态的情况下才更新
         if (canUpdateStatus)
         {
             State.Status = newStatus;

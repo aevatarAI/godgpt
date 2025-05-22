@@ -25,7 +25,8 @@ public class UserPaymentState
     [Id(16)] public string InvoiceId { get; set; }
     [Id(17)] public string SessionId { get; set; }
     [Id(18)] public string PaymentIntentId { get; set; }
-    
+    [Id(19)] public List<PaymentInvoiceDetail> InvoiceDetails { get; set; } = new List<PaymentInvoiceDetail>();
+
     public PaymentDetailsDto ToDto()
     {
         return new PaymentDetailsDto
@@ -47,8 +48,31 @@ public class UserPaymentState
             OrderId = this.OrderId,
             SubscriptionId = this.SubscriptionId,
             InvoiceId = this.InvoiceId,
-            SessionId = this.SessionId
+            SessionId = this.SessionId,
+            InvoiceDetails = ToInvoiceDetailDtos()
         };
+    }
+
+    public List<PaymentInvoiceDetailDto> ToInvoiceDetailDtos()
+    {
+        var paymentInvoiceDetailDtos = new List<PaymentInvoiceDetailDto>();
+        if (this.InvoiceDetails.IsNullOrEmpty())
+        {
+            return paymentInvoiceDetailDtos;
+        }
+
+        foreach (var paymentInvoiceDetail in this.InvoiceDetails)
+        {
+            paymentInvoiceDetailDtos.Add(new PaymentInvoiceDetailDto
+            {
+                InvoiceId = paymentInvoiceDetail.InvoiceId,
+                Status = paymentInvoiceDetail.Status,
+                CreatedAt = paymentInvoiceDetail.CreatedAt,
+                CompletedAt = paymentInvoiceDetail.CompletedAt
+            });
+        }
+
+        return paymentInvoiceDetailDtos;
     }
     
     public static UserPaymentState FromDto(PaymentDetailsDto dto)
@@ -72,7 +96,38 @@ public class UserPaymentState
             OrderId = dto.OrderId,
             SubscriptionId = dto.SubscriptionId,
             InvoiceId = dto.InvoiceId,
-            SessionId = dto.SessionId
+            SessionId = dto.SessionId,
+            InvoiceDetails = FromInvoiceDetails(dto.InvoiceDetails),
         };
     }
+
+    public static List<PaymentInvoiceDetail> FromInvoiceDetails(List<PaymentInvoiceDetailDto> detailDtos)
+    {
+        var paymentInvoiceDetails = new List<PaymentInvoiceDetail>();
+        if (detailDtos.IsNullOrEmpty())
+        {
+            return paymentInvoiceDetails;
+        }
+
+        foreach (var invoiceDetailDto in detailDtos)
+        {
+            paymentInvoiceDetails.Add(new PaymentInvoiceDetail
+            {
+                InvoiceId = invoiceDetailDto.InvoiceId,
+                Status = invoiceDetailDto.Status,
+                CreatedAt = invoiceDetailDto.CreatedAt,
+                CompletedAt = invoiceDetailDto.CompletedAt
+            });
+        }
+        return paymentInvoiceDetails;
+    }
+}
+
+[GenerateSerializer]
+public class PaymentInvoiceDetail
+{
+    [Id(0)] public string InvoiceId { get; set; }
+    [Id(1)] public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
+    [Id(2)] public DateTime CreatedAt { get; set; }
+    [Id(3)] public DateTime? CompletedAt { get; set; }
 }

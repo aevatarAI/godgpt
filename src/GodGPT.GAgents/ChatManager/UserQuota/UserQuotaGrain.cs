@@ -22,6 +22,7 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task<ExecuteActionResultDto> IsActionAllowedAsync(string actionType = "conversation");
     Task<ExecuteActionResultDto> ExecuteActionAsync(string actionType = "conversation");
     Task ResetRateLimitsAsync(string actionType = "conversation");
+    Task ClearAllAsync();
 }
 
 public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
@@ -133,6 +134,12 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         await WriteStateAsync();
     }
 
+    public async Task ClearAllAsync()
+    {
+        State = new UserQuotaState();
+        await WriteStateAsync();
+    }
+
     public Task<SubscriptionInfoDto> GetSubscriptionAsync()
     {
         _logger.LogDebug("[UserQuotaGrain][GetSubscriptionAsync] Getting subscription info for user {UserId}", this.GetPrimaryKeyString());
@@ -143,7 +150,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             Status = State.Subscription.Status,
             StartDate = State.Subscription.StartDate,
             EndDate = State.Subscription.EndDate,
-            SubscriptionIds = State.Subscription.SubscriptionIds
+            SubscriptionIds = State.Subscription.SubscriptionIds,
+            InvoiceIds = State.Subscription.InvoiceIds
         });
     }
 
@@ -171,22 +179,13 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     {
         _logger.LogInformation("[UserQuotaGrain][UpdateSubscriptionAsync] Updated subscription for user {UserId}: Data={PlanType}", 
             this.GetPrimaryKeyString(), JsonConvert.SerializeObject(subscriptionInfoDto));
-        if (State.Subscription.IsActive)
-        {
-            if (State.Subscription.PlanType < subscriptionInfoDto.PlanType)
-            {
-                State.Subscription.PlanType = subscriptionInfoDto.PlanType;
-            }
-        }
-        else
-        {
-            State.Subscription.PlanType = subscriptionInfoDto.PlanType;
-        }
+        State.Subscription.PlanType = subscriptionInfoDto.PlanType;
         State.Subscription.IsActive = subscriptionInfoDto.IsActive;
         State.Subscription.StartDate = subscriptionInfoDto.StartDate;
         State.Subscription.EndDate = subscriptionInfoDto.EndDate;
         State.Subscription.Status = subscriptionInfoDto.Status;
         State.Subscription.SubscriptionIds = subscriptionInfoDto.SubscriptionIds;
+        State.Subscription.InvoiceIds = subscriptionInfoDto.InvoiceIds;
         await WriteStateAsync();
     }
 

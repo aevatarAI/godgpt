@@ -22,15 +22,32 @@ public class PaymentSummary
     [Id(5)] public DateTime CreatedAt { get; set; }
     [Id(6)] public DateTime? CompletedAt { get; set; }
     [Id(7)] public PaymentStatus Status { get; set; }
+    [Obsolete]
     [Id(8)] public PaymentType PaymentType { get; set; }
+    [Obsolete]
     [Id(9)] public PaymentMethod Method { get; set; }
+    [Obsolete]
     [Id(10)] public PaymentPlatform Platform {get; set;}
+    [Obsolete]
     [Id(11)] public bool IsSubscriptionRenewal { get; set; } = false;
     [Id(12)] public string SubscriptionId { get; set; }
     [Id(13)] public DateTime SubscriptionStartDate { get; set; }
     [Id(14)] public DateTime SubscriptionEndDate { get; set; }
+    [Obsolete]
     [Id(15)] public string SessionId { get; set; }
     [Id(16)] public Guid UserId { get; set; }
     [Id(17)] public string PriceId { get; set; }
+    [Id(18)] public List<UserBillingInvoiceDetail> InvoiceDetails { get; set; } = new List<UserBillingInvoiceDetail>();
+}
+
+[GenerateSerializer]
+public class UserBillingInvoiceDetail
+{
+    [Id(0)] public string InvoiceId { get; set; }
+    [Id(1)] public DateTime CreatedAt { get; set; }
+    [Id(2)] public DateTime CompletedAt { get; set; }
+    [Id(3)] public PaymentStatus Status { get; set; }
+    [Id(4)] public DateTime SubscriptionStartDate { get; set; }
+    [Id(5)] public DateTime SubscriptionEndDate { get; set; }
 }
 

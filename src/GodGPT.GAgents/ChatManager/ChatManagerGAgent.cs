@@ -7,6 +7,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
+using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
@@ -548,6 +549,12 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         //Do not clear the content of ShareGrain. When querying, first determine whether the Session exists
         // Record the event to clear all sessions
+        var quotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        await quotaGrain.ClearAllAsync();
+
+        var billingGrain = GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(this.GetPrimaryKey()));
+        await billingGrain.ClearAllAsync();
+
         RaiseEvent(new ClearAllEventLog());
         await ConfirmEvents();
         return this.GetPrimaryKey();

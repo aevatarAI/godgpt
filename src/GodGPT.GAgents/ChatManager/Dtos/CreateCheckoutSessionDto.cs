@@ -28,8 +28,5 @@ public class CreateCheckoutSessionDto
     /// always、automatic
     [Id(6)] public string PaymentMethodCollection { get; set; } = "always";
     
-    /// <summary>
-    /// 支付方法配置ID
-    /// </summary>
     [Id(7)] public string PaymentMethodConfiguration { get; set; }
 }

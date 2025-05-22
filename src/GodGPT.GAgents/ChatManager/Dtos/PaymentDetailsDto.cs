@@ -23,4 +23,14 @@ public class PaymentDetailsDto
     [Id(15)] public string SubscriptionId { get; set; }
     [Id(16)] public string InvoiceId { get; set; }
     [Id(17)] public string SessionId { get; set; }
+    [Id(18)] public List<PaymentInvoiceDetailDto> InvoiceDetails { get; set; }
+}
+
+[GenerateSerializer]
+public class PaymentInvoiceDetailDto
+{
+    [Id(0)] public string InvoiceId { get; set; }
+    [Id(1)] public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
+    [Id(2)] public DateTime CreatedAt { get; set; }
+    [Id(3)] public DateTime? CompletedAt { get; set; }
 }
