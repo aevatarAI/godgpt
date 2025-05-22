@@ -118,4 +118,18 @@ public partial class UserBillingGrainTests
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
+
+    [Fact]
+    public async Task Test()
+    {
+        var dateTimeOffset = DateTimeOffset.Parse("2025-05-23T14:08:26.303711Z");
+        var subscriptionEndDate = dateTimeOffset.UtcDateTime;
+        var diff = (subscriptionEndDate - DateTime.UtcNow).Days;
+        if (diff < 0)
+        {
+            diff = 0;
+        }
+        subscriptionEndDate.AddDays(-diff);
+        subscriptionEndDate = subscriptionEndDate.AddDays(-diff);
+    }
 }

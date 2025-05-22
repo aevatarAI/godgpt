@@ -914,7 +914,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             {
                 diff = 0;
             }
-            subscriptionInfoDto.EndDate.AddDays(-diff);
+            subscriptionInfoDto.EndDate = subscriptionInfoDto.EndDate.AddDays(-diff);
             subscriptionIds.Remove(paymentSummary.SubscriptionId);
             if (subscriptionIds.IsNullOrEmpty())
             {
