@@ -402,7 +402,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
         // 1. Check quota and rate limit using ExecuteActionAsync
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        var actionResult = await userQuotaGrain.ExecuteActionAsync();
+        var actionResult = await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(),
+            CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         if (!actionResult.Success)
         {
             // 2. If not allowed, return error message without further processing
@@ -443,8 +444,10 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"StreamChatWithSessionAsync - step1,time use:{sw.ElapsedMilliseconds}");
 
         // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        var actionResult = await userQuotaGrain.ExecuteActionAsync();
+        var userQuotaGrain =
+            GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var actionResult = await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(),
+            CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         if (!actionResult.Success)
         {
             // 2. If not allowed, log and return early without further processing

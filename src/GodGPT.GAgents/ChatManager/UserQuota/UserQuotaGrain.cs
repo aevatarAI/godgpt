@@ -20,7 +20,9 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto);
     Task CancelSubscriptionAsync();
     Task<ExecuteActionResultDto> IsActionAllowedAsync(string actionType = "conversation");
-    Task<ExecuteActionResultDto> ExecuteActionAsync(string actionType = "conversation");
+
+    Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
+        string actionType = "conversation");
     Task ResetRateLimitsAsync(string actionType = "conversation");
     Task ClearAllAsync();
 }
@@ -278,61 +280,54 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         };
     }
 
-    public async Task<ExecuteActionResultDto> ExecuteActionAsync(string actionType = "conversation")
+    public async Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
+        string actionType = "conversation")
     {
         var now = DateTime.UtcNow;
-        
         var isSubscribed = await IsSubscribedAsync();
-        
         var maxTokens = isSubscribed 
             ? _rateLimiterOptions.CurrentValue.SubscribedUserMaxRequests 
             : _rateLimiterOptions.CurrentValue.UserMaxRequests;
         var timeWindow = isSubscribed 
             ? _rateLimiterOptions.CurrentValue.SubscribedUserTimeWindowSeconds 
             : _rateLimiterOptions.CurrentValue.UserTimeWindowSeconds;
+        _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, isSubscribed={IsSubscribed}, now(UTC)={Now}", sessionId, chatManagerGuid, maxTokens, timeWindow, isSubscribed, now);
         if (!State.RateLimits.TryGetValue(actionType, out var rateLimitInfo))
         {
             rateLimitInfo = new RateLimitInfo { Count = maxTokens, LastTime = now };
             State.RateLimits[actionType] = rateLimitInfo;
-            _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] Created new rate limit for user {UserId}, action {ActionType}, max tokens {MaxTokens}", 
-                this.GetPrimaryKeyString(), actionType, maxTokens);
+            _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} INIT RateLimitInfo: count={Count}, lastTime(UTC)={LastTime}", sessionId, chatManagerGuid, rateLimitInfo.Count, rateLimitInfo.LastTime);
         }
         else
         {
             var timeElapsed = now - rateLimitInfo.LastTime;
             var elapsedSeconds = timeElapsed.TotalSeconds;
-
             var refillRate = (double)maxTokens / timeWindow;
             var tokensToAdd = (int)(elapsedSeconds * refillRate);
             if (tokensToAdd > 0)
             {
                 rateLimitInfo.Count = Math.Min(maxTokens, rateLimitInfo.Count + tokensToAdd);
                 rateLimitInfo.LastTime = now;
-                _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] Refreshed tokens for user {UserId}, action {ActionType}, added {TokensAdded}, current {CurrentTokens}", 
-                    this.GetPrimaryKeyString(), actionType, tokensToAdd, rateLimitInfo.Count);
+                _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} REFILL: tokensToAdd={TokensToAdd}, newCount={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, tokensToAdd, rateLimitInfo.Count, now);
             }
         }
-
-        // 1. Check rate limit first. If rate limited, do not deduct credits.
+        _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} BEFORE consume: count={Count}, config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, now(UTC)={Now}", sessionId, chatManagerGuid, rateLimitInfo.Count, maxTokens, timeWindow, now);
         if (rateLimitInfo.Count <= 0)
         {
-            _logger.LogWarning("[UserQuotaGrain][ExecuteActionAsync] Rate limit exceeded for user {UserId}, action {ActionType}", 
-                this.GetPrimaryKeyString(), actionType);
+            _logger.LogWarning("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED: count={Count}, config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, now(UTC)={Now}", sessionId, chatManagerGuid, rateLimitInfo.Count, maxTokens, timeWindow, now);
             return new ExecuteActionResultDto
             {
                 Code = ExecuteActionStatus.RateLimitExceeded,
                 Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
             };
         }
-
         // 2. Only deduct credits if not subscribed and not rate limited
         if (!isSubscribed)
         {
             var requiredCredits = _creditsOptions.CurrentValue.CreditsPerConversation;
             var credits = (await GetCreditsAsync()).Credits;
             var isAllowed = credits >= requiredCredits;
-            _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] Action {ActionType} {IsAllowed} for user {UserId}. Credits: {Credits}, Required: {Required}", 
-                actionType, isAllowed ? "allowed" : "denied", this.GetPrimaryKeyString(), State.Credits, requiredCredits);
+            _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} CREDITS: allowed={IsAllowed}, credits={Credits}, required={RequiredCredits}, now(UTC)={Now}", sessionId, chatManagerGuid, isAllowed, credits, requiredCredits, now);
             if (!isAllowed)
             {
                 return new ExecuteActionResultDto
@@ -343,11 +338,10 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             }
             State.Credits -= requiredCredits;
         }
-
         // 3. Decrement rate limit token and persist state
         rateLimitInfo.Count--;
         await WriteStateAsync();
-        
+        _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER consume: count={Count}, config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, now(UTC)={Now}", sessionId, chatManagerGuid, rateLimitInfo.Count, maxTokens, timeWindow, now);
         return new ExecuteActionResultDto
         {
             Success = true
