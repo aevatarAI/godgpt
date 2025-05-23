@@ -293,7 +293,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         else
         {
             options.SuccessUrl = _stripeOptions.CurrentValue.SuccessUrl;
-            options.CancelUrl = _stripeOptions.CurrentValue.CancelUrl;
+            if (createCheckoutSessionDto.CancelUrl.IsNullOrWhiteSpace())
+            {
+                options.CancelUrl = _stripeOptions.CurrentValue.CancelUrl;
+            }
+            else
+            {
+                options.CancelUrl = createCheckoutSessionDto.CancelUrl;
+            }
         }
 
         try

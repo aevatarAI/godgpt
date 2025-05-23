@@ -29,4 +29,5 @@ public class CreateCheckoutSessionDto
     [Id(6)] public string PaymentMethodCollection { get; set; } = "always";
     
     [Id(7)] public string PaymentMethodConfiguration { get; set; }
+    [Id(8)] public string CancelUrl { get; set; }
 }
