@@ -1214,7 +1214,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         { 
             return;
         }
-        
+
+        if (paymentSummary.InvoiceDetails == null)
+        {
+            paymentSummary.InvoiceDetails = new List<UserBillingInvoiceDetail>();
+        }
         var invoiceDetail =
             paymentSummary.InvoiceDetails.FirstOrDefault(t => t.InvoiceId == paymentDetails.InvoiceId);
         if (invoiceDetail == null)
