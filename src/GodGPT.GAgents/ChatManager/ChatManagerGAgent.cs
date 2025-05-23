@@ -400,6 +400,16 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             return new Tuple<string, string>("", "");
         }
 
+        // 1. Check quota and rate limit using ExecuteActionAsync
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var actionResult = await userQuotaGrain.ExecuteActionAsync();
+        if (!actionResult.Success)
+        {
+            // 2. If not allowed, return error message without further processing
+            return new Tuple<string, string>(actionResult.Message, "");
+        }
+
+        // 3. If allowed, continue with chat logic
         var title = "";
         if (sessionInfo.Title.IsNullOrEmpty())
         {
@@ -431,6 +441,16 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         IGodChat godChat = GrainFactory.GetGrain<IGodChat>(sessionId);
         sw.Stop();
         Logger.LogDebug($"StreamChatWithSessionAsync - step1,time use:{sw.ElapsedMilliseconds}");
+
+        // 1. Check quota and rate limit using ExecuteActionAsync
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var actionResult = await userQuotaGrain.ExecuteActionAsync();
+        if (!actionResult.Success)
+        {
+            // 2. If not allowed, log and return early without further processing
+            Logger.LogWarning($"StreamChatWithSessionAsync: {actionResult.Message} for user {this.GetPrimaryKey()}. SessionId: {sessionId}");
+            return;
+        }
 
         var title = "";
         if (sessionInfo == null)
