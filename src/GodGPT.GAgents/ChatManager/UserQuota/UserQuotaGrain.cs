@@ -324,7 +324,6 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             };
         }
         // Step 3: Get latest value and decrement
-        await ReadStateAsync();
         int latestValue = State.RateLimits[actionType].Count;
         if (latestValue <= 0)
         {
@@ -356,7 +355,6 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             State.Credits -= requiredCredits;
         }
         // Step 5: Final check and fallback decrement
-        await ReadStateAsync();
         int finalValue = State.RateLimits[actionType].Count;
         if (finalValue >= oldValue)
         {
