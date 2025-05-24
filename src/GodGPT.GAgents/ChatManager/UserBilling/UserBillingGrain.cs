@@ -905,10 +905,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Cancel User subscription {0}, {1}, {2}",
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
             subscriptionIds.Remove(paymentSummary.SubscriptionId);
-            if (subscriptionIds.IsNullOrEmpty())
-            {
-                subscriptionInfoDto.PlanType = PlanType.None;
-            }
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
             await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
         }
@@ -916,18 +912,30 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Refund User subscription {0}, {1}, {2}",
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
-            var diff = (paymentSummary.SubscriptionEndDate - DateTime.UtcNow).Days;
-            if (diff < 0)
-            {
-                diff = 0;
-            }
+            // var diff = (paymentSummary.SubscriptionEndDate - DateTime.UtcNow).Days;
+            // if (diff < 0)
+            // {
+            //     diff = 0;
+            // }
+            var diff = GetDaysForPlanType(paymentSummary.PlanType);
             subscriptionInfoDto.EndDate = subscriptionInfoDto.EndDate.AddDays(-diff);
             subscriptionIds.Remove(paymentSummary.SubscriptionId);
-            if (subscriptionIds.IsNullOrEmpty())
-            {
-                subscriptionInfoDto.PlanType = PlanType.None;
-            }
-
+            
+            //reset plantype
+            var now = DateTime.UtcNow;
+            var maxPlanType = State.PaymentHistory
+                .Where(p => 
+                    (p.Status == PaymentStatus.Completed && p.SubscriptionEndDate != null && p.SubscriptionEndDate > now) ||
+                    (p.InvoiceDetails != null && p.InvoiceDetails.Any(i => 
+                        i.Status == PaymentStatus.Completed && i.SubscriptionEndDate != null && i.SubscriptionEndDate > now))
+                )
+                .OrderByDescending(p => p.PlanType)
+                .Select(p => p.PlanType)
+                .DefaultIfEmpty(PlanType.None)
+                .First();
+                
+            subscriptionInfoDto.PlanType = maxPlanType;
+            
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
             await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
         }
@@ -1350,9 +1358,24 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             case PlanType.Day:
                 return endDate.AddDays(1);
             case PlanType.Month:
-                return endDate.AddMonths(1);
+                return endDate.AddDays(30);
             case PlanType.Year:
-                return endDate.AddYears(1).AddDays(30);
+                return endDate.AddDays(390);
+            default:
+                throw new ArgumentException($"Invalid plan type: {planType}");
+        }
+    }
+
+    private int GetDaysForPlanType(PlanType planType)
+    {
+        switch (planType)
+        {
+            case PlanType.Day:
+                return 1;
+            case PlanType.Month:
+                return 30;
+            case PlanType.Year:
+                return 390;
             default:
                 throw new ArgumentException($"Invalid plan type: {planType}");
         }
