@@ -320,7 +320,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             return new ExecuteActionResultDto
             {
                 Code = ExecuteActionStatus.RateLimitExceeded,
-                Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
+                //Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
+                Message = "Message limit reached. Please try again later."
             };
         }
         // Step 3: Get latest value and decrement
@@ -331,7 +332,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             return new ExecuteActionResultDto
             {
                 Code = ExecuteActionStatus.RateLimitExceeded,
-                Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
+                Message = $"Message limit reached. Please try again later."
             };
         }
         State.RateLimits[actionType].Count = latestValue - 1;
