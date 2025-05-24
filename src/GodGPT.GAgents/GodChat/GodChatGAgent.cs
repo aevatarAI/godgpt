@@ -122,10 +122,21 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (!actionResultDto.Success)
         {
             Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} Access restricted");
-            var invalidOperationException = new InvalidOperationException(actionResultDto.Message);
-            invalidOperationException.Data["Code"] = actionResultDto.Code.ToString();
-            throw invalidOperationException;
-            //throw new UserFriendlyException(actionResultDto.Message, actionResultDto.Code.ToString());
+            //1、throw Exception
+            // var invalidOperationException = new InvalidOperationException(actionResultDto.Message);
+            // invalidOperationException.Data["Code"] = actionResultDto.Code.ToString();
+            // throw invalidOperationException;
+            
+            //2、Directly respond with error information.
+            var chatMessage = new ResponseStreamGodChat()
+            {
+                Response = actionResultDto.Message,
+                ChatId = chatId,
+                IsLastChunk = true,
+                SerialNumber = -2,
+                SessionId = sessionId
+            };
+            await PublishAsync(chatMessage);
         }
 
         var sw = new Stopwatch();
