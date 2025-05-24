@@ -311,17 +311,33 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
                 _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} REFILL: tokensToAdd={TokensToAdd}, newCount={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, tokensToAdd, rateLimitInfo.Count, now);
             }
         }
-        _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} BEFORE consume: count={Count}, config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, now(UTC)={Now}", sessionId, chatManagerGuid, rateLimitInfo.Count, maxTokens, timeWindow, now);
-        if (rateLimitInfo.Count <= 0)
+        // Step 1: Record the initial value
+        int oldValue = State.RateLimits[actionType].Count;
+        // Step 2: Check if can decrement
+        if (oldValue <= 0)
         {
-            _logger.LogWarning("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED: count={Count}, config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, now(UTC)={Now}", sessionId, chatManagerGuid, rateLimitInfo.Count, maxTokens, timeWindow, now);
+            _logger.LogWarning("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED (oldValue): count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, oldValue, now);
             return new ExecuteActionResultDto
             {
                 Code = ExecuteActionStatus.RateLimitExceeded,
                 Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
             };
         }
-        // 2. Only deduct credits if not subscribed and not rate limited
+        // Step 3: Get latest value and decrement
+        int latestValue = State.RateLimits[actionType].Count;
+        if (latestValue <= 0)
+        {
+            _logger.LogWarning("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED (latestValue): count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, latestValue, now);
+            return new ExecuteActionResultDto
+            {
+                Code = ExecuteActionStatus.RateLimitExceeded,
+                Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
+            };
+        }
+        State.RateLimits[actionType].Count = latestValue - 1;
+        await WriteStateAsync();
+        _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER first decrement: count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, State.RateLimits[actionType].Count, now);
+        // Step 4: Business logic (credits, etc.)
         if (!isSubscribed)
         {
             var requiredCredits = _creditsOptions.CurrentValue.CreditsPerConversation;
@@ -338,10 +354,14 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             }
             State.Credits -= requiredCredits;
         }
-        // 3. Decrement rate limit token and persist state
-        rateLimitInfo.Count--;
-        await WriteStateAsync();
-        _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER consume: count={Count}, config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, now(UTC)={Now}", sessionId, chatManagerGuid, rateLimitInfo.Count, maxTokens, timeWindow, now);
+        // Step 5: Final check and fallback decrement
+        int finalValue = State.RateLimits[actionType].Count;
+        if (finalValue >= oldValue)
+        {
+            State.RateLimits[actionType].Count = finalValue - 1;
+            await WriteStateAsync();
+            _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER fallback decrement: count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, State.RateLimits[actionType].Count, now);
+        }
         return new ExecuteActionResultDto
         {
             Success = true
