@@ -602,7 +602,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] userId: {this.GetPrimaryKey().ToString()}");
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         var credits = await userQuotaGrain.GetCreditsAsync();
-        var subscriptionInfo = await userQuotaGrain.GetSubscriptionAsync();
+        var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
 
         return new UserProfileDto
         {

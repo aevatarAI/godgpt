@@ -16,6 +16,7 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task SetShownCreditsToastAsync(bool hasShownInitialCreditsToast);
     Task<bool> IsSubscribedAsync();
     Task<SubscriptionInfoDto> GetSubscriptionAsync();
+    Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync();
     Task UpdateSubscriptionAsync(string planType, DateTime endDate);
     Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto);
     Task CancelSubscriptionAsync();
@@ -155,6 +156,12 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             SubscriptionIds = State.Subscription.SubscriptionIds,
             InvoiceIds = State.Subscription.InvoiceIds
         });
+    }
+
+    public async Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync()
+    {
+        await IsSubscribedAsync();
+        return await GetSubscriptionAsync();
     }
 
     public async Task UpdateSubscriptionAsync(string planType, DateTime endDate)
