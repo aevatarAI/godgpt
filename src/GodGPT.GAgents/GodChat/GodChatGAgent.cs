@@ -133,7 +133,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 Response = actionResultDto.Message,
                 ChatId = chatId,
                 IsLastChunk = true,
-                SerialNumber = -2,
+                SerialNumber = -99,
                 SessionId = sessionId
             };
 
