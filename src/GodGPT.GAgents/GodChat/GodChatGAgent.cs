@@ -137,6 +137,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 SessionId = sessionId
             };
             await PublishAsync(chatMessage);
+            return;
         }
 
         var sw = new Stopwatch();
