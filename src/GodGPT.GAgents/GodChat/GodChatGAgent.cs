@@ -136,7 +136,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 SerialNumber = -2,
                 SessionId = sessionId
             };
-            await PublishAsync(chatMessage);
+
+            if (isHttpRequest)
+            {
+                await PushMessageToClientAsync(chatMessage);
+            }
+            else
+            {
+                await PublishAsync(chatMessage);
+            }
             return;
         }
 
