@@ -569,9 +569,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     SaveDefaultPaymentMethod = "on_subscription",
                     // Set payment methods based on platform, default to card
                     // "card","apple_pay","google_pay", "bank_transfer","alipay"，"wechat_pay"
-                    PaymentMethodTypes = createSubscriptionDto.Platform?.ToLower() == "ios" 
-                        ? new List<string> { "card", "apple_pay" }
-                        : new List<string> { "card" }
+                    PaymentMethodTypes = new List<string> { "card" }
                 },
                 Metadata = new Dictionary<string, string>
                 {
@@ -654,7 +652,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogError(ex,
                 "[UserBillingGrain][CreateSubscriptionAsync] Stripe error: {ErrorMessage}",
                 ex.StripeError?.Message);
-            throw;
+            throw new ArgumentException(ex.Message);
         }
         catch (Exception ex)
         {
