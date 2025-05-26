@@ -1031,6 +1031,28 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 10;
         if (pageSize > 100) pageSize = 100;
+        
+        int markedFailedCount = 0;
+        foreach (var payment in State.PaymentHistory)
+        {
+            var hasEmptyInvoice = payment.InvoiceDetails.IsNullOrEmpty();
+            var isProcessing = payment.Status == PaymentStatus.Processing;
+            var isOlderThanOneDay = payment.CreatedAt <= DateTime.UtcNow.AddDays(-1);
+            
+            if (hasEmptyInvoice && isProcessing && isOlderThanOneDay)
+            {
+                payment.Status = PaymentStatus.Failed;
+                markedFailedCount++;
+            }
+        }
+
+        if (markedFailedCount > 0)
+        {
+            _logger.LogInformation(
+                "[UserBillingGrain][GetPaymentHistoryAsync] Marked {0} records as Failed in State storage",
+                markedFailedCount);
+            await WriteStateAsync();
+        }
 
         // Calculate skip and take values
         int skip = (page - 1) * pageSize;
@@ -1063,6 +1085,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 }));
             }
         }
+
+        _logger.LogInformation(
+            "[UserBillingGrain][GetPaymentHistoryAsync] Returning {0} payment records after pagination",
+            Math.Min(pageSize, paymentHistories.Count - skip));
 
         // Return paginated results ordered by most recent first
         return paymentHistories

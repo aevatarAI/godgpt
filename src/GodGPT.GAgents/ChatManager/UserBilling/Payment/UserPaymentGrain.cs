@@ -280,7 +280,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         }
         else
         {
-            if (State.Status >= PaymentStatus.Completed)
+            if (State.Status != PaymentStatus.Failed && State.Status >= PaymentStatus.Completed)
             {
                 canUpdateStatus = false;
                 _logger.LogWarning("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Cannot update status from {CurrentStatus} to Processing as current status is finalized", 
