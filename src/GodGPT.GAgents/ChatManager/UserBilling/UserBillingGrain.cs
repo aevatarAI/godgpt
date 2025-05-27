@@ -1064,11 +1064,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var paymentSummaries = State.PaymentHistory;
         foreach (var paymentSummary in paymentSummaries)
         {
-            if (paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.Status == PaymentStatus.Processing)
-            {
-                continue;
-            }
-            
             if (paymentSummary.InvoiceDetails.IsNullOrEmpty())
             {
                 paymentHistories.Add(paymentSummary);
@@ -1099,7 +1094,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             Math.Min(pageSize, paymentHistories.Count - skip));
 
         // Return paginated results ordered by most recent first
-        return paymentHistories
+        return paymentHistories.Where(t => t.Status != PaymentStatus.Processing)
             .OrderByDescending(p => p.CreatedAt)
             .Skip(skip)
             .Take(pageSize)
