@@ -318,34 +318,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
                 _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} REFILL: tokensToAdd={TokensToAdd}, newCount={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, tokensToAdd, rateLimitInfo.Count, now);
             }
         }
-        // Step 1: Record the initial value
-        int oldValue = State.RateLimits[actionType].Count;
-        // Step 2: Check if can decrement
-        if (oldValue <= 0)
-        {
-            _logger.LogWarning("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED (oldValue): count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, oldValue, now);
-            return new ExecuteActionResultDto
-            {
-                Code = ExecuteActionStatus.RateLimitExceeded,
-                //Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
-                Message = "Message limit reached. Please try again later."
-            };
-        }
-        // Step 3: Get latest value and decrement
-        int latestValue = State.RateLimits[actionType].Count;
-        if (latestValue <= 0)
-        {
-            _logger.LogWarning("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED (latestValue): count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, latestValue, now);
-            return new ExecuteActionResultDto
-            {
-                Code = ExecuteActionStatus.RateLimitExceeded,
-                Message = $"Message limit reached. Please try again later."
-            };
-        }
-        State.RateLimits[actionType].Count = latestValue - 1;
-        await WriteStateAsync();
-        _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER first decrement: count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, State.RateLimits[actionType].Count, now);
-        // Step 4: Business logic (credits, etc.)
+        
+        // Step: Business logic (credits, etc.)
         if (!isSubscribed)
         {
             var requiredCredits = _creditsOptions.CurrentValue.CreditsPerConversation;
@@ -360,16 +334,31 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
                     Message = "You've run out of credits."
                 };
             }
-            State.Credits -= requiredCredits;
         }
-        // Step 5: Final check and fallback decrement
-        int finalValue = State.RateLimits[actionType].Count;
-        if (finalValue >= oldValue)
+        
+        // Step: Record the initial value
+        var oldValue = State.RateLimits[actionType].Count;
+        // Step: Check if can decrement
+        if (oldValue <= 0)
         {
-            State.RateLimits[actionType].Count = finalValue - 1;
-            await WriteStateAsync();
-            _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER fallback decrement: count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, State.RateLimits[actionType].Count, now);
+            _logger.LogWarning("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED (oldValue): count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, oldValue, now);
+            return new ExecuteActionResultDto
+            {
+                Code = ExecuteActionStatus.RateLimitExceeded,
+                //Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
+                Message = "Message limit reached. Please try again later."
+            };
         }
+
+        if (!isSubscribed)
+        {
+            State.Credits -= _creditsOptions.CurrentValue.CreditsPerConversation;
+        }
+        State.RateLimits[actionType].Count = State.RateLimits[actionType].Count - 1;
+        await WriteStateAsync();
+        
+        _logger.LogDebug("[UserQuotaGrain][ExecuteActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER first decrement: count={Count}, now(UTC)={Now}", sessionId, chatManagerGuid, State.RateLimits[actionType].Count, now);
+        
         return new ExecuteActionResultDto
         {
             Success = true
