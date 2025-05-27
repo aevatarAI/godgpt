@@ -6,6 +6,7 @@ using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
+using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
@@ -321,6 +322,17 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var sysMessage = await configuration.GetPrompt();
         //put user data into the user prompt
         //sysMessage = await AppendUserInfoToSystemPromptAsync(configuration, sysMessage, userProfile);
+
+        // Add role-specific prompt if guider is provided
+        if (!string.IsNullOrEmpty(guider))
+        {
+            var rolePrompt = GetRolePrompt(guider);
+            if (!string.IsNullOrEmpty(rolePrompt))
+            {
+                sysMessage += $"\n\n### Role-specific instructions:\n{rolePrompt}";
+                Logger.LogDebug($"[ChatGAgentManager][CreateSessionAsync] Added role prompt for guider: {guider}");
+            }
+        }
 
         var chatConfigDto = new ChatConfigDto()
         {
@@ -785,5 +797,35 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     private IConfigurationGAgent GetConfiguration()
     {
         return GrainFactory.GetGrain<IConfigurationGAgent>(CommonHelper.GetSessionManagerConfigurationId());
+    }
+
+    /// <summary>
+    /// Get role-specific prompt from configuration based on role name
+    /// </summary>
+    /// <param name="roleName">The name of the role (e.g., "Doctor", "Teacher")</param>
+    /// <returns>Role-specific prompt text or empty string if not found</returns>
+    private string GetRolePrompt(string roleName)
+    {
+        try
+        {
+            var roleOptions = (ServiceProvider.GetService(typeof(IOptionsMonitor<RolePromptOptions>)) as IOptionsMonitor<RolePromptOptions>)?.CurrentValue;
+            var rolePrompt = roleOptions?.RolePrompts.GetValueOrDefault(roleName, string.Empty) ?? string.Empty;
+            
+            if (!string.IsNullOrEmpty(rolePrompt))
+            {
+                Logger.LogDebug($"[ChatGAgentManager][GetRolePrompt] Found role prompt for: {roleName}");
+            }
+            else
+            {
+                Logger.LogDebug($"[ChatGAgentManager][GetRolePrompt] No role prompt found for: {roleName}");
+            }
+            
+            return rolePrompt;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "[ChatGAgentManager][GetRolePrompt] Failed to get role prompt for role: {RoleName}", roleName);
+            return string.Empty;
+        }
     }
 }
