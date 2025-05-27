@@ -923,9 +923,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var now = DateTime.UtcNow;
             var maxPlanType = State.PaymentHistory
                 .Where(p => 
-                    (p.Status == PaymentStatus.Completed && p.SubscriptionEndDate != null && p.SubscriptionEndDate > now) ||
+                    ((p.Status is PaymentStatus.Completed or PaymentStatus.Cancelled or PaymentStatus.Cancelled_In_Processing) && p.SubscriptionEndDate != null && p.SubscriptionEndDate > now) ||
                     (p.InvoiceDetails != null && p.InvoiceDetails.Any(i => 
-                        i.Status == PaymentStatus.Completed && i.SubscriptionEndDate != null && i.SubscriptionEndDate > now))
+                        (i.Status is PaymentStatus.Completed or PaymentStatus.Cancelled or PaymentStatus.Cancelled_In_Processing) && i.SubscriptionEndDate != null && i.SubscriptionEndDate > now))
                 )
                 .OrderByDescending(p => p.PlanType)
                 .Select(p => p.PlanType)
