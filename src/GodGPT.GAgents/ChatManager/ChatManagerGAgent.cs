@@ -137,7 +137,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            sessionId = await CreateSessionAsync(@event.SystemLLM, @event.Prompt, @event.UserProfile);
+            sessionId = await CreateSessionAsync(@event.SystemLLM, @event.Prompt, @event.UserProfile, @event.Guider);
             IGodChat godChat = GrainFactory.GetGrain<IGodChat>(sessionId);
             await RegisterAsync(godChat);
         }
@@ -306,7 +306,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"[ChatGAgentManager][RequestGetUserProfileEvent] end");
     }
 
-    public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null)
+    public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null, string? guider = null)
     {
         var configuration = GetConfiguration();
         Stopwatch sw = new Stopwatch();
@@ -351,7 +351,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         {
             SessionId = sessionId,
             Title = "",
-            CreateAt = DateTime.UtcNow
+            CreateAt = DateTime.UtcNow,
+            Guider = guider // Set the role information for the conversation
         });
 
         await ConfirmEvents();
@@ -504,7 +505,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             {
                 SessionId = item.SessionId,
                 Title = item.Title,
-                CreateAt = createAt
+                CreateAt = createAt,
+                Guider = item.Guider // Include role information in the response
             });
         }
 
@@ -694,7 +696,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 {
                     SessionId = @createSessionInfo.SessionId,
                     Title = @createSessionInfo.Title,
-                    CreateAt = @createSessionInfo.CreateAt
+                    CreateAt = @createSessionInfo.CreateAt,
+                    Guider = @createSessionInfo.Guider // Store role information in session state
                 });
                 break;
             case DeleteSessionEventLog @deleteSessionEventLog:

@@ -9,7 +9,7 @@ namespace Aevatar.Application.Grains.Agents.ChatManager;
 
 public interface IChatManagerGAgent : IGAgent
 {
-    Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null);
+    Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null, string? guider = null);
     Task<Tuple<string,string>> ChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, ExecutionPromptSettings promptSettings = null);
     [ReadOnly]
     Task<List<SessionInfoDto>> GetSessionListAsync();
