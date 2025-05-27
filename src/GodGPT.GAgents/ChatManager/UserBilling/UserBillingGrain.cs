@@ -1029,26 +1029,31 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 10;
         if (pageSize > 100) pageSize = 100;
-        
-        int markedFailedCount = 0;
-        foreach (var payment in State.PaymentHistory)
+
+        if (State.PaymentHistory == null)
         {
-            var hasEmptyInvoice = payment.InvoiceDetails.IsNullOrEmpty();
-            var isProcessing = payment.Status == PaymentStatus.Processing;
-            var isOlderThanOneDay = payment.CreatedAt <= DateTime.UtcNow.AddDays(-1);
+            State.PaymentHistory = new List<PaymentSummary>();
+        }
+        
+        //Filter unpaid orders
+        var originalCount = State.PaymentHistory.Count;
+        var recordsToRemove = State.PaymentHistory
+            .Where(payment => 
+                payment.InvoiceDetails.IsNullOrEmpty() && 
+                payment.Status == PaymentStatus.Processing && 
+                payment.CreatedAt <= DateTime.UtcNow.AddDays(-1))
+            .ToList();
             
-            if (hasEmptyInvoice && isProcessing && isOlderThanOneDay)
-            {
-                payment.Status = PaymentStatus.Failed;
-                markedFailedCount++;
-            }
+        foreach (var record in recordsToRemove)
+        {
+            State.PaymentHistory.Remove(record);
         }
 
-        if (markedFailedCount > 0)
+        if (recordsToRemove.Count > 0)
         {
             _logger.LogInformation(
-                "[UserBillingGrain][GetPaymentHistoryAsync] Marked {0} records as Failed in State storage",
-                markedFailedCount);
+                "[UserBillingGrain][GetPaymentHistoryAsync] Removed {0} invalid records from payment history (original count: {1}, new count: {2})",
+                recordsToRemove.Count, originalCount, State.PaymentHistory.Count);
             await WriteStateAsync();
         }
 
@@ -1059,6 +1064,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var paymentSummaries = State.PaymentHistory;
         foreach (var paymentSummary in paymentSummaries)
         {
+            if (paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.Status == PaymentStatus.Processing)
+            {
+                continue;
+            }
+            
             if (paymentSummary.InvoiceDetails.IsNullOrEmpty())
             {
                 paymentHistories.Add(paymentSummary);
