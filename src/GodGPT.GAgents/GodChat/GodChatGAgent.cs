@@ -127,6 +127,25 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // invalidOperationException.Data["Code"] = actionResultDto.Code.ToString();
             // throw invalidOperationException;
             
+            //save conversation data
+            await SetSessionTitleAsync(sessionId, content);
+            var chatMessages = new List<ChatMessage>();
+            chatMessages.Add(new ChatMessage
+            {
+                ChatRole = ChatRole.User,
+                Content = content
+            });
+            chatMessages.Add(new ChatMessage
+            {
+                ChatRole = ChatRole.Assistant,
+                Content = actionResultDto.Message
+            });
+            RaiseEvent(new AddChatHistoryLogEvent
+            {
+                ChatList = chatMessages
+            });
+            await ConfirmEvents();
+            
             //2、Directly respond with error information.
             var chatMessage = new ResponseStreamGodChat()
             {
@@ -148,14 +167,26 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return;
         }
 
-        var sw = new Stopwatch();
         Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step1,time use:{sw.ElapsedMilliseconds}");
+        await SetSessionTitleAsync(sessionId, content);
 
+        var sw = new Stopwatch();
+        sw.Start();
+        var configuration = GetConfiguration();
+        await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
+            await configuration.GetStreamingModeEnabled(),
+            content, chatId, promptSettings, isHttpRequest, region);
+        sw.Stop();
+        Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
+    }
+
+    private async Task SetSessionTitleAsync(Guid sessionId, string content)
+    {
         var title = "";
 
         if (State.Title.IsNullOrEmpty())
         {
-            sw.Start();
+            var sw = Stopwatch.StartNew();
             title = string.Join(" ", content.Split(" ").Take(4));
 
             RaiseEvent(new RenameChatTitleEventLog()
@@ -176,15 +207,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             Logger.LogDebug(
                 $"StreamChatWithSessionAsync {sessionId.ToString()} - step3,time use:{sw.ElapsedMilliseconds}");
         }
-
-        sw.Reset();
-        sw.Start();
-        var configuration = GetConfiguration();
-        await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
-            await configuration.GetStreamingModeEnabled(),
-            content, chatId, promptSettings, isHttpRequest, region);
-        sw.Stop();
-        Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
