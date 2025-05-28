@@ -6,6 +6,7 @@ using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Newtonsoft.Json;
 using Stripe;
 using Stripe.Checkout;
 using PaymentMethod = Aevatar.Application.Grains.Common.Constants.PaymentMethod;
@@ -601,6 +602,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogInformation(
                 "[UserBillingGrain][CreateSubscriptionAsync] Created subscription with ID: {SubscriptionId}, status: {Status}",
                 subscription.Id, subscription.Status);
+            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] subscription {0}", JsonConvert.SerializeObject(subscription));
 
             var paymentGrainId = Guid.NewGuid();
             var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
@@ -624,7 +626,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 InvoiceId = subscription.LatestInvoiceId
             };
             
+            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] InitializePaymentAsync start.. {0}", subscription.Id);
             var initResult = await paymentGrain.InitializePaymentAsync(paymentState);
+            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] InitializePaymentAsync end..{0}", subscription.Id);
             if (!initResult.Success)
             {
                 _logger.LogError(
@@ -633,7 +637,17 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
             }
             var paymentDetails = initResult.Data;
-            await CreateOrUpdatePaymentSummaryAsync(paymentDetails, null);
+            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync start..{0}", subscription.Id);
+            try
+            {
+                await CreateOrUpdatePaymentSummaryAsync(paymentDetails, null);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "[UserBillingGrain][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync error..{0}, {1}", subscription.Id, e.Message);
+                throw;
+            }
+            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync end..{0}", subscription.Id);
             _logger.LogInformation(
                 "[UserBillingGrain][CreateSubscriptionAsync] Created/Updated payment record with ID: {PaymentId} for session: {subscription}",
                 paymentDetails.Id, subscription.Id);
@@ -642,7 +656,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             {
                 SubscriptionId = subscription.Id,
                 CustomerId = customerId,
-                ClientSecret = subscription.LatestInvoice.ConfirmationSecret.ClientSecret
+                ClientSecret = subscription.LatestInvoice?.ConfirmationSecret?.ClientSecret
             };
 
             return response;
