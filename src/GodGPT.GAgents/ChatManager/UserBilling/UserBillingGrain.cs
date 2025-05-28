@@ -192,7 +192,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogError(ex,
                 "[UserBillingGrain][GetStripeCustomerAsync] Stripe error: {ErrorMessage}",
                 ex.StripeError?.Message);
-            throw;
+            throw new InvalidOperationException(ex.Message);
         }
         catch (Exception ex)
         {
@@ -315,7 +315,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogError(ex,
                 "[UserBillingGrain][CreateCheckoutSessionAsync] Failed to create or get Stripe Customer: {ErrorMessage}",
                 ex.Message);
-            throw;
+            throw new InvalidOperationException(ex.Message);
         }
 
         var service = new SessionService(_client);
@@ -349,7 +349,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogError(e,
                 "[UserBillingGrain][CreateCheckoutSessionAsync] Failed to create checkout session: {ErrorMessage}",
                 e.StripeError.Message);
-            throw;
+            throw new InvalidOperationException(e.Message);
         }
     }
 
@@ -512,7 +512,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogError(ex,
                 "[UserBillingGrain][CreatePaymentSheetAsync] Stripe error: {ErrorMessage}",
                 ex.StripeError?.Message);
-            throw;
+            throw new InvalidOperationException(ex.Message);
         }
         catch (Exception ex)
         {
@@ -652,7 +652,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogError(ex,
                 "[UserBillingGrain][CreateSubscriptionAsync] Stripe error: {ErrorMessage}",
                 ex.StripeError?.Message);
-            throw new ArgumentException(ex.Message);
+            throw new InvalidOperationException(ex.Message);
         }
         catch (Exception ex)
         {
