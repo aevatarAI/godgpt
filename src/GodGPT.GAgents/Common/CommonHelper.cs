@@ -19,6 +19,16 @@ public class CommonHelper
         return StringToGuid("GetStreamSessionManagerConfigurationId15");
     }
     
+    public static string GetUserQuotaGAgentId(Guid chatManagerId)
+    {
+        return string.Join("_", chatManagerId.ToString(), "Quota");
+    }  
+    
+    public static string GetUserBillingGAgentId(Guid chatManagerId)
+    {
+        return string.Join("_", chatManagerId.ToString(), "Billing");
+    }  
+    
     /// <summary>
     /// A method to load the content of a file.
     /// </summary>

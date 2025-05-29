@@ -3,10 +3,14 @@
         <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
         <AbpVersion>9.0.3</AbpVersion>
         <OrleansVerion>9.0.1</OrleansVerion>
-        <AevatarVerion>1.4.13-alpha-serializer.0</AevatarVerion>
-        <AevatarGAgentVerion>1.4.16-alpha-25</AevatarGAgentVerion>
+        <AevatarVerion>1.4.13</AevatarVerion>
+        <AevatarGAgentVerion>1.4.16</AevatarGAgentVerion>
     </PropertyGroup>
     <ItemGroup>
+        
+        <!-- GodGPT -->
+        <PackageVersion Include="Stripe.net" Version="48.1.0"/>
+        
         <!-- AElf packages -->
         <PackageVersion Include="AElf.Client" Version="1.1.0" />
         <PackageVersion Include="AElf.ExceptionHandler.ABP" Version="8.2.8" />
@@ -207,5 +211,8 @@
         <PackageVersion Include="xunit.runner.visualstudio" Version="2.5.7" />
         <PackageVersion Include="coverlet.collector" Version="6.0.0" />
         <PackageVersion Include="Microsoft.Orleans.Serialization.TestKit" Version="9.0.1" />
+
+        <!--Aevatar Webhook-->
+        <PackageVersion Include="Aevatar.WebHook.SDK" Version="1.1.2" />
     </ItemGroup>
 </Project>

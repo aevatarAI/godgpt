@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Aevatar;
 using Aevatar.Application.Grains;
+using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.SemanticKernel.Extensions;
@@ -50,7 +51,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
         public void Configure(ISiloBuilder hostBuilder)
         {
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("/opt/evn/appsettings.json")
+                .AddJsonFile("/opt/evn/godgpt.appsettings.json")
                 // .AddJsonFile("appsettings.secrets.json")
                 .Build();
 
@@ -123,8 +124,9 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .AddMemoryGrainStorage("PubSubStore")
                 .AddMemoryGrainStorageAsDefault()
                 .UseAevatar()
-                .AddLogStorageBasedLogConsistencyProvider("LogStorage");
-            // .Configure<NameContestOptions>(configuration.GetSection("NameContest"));
+                .AddLogStorageBasedLogConsistencyProvider("LogStorage")
+                .Configure<StripeOptions>(configuration.GetSection("Stripe"))
+                .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"));
         }
     }
 

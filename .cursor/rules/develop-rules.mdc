@@ -50,7 +50,7 @@ project_tracker.md = @project_tracker.md
       如无匹配:
         → 从@🔜任务中选择未分配开发机器且未有分支的高优先级任务[功能名]
         → 更新project_tracker.md: [🔜]→[🚧]，添加分支名，填入MAC地址为开发机器
-        → 仅提交tracker文件: `git add docs/project_tracker.md && git commit -m "标记[新任务]为开发中并分配到[MAC地址]" && git push origin dev`
+        → 仅提交tracker文件: `git add docs/project_tracker.md && git commit -m "Mark [new task] as in progress and assign to [MAC address]" && git push origin dev`
         → 创建功能分支: `git checkout -b feature/功能名`
 
 2. 【执行开发】
@@ -70,9 +70,9 @@ project_tracker.md = @project_tracker.md
    e. 标记[功能名]在project_tracker.md为已完成
 
 6. 【代码集成】
-   a. 提交仓库内所有未提交内容, 全部加进来: `git add -A&& git commit -a -m "实现功能: 功能名"`
+   a. 提交仓库内所有未提交内容, 全部加进来: `git add -A&& git commit -a -m "Implement feature: [feature name]"`
    b. 同步: `git pull origin dev --no-edit`
-   c. 解决冲突并验证: `git add . && git commit -m "解决合并冲突" --no-edit`
+   c. 解决冲突并验证: `git add . && git commit -m "Resolve merge conflicts" --no-edit`
    d. 合并到dev: `git checkout dev && git merge feature/功能名 --no-edit`
    e. 推送: `git push origin dev`
 
@@ -91,10 +91,18 @@ project_tracker.md = @project_tracker.md
 □ 所有git操作强制非交互: `GIT_EDITOR=cat GIT_PAGER=cat git <命令>`
 □ git pull 使用: `GIT_TERMINAL_PROMPT=0 git pull origin <branch> --no-edit`
 □ git merge 使用: `git merge <branch> --no-edit --no-verify`
-□ git commit 使用: `git commit -a -m "消息" --no-verify`
+□ git commit 使用: `git commit -a -m "message" --no-verify`
 □ git log 使用: `git --no-pager log -n 10`
 □ git status 使用: `git -c color.status=false status`
 □ 强制拒绝所有交互: `export GIT_ASKPASS=echo`
+
+【⚠️ 代码规范】
+□ 变量名、函数名、类名必须使用英文命名
+□ 所有注释必须使用英文书写
+□ 错误message和日志必须使用英文记录
+□ 所有git commit message必须使用英文书写
+□ 文档应使用英文或提供英文版本
+□ 特殊情况下必须使用中文的内容应在代码中明确标注原因
 
 【MAC地址读取与使用】
 - 使用缩写MAC地址格式以便于在表格中显示

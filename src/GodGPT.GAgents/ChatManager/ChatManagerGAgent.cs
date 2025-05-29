@@ -7,6 +7,8 @@ using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
+using Aevatar.Application.Grains.ChatManager.UserBilling;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -398,6 +400,17 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             return new Tuple<string, string>("", "");
         }
 
+        // 1. Check quota and rate limit using ExecuteActionAsync
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var actionResult = await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(),
+            CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        if (!actionResult.Success)
+        {
+            // 2. If not allowed, return error message without further processing
+            return new Tuple<string, string>(actionResult.Message, "");
+        }
+
+        // 3. If allowed, continue with chat logic
         var title = "";
         if (sessionInfo.Title.IsNullOrEmpty())
         {
@@ -429,6 +442,18 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         IGodChat godChat = GrainFactory.GetGrain<IGodChat>(sessionId);
         sw.Stop();
         Logger.LogDebug($"StreamChatWithSessionAsync - step1,time use:{sw.ElapsedMilliseconds}");
+
+        // 1. Check quota and rate limit using ExecuteActionAsync
+        var userQuotaGrain =
+            GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var actionResult = await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(),
+            CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        if (!actionResult.Success)
+        {
+            // 2. If not allowed, log and return early without further processing
+            Logger.LogWarning($"StreamChatWithSessionAsync: {actionResult.Message} for user {this.GetPrimaryKey()}. SessionId: {sessionId}");
+            return;
+        }
 
         var title = "";
         if (sessionInfo == null)
@@ -547,6 +572,12 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         //Do not clear the content of ShareGrain. When querying, first determine whether the Session exists
         // Record the event to clear all sessions
+        var quotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        await quotaGrain.ClearAllAsync();
+
+        var billingGrain = GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(this.GetPrimaryKey()));
+        await billingGrain.ClearAllAsync();
+
         RaiseEvent(new ClearAllEventLog());
         await ConfirmEvents();
         return this.GetPrimaryKey();
@@ -568,12 +599,19 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
     public async Task<UserProfileDto> GetUserProfileAsync()
     {
+        Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] userId: {this.GetPrimaryKey().ToString()}");
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var credits = await userQuotaGrain.GetCreditsAsync();
+        var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
+
         return new UserProfileDto
         {
             Gender = State.Gender,
             BirthDate = State.BirthDate,
             BirthPlace = State.BirthPlace,
-            FullName = State.FullName
+            FullName = State.FullName,
+            Credits = credits,
+            Subscription = subscriptionInfo
         };
     }
     

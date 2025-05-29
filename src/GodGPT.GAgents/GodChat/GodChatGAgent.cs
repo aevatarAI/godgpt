@@ -5,6 +5,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -16,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
 using Orleans.Providers;
+using Volo.Abp;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -113,14 +115,78 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
     {
-        var sw = new Stopwatch();
-        Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step1,time use:{sw.ElapsedMilliseconds}");
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start.");
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(State.ChatManagerGuid));
+        var actionResultDto =
+            await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
+        if (!actionResultDto.Success)
+        {
+            Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} Access restricted");
+            //1、throw Exception
+            // var invalidOperationException = new InvalidOperationException(actionResultDto.Message);
+            // invalidOperationException.Data["Code"] = actionResultDto.Code.ToString();
+            // throw invalidOperationException;
+            
+            //save conversation data
+            await SetSessionTitleAsync(sessionId, content);
+            var chatMessages = new List<ChatMessage>();
+            chatMessages.Add(new ChatMessage
+            {
+                ChatRole = ChatRole.User,
+                Content = content
+            });
+            chatMessages.Add(new ChatMessage
+            {
+                ChatRole = ChatRole.Assistant,
+                Content = actionResultDto.Message
+            });
+            RaiseEvent(new AddChatHistoryLogEvent
+            {
+                ChatList = chatMessages
+            });
+            await ConfirmEvents();
+            
+            //2、Directly respond with error information.
+            var chatMessage = new ResponseStreamGodChat()
+            {
+                Response = actionResultDto.Message,
+                ChatId = chatId,
+                IsLastChunk = true,
+                SerialNumber = -99,
+                SessionId = sessionId
+            };
 
+            if (isHttpRequest)
+            {
+                await PushMessageToClientAsync(chatMessage);
+            }
+            else
+            {
+                await PublishAsync(chatMessage);
+            }
+            return;
+        }
+
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} - Validation passed");
+        await SetSessionTitleAsync(sessionId, content);
+
+        var sw = new Stopwatch();
+        sw.Start();
+        var configuration = GetConfiguration();
+        await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
+            await configuration.GetStreamingModeEnabled(),
+            content, chatId, promptSettings, isHttpRequest, region);
+        sw.Stop();
+        Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
+    }
+
+    private async Task SetSessionTitleAsync(Guid sessionId, string content)
+    {
         var title = "";
 
         if (State.Title.IsNullOrEmpty())
         {
-            sw.Start();
+            var sw = Stopwatch.StartNew();
             title = string.Join(" ", content.Split(" ").Take(4));
 
             RaiseEvent(new RenameChatTitleEventLog()
@@ -141,15 +207,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             Logger.LogDebug(
                 $"StreamChatWithSessionAsync {sessionId.ToString()} - step3,time use:{sw.ElapsedMilliseconds}");
         }
-
-        sw.Reset();
-        sw.Start();
-        var configuration = GetConfiguration();
-        await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
-            await configuration.GetStreamingModeEnabled(),
-            content, chatId, promptSettings, isHttpRequest, region);
-        sw.Stop();
-        Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
