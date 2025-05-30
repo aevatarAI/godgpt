@@ -19,8 +19,5 @@ public class GodGPTGAgentModule : AbpModule
         Configure<CreditsOptions>(configuration.GetSection("Credits"));
         Configure<RateLimitOptions>(configuration.GetSection("RateLimit"));
         Configure<StripeOptions>(configuration.GetSection("Stripe"));
-        
-        // 注册Stripe环境服务
-        context.Services.AddSingleton<IStripeEnvironmentService, StripeEnvironmentService>();
     }
 }

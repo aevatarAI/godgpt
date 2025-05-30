@@ -12,7 +12,6 @@ namespace Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 public interface IUserPaymentGrain : IGrainWithGuidKey
 {
     Task<GrainResultDto<PaymentDetailsDto>> ProcessPaymentCallbackAsync(string jsonPayload, string stripeSignature);
-    Task<GrainResultDto<PaymentDetailsDto>> ProcessPaymentCallbackAsync(string jsonPayload, string stripeSignature, StripeEnvironment environment);
     Task<PaymentDetailsDto> GetPaymentDetailsAsync();
     Task<bool> UpdatePaymentStatusAsync(PaymentStatus newStatus);
     Task<GrainResultDto<PaymentDetailsDto>> InitializePaymentAsync(UserPaymentState paymentState);
@@ -99,87 +98,6 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             {
                 Success = false,
                 Message = $"Unexpected error processing webhook: {ex.Message}"
-            };
-        }
-    }
-    
-    public async Task<GrainResultDto<PaymentDetailsDto>> ProcessPaymentCallbackAsync(string jsonPayload, string stripeSignature, StripeEnvironment environment)
-    {
-        try
-        {
-            // 使用环境特定的webhook密钥
-            var webhookSecret = _stripeOptions.CurrentValue.GetWebhookSecretForEnvironment(environment);
-            _logger.LogDebug("[PaymentGAgent][ProcessPaymentCallbackAsync] Using webhook secret for environment: {Environment}", environment);
-            
-            var stripeEvent = EventUtility.ConstructEvent(
-                jsonPayload,
-                stripeSignature,
-                webhookSecret
-            );
-            
-            _logger.LogDebug("[PaymentGAgent][ProcessPaymentCallbackAsync] Processing Stripe webhook event, {0}, {1}, Environment: {2}", 
-                stripeEvent.Type, stripeEvent.Id, environment);
-            
-            GrainResultDto<PaymentDetailsDto> resultDto =  null;
-            switch (stripeEvent.Type)
-            {
-                //（Deprecated）checkout.session.completed
-                case EventTypes.CheckoutSessionCompleted: 
-                    resultDto = await ProcessCheckoutSessionCompletedAsync(stripeEvent);
-                    break;
-                case "invoice.paid":
-                    resultDto = await ProcessInvoicePaidAsync(stripeEvent);
-                    break;
-                //invoice.payment_failed
-                case EventTypes.InvoicePaymentFailed:
-                    resultDto = await ProcessInvoicePaymentFailedAsync(stripeEvent);
-                    break;
-                // case "customer.subscription.created":
-                //customer.subscription.updated
-                case EventTypes.CustomerSubscriptionUpdated:
-                //customer.subscription.deleted
-                case EventTypes.CustomerSubscriptionDeleted:   
-                    resultDto = await ProcessSubscriptionEventAsync(stripeEvent);
-                    break;
-                //payment_intent.succeeded
-                // case EventTypes.PaymentIntentSucceeded: 
-                //     resultDto = await ProcessPaymentIntentSucceededAsync(stripeEvent);
-                //     break;
-                //charge.refunded
-                case EventTypes.ChargeRefunded:
-                    resultDto = await ProcessChargeRefundedAsync(stripeEvent);
-                    break;
-                    
-                default:
-                    _logger.LogInformation("[PaymentGAgent][ProcessPaymentCallbackAsync] Unhandled event type: {EventType}, Environment: {Environment}", 
-                            stripeEvent.Type, environment);
-                    break;
-            }
-
-            return resultDto ?? new GrainResultDto<PaymentDetailsDto>
-            {
-                Success = false,
-                Message = $"Unexpected error processing webhook for environment: {environment}",
-            };
-        }
-        catch (StripeException ex)
-        {
-            _logger.LogError(ex, "[PaymentGAgent][ProcessPaymentCallbackAsync] Error validating webhook: {Message}, Environment: {Environment}", 
-                ex.Message, environment);
-            return new GrainResultDto<PaymentDetailsDto>
-            {
-                Success = false,
-                Message = $"Error validating webhook: {ex.Message}, Environment: {environment}"
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[PaymentGAgent][ProcessPaymentCallbackAsync] Unexpected error processing webhook: {Message}, Environment: {Environment}", 
-                ex.Message, environment);
-            return new GrainResultDto<PaymentDetailsDto>
-            {
-                Success = false,
-                Message = $"Unexpected error processing webhook: {ex.Message}, Environment: {environment}"
             };
         }
     }
