@@ -2,6 +2,7 @@ using System;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.Webhook;
 using Aevatar.Webhook.SDK.Handler;
 using Microsoft.AspNetCore.Http;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using Stripe;
+using System.Threading.Tasks;
 
 namespace GodGPT.Webhook.Http;
 
@@ -24,14 +26,18 @@ public class GodGPTWebhookHandler : IWebhookHandler
     
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
     private readonly StripeClient _stripeClient;
+    private readonly IStripeEnvironmentService _environmentService;
 
     public GodGPTWebhookHandler(
         IClusterClient clusterClient,
-        ILogger<GodGPTWebhookHandler> logger, IOptionsMonitor<StripeOptions> stripeOptions)
+        ILogger<GodGPTWebhookHandler> logger, 
+        IOptionsMonitor<StripeOptions> stripeOptions,
+        IStripeEnvironmentService environmentService)
     {
         _clusterClient = clusterClient;
         _logger = logger;
         _stripeOptions = stripeOptions;
+        _environmentService = environmentService;
         
         _stripeClient = new StripeClient(_stripeOptions.CurrentValue.SecretKey);
     }
@@ -60,10 +66,17 @@ public class GodGPTWebhookHandler : IWebhookHandler
             _logger.LogInformation("[GodGPTPaymentController][webhook] josn: {0}", json);
 
             string internalUserId = null;
+            StripeEnvironment environment = _environmentService.CurrentEnvironment;
+            
             try
             {
                 var stripeEventGrain = _clusterClient.GetGrain<IStripeEventProcessingGrain>(StripeEventProcessingGrainId);
-                internalUserId = await stripeEventGrain.ParseEventAndGetUserIdAsync(json);
+                var result = await stripeEventGrain.ParseEventAndGetUserInfoAsync(json);
+                internalUserId = result.userId;
+                environment = result.environment;
+                
+                _logger.LogInformation("[GodGPTPaymentController][Webhook] Processed event with UserId={UserId}, Environment={Environment}", 
+                    internalUserId, environment);
             }
             catch (Exception e)
             {
@@ -76,7 +89,7 @@ public class GodGPTWebhookHandler : IWebhookHandler
             {
                 var result =
                     await HandleStripeWebhookEventAsync(userId, json,
-                        request.Headers["Stripe-Signature"]);
+                        request.Headers["Stripe-Signature"], environment);
                 if (!result)
                 {
                     return Task.CompletedTask;
@@ -96,11 +109,19 @@ public class GodGPTWebhookHandler : IWebhookHandler
         }
     }
 
-    public async Task<bool> HandleStripeWebhookEventAsync(Guid internalUserId, string json,
-        StringValues stripeSignature)
+    public async Task<bool> HandleStripeWebhookEventAsync(
+        Guid internalUserId, 
+        string json,
+        StringValues stripeSignature,
+        StripeEnvironment environment)
     {
+        // Set the current environment for this request
+        _environmentService.SwitchEnvironment(environment);
+        
         var userBillingGrain =
             _clusterClient.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(internalUserId));
-        return await userBillingGrain.HandleStripeWebhookEventAsync(json, stripeSignature);
+        
+        // Pass environment to the user billing grain when handling the webhook
+        return await userBillingGrain.HandleStripeWebhookEventAsync(json, stripeSignature, environment);
     }
 }

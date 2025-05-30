@@ -33,6 +33,7 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
     Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
+    Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature, StripeEnvironment environment);
     Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
     Task<object> RefundedSubscriptionAsync(object  obj);
     Task ClearAllAsync();
@@ -929,6 +930,168 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             // {
             //     diff = 0;
             // }
+            var diff = GetDaysForPlanType(paymentSummary.PlanType);
+            subscriptionInfoDto.EndDate = subscriptionInfoDto.EndDate.AddDays(-diff);
+            subscriptionIds.Remove(paymentSummary.SubscriptionId);
+            
+            //reset plantype
+            var now = DateTime.UtcNow;
+            var maxPlanType = State.PaymentHistory
+                .Where(p => 
+                    ((p.Status is PaymentStatus.Completed or PaymentStatus.Cancelled or PaymentStatus.Cancelled_In_Processing) && p.SubscriptionEndDate != null && p.SubscriptionEndDate > now) ||
+                    (p.InvoiceDetails != null && p.InvoiceDetails.Any(i => 
+                        (i.Status is PaymentStatus.Completed or PaymentStatus.Cancelled or PaymentStatus.Cancelled_In_Processing) && i.SubscriptionEndDate != null && i.SubscriptionEndDate > now))
+                )
+                .OrderByDescending(p => p.PlanType)
+                .Select(p => p.PlanType)
+                .DefaultIfEmpty(PlanType.None)
+                .First();
+                
+            subscriptionInfoDto.PlanType = maxPlanType;
+            
+            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+        }
+        
+        return true;
+    }
+
+    public async Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature, StripeEnvironment environment)
+    {
+        _logger.LogInformation("[UserBillingGrain][HandleStripeWebhookEventAsync] Processing Stripe webhook event from environment: {Environment}", environment);
+        
+        if (string.IsNullOrEmpty(jsonPayload) || string.IsNullOrEmpty(stripeSignature))
+        {
+            _logger.LogError("[UserBillingGrain][HandleStripeWebhookEventAsync] Invalid webhook parameters");
+            return false;
+        }
+
+        Event stripeEvent;
+        try
+        {
+            // 使用环境特定的webhook密钥
+            var webhookSecret = _stripeOptions.CurrentValue.GetWebhookSecretForEnvironment(environment);
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Using webhook secret for environment: {Environment}", environment);
+            
+            stripeEvent = EventUtility.ConstructEvent(
+                jsonPayload,
+                stripeSignature,
+                webhookSecret
+            );
+        }
+        catch (StripeException ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][HandleStripeWebhookEventAsync] Error validating webhook: {Message}, Environment: {Environment}", 
+                ex.Message, environment);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGrain][HandleStripeWebhookEventAsync] Unexpected error processing webhook: {Message}, Environment: {Environment}",
+                ex.Message, environment);
+            return false;
+        }
+
+        Guid paymentGrainId;
+        var (_, orderId, _) = await ExtractBusinessDataAsync(stripeEvent);
+        var existingPaymentSummary = State.PaymentHistory.FirstOrDefault(p => p.OrderId == orderId);
+        if (existingPaymentSummary != null)
+        {
+            paymentGrainId = existingPaymentSummary.PaymentGrainId;
+        }
+        else
+        {
+            paymentGrainId = Guid.NewGuid();
+        }
+        
+        var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
+        // 传递环境信息到支付处理Grain
+        var grainResultDto = await paymentGrain.ProcessPaymentCallbackAsync(jsonPayload, stripeSignature, environment);
+        
+        var detailsDto = grainResultDto.Data;
+        if (!grainResultDto.Success || detailsDto == null)
+        {
+            _logger.LogError("[UserBillingGrain][HandleStripeWebhookEventAsync] error. {0}, {1}, Environment: {2}",
+                this.GetPrimaryKey(), grainResultDto.Message, environment);
+            return false;
+        }
+        
+        var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null);
+        
+        var userId = detailsDto.UserId;
+        // 使用带环境参数的方法获取产品配置
+        var productConfig = await GetProductConfigAsync(detailsDto.PriceId, environment);
+        
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] allocate resource {0}, {1}, {2}, {3}, Environment: {4}",
+            userId, detailsDto.OrderId, detailsDto.SubscriptionId, detailsDto.InvoiceId, environment);
+        
+        var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
+
+        var subscriptionIds = subscriptionInfoDto.SubscriptionIds ?? new List<string>();
+        var invoiceIds = subscriptionInfoDto.InvoiceIds ?? new List<string>();
+        var invoiceDetail = paymentSummary.InvoiceDetails.LastOrDefault();
+        
+        if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Completed && !invoiceIds.Contains(invoiceDetail.InvoiceId))
+        {
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update for complete invoice {0}, {1}, {2}, Environment: {3}",
+                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId, environment);
+                
+            foreach (var subscriptionId in subscriptionIds.Where(subscriptionId => subscriptionId != paymentSummary.SubscriptionId))
+            {
+                await CancelSubscriptionAsync(new CancelSubscriptionDto
+                {
+                    UserId = userId,
+                    SubscriptionId = subscriptionId,
+                    CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
+                    CancelAtPeriodEnd = true
+                });
+            }
+            
+            subscriptionIds.Clear();
+            subscriptionIds.Add(paymentSummary.SubscriptionId);
+            invoiceIds.Add(invoiceDetail.InvoiceId);
+
+            if (subscriptionInfoDto.IsActive)
+            {
+                if (subscriptionInfoDto.PlanType <= (PlanType) productConfig.PlanType)
+                {
+                    subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
+                }
+                subscriptionInfoDto.EndDate =
+                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate);
+            }
+            else
+            {
+                subscriptionInfoDto.IsActive = true;
+                subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
+                subscriptionInfoDto.StartDate = DateTime.UtcNow;
+                subscriptionInfoDto.EndDate =
+                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate);
+                await userQuotaGrain.ResetRateLimitsAsync();
+            }
+            
+            subscriptionInfoDto.Status = PaymentStatus.Completed;
+            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+            subscriptionInfoDto.InvoiceIds = invoiceIds;
+            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+        } 
+        else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
+        {
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Cancel User subscription {0}, {1}, {2}, Environment: {3}",
+                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId, environment);
+                
+            subscriptionIds.Remove(paymentSummary.SubscriptionId);
+            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+        }
+        else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Refunded && invoiceIds.Contains(invoiceDetail.InvoiceId))
+        {
+            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Refund User subscription {0}, {1}, {2}, Environment: {3}",
+                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId, environment);
+                
             var diff = GetDaysForPlanType(paymentSummary.PlanType);
             subscriptionInfoDto.EndDate = subscriptionInfoDto.EndDate.AddDays(-diff);
             subscriptionIds.Remove(paymentSummary.SubscriptionId);
