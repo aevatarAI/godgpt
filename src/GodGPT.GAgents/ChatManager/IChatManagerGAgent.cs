@@ -17,6 +17,8 @@ public interface IChatManagerGAgent : IGAgent
     Task<bool> IsUserSessionAsync(Guid sessionId);
     [ReadOnly]
     Task<List<ChatMessage>> GetSessionMessageListAsync(Guid sessionId);
+    [ReadOnly]
+    Task<SessionCreationInfoDto?> GetSessionCreationInfoAsync(Guid sessionId);
     Task<Guid> DeleteSessionAsync(Guid sessionId);
     Task<Guid> RenameSessionAsync(Guid sessionId, string title);
     Task<UserProfileDto> GetUserProfileAsync();

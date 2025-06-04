@@ -546,6 +546,26 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return await godChat.GetChatMessageAsync();
     }
 
+    public async Task<SessionCreationInfoDto?> GetSessionCreationInfoAsync(Guid sessionId)
+    {
+        Logger.LogDebug($"[ChatGAgentManager][GetSessionCreationInfoAsync] - session:ID {sessionId.ToString()}");
+        var sessionInfo = State.GetSession(sessionId);
+        
+        if (sessionInfo == null)
+        {
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionCreationInfoAsync] - session not found: {sessionId.ToString()}");
+            return null;
+        }
+
+        return new SessionCreationInfoDto
+        {
+            SessionId = sessionInfo.SessionId,
+            Title = sessionInfo.Title,
+            CreateAt = sessionInfo.CreateAt,
+            Guider = sessionInfo.Guider
+        };
+    }
+
     public async Task<Guid> DeleteSessionAsync(Guid sessionId)
     {
         if (State.GetSession(sessionId) == null)
