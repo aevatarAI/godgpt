@@ -6,6 +6,7 @@ using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
+using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
@@ -137,7 +138,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var stopwatch = Stopwatch.StartNew();
         try
         {
-            sessionId = await CreateSessionAsync(@event.SystemLLM, @event.Prompt, @event.UserProfile);
+            sessionId = await CreateSessionAsync(@event.SystemLLM, @event.Prompt, @event.UserProfile, @event.Guider);
             IGodChat godChat = GrainFactory.GetGrain<IGodChat>(sessionId);
             await RegisterAsync(godChat);
         }
@@ -306,7 +307,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"[ChatGAgentManager][RequestGetUserProfileEvent] end");
     }
 
-    public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null)
+    public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null, string? guider = null)
     {
         var configuration = GetConfiguration();
         Stopwatch sw = new Stopwatch();
@@ -321,6 +322,17 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var sysMessage = await configuration.GetPrompt();
         //put user data into the user prompt
         //sysMessage = await AppendUserInfoToSystemPromptAsync(configuration, sysMessage, userProfile);
+
+        // Add role-specific prompt if guider is provided
+        if (!string.IsNullOrEmpty(guider))
+        {
+            var rolePrompt = GetRolePrompt(guider);
+            if (!string.IsNullOrEmpty(rolePrompt))
+            {
+                sysMessage += $"You should follow the rules below. 1. {rolePrompt}. 2. {sysMessage}";
+                Logger.LogDebug($"[ChatGAgentManager][CreateSessionAsync] Added role prompt for guider: {guider}");
+            }
+        }
 
         var chatConfigDto = new ChatConfigDto()
         {
@@ -351,7 +363,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         {
             SessionId = sessionId,
             Title = "",
-            CreateAt = DateTime.UtcNow
+            CreateAt = DateTime.UtcNow,
+            Guider = guider // Set the role information for the conversation
         });
 
         await ConfirmEvents();
@@ -504,7 +517,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             {
                 SessionId = item.SessionId,
                 Title = item.Title,
-                CreateAt = createAt
+                CreateAt = createAt,
+                Guider = item.Guider // Include role information in the response
             });
         }
 
@@ -530,6 +544,26 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
         var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
         return await godChat.GetChatMessageAsync();
+    }
+
+    public async Task<SessionCreationInfoDto?> GetSessionCreationInfoAsync(Guid sessionId)
+    {
+        Logger.LogDebug($"[ChatGAgentManager][GetSessionCreationInfoAsync] - session:ID {sessionId.ToString()}");
+        var sessionInfo = State.GetSession(sessionId);
+        
+        if (sessionInfo == null)
+        {
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionCreationInfoAsync] - session not found: {sessionId.ToString()}");
+            return null;
+        }
+
+        return new SessionCreationInfoDto
+        {
+            SessionId = sessionInfo.SessionId,
+            Title = sessionInfo.Title,
+            CreateAt = sessionInfo.CreateAt,
+            Guider = sessionInfo.Guider
+        };
     }
 
     public async Task<Guid> DeleteSessionAsync(Guid sessionId)
@@ -694,7 +728,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 {
                     SessionId = @createSessionInfo.SessionId,
                     Title = @createSessionInfo.Title,
-                    CreateAt = @createSessionInfo.CreateAt
+                    CreateAt = @createSessionInfo.CreateAt,
+                    Guider = @createSessionInfo.Guider // Store role information in session state
                 });
                 break;
             case DeleteSessionEventLog @deleteSessionEventLog:
@@ -782,5 +817,35 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     private IConfigurationGAgent GetConfiguration()
     {
         return GrainFactory.GetGrain<IConfigurationGAgent>(CommonHelper.GetSessionManagerConfigurationId());
+    }
+
+    /// <summary>
+    /// Get role-specific prompt from configuration based on role name
+    /// </summary>
+    /// <param name="roleName">The name of the role (e.g., "Doctor", "Teacher")</param>
+    /// <returns>Role-specific prompt text or empty string if not found</returns>
+    private string GetRolePrompt(string roleName)
+    {
+        try
+        {
+            var roleOptions = (ServiceProvider.GetService(typeof(IOptionsMonitor<RolePromptOptions>)) as IOptionsMonitor<RolePromptOptions>)?.CurrentValue;
+            var rolePrompt = roleOptions?.RolePrompts.GetValueOrDefault(roleName, string.Empty) ?? string.Empty;
+            
+            if (!string.IsNullOrEmpty(rolePrompt))
+            {
+                Logger.LogDebug($"[ChatGAgentManager][GetRolePrompt] Found role prompt for: {roleName}");
+            }
+            else
+            {
+                Logger.LogDebug($"[ChatGAgentManager][GetRolePrompt] No role prompt found for: {roleName}");
+            }
+            
+            return rolePrompt;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "[ChatGAgentManager][GetRolePrompt] Failed to get role prompt for role: {RoleName}", roleName);
+            return string.Empty;
+        }
     }
 }

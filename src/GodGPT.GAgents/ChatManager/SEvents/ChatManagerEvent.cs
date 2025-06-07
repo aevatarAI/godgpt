@@ -12,6 +12,7 @@ public class RequestCreateGodChatEvent : EventBase
     [Id(0)] public string SystemLLM { get; set; }
     [Id(1)] public string Prompt { get; set; }
     [Id(2)] public UserProfileDto UserProfile { get; set; }
+    [Id(3)] public string? Guider { get; set; } // Role information for the conversation
 }
 
 [GenerateSerializer]

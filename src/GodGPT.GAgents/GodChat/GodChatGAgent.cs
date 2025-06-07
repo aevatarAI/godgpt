@@ -211,7 +211,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
-        string? region = null)
+        string? region = null, bool addToHistory = true)
     {
         var configuration = GetConfiguration();
         var sysMessage = await configuration.GetPrompt();
@@ -235,19 +235,22 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 Logger.LogError($"Failed to initiate streaming response. {this.GetPrimaryKey().ToString()}");
             }
 
-            RaiseEvent(new AddChatHistoryLogEvent
+            if (addToHistory)
             {
-                ChatList = new List<ChatMessage>()
+                RaiseEvent(new AddChatHistoryLogEvent
                 {
-                    new ChatMessage
+                    ChatList = new List<ChatMessage>()
                     {
-                        ChatRole = ChatRole.User,
-                        Content = message
+                        new ChatMessage
+                        {
+                            ChatRole = ChatRole.User,
+                            Content = message
+                        }
                     }
-                }
-            });
+                });
 
-            await ConfirmEvents();
+                await ConfirmEvents();
+            }
         }
         else
         {
@@ -454,7 +457,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
                 (string)dictionary.GetValueOrDefault("Message", string.Empty),
                 contextDto.ChatId, null, (bool)dictionary.GetValueOrDefault("IsHttpRequest", true),
-                (string)dictionary.GetValueOrDefault("Region", null));
+                (string)dictionary.GetValueOrDefault("Region", null),
+                false);
             return;
         }
         else if (aiExceptionEnum != AIExceptionEnum.None)

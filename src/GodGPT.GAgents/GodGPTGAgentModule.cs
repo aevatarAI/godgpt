@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
@@ -18,5 +19,6 @@ public class GodGPTGAgentModule : AbpModule
         Configure<CreditsOptions>(configuration.GetSection("Credits"));
         Configure<RateLimitOptions>(configuration.GetSection("RateLimit"));
         Configure<StripeOptions>(configuration.GetSection("Stripe"));
+        Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"));
     }
 }
