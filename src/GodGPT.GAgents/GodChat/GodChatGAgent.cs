@@ -31,8 +31,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         //"SkyLark-Pro-250415"
         { "CN", new List<string> { "BytePlusDeepSeekV3"} },
         
-        //todo Full model { "DEFAULT", new List<string>() {  "HyperEcho","OpenAILast", "OpenAI" }}
-        { "DEFAULT", new List<string>() {  "HyperEcho" }}
+        { "DEFAULT", new List<string>() {  "HyperEcho","OpenAILast", "OpenAI" }}
     };
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
@@ -216,7 +215,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         string? region = null, bool addToHistory = true)
     {
         var configuration = GetConfiguration();
-        var sysMessage = await configuration.GetPrompt();
+        var sysMessage = await configuration.GetPrompt(llm);
 
         await LLMInitializedAsync(llm, streamingModeEnabled, sysMessage);
 
@@ -361,7 +360,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
             await proxy.ConfigAsync(new AIAgentStatusProxyConfig
             {
-                Instructions = await GetConfiguration().GetPrompt(),
+                Instructions = await GetConfiguration().GetPrompt(llm),
                 LLMConfig = new LLMConfigDto { SystemLLM = llm },
                 StreamingModeEnabled = true,
                 StreamingConfig = new StreamingConfig { BufferingSize = 32 },

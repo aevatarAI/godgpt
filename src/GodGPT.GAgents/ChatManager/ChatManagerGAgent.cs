@@ -319,7 +319,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"[ChatGAgentManager][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
         
         sw.Reset();
-        var sysMessage = await configuration.GetPrompt();
+        var sysMessage = await configuration.GetPrompt(systemLLM);
         //put user data into the user prompt
         //sysMessage = await AppendUserInfoToSystemPromptAsync(configuration, sysMessage, userProfile);
 

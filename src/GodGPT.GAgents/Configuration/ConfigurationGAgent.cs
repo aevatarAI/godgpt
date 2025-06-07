@@ -74,13 +74,15 @@ public class ConfigurationGAgent : GAgentBase<ConfigurationState, ConfigurationL
         return Task.FromResult(State.StreamingModeEnabled);
     }
 
-    public Task<string> GetPrompt()
+    public Task<string> GetPrompt(string llm)
     {
         // Task.FromResult(State.Prompt);
-        //remove State.Prompt
-        //var sysMessage = "如果没有特别说明你默认使用英语."+State.Prompt;
-        //var sysMessage = "如果没有特别说明你默认使用英语.";
         var sysMessage = "";
+        if (!llm.Equals("HyperEcho"))
+        {
+            sysMessage = "如果没有特别说明你默认使用英语."+State.Prompt;
+        }
+        
 
         var formattedRequirement =
             """
