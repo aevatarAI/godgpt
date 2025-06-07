@@ -74,7 +74,8 @@ public class ConfigurationGAgent : GAgentBase<ConfigurationState, ConfigurationL
         return Task.FromResult(State.StreamingModeEnabled);
     }
 
-    public Task<string> GetPrompt(string? llm)
+    private const string DefaultLlm = "HyperEcho";
+    public Task<string> GetPrompt(string? llm = DefaultLlm)
     {
         // Task.FromResult(State.Prompt);
         var sysMessage = "";
