@@ -4,6 +4,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Helpers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -84,28 +85,21 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var productDtos = new List<StripeProductDto>();
         foreach (var product in products)
         {
-            var dailyAvgPrice = string.Empty;
-            if (product.PlanType == (int)PlanType.Day)
-            {
-                dailyAvgPrice = product.Amount.ToString();
-            }
-            else if (product.PlanType == (int)PlanType.Month)
-            {
-                dailyAvgPrice = Math.Round(product.Amount / 30, 2).ToString();
-            }
-            else if (product.PlanType == (int)PlanType.Year)
-            {
-                dailyAvgPrice = Math.Round(product.Amount / 390, 2).ToString();
-            }
+            var planType = (PlanType)product.PlanType;
+            
+            // Use SubscriptionHelper for consistent daily average price calculation
+            var dailyAvgPrice = SubscriptionHelper.CalculateDailyAveragePrice(planType, product.Amount).ToString();
 
             productDtos.Add(new StripeProductDto
             {
-                PlanType = (PlanType)product.PlanType,
+                PlanType = planType,
                 PriceId = product.PriceId,
                 Mode = product.Mode,
                 Amount = product.Amount,
                 DailyAvgPrice = dailyAvgPrice,
-                Currency = product.Currency
+                Currency = product.Currency,
+                IsUltimate = SubscriptionHelper.IsUltimateSubscription(planType),
+                PlanDisplayName = SubscriptionHelper.GetPlanDisplayName(planType)
             });
         }
         
@@ -866,91 +860,37 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
         _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] allocate resource {0}, {1}, {2}, {3})",
             userId, detailsDto.OrderId, detailsDto.SubscriptionId, detailsDto.InvoiceId);
-        var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
+        
+        // Use unified subscription interface - internal routing handles Ultimate vs Standard
+        var activeSubscription = await userQuotaGrain.GetSubscriptionAsync();
+        var subscriptionIds = activeSubscription.SubscriptionIds ?? new List<string>();
+        var invoiceIds = activeSubscription.InvoiceIds ?? new List<string>();
 
-        var subscriptionIds = subscriptionInfoDto.SubscriptionIds ?? new List<string>();
-        var invoiceIds = subscriptionInfoDto.InvoiceIds ?? new List<string>();
-        var invoiceDetail = paymentSummary.InvoiceDetails.LastOrDefault();
-        if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Completed && !invoiceIds.Contains(invoiceDetail.InvoiceId))
+        // Add current IDs if not already present
+        if (!string.IsNullOrEmpty(detailsDto.SubscriptionId) && !subscriptionIds.Contains(detailsDto.SubscriptionId))
         {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update for complete invoice {0}, {1}, {2}",
-                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
-            foreach (var subscriptionId in subscriptionIds.Where(subscriptionId => subscriptionId != paymentSummary.SubscriptionId))
-            {
-                await CancelSubscriptionAsync(new CancelSubscriptionDto
-                {
-                    UserId = userId,
-                    SubscriptionId = subscriptionId,
-                    CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
-                    CancelAtPeriodEnd = true
-                });
-            }
-            
-            subscriptionIds.Clear();
-            subscriptionIds.Add(paymentSummary.SubscriptionId);
-            invoiceIds.Add(invoiceDetail.InvoiceId);
+            subscriptionIds.Add(detailsDto.SubscriptionId);
+        }
+        if (!string.IsNullOrEmpty(detailsDto.InvoiceId) && !invoiceIds.Contains(detailsDto.InvoiceId))
+        {
+            invoiceIds.Add(detailsDto.InvoiceId);
+        }
 
-            if (subscriptionInfoDto.IsActive)
-            {
-                if (subscriptionInfoDto.PlanType <= (PlanType) productConfig.PlanType)
-                {
-                    subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
-                }
-                subscriptionInfoDto.EndDate =
-                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate);
-            }
-            else
-            {
-                subscriptionInfoDto.IsActive = true;
-                subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
-                subscriptionInfoDto.StartDate = DateTime.UtcNow;
-                subscriptionInfoDto.EndDate =
-                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate);
-                await userQuotaGrain.ResetRateLimitsAsync();
-            }
-            subscriptionInfoDto.Status = PaymentStatus.Completed;
-            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            subscriptionInfoDto.InvoiceIds = invoiceIds;
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
-        } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
+        var (subscriptionStartDate, subscriptionEndDate) = await CalculateSubscriptionDurationAsync(userId, productConfig);
+        
+        var newSubscriptionDto = new SubscriptionInfoDto
         {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Cancel User subscription {0}, {1}, {2}",
-                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
-            subscriptionIds.Remove(paymentSummary.SubscriptionId);
-            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
-        }
-        else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Refunded && invoiceIds.Contains(invoiceDetail.InvoiceId))
-        {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Refund User subscription {0}, {1}, {2}",
-                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
-            // var diff = (paymentSummary.SubscriptionEndDate - DateTime.UtcNow).Days;
-            // if (diff < 0)
-            // {
-            //     diff = 0;
-            // }
-            var diff = GetDaysForPlanType(paymentSummary.PlanType);
-            subscriptionInfoDto.EndDate = subscriptionInfoDto.EndDate.AddDays(-diff);
-            subscriptionIds.Remove(paymentSummary.SubscriptionId);
-            
-            //reset plantype
-            var now = DateTime.UtcNow;
-            var maxPlanType = State.PaymentHistory
-                .Where(p => 
-                    ((p.Status is PaymentStatus.Completed or PaymentStatus.Cancelled or PaymentStatus.Cancelled_In_Processing) && p.SubscriptionEndDate != null && p.SubscriptionEndDate > now) ||
-                    (p.InvoiceDetails != null && p.InvoiceDetails.Any(i => 
-                        (i.Status is PaymentStatus.Completed or PaymentStatus.Cancelled or PaymentStatus.Cancelled_In_Processing) && i.SubscriptionEndDate != null && i.SubscriptionEndDate > now))
-                )
-                .OrderByDescending(p => p.PlanType)
-                .Select(p => p.PlanType)
-                .DefaultIfEmpty(PlanType.None)
-                .First();
-                
-            subscriptionInfoDto.PlanType = maxPlanType;
-            
-            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
-        }
+            PlanType = (PlanType)productConfig.PlanType,
+            IsActive = true,
+            StartDate = subscriptionStartDate,
+            EndDate = subscriptionEndDate,
+            Status = PaymentStatus.Completed,
+            SubscriptionIds = subscriptionIds,
+            InvoiceIds = invoiceIds
+        };
+
+        // Unified interface call - internal logic handles Ultimate vs Standard routing
+        await userQuotaGrain.UpdateSubscriptionAsync(newSubscriptionDto);
         
         return true;
     }
@@ -960,16 +900,38 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         DateTime subscriptionStartDate;
         DateTime subscriptionEndDate;
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
-        var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
-        if (subscriptionInfoDto.IsActive)
+        
+        // Use unified subscription interface
+        var activeSubscription = await userQuotaGrain.GetSubscriptionAsync();
+        var targetPlanType = (PlanType)productConfig.PlanType;
+        
+        if (activeSubscription.IsActive)
         {
-            subscriptionStartDate = subscriptionInfoDto.EndDate;
+            // If user has an active subscription, extend it
+            subscriptionStartDate = activeSubscription.StartDate;
+            
+            // For same or lower plan types, extend from current end date
+            // For upgrades, start from now and accumulate remaining time (handled in UserQuotaGrain)
+            if (SubscriptionHelper.IsUltimateSubscription(targetPlanType) || 
+                targetPlanType >= activeSubscription.PlanType)
+            {
+                // Upgrade or Ultimate: start from now, internal logic will handle time accumulation
+                subscriptionStartDate = DateTime.UtcNow;
+                subscriptionEndDate = GetSubscriptionEndDate(targetPlanType, subscriptionStartDate);
+            }
+            else
+            {
+                // Same or lower plan: extend from current end date
+                subscriptionEndDate = GetSubscriptionEndDate(targetPlanType, activeSubscription.EndDate);
+            }
         }
         else
         {
+            // No active subscription, start fresh
             subscriptionStartDate = DateTime.UtcNow;
+            subscriptionEndDate = GetSubscriptionEndDate(targetPlanType, subscriptionStartDate);
         }
-        subscriptionEndDate = GetSubscriptionEndDate((PlanType)productConfig.PlanType, subscriptionStartDate);
+        
         return new Tuple<DateTime, DateTime>(subscriptionStartDate, subscriptionEndDate);
     }
 
@@ -1323,10 +1285,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             return;
         }
 
-
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(parsedUserId));
         var currentSubscription = await userQuotaGrain.GetSubscriptionAsync();
-
 
         if (!currentSubscription.IsActive)
         {
@@ -1335,44 +1295,30 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             return;
         }
 
+        var currentPlanType = currentSubscription.PlanType;
+        var targetPlanType = (PlanType)productConfig.PlanType;
+
         _logger.LogInformation(
             "[UserBillingGrain][ValidateSubscriptionUpgradePath] Validating upgrade path: Current={CurrentPlan}, Target={TargetPlan}",
-            currentSubscription.PlanType, productConfig.PlanType);
+            currentPlanType, targetPlanType);
 
-        switch (currentSubscription.PlanType)
+        // Use SubscriptionHelper to validate upgrade path
+        if (!SubscriptionHelper.IsUpgradePathValid(currentPlanType, targetPlanType))
         {
-            case PlanType.Day:
-                if (productConfig.PlanType == (int)PlanType.Day)
-                {
-                    _logger.LogWarning(
-                        "[UserBillingGrain][ValidateSubscriptionUpgradePath] Invalid upgrade path: User with Day subscription trying to purchase Day subscription");
-                    throw new InvalidOperationException(
-                        "Daily subscription users can only upgrade to monthly or yearly subscriptions");
-                }
-
-                break;
-
-            case PlanType.Month:
-                if (productConfig.PlanType == (int)PlanType.Day || productConfig.PlanType == (int)PlanType.Month)
-                {
-                    _logger.LogWarning(
-                        "[UserBillingGrain][ValidateSubscriptionUpgradePath] Invalid upgrade path: User with Month subscription trying to purchase Day/Month subscription");
-                    throw new InvalidOperationException(
-                        "Monthly subscription users can only upgrade to yearly subscriptions");
-                }
-
-                break;
-
-            case PlanType.Year:
-                _logger.LogWarning(
-                    "[UserBillingGrain][ValidateSubscriptionUpgradePath] Invalid upgrade path: User with Year subscription trying to purchase Day/Month subscription");
-                throw new InvalidOperationException("Yearly subscription users can only renew yearly subscriptions");
-                break;
+            var currentPlanName = SubscriptionHelper.GetPlanDisplayName(currentPlanType);
+            var targetPlanName = SubscriptionHelper.GetPlanDisplayName(targetPlanType);
+            
+            _logger.LogWarning(
+                "[UserBillingGrain][ValidateSubscriptionUpgradePath] Invalid upgrade path: {CurrentPlan} -> {TargetPlan}",
+                currentPlanName, targetPlanName);
+            
+            throw new InvalidOperationException(
+                $"Invalid upgrade path: {currentPlanName} users cannot downgrade or purchase incompatible plans. Target: {targetPlanName}");
         }
 
         _logger.LogInformation(
             "[UserBillingGrain][ValidateSubscriptionUpgradePath] Valid upgrade path: {CurrentPlan} -> {NewPlan}",
-            currentSubscription.PlanType, productConfig.PlanType);
+            currentPlanType, targetPlanType);
     }
 
     private async Task<StripeProduct> GetProductConfigAsync(string priceId)
@@ -1395,33 +1341,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
     private DateTime GetSubscriptionEndDate(PlanType planType, DateTime startDate)
     {
-        var endDate = startDate;
-        switch (planType)
-        {
-            case PlanType.Day:
-                return endDate.AddDays(1);
-            case PlanType.Month:
-                return endDate.AddDays(30);
-            case PlanType.Year:
-                return endDate.AddDays(390);
-            default:
-                throw new ArgumentException($"Invalid plan type: {planType}");
-        }
+        // Use SubscriptionHelper for consistent end date calculation with Ultimate support and historical compatibility
+        return SubscriptionHelper.GetSubscriptionEndDate(planType, startDate);
     }
 
     private int GetDaysForPlanType(PlanType planType)
     {
-        switch (planType)
-        {
-            case PlanType.Day:
-                return 1;
-            case PlanType.Month:
-                return 30;
-            case PlanType.Year:
-                return 390;
-            default:
-                throw new ArgumentException($"Invalid plan type: {planType}");
-        }
+        // Use SubscriptionHelper for consistent days calculation with Ultimate support and historical compatibility
+        return SubscriptionHelper.GetDaysForPlanType(planType);
     }
 
     private async Task<Tuple<string, string, string>> ExtractBusinessDataAsync(Event stripeEvent)
