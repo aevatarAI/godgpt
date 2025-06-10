@@ -26,7 +26,6 @@ public class PaymentSummary
     [Id(8)] public PaymentType PaymentType { get; set; }
     [Obsolete]
     [Id(9)] public PaymentMethod Method { get; set; }
-    [Obsolete]
     [Id(10)] public PaymentPlatform Platform {get; set;}
     [Obsolete]
     [Id(11)] public bool IsSubscriptionRenewal { get; set; } = false;
@@ -38,6 +37,7 @@ public class PaymentSummary
     [Id(16)] public Guid UserId { get; set; }
     [Id(17)] public string PriceId { get; set; }
     [Id(18)] public List<UserBillingInvoiceDetail> InvoiceDetails { get; set; } = new List<UserBillingInvoiceDetail>();
+    [Id(19)] public string AppStoreEnvironment { get; set; }
 }
 
 [GenerateSerializer]

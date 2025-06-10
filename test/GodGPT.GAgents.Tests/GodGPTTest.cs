@@ -110,7 +110,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     {
         try
         {
-            // 创建会话
+            // Create session
             var grainId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Chat Manager GrainId: {grainId.ToString()}");
             
@@ -124,14 +124,14 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             });
             _testOutputHelper.WriteLine($"God GAgent GrainId: {godGAgentId.ToString()}");
             
-            // 测试非流式聊天
+            // Test non-streaming chat
             var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
             var response = await godChat.GodChatAsync("OpenAI", "What is the capital of France?");
             
             _testOutputHelper.WriteLine($"Response: {response}");
             response.ShouldNotBeNullOrEmpty();
             
-            // 验证聊天历史
+            // Verify chat history
             var chatMessage = await godChat.GetChatMessageAsync();
             chatMessage.ShouldNotBeEmpty();
             chatMessage.Count.ShouldBe(1);
@@ -140,7 +140,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         {
             _testOutputHelper.WriteLine($"Exception during GodChatAsync test: {ex.Message}");
             _testOutputHelper.WriteLine($"Stack trace: {ex.StackTrace}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -148,11 +148,11 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     [Fact]
     public async Task UserProfile_Test()
     {
-        // 创建会话
+        // Create session
         var grainId = Guid.NewGuid();
         var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
         
-        // 创建包含用户配置的会话
+        // Create session with user profile
         var initialProfile = new UserProfileDto
         {
             Gender = "Female",
@@ -164,7 +164,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, initialProfile);
         var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
         
-        // 获取并验证用户配置
+        // Get and verify user profile
         var retrievedProfile = await godChat.GetUserProfileAsync();
         _testOutputHelper.WriteLine($"Retrieved Profile: {JsonConvert.SerializeObject(retrievedProfile)}");
         
@@ -173,7 +173,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         retrievedProfile.BirthPlace.ShouldBe(initialProfile.BirthPlace);
         retrievedProfile.FullName.ShouldBe(initialProfile.FullName);
         
-        // 更新用户配置
+        // Update user profile
         var updatedProfile = new UserProfileDto
         {
             Gender = "Male",
@@ -184,7 +184,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         
         await godChat.SetUserProfileAsync(updatedProfile);
         
-        // 获取并验证更新后的配置
+        // Get and verify updated profile
         var afterUpdateProfile = await godChat.GetUserProfileAsync();
         _testOutputHelper.WriteLine($"Updated Profile: {JsonConvert.SerializeObject(afterUpdateProfile)}");
         
@@ -197,7 +197,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     [Fact]
     public async Task MultipleLLM_Test()
     {
-        // 支持的LLM模型列表 (根据项目实际支持的模型调整)
+        // List of supported LLM models (adjust based on project's actual supported models)
         var llmModels = new[] { "OpenAI", "BytePlusDeepSeekV3" };
         var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
         
@@ -207,7 +207,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             
             try
             {
-                // 为每个LLM创建会话
+                // Create session for each LLM
                 var grainId = Guid.NewGuid();
                 var godGAgentId = await chatManagerGAgent.CreateSessionAsync(llm, string.Empty, new UserProfileDto
                 {
@@ -220,14 +220,14 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
                 var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
                 var chatId = Guid.NewGuid().ToString();
                 
-                // 使用流式聊天测试，因为某些模型可能只支持流式
+                // Use streaming chat for testing, as some models may only support streaming
                 await godChat.GodStreamChatAsync(grainId, llm, true, "Hello, what is your name?", 
                     chatId, null, false, null);
                 
-                // 等待响应完成
+                // Wait for response to complete
                 await Task.Delay(TimeSpan.FromSeconds(20));
                 
-                // 验证是否有响应
+                // Verify if there is a response
                 var chatMessages = await godChat.GetChatMessageAsync();
                 _testOutputHelper.WriteLine($"Response from {llm}: {JsonConvert.SerializeObject(chatMessages)}");
                 
@@ -237,8 +237,8 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             catch (Exception ex)
             {
                 _testOutputHelper.WriteLine($"Error testing {llm}: {ex.Message}");
-                // 不让单个模型失败导致整个测试失败，而是记录错误
-                // 在实际环境中，可能某些模型不可用是正常情况
+                // Don't fail the test if a single model fails, just log the error
+                // In a real environment, it's normal for some models to be unavailable
             }
         }
     }
@@ -246,13 +246,13 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     [Fact]
     public async Task ChatHistory_Test()
     {
-        // 创建会话
+        // Create session
         var grainId = Guid.NewGuid();
         var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
         var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
         var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
         
-        // 发送多条消息
+        // Send multiple messages
         var messages = new[]
         {
             "Hello, how are you?",
@@ -267,21 +267,21 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             
             await godChat.GodStreamChatAsync(grainId, "OpenAI", true, message, 
                 chatId, null, false, null);
-            await Task.Delay(TimeSpan.FromSeconds(15)); // 等待响应完成
+            await Task.Delay(TimeSpan.FromSeconds(15)); // Wait for response to complete
         }
         
-        // 获取聊天历史
+        // Get chat history
         var chatHistory = await godChat.GetChatMessageAsync();
         _testOutputHelper.WriteLine($"Chat History: {JsonConvert.SerializeObject(chatHistory)}");
         
-        // 验证历史记录
+        // Verify history record
         chatHistory.ShouldNotBeEmpty();
         
-        // 修复：验证历史记录数量至少等于发送消息的数量
-        // (因为可能包含系统消息或其他消息)
+        // Fix: Verify history record count is at least equal to the number of sent messages
+        // (because it may contain system messages or other messages)
         chatHistory.Count.ShouldBeGreaterThanOrEqualTo(messages.Length);
         
-        // 修复：不直接比较消息内容，而是检查是否有足够的消息记录
+        // Fix: Don't directly compare message content, just check if there are enough message records
         _testOutputHelper.WriteLine($"Verified chat history contains at least {messages.Length} messages");
     }
     
@@ -290,13 +290,13 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     {
         try
         {
-            // 创建会话
+            // Create session
             var grainId = Guid.NewGuid();
             var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
             var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
             var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
             
-            // 多轮对话测试 - 测试上下文连贯性
+            // Multi-round conversation test - test context continuity
             var conversation = new[]
             {
                 "My name is Alice.",
@@ -307,48 +307,48 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
                 "How old am I approximately?"
             };
             
-            // 存储AI的回复用于后续验证
+            // Store AI's reply for subsequent verification
             var responses = new List<string>();
             
             foreach (var message in conversation)
             {
                 _testOutputHelper.WriteLine($"User: {message}");
                 
-                // 使用非流式聊天以便获取直接响应
+                // Use non-streaming chat to get direct response
                 var response = await godChat.GodChatAsync("OpenAI", message);
                 responses.Add(response);
                 _testOutputHelper.WriteLine($"AI: {response}");
                 
-                // 等待一下确保处理完成
+                // Wait a bit to ensure processing is complete
                 await Task.Delay(TimeSpan.FromSeconds(2));
             }
             
-            // 获取聊天历史
+            // Get chat history
             var chatHistory = await godChat.GetChatMessageAsync();
             _testOutputHelper.WriteLine($"Complete conversation: {JsonConvert.SerializeObject(chatHistory)}");
             
-            // 验证聊天历史长度
+            // Verify chat history length
             chatHistory.ShouldNotBeEmpty();
             chatHistory.Count.ShouldBeGreaterThanOrEqualTo(conversation.Length);
             
-            // 修复：验证AI的回复而不是用户的问题
-            // 检查第二轮对话的回答中是否包含"Alice"（上下文关联检查）
+            // Fix: Verify AI's reply instead of user's question
+            // Check if "Alice" is included in the answer of the second round of conversation (context check)
             _testOutputHelper.WriteLine($"AI response to 'What is my name?': {responses[1]}");
             
-            // 检查第四轮对话的回答中是否包含"New York"（上下文关联检查）
+            // Check if "New York" is included in the answer of the fourth round of conversation (context check)
             _testOutputHelper.WriteLine($"AI response to 'Where do I live?': {responses[3]}");
             
-            // 检查第六轮对话的回答中是否包含年龄相关信息
+            // Check if the answer of the sixth round of conversation contains age-related information
             _testOutputHelper.WriteLine($"AI response to age question: {responses[5]}");
             
-            // 由于AI回复的具体内容可能变化，只做日志记录，不做硬性断言
+            // Since the specific content of AI's reply may vary, just log it, don't make a hard assertion
             responses.Count.ShouldBe(conversation.Length);
         }
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during MultiRoundConversation test: {ex.Message}");
             _testOutputHelper.WriteLine($"Stack trace: {ex.StackTrace}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -356,7 +356,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     [Fact]
     public async Task EmptyAndLongMessage_Test()
     {
-        // 创建会话
+        // Create session
         var grainId = Guid.NewGuid();
         var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
         var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
@@ -364,32 +364,32 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         
         try
         {
-            // 避免使用完全空的消息，改用单个空格或短句
+            // Avoid using completely empty messages, use single space or short sentence instead
             _testOutputHelper.WriteLine("Testing minimal message...");
             var minimalResponse = await godChat.GodChatAsync("OpenAI", "Hi");
             _testOutputHelper.WriteLine($"Response to minimal message: {minimalResponse}");
             
-            // 生成一个适中长度的消息（避免过长）
+            // Generate a medium length message (avoid too long)
             _testOutputHelper.WriteLine("Generating medium length message...");
             var sb = new StringBuilder();
-            for (int i = 0; i < 20; i++) // 减少到20次，避免过长
+            for (int i = 0; i < 20; i++) // Reduce to 20 times, avoid too long
             {
                 sb.Append("Test message segment. ");
             }
             var mediumMessage = sb.ToString();
             
-            // 测试适中长度消息
+            // Test medium length message
             _testOutputHelper.WriteLine("Testing medium length message...");
             var mediumResponse = await godChat.GodChatAsync("OpenAI", mediumMessage);
             _testOutputHelper.WriteLine($"Response to medium message (truncated): {mediumResponse.Substring(0, Math.Min(mediumResponse.Length, 100))}...");
             
-            // 验证处理成功
+            // Verify processing success
             _testOutputHelper.WriteLine("Message tests completed without exceptions");
         }
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during message test: {ex.Message}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -399,28 +399,28 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     {
         try
         {
-            // 创建会话后再获取GodChat实例，避免直接初始化可能导致的问题
+            // Create session and then get GodChat instance to avoid potential issues with direct initialization
             var chatManagerGuid = Guid.NewGuid();
             var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
-            // 首先创建一个会话
+            // First create a session
             var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
             var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
             
-            // 然后再调用InitAsync进行初始化测试
+            // Then call InitAsync for initialization test
             _testOutputHelper.WriteLine("Calling InitAsync...");
             await godChat.InitAsync(chatManagerGuid);
             
-            // 验证初始化成功
+            // Verify initialization success
             var response = await godChat.GodChatAsync("OpenAI", "Hello after initialization");
             
-            // 验证响应
+            // Verify response
             _testOutputHelper.WriteLine($"Response after initialization: {response}");
             response.ShouldNotBeNullOrEmpty();
         }
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during InitAsync test: {ex.Message}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -430,37 +430,37 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     {
         try
         {
-            // 创建会话
+            // Create session
             var grainId = Guid.NewGuid();
             var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
             var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
             var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
             
-            // 创建温度设置的提示设置
+            // Create temperature setting prompt settings
             var tempSettings = new ExecutionPromptSettings
             {
-                Temperature = "0.7" // 中等温度，既不太高也不太低
+                Temperature = "0.7" // Medium temperature, neither too high nor too low
             };
             
-            // 使用设置进行聊天
+            // Use settings for chatting
             var chatId = Guid.NewGuid().ToString();
             await godChat.GodStreamChatAsync(grainId, "OpenAI", true, 
                 "Tell me a short story", 
                 chatId, tempSettings, false, null);
             
-            await Task.Delay(TimeSpan.FromSeconds(20)); // 等待响应完成
+            await Task.Delay(TimeSpan.FromSeconds(20)); // Wait for response to complete
             
-            // 获取聊天历史
+            // Get chat history
             var chatHistory = await godChat.GetChatMessageAsync();
             _testOutputHelper.WriteLine($"Chat history with prompt settings: {JsonConvert.SerializeObject(chatHistory)}");
             
-            // 验证历史记录
+            // Verify history record
             chatHistory.ShouldNotBeEmpty();
         }
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during PromptSettings test: {ex.Message}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -472,7 +472,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         {
             var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
             
-            // 创建两个会话（减少会话数量以提高稳定性）
+            // Create two sessions (reduce session count to improve stability)
             var sessionIds = new List<Guid>();
             var godChats = new List<IGodChat>();
             
@@ -493,28 +493,28 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
                 sessionIds.Add(sessionId);
                 godChats.Add(godChat);
                 
-                // 在每个会话中发送一条特定消息
+                // Send a specific message in each session
                 await godChat.GodChatAsync("OpenAI", $"My session number is {i}");
             }
             
-            // 在每个会话中再发送一条消息
+            // Send a message in each session
             for (int i = 0; i < godChats.Count; i++)
             {
                 var response = await godChats[i].GodChatAsync("OpenAI", "What was my session number?");
                 _testOutputHelper.WriteLine($"Session {i} response: {response}");
                 
-                // 获取该会话的历史记录
+                // Get history record of that session
                 var history = await godChats[i].GetChatMessageAsync();
                 _testOutputHelper.WriteLine($"Session {i} history count: {history.Count}");
                 
-                // 验证每个会话至少有两条消息
+                // Verify each session has at least two messages
                 history.Count.ShouldBeGreaterThanOrEqualTo(2);
             }
         }
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during MultiSession test: {ex.Message}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -524,13 +524,13 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     {
         try
         {
-            // 创建会话
+            // Create session
             var grainId = Guid.NewGuid();
             var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
             var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
             var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
             
-            // 使用禁用流式模式
+            // Use disabled streaming mode
             var chatId = Guid.NewGuid().ToString();
             var result = await godChat.GodStreamChatAsync(
                 grainId, "OpenAI", false, "Tell me about streaming mode", 
@@ -538,10 +538,10 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             
             _testOutputHelper.WriteLine($"Result with streaming disabled: {result}");
             
-            // 等待处理完成
+            // Wait for processing to complete
             await Task.Delay(TimeSpan.FromSeconds(15));
             
-            // 获取聊天历史验证消息是否被处理
+            // Get chat history to verify if message is processed
             var chatHistory = await godChat.GetChatMessageAsync();
             _testOutputHelper.WriteLine($"Chat history with streaming disabled: {JsonConvert.SerializeObject(chatHistory)}");
             
@@ -550,7 +550,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during StreamingMode_Disabled test: {ex.Message}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -560,13 +560,13 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     {
         try
         {
-            // 创建会话
+            // Create session
             var grainId = Guid.NewGuid();
             var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
             var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
             var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
             
-            // 仅测试默认区域，避免不支持的区域导致测试失败
+            // Test only default region, avoid failing test if unsupported region
             var region = "DEFAULT";
             
             _testOutputHelper.WriteLine($"Testing region: {region}");
@@ -576,12 +576,12 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
                 grainId, "OpenAI", true, $"Hello from region {region}", 
                 chatId, null, false, region);
             
-            await Task.Delay(TimeSpan.FromSeconds(15)); // 等待响应完成
+            await Task.Delay(TimeSpan.FromSeconds(15)); // Wait for response to complete
             
-            // 验证区域特定处理成功完成
+            // Verify region-specific processing completed successfully
             _testOutputHelper.WriteLine($"Region {region} test completed without exceptions");
             
-            // 获取聊天历史验证消息是否被处理
+            // Get chat history to verify if message is processed
             var chatHistory = await godChat.GetChatMessageAsync();
             _testOutputHelper.WriteLine($"Chat history after region test: {JsonConvert.SerializeObject(chatHistory)}");
             
@@ -590,7 +590,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during RegionSpecific test: {ex.Message}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -600,32 +600,32 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     {
         try
         {
-            // 创建会话后再获取GodChat实例
+            // Create session and then get GodChat instance
             var chatManagerGuid = Guid.NewGuid();
             var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
             var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
             var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
             
-            // 创建模拟的上下文对象
+            // Create simulated context object
             var contextDto = new AIChatContextDto
             {
                 ChatId = Guid.NewGuid().ToString()
-                // SessionId字段不存在，移除
+                // SessionId field does not exist, remove
             };
             
-            // 创建模拟的流内容对象
+            // Create simulated stream content object
             var streamContent = new AIStreamChatContent
             {
                 IsLastChunk = true
-                // Content字段不存在，移除
+                // Content field does not exist, remove
             };
             
-            // 调用回调方法
+            // Call callback method
             _testOutputHelper.WriteLine("Testing normal callback...");
             await godChat.ChatMessageCallbackAsync(
                 contextDto,
-                AIExceptionEnum.None, // 无异常
-                null, // 无错误消息
+                AIExceptionEnum.None, // No exception
+                null, // No error message
                 streamContent
             );
             
@@ -634,7 +634,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during ChatMessageCallback test: {ex.Message}");
-            // 记录异常但不让测试失败
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }

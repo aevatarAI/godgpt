@@ -14,11 +14,11 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task<bool> InitializeCreditsAsync();
     Task<CreditsInfoDto> GetCreditsAsync();
     Task SetShownCreditsToastAsync(bool hasShownInitialCreditsToast);
-    Task<bool> IsSubscribedAsync();
-    Task<SubscriptionInfoDto> GetSubscriptionAsync();
-    Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync();
+    Task<bool> IsSubscribedAsync(bool ultimate = false);
+    Task<SubscriptionInfoDto> GetSubscriptionAsync(bool ultimate = false);
+    Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync(bool ultimate = false);
     Task UpdateSubscriptionAsync(string planType, DateTime endDate);
-    Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto);
+    Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto, bool ultimate = false);
     Task CancelSubscriptionAsync();
     Task<ExecuteActionResultDto> IsActionAllowedAsync(string actionType = "conversation");
 
@@ -26,6 +26,10 @@ public interface IUserQuotaGrain : IGrainWithStringKey
         string actionType = "conversation");
     Task ResetRateLimitsAsync(string actionType = "conversation");
     Task ClearAllAsync();
+    
+    // New method to support App Store subscriptions
+    Task UpdateQuotaAsync(string productId, DateTime expiresDate);
+    Task ResetQuotaAsync();
 }
 
 public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
@@ -99,24 +103,26 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         await WriteStateAsync();
     }
 
-    public async Task<bool> IsSubscribedAsync()
+    public async Task<bool> IsSubscribedAsync(bool ultimate = false)
     {
-        var now = DateTime.UtcNow;
-        var isSubscribed = State.Subscription.IsActive && 
-                           State.Subscription.StartDate <= now &&
-                           State.Subscription.EndDate > now;
+        var subscriptionInfo = ultimate ? State.UltimateSubscription : State.Subscription;
 
-        if (!isSubscribed && State.Subscription.IsActive)
+        var now = DateTime.UtcNow;
+        var isSubscribed = subscriptionInfo.IsActive && 
+                           subscriptionInfo.StartDate <= now &&
+                           subscriptionInfo.EndDate > now;
+
+        if (!isSubscribed && subscriptionInfo.IsActive)
         {
-            _logger.LogDebug("[UserQuotaGrain][IsSubscribedAsync] Subscription for user {UserId} expired. Start: {StartDate}, End: {EndDate}, Now: {Now}", 
-                this.GetPrimaryKeyString(), State.Subscription.StartDate, State.Subscription.EndDate, now);
+            _logger.LogDebug("[UserQuotaGrain][IsSubscribedAsync] Subscription for user {UserId} expired. Start: {StartDate}, End: {EndDate}, Now: {Now}, Ultimate: {Ultimate}", 
+                this.GetPrimaryKeyString(), subscriptionInfo.StartDate, subscriptionInfo.EndDate, now, ultimate);
 
             if (State.RateLimits.ContainsKey("conversation"))
             {
                 State.RateLimits.Remove("conversation");
             }
             
-            State.Subscription.IsActive = false;
+            subscriptionInfo.IsActive = false;
             
             await WriteStateAsync();
         }
@@ -143,25 +149,27 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         await WriteStateAsync();
     }
 
-    public Task<SubscriptionInfoDto> GetSubscriptionAsync()
+    public Task<SubscriptionInfoDto> GetSubscriptionAsync(bool ultimate = false)
     {
-        _logger.LogDebug("[UserQuotaGrain][GetSubscriptionAsync] Getting subscription info for user {UserId}", this.GetPrimaryKeyString());
+        _logger.LogDebug("[UserQuotaGrain][GetSubscriptionAsync] Getting subscription info for user {UserId}, ultimate={Ultimate}",
+            this.GetPrimaryKeyString(), ultimate);
+        var subscriptionInfo = ultimate ? State.UltimateSubscription : State.Subscription;
         return Task.FromResult(new SubscriptionInfoDto
         {
-            IsActive = State.Subscription.IsActive,
-            PlanType = State.Subscription.PlanType,
-            Status = State.Subscription.Status,
-            StartDate = State.Subscription.StartDate,
-            EndDate = State.Subscription.EndDate,
-            SubscriptionIds = State.Subscription.SubscriptionIds,
-            InvoiceIds = State.Subscription.InvoiceIds
+            IsActive = subscriptionInfo.IsActive,
+            PlanType = subscriptionInfo.PlanType,
+            Status = subscriptionInfo.Status,
+            StartDate = subscriptionInfo.StartDate,
+            EndDate = subscriptionInfo.EndDate,
+            SubscriptionIds = subscriptionInfo.SubscriptionIds,
+            InvoiceIds = subscriptionInfo.InvoiceIds
         });
     }
 
-    public async Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync()
+    public async Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync(bool ultimate = false)
     {
-        await IsSubscribedAsync();
-        return await GetSubscriptionAsync();
+        await IsSubscribedAsync(ultimate);
+        return await GetSubscriptionAsync(ultimate);
     }
 
     public async Task UpdateSubscriptionAsync(string planType, DateTime endDate)
@@ -184,17 +192,18 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             this.GetPrimaryKeyString(), planType, endDate);
     }
 
-    public async Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto)
+    public async Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto, bool ultimate = false)
     {
         _logger.LogInformation("[UserQuotaGrain][UpdateSubscriptionAsync] Updated subscription for user {UserId}: Data={PlanType}", 
             this.GetPrimaryKeyString(), JsonConvert.SerializeObject(subscriptionInfoDto));
-        State.Subscription.PlanType = subscriptionInfoDto.PlanType;
-        State.Subscription.IsActive = subscriptionInfoDto.IsActive;
-        State.Subscription.StartDate = subscriptionInfoDto.StartDate;
-        State.Subscription.EndDate = subscriptionInfoDto.EndDate;
-        State.Subscription.Status = subscriptionInfoDto.Status;
-        State.Subscription.SubscriptionIds = subscriptionInfoDto.SubscriptionIds;
-        State.Subscription.InvoiceIds = subscriptionInfoDto.InvoiceIds;
+        var subscription = ultimate ? State.UltimateSubscription : State.Subscription;
+        subscription.PlanType = subscriptionInfoDto.PlanType;
+        subscription.IsActive = subscriptionInfoDto.IsActive;
+        subscription.StartDate = subscriptionInfoDto.StartDate;
+        subscription.EndDate = subscriptionInfoDto.EndDate;
+        subscription.Status = subscriptionInfoDto.Status;
+        subscription.SubscriptionIds = subscriptionInfoDto.SubscriptionIds;
+        subscription.InvoiceIds = subscriptionInfoDto.InvoiceIds;
         await WriteStateAsync();
     }
 
@@ -363,5 +372,62 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         {
             Success = true
         };
+    }
+
+    public async Task UpdateQuotaAsync(string productId, DateTime expiresDate)
+    {
+        _logger.LogInformation("[UserQuotaGrain][UpdateQuotaAsync] Updating quota for user {UserId} with product {ProductId}, expires on {ExpiresDate}", 
+            this.GetPrimaryKeyString(), productId, expiresDate);
+            
+        // Determine subscription type based on product ID
+        PlanType planType = DeterminePlanTypeFromProductId(productId);
+        
+        // Update subscription information
+        State.Subscription.PlanType = planType;
+        State.Subscription.IsActive = true;
+        State.Subscription.StartDate = DateTime.UtcNow;
+        State.Subscription.EndDate = expiresDate;
+        State.Subscription.Status = PaymentStatus.Completed;
+        
+        // Reset rate limits
+        await ResetRateLimitsAsync();
+        
+        await WriteStateAsync();
+    }
+    
+    public async Task ResetQuotaAsync()
+    {
+        _logger.LogInformation("[UserQuotaGrain][ResetQuotaAsync] Resetting quota for user {UserId}", 
+            this.GetPrimaryKeyString());
+            
+        // Reset subscription status
+        State.Subscription.IsActive = false;
+        State.Subscription.Status = PaymentStatus.None;
+        
+        // Reset rate limits
+        await ResetRateLimitsAsync();
+        
+        await WriteStateAsync();
+    }
+    
+    private PlanType DeterminePlanTypeFromProductId(string productId)
+    {
+        // Determine subscription type based on product ID prefix or naming conventions
+        // Assume product ID contains information about monthly/yearly plan
+        if (productId.Contains("monthly") || productId.Contains("month"))
+        {
+            return PlanType.Month;
+        }
+        else if (productId.Contains("yearly") || productId.Contains("year"))
+        {
+            return PlanType.Year;
+        }
+        else if (productId.Contains("daily") || productId.Contains("day"))
+        {
+            return PlanType.Day;
+        }
+        
+        // Default to monthly plan
+        return PlanType.Month;
     }
 }

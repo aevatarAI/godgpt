@@ -188,6 +188,7 @@ public class UserProfileDto
     [Id(3)] public string FullName { get; set; }
     [Id(4)] public CreditsInfoDto Credits { get; set; }
     [Id(5)] public SubscriptionInfoDto Subscription { get; set; }
+    [Id(6)] public SubscriptionInfoDto UltimateSubscription { get; set; }
 }
 
 [GenerateSerializer]

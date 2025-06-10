@@ -10,12 +10,16 @@ using Newtonsoft.Json;
 using Stripe;
 using Stripe.Checkout;
 using PaymentMethod = Aevatar.Application.Grains.Common.Constants.PaymentMethod;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Aevatar.Application.Grains.ChatManager.UserBilling;
 
 public interface IUserBillingGrain : IGrainWithStringKey
 {
     Task<List<StripeProductDto>> GetStripeProductsAsync();
+    Task<List<AppleProductDto>> GetAppleProductsAsync();
     Task<string> GetOrCreateStripeCustomerAsync(string userId = null);
     Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null);
     /**
@@ -36,19 +40,33 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
     Task<object> RefundedSubscriptionAsync(object  obj);
     Task ClearAllAsync();
+    
+    // App Store related methods
+    Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto);
+    Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto);
+    Task<bool> HandleAppStoreNotificationAsync(string jsonPayload, string notificationToken);
+    
 }
 
 public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 {
     private readonly ILogger<UserBillingGrain> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
+    private readonly IOptionsMonitor<ApplePayOptions> _appleOptions;
+    private readonly IHttpClientFactory _httpClientFactory;
     
     private IStripeClient _client; 
     
-    public UserBillingGrain(ILogger<UserBillingGrain> logger, IOptionsMonitor<StripeOptions> stripeOptions)
+    public UserBillingGrain(
+        ILogger<UserBillingGrain> logger, 
+        IOptionsMonitor<StripeOptions> stripeOptions,
+        IOptionsMonitor<ApplePayOptions> appleOptions,
+        IHttpClientFactory httpClientFactory)
     {
         _logger = logger;
         _stripeOptions = stripeOptions;
+        _appleOptions = appleOptions;
+        _httpClientFactory = httpClientFactory;
     }
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
@@ -110,6 +128,54 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         
         _logger.LogDebug("[UserBillingGrain][GetStripeProductsAsync] Successfully retrieved {Count} products",
+            productDtos.Count);
+        return productDtos;
+    }
+
+    public async Task<List<AppleProductDto>> GetAppleProductsAsync()
+    {
+        var products = _appleOptions.CurrentValue.Products;
+        if (products.IsNullOrEmpty())
+        {
+            _logger.LogWarning("[UserBillingGrain][GetAppleProductsAsync] No products configured in ApplePayOptions");
+            return new List<AppleProductDto>();
+        }
+
+        _logger.LogDebug("[UserBillingGrain][GetAppleProductsAsync] Found {Count} products in configuration",
+            products.Count);
+        var productDtos = new List<AppleProductDto>();
+        foreach (var product in products)
+        {
+            var dailyAvgPrice = string.Empty;
+            if (product.PlanType == (int)PlanType.Day)
+            {
+                dailyAvgPrice = product.Amount.ToString();
+            } else if (product.PlanType == (int)PlanType.Week)
+            {
+                dailyAvgPrice = Math.Round(product.Amount / 7, 2).ToString();
+            }
+            else if (product.PlanType == (int)PlanType.Month)
+            {
+                dailyAvgPrice = Math.Round(product.Amount / 30, 2).ToString();
+            }
+            else if (product.PlanType == (int)PlanType.Year)
+            {
+                dailyAvgPrice = Math.Round(product.Amount / 390, 2).ToString();
+            }
+
+            productDtos.Add(new AppleProductDto
+            {
+                PlanType = product.PlanType,
+                ProductId = product.ProductId,
+                Name = product.Name,
+                Description = product.Description,
+                Amount = product.Amount,
+                DailyAvgPrice = dailyAvgPrice,
+                Currency = product.Currency
+            });
+        }
+        
+        _logger.LogDebug("[UserBillingGrain][GetAppleProductsAsync] Successfully retrieved {Count} products",
             productDtos.Count);
         return productDtos;
     }
@@ -972,6 +1038,24 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         subscriptionEndDate = GetSubscriptionEndDate((PlanType)productConfig.PlanType, subscriptionStartDate);
         return new Tuple<DateTime, DateTime>(subscriptionStartDate, subscriptionEndDate);
     }
+    
+    private async Task<Tuple<DateTime, DateTime>> CalculateSubscriptionDurationAsync(Guid userId, PlanType planType, bool ultimate)
+    {
+        DateTime subscriptionStartDate;
+        DateTime subscriptionEndDate;
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync(ultimate);
+        if (subscriptionInfoDto.IsActive)
+        {
+            subscriptionStartDate = subscriptionInfoDto.EndDate;
+        }
+        else
+        {
+            subscriptionStartDate = DateTime.UtcNow;
+        }
+        subscriptionEndDate = GetSubscriptionEndDate(planType, subscriptionStartDate);
+        return new Tuple<DateTime, DateTime>(subscriptionStartDate, subscriptionEndDate);
+    }
 
     public async Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary)
     {
@@ -1392,6 +1476,24 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
         return productConfig;
     }
+    
+    private async Task<AppleProduct> GetAppleProductConfigAsync(string productId)
+    {
+        var productConfig = _appleOptions.CurrentValue.Products.FirstOrDefault(p => p.ProductId == productId);
+        if (productConfig == null)
+        {
+            _logger.LogError(
+                "[UserBillingGrain][GetAppleProductConfigAsync] Invalid ProductId: {ProductId}. Product not found in configuration.",
+                productId);
+            throw new ArgumentException($"Invalid ProductId: {productId}. Product not found in configuration.");
+        }
+
+        _logger.LogInformation(
+            "[UserBillingGrain][GetAppleProductConfigAsync] Found product with ProductId: {ProductId}, planType: {PlanType}, amount: {Amount} {Currency}",
+            productConfig.ProductId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
+
+        return productConfig;
+    }
 
     private DateTime GetSubscriptionEndDate(PlanType planType, DateTime startDate)
     {
@@ -1400,6 +1502,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             case PlanType.Day:
                 return endDate.AddDays(1);
+            case PlanType.Week:
+                return endDate.AddDays(7);
             case PlanType.Month:
                 return endDate.AddDays(30);
             case PlanType.Year:
@@ -1508,5 +1612,789 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         return string.Empty;
+    }
+
+    public async Task<bool> HandleAppStoreNotificationAsync(string jsonPayload, string notificationToken)
+    {
+        try
+        {
+            // 1. Verify notification authenticity
+            if (!VerifyNotificationAuthenticity(notificationToken))
+            {
+                _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Invalid notification token");
+                return false;
+            }
+            
+            // 2. Parse notification data
+            var notification = System.Text.Json.JsonSerializer.Deserialize<AppStoreServerNotification>(jsonPayload);
+            
+            // 3. Extract key information
+            var notificationType = notification.NotificationType;
+            var environment = notification.Environment;
+            var appStoreTransactionInfo = ExtractTransactionInfo(notification);
+            
+            // 4. Log notification information
+            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Received notification type: {Type}, environment: {Env}", 
+                notificationType, environment);
+            
+            // 5. Process based on notification type
+            switch (notificationType)
+            {
+                case "INITIAL_BUY":
+                    await HandleInitialPurchaseAsync(appStoreTransactionInfo);
+                    break;
+                    
+                case "RENEWAL":
+                    await HandleRenewalAsync(appStoreTransactionInfo);
+                    break;
+                    
+                case "INTERACTIVE_RENEWAL":
+                    await HandleInteractiveRenewalAsync(appStoreTransactionInfo);
+                    break;
+                    
+                case "CANCEL":
+                    await HandleCancellationAsync(appStoreTransactionInfo);
+                    break;
+                    
+                case "REFUND":
+                    await HandleRefundAsync(appStoreTransactionInfo);
+                    break;
+                
+                case "DID_CHANGE_RENEWAL_PREF":
+                    await HandleRenewalPreferenceChangeAsync(appStoreTransactionInfo);
+                    break;
+                
+                case "DID_CHANGE_RENEWAL_STATUS":
+                    await HandleRenewalStatusChangeAsync(appStoreTransactionInfo);
+                    break;
+                    
+                default:
+                    _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Unknown notification type: {Type}", notificationType);
+                    break;
+            }
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGrain][HandleAppStoreNotificationAsync] Error processing notification: {Message}", ex.Message);
+            return false;
+        }
+    }
+    
+    public async Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto)
+    {
+        try
+        {
+            // 1. Verify App Store receipt
+            var verifyReceiptRequest = new VerifyReceiptRequestDto
+            {
+                ReceiptData = createSubscriptionDto.ReceiptData,
+                SandboxMode = false, // Initial setting is production environment, verification method will automatically handle environment switch
+                UserId = createSubscriptionDto.UserId
+            };
+            
+            var verifyResponse = await VerifyAppStoreReceiptAsync(verifyReceiptRequest);
+            
+            // 2. Return verification result
+            if (verifyResponse.IsValid)
+            {
+                return new AppStoreSubscriptionResponseDto
+                {
+                    Success = true,
+                    SubscriptionId = verifyResponse.OriginalTransactionId,
+                    ExpiresDate = verifyResponse.ExpiresDate,
+                    Status = "active"
+                };
+            }
+            else
+            {
+                return new AppStoreSubscriptionResponseDto
+                {
+                    Success = false,
+                    Error = verifyResponse.Error
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGrain][CreateAppStoreSubscriptionAsync] Error creating subscription: {Message}", ex.Message);
+            return new AppStoreSubscriptionResponseDto
+            {
+                Success = false,
+                Error = ex.Message
+            };
+        }
+    }
+    
+    private bool VerifyNotificationAuthenticity(string notificationToken)
+    {
+        // If notification token is not configured, reject all notifications
+        if (string.IsNullOrEmpty(_appleOptions.CurrentValue.NotificationToken))
+        {
+            _logger.LogWarning("[UserBillingGrain][VerifyNotificationAuthenticity] No notification token configured");
+            return false;
+        }
+        
+        // Verify if the notification token matches the configured token
+        if (notificationToken != _appleOptions.CurrentValue.NotificationToken)
+        {
+            _logger.LogWarning("[UserBillingGrain][VerifyNotificationAuthenticity] Invalid notification token provided");
+            return false;
+        }
+        
+        // Additional verification logic can be added later
+        
+        return true;
+    }
+    
+    private AppStoreSubscriptionInfo ExtractTransactionInfo(AppStoreServerNotification notification)
+    {
+        if (notification == null || notification.UnifiedReceipt == null)
+        {
+            _logger.LogWarning("[UserBillingGrain][ExtractTransactionInfo] Notification or UnifiedReceipt is null");
+            return new AppStoreSubscriptionInfo();
+        }
+        
+        // Find the latest receipt information (sorted by expiration date)
+        var latestReceiptInfo = notification.UnifiedReceipt.LatestReceiptInfo?
+            .OrderByDescending(r => 
+                long.TryParse(r.ExpiresDateMs, out var expiresMs) ? expiresMs : 0)
+            .FirstOrDefault();
+        
+        if (latestReceiptInfo == null)
+        {
+            _logger.LogWarning("[UserBillingGrain][ExtractTransactionInfo] No receipt info found in notification");
+            return new AppStoreSubscriptionInfo();
+        }
+        
+        // Parse timestamp to DateTime
+        DateTime purchaseDate = DateTime.UtcNow;
+        DateTime expiresDate = DateTime.UtcNow.AddDays(30); // Default 30 days
+        
+        if (long.TryParse(latestReceiptInfo.PurchaseDateMs, out var purchaseMs))
+        {
+            purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(purchaseMs).DateTime;
+        }
+        
+        if (long.TryParse(latestReceiptInfo.ExpiresDateMs, out var expiresMs))
+        {
+            expiresDate = DateTimeOffset.FromUnixTimeMilliseconds(expiresMs).DateTime;
+        }
+        
+        // Parse trial period flag
+        bool isTrialPeriod = false;
+        if (!string.IsNullOrEmpty(latestReceiptInfo.IsTrialPeriod))
+        {
+            bool.TryParse(latestReceiptInfo.IsTrialPeriod, out isTrialPeriod);
+        }
+        
+        // Parse auto-renewal status
+        bool autoRenewStatus = false;
+        if (notification.UnifiedReceipt.PendingRenewalInfo?.Count > 0)
+        {
+            var pendingRenewal = notification.UnifiedReceipt.PendingRenewalInfo
+                .FirstOrDefault(p => p.OriginalTransactionId == latestReceiptInfo.OriginalTransactionId);
+                
+            if (pendingRenewal != null && !string.IsNullOrEmpty(pendingRenewal.AutoRenewStatus))
+            {
+                autoRenewStatus = pendingRenewal.AutoRenewStatus == "1";
+            }
+        }
+        else
+        {
+            // If there is no PendingRenewalInfo, use the value from the notification
+            autoRenewStatus = notification.AutoRenewStatus;
+        }
+        
+        // Build and return the subscription information object
+        return new AppStoreSubscriptionInfo
+        {
+            OriginalTransactionId = latestReceiptInfo.OriginalTransactionId,
+            TransactionId = latestReceiptInfo.TransactionId,
+            ProductId = latestReceiptInfo.ProductId,
+            PurchaseDate = purchaseDate,
+            ExpiresDate = expiresDate,
+            IsTrialPeriod = isTrialPeriod,
+            AutoRenewStatus = autoRenewStatus,
+            Environment = notification.Environment,
+            LatestReceiptData = notification.UnifiedReceipt.LatestReceipt
+        };
+    }
+    
+    private async Task<string> GetUserIdByOriginalTransactionIdAsync(string originalTransactionId)
+    {
+        var payment = await GetPaymentSummaryBySubscriptionIdAsync(originalTransactionId);
+        return payment?.UserId.ToString();
+    }
+    
+    private async Task HandleInitialPurchaseAsync(AppStoreSubscriptionInfo transactionInfo)
+    {
+        // Find user ID (associated via OriginalTransactionId)
+        var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[UserBillingGrain][HandleInitialPurchaseAsync] Cannot find user for transaction: {Id}", 
+                transactionInfo.OriginalTransactionId);
+            return;
+        }
+        
+        // Update subscription status
+        await UpdateSubscriptionStateAsync(userId, transactionInfo, "INITIAL_BUY");
+    }
+    
+    private async Task HandleRenewalAsync(AppStoreSubscriptionInfo transactionInfo)
+    {
+        // Find user ID (associated via OriginalTransactionId)
+        var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[UserBillingGrain][HandleRenewalAsync] Cannot find user for transaction: {Id}", 
+                transactionInfo.OriginalTransactionId);
+            return;
+        }
+        
+        _logger.LogInformation("[UserBillingGrain][HandleRenewalAsync] Processing renewal for user {UserId}, product {ProductId}", 
+            userId, transactionInfo.ProductId);
+            
+        // Update subscription status
+        await UpdateSubscriptionStateAsync(userId, transactionInfo, "RENEWAL");
+    }
+    
+    private async Task HandleInteractiveRenewalAsync(AppStoreSubscriptionInfo transactionInfo)
+    {
+        // Find user ID (associated via OriginalTransactionId)
+        var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[UserBillingGrain][HandleInteractiveRenewalAsync] Cannot find user for transaction: {Id}", 
+                transactionInfo.OriginalTransactionId);
+            return;
+        }
+        
+        _logger.LogInformation("[UserBillingGrain][HandleInteractiveRenewalAsync] Processing interactive renewal for user {UserId}, product {ProductId}", 
+            userId, transactionInfo.ProductId);
+            
+        // Interactive renewal is similar to auto-renewal, but may have different business logic
+        await UpdateSubscriptionStateAsync(userId, transactionInfo, "INTERACTIVE_RENEWAL");
+    }
+    
+    private async Task HandleCancellationAsync(AppStoreSubscriptionInfo transactionInfo)
+    {
+        // Find user ID (associated via OriginalTransactionId)
+        var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[UserBillingGrain][HandleCancellationAsync] Cannot find user for transaction: {Id}", 
+                transactionInfo.OriginalTransactionId);
+            return;
+        }
+        
+        _logger.LogInformation("[UserBillingGrain][HandleCancellationAsync] Processing cancellation for user {UserId}, product {ProductId}, expires on {ExpiresDate}", 
+            userId, transactionInfo.ProductId, transactionInfo.ExpiresDate);
+        
+        // Update subscription status to cancelled
+        // Note: Even after subscription cancellation, users can still enjoy the services of the paid period
+        await UpdateSubscriptionStateAsync(userId, transactionInfo, "CANCEL");
+    }
+    
+    private async Task HandleRefundAsync(AppStoreSubscriptionInfo transactionInfo)
+    {
+        // Find user ID (associated via OriginalTransactionId)
+        var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[UserBillingGrain][HandleRefundAsync] Cannot find user for transaction: {Id}", 
+                transactionInfo.OriginalTransactionId);
+            return;
+        }
+        
+        _logger.LogInformation("[UserBillingGrain][HandleRefundAsync] Processing refund for user {UserId}, product {ProductId}", 
+            userId, transactionInfo.ProductId);
+        
+        // Update subscription status to refunded and immediately revoke user rights
+        await UpdateSubscriptionStateAsync(userId, transactionInfo, "REFUND");
+    }
+    
+    private async Task UpdateSubscriptionStateAsync(string userId, AppStoreSubscriptionInfo subscriptionInfo, string eventType)
+    {
+        // Find existing subscription record
+        var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(subscriptionInfo.OriginalTransactionId);
+        
+        // Create invoice details
+        var invoiceDetail = new UserBillingInvoiceDetail
+        {
+            InvoiceId = subscriptionInfo.TransactionId, 
+            CreatedAt = subscriptionInfo.PurchaseDate,
+            CompletedAt = DateTime.UtcNow
+        };
+        
+        // Update PaymentSummary record
+        var paymentStatus = MapToPaymentStatus(eventType, subscriptionInfo);
+        var paymentSummary = new PaymentSummary
+        {
+            UserId = Guid.Parse(userId),
+            // PaymentMethod attribute has been removed, no longer used
+            Amount = GetProductAmount(subscriptionInfo.ProductId),
+            Currency = "USD",
+            Status = paymentStatus,
+            CreatedAt = DateTime.UtcNow,
+            CompletedAt = DateTime.UtcNow,
+            PaymentType = MapToPaymentType(eventType),
+            SubscriptionId = subscriptionInfo.OriginalTransactionId, // Use OriginalTransactionId as SubscriptionId
+            PriceId = subscriptionInfo.ProductId, // Use ProductId as PriceId
+            AppStoreEnvironment = subscriptionInfo.Environment,
+            SubscriptionStartDate = subscriptionInfo.PurchaseDate,
+            SubscriptionEndDate = subscriptionInfo.ExpiresDate
+        };
+        
+        if (existingSubscription != null)
+        {
+            // Get existing invoice details and add new record
+            var invoiceDetails = existingSubscription.InvoiceDetails ?? new List<UserBillingInvoiceDetail>();
+            invoiceDetails.Add(invoiceDetail);
+            paymentSummary.InvoiceDetails = invoiceDetails;
+            
+            // Update existing record
+            await UpdatePaymentRecordAsync(existingSubscription.PaymentGrainId, paymentSummary);
+        }
+        else
+        {
+            // Add new record
+            paymentSummary.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
+            await AddPaymentRecordAsync(paymentSummary);
+        }
+        
+        // Grant or revoke user rights
+        await UpdateUserQuotaAsync(userId, subscriptionInfo, eventType);
+    }
+    
+    private PaymentStatus MapToPaymentStatus(string eventType, AppStoreSubscriptionInfo subscriptionInfo)
+    {
+        // Map notification type to payment status
+        return eventType switch
+        {
+            "INITIAL_BUY" => PaymentStatus.Completed,
+            "RENEWAL" => PaymentStatus.Completed,
+            "INTERACTIVE_RENEWAL" => PaymentStatus.Completed,
+            "CANCEL" => DateTime.UtcNow >= subscriptionInfo.ExpiresDate 
+                ? PaymentStatus.Cancelled 
+                : PaymentStatus.CancelPending, // Distinguish between immediate cancellation and planned expiration cancellation
+            "REFUND" => PaymentStatus.Refunded,
+            "DID_CHANGE_RENEWAL_PREF" => PaymentStatus.Completed, // Changing auto-renewal settings but status remains completed
+            "DID_CHANGE_RENEWAL_STATUS" => PaymentStatus.Completed, // Changing auto-renewal status but status remains completed
+            _ => PaymentStatus.Unknown
+        };
+    }
+    
+    private PaymentType MapToPaymentType(string eventType)
+    {
+        // Map notification type to payment type
+        return eventType switch
+        {
+            "INITIAL_BUY" => PaymentType.Subscription,
+            "RENEWAL" => PaymentType.Renewal,
+            "INTERACTIVE_RENEWAL" => PaymentType.Renewal,
+            "CANCEL" => PaymentType.Cancellation,
+            "REFUND" => PaymentType.Refund,
+            "DID_CHANGE_RENEWAL_PREF" => PaymentType.Subscription, // Changing renewal settings is considered a subscription modification
+            "DID_CHANGE_RENEWAL_STATUS" => PaymentType.Subscription, // Changing renewal status is considered a subscription modification
+            _ => PaymentType.Unknown
+        };
+    }
+    
+    private async Task UpdateUserQuotaAsync(string userId, AppStoreSubscriptionInfo subscriptionInfo, string eventType)
+    {
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[UserBillingGrain][UpdateUserQuotaAsync] UserId is null or empty");
+            return;
+        }
+        
+        try
+        {
+            var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(userId);
+            
+            switch (eventType)
+            {
+                case "INITIAL_BUY":
+                case "RENEWAL":
+                case "INTERACTIVE_RENEWAL":
+                case "VERIFICATION":
+                    // Grant or update user rights
+                    _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Updating user quota for {UserId} with product {ProductId}, expires on {ExpiresDate}",
+                        userId, subscriptionInfo.ProductId, subscriptionInfo.ExpiresDate);
+                    await userQuotaGrain.UpdateQuotaAsync(subscriptionInfo.ProductId, subscriptionInfo.ExpiresDate);
+                    break;
+                
+                case "CANCEL":
+                    // For cancellation of subscription, only revoke rights immediately when current has expired
+                    if (DateTime.UtcNow >= subscriptionInfo.ExpiresDate)
+                    {
+                        _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Resetting quota for {UserId} due to cancelled subscription",
+                            userId);
+                        await userQuotaGrain.ResetQuotaAsync();
+                    }
+                    else
+                    {
+                        _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Subscription cancelled but still active until {ExpiresDate} for {UserId}",
+                            subscriptionInfo.ExpiresDate, userId);
+                    }
+                    break;
+                
+                case "REFUND":
+                    // For refund, immediately revoke user rights
+                    _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Resetting quota for {UserId} due to refund",
+                        userId);
+                    await userQuotaGrain.ResetQuotaAsync();
+                    break;
+                
+                case "DID_CHANGE_RENEWAL_PREF":
+                case "DID_CHANGE_RENEWAL_STATUS":
+                    // These events do not affect the rights of the current subscription period, only record status changes
+                    _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Renewal preferences changed for {UserId}, no action needed",
+                        userId);
+                    break;
+                
+                default:
+                    _logger.LogWarning("[UserBillingGrain][UpdateUserQuotaAsync] Unknown event type: {EventType} for {UserId}",
+                        eventType, userId);
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGrain][UpdateUserQuotaAsync] Error updating user quota for {UserId}: {Message}",
+                userId, ex.Message);
+        }
+    }
+    
+    private async Task RevokeUserQuotaAsync(string userId)
+    {
+        // In actual implementation, this should call the user quota management service to revoke user rights
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(userId);
+        await userQuotaGrain.ResetQuotaAsync();
+    }
+    
+    private async Task<bool> UpdatePaymentRecordAsync(Guid paymentId, PaymentSummary newPaymentSummary)
+    {
+        var paymentIndex = State.PaymentHistory.FindIndex(p => p.PaymentGrainId == paymentId);
+        if (paymentIndex >= 0)
+        {
+            State.PaymentHistory[paymentIndex] = newPaymentSummary;
+            await WriteStateAsync();
+            return true;
+        }
+        return false;
+    }
+
+    public async Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto)
+    {
+        try
+        {
+            // 1. Determine verification environment (production or sandbox)
+            string verificationUrl = requestDto.SandboxMode 
+                ? "https://sandbox.itunes.apple.com/verifyReceipt"
+                : "https://buy.itunes.apple.com/verifyReceipt";
+            
+            // 2. Build verification request
+            var requestBody = new
+            {
+                receipt_data = requestDto.ReceiptData,
+                password = _appleOptions.CurrentValue.SharedSecret,
+                exclude_old_transactions = true
+            };
+            
+            // 3. Send verification request to App Store
+            using var client = _httpClientFactory.CreateClient();
+            var response = await client.PostAsJsonAsync(verificationUrl, requestBody);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("[UserBillingGrain][VerifyAppStoreReceiptAsync] Failed to verify receipt: {StatusCode}", response.StatusCode);
+                return new VerifyReceiptResponseDto { IsValid = false, Error = $"HTTP Error: {response.StatusCode}" };
+            }
+            
+            // 4. Parse response
+            var appleResponse = await response.Content.ReadFromJsonAsync<AppleVerifyReceiptResponse>();
+            
+            // 5. Check verification status
+            if (appleResponse.Status != 0)
+            {
+                // If verification fails in production environment and status code is 21007, retry sandbox environment
+                if (!requestDto.SandboxMode && appleResponse.Status == 21007)
+                {
+                    _logger.LogInformation("[UserBillingGrain][VerifyAppStoreReceiptAsync] Receipt is from sandbox, retrying with sandbox URL");
+                    requestDto.SandboxMode = true;
+                    return await VerifyAppStoreReceiptAsync(requestDto);
+                }
+                
+                _logger.LogError("[UserBillingGrain][VerifyAppStoreReceiptAsync] Receipt validation failed with status: {Status}", appleResponse.Status);
+                return new VerifyReceiptResponseDto 
+                { 
+                    IsValid = false, 
+                    Error = $"Apple verification failed with status: {appleResponse.Status}" 
+                };
+            }
+            
+            // 6. Extract latest receipt information
+            var latestReceiptInfo = appleResponse.LatestReceiptInfo?.OrderByDescending(r => 
+                long.TryParse(r.ExpiresDateMs, out var expiresMs) ? expiresMs : 0).FirstOrDefault();
+                
+            if (latestReceiptInfo == null)
+            {
+                _logger.LogError("[UserBillingGrain][VerifyAppStoreReceiptAsync] No receipt info found in response");
+                return new VerifyReceiptResponseDto { IsValid = false, Error = "No receipt information found" };
+            }
+            
+            // 7. Parse date
+            DateTime purchaseDate = DateTime.UtcNow;
+            DateTime expiresDate = DateTime.UtcNow.AddDays(30); // Default 30 days
+            
+            if (long.TryParse(latestReceiptInfo.PurchaseDateMs, out var purchaseMs))
+            {
+                purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(purchaseMs).DateTime;
+            }
+            
+            if (long.TryParse(latestReceiptInfo.ExpiresDateMs, out var expiresMs))
+            {
+                expiresDate = DateTimeOffset.FromUnixTimeMilliseconds(expiresMs).DateTime;
+            }
+            
+            bool isTrialPeriod = false;
+            if (latestReceiptInfo.IsTrialPeriod != null)
+            {
+                bool.TryParse(latestReceiptInfo.IsTrialPeriod, out isTrialPeriod);
+            }
+            
+            // 8. If there is a user ID, create or update subscription
+            if (!string.IsNullOrEmpty(requestDto.UserId) && Guid.TryParse(requestDto.UserId, out var userId))
+            {
+                var appleProduct = await GetAppleProductConfigAsync(latestReceiptInfo.ProductId);
+
+                var paymentGrainId = CommonHelper.GetAppleUserPaymentGrainId(latestReceiptInfo.OriginalTransactionId);
+                var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
+                await paymentGrain.InitializePaymentAsync(new UserPaymentState
+                {
+                    Id = paymentGrainId,
+                    UserId = userId,
+                    PriceId = appleProduct.ProductId,
+                    Amount = appleProduct.Amount,
+                    Currency = appleProduct.Currency,
+                    PaymentType = PaymentType.Subscription,
+                    Status = PaymentStatus.Completed,
+                    Method = PaymentMethod.ApplePay,
+                    Platform = PaymentPlatform.AppStore,
+                    Mode = null,
+                    Description = null,
+                    CreatedAt = purchaseDate,
+                    CompletedAt = DateTime.UtcNow,
+                    LastUpdated = DateTime.UtcNow,
+                    OrderId = latestReceiptInfo.OriginalTransactionId,
+                    SubscriptionId = latestReceiptInfo.OriginalTransactionId,
+                    InvoiceId = latestReceiptInfo.TransactionId
+                });
+
+                // Check if there is previous subscription record
+                var existingPayment = await GetPaymentSummaryBySubscriptionIdAsync(latestReceiptInfo.OriginalTransactionId);
+                var (subscriptionStartDate, subscriptionEndDate) = await CalculateSubscriptionDurationAsync(userId, (PlanType) appleProduct.PlanType, appleProduct.Ultimate);
+                if (existingPayment == null)
+                {
+                    var newPayment = new PaymentSummary
+                    {
+                        PaymentGrainId = paymentGrainId,
+                        OrderId = latestReceiptInfo.OriginalTransactionId,
+                        PlanType = (PlanType) appleProduct.PlanType,
+                        Amount = GetProductAmount(latestReceiptInfo.ProductId),
+                        Currency = appleProduct.Currency,
+                        UserId = userId,
+                        CreatedAt = purchaseDate,
+                        CompletedAt = DateTime.UtcNow,
+                        Status = PaymentStatus.Completed,
+                        SubscriptionId = latestReceiptInfo.OriginalTransactionId,
+                        PriceId = latestReceiptInfo.ProductId,
+                        SubscriptionStartDate = subscriptionStartDate,
+                        SubscriptionEndDate = subscriptionEndDate,
+                        Platform = PaymentPlatform.AppStore,
+                        
+                        AppStoreEnvironment = appleResponse.Environment
+                    };
+                    
+                    // Add invoice details
+                    var invoiceDetail = new UserBillingInvoiceDetail
+                    {
+                        InvoiceId = latestReceiptInfo.TransactionId,
+                        CreatedAt = purchaseDate,
+                        CompletedAt = DateTime.UtcNow,
+                        Status = PaymentStatus.Completed,
+                        SubscriptionStartDate = subscriptionEndDate,
+                        SubscriptionEndDate = subscriptionEndDate
+                    };
+                    
+                    newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
+                    await AddPaymentRecordAsync(newPayment);
+                }
+                else
+                {
+                    _logger.LogWarning("[UserBillingGrain][VerifyAppStoreReceiptAsync] transaction exists {0}, {1}, {2})",
+                        userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
+                }
+                
+                // Update user quota
+                var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+                var subscriptionDto = appleProduct.Ultimate ? await userQuotaGrain.GetSubscriptionAsync(true) : await userQuotaGrain.GetSubscriptionAsync();
+                _logger.LogDebug("[UserBillingGrain][VerifyAppStoreReceiptAsync] allocate resource {0}, {1}, {2})",
+                    userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
+                if (subscriptionDto.IsActive)
+                {
+                    if (subscriptionDto.PlanType <= (PlanType) appleProduct.PlanType)
+                    {
+                        subscriptionDto.PlanType = (PlanType) appleProduct.PlanType;
+                    }
+                    subscriptionDto.EndDate =
+                        GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionDto.EndDate);
+                }
+                else
+                {
+                    subscriptionDto.IsActive = true;
+                    subscriptionDto.PlanType = (PlanType) appleProduct.PlanType;
+                    subscriptionDto.StartDate = DateTime.UtcNow;
+                    subscriptionDto.EndDate =
+                        GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionDto.StartDate);
+                    await userQuotaGrain.ResetRateLimitsAsync();
+                }
+                subscriptionDto.Status = PaymentStatus.Completed;
+                await userQuotaGrain.UpdateSubscriptionAsync(subscriptionDto, appleProduct.Ultimate);
+
+                //UpdatePremium quota
+                if (appleProduct.Ultimate)
+                {
+                    var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
+                    if (subscriptionInfoDto.IsActive)
+                    {
+                        subscriptionInfoDto.StartDate =
+                            GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionInfoDto.StartDate);
+                        subscriptionInfoDto.EndDate = 
+                            GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionInfoDto.EndDate);
+                        await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+                    }
+                }
+            }
+            
+            // 9. Return verification result
+            return new VerifyReceiptResponseDto
+            {
+                IsValid = true,
+                Environment = appleResponse.Environment,
+                ProductId = latestReceiptInfo.ProductId,
+                ExpiresDate = expiresDate,
+                IsTrialPeriod = isTrialPeriod,
+                OriginalTransactionId = latestReceiptInfo.OriginalTransactionId,
+                Subscription = new SubscriptionDto
+                {
+                    ProductId = latestReceiptInfo.ProductId,
+                    StartDate = purchaseDate,
+                    EndDate = expiresDate,
+                    Status = "active"
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGrain][VerifyAppStoreReceiptAsync] Error verifying receipt: {Message}", ex.Message);
+            return new VerifyReceiptResponseDto { IsValid = false, Error = ex.Message };
+        }
+    }
+
+    private async Task<PaymentSummary> GetPaymentSummaryBySubscriptionIdAsync(string subscriptionId)
+    {
+        if (string.IsNullOrEmpty(subscriptionId))
+        {
+            return null;
+        }
+        
+        return State.PaymentHistory.FirstOrDefault(p => p.SubscriptionId == subscriptionId);
+    }
+    
+    private decimal GetProductAmount(string productId)
+    {
+        // Try to get amount from Apple product configuration
+        var appleProduct = _appleOptions.CurrentValue.Products.FirstOrDefault(p => p.ProductId == productId);
+        if (appleProduct != null)
+        {
+            return appleProduct.Amount;
+        }
+        
+        // If no configuration is found for the product, return default amount
+        // Price can be inferred from product ID naming rules
+        if (productId.Contains("monthly") || productId.Contains("month"))
+        {
+            return 9.99m; // Default monthly subscription price
+        }
+        else if (productId.Contains("yearly") || productId.Contains("year"))
+        {
+            return 99.99m; // Default annual subscription price
+        }
+        else if (productId.Contains("weekly") || productId.Contains("week"))
+        {
+            return 2.99m; // Default weekly subscription price
+        }
+        
+        // Default value if price cannot be determined
+        return 9.99m;
+    }
+
+    private string GetErrorMessageForStatus(int status)
+    {
+        return status switch
+        {
+            21000 => "App Store unable to read provided JSON data",
+            21002 => "Invalid receipt data",
+            21003 => "Receipt unable to verify",
+            21004 => "Provided shared key does not match account's shared key",
+            21005 => "Receipt server currently unavailable",
+            21006 => "Receipt valid, but subscription has expired",
+            21007 => "Receipt from test environment but sent for production environment verification",
+            21008 => "Receipt from production environment but sent for test environment verification",
+            21010 => "Account unable to create or update",
+            21100 => "Internal data access error",
+            _ => $"Unknown error, status code: {status}"
+        };
+    }
+
+    private async Task HandleRenewalPreferenceChangeAsync(AppStoreSubscriptionInfo transactionInfo)
+    {
+        // Find user ID (associated via OriginalTransactionId)
+        var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[UserBillingGrain][HandleRenewalPreferenceChangeAsync] Cannot find user for transaction: {Id}", 
+                transactionInfo.OriginalTransactionId);
+            return;
+        }
+        
+        _logger.LogInformation("[UserBillingGrain][HandleRenewalPreferenceChangeAsync] Processing renewal preference change for user {UserId}, product {ProductId}", 
+            userId, transactionInfo.ProductId);
+        
+        // Update subscription status but do not affect current user rights
+        await UpdateSubscriptionStateAsync(userId, transactionInfo, "DID_CHANGE_RENEWAL_PREF");
+    }
+    
+    private async Task HandleRenewalStatusChangeAsync(AppStoreSubscriptionInfo transactionInfo)
+    {
+        // Find user ID (associated via OriginalTransactionId)
+        var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
+        if (string.IsNullOrEmpty(userId))
+        {
+            _logger.LogWarning("[UserBillingGrain][HandleRenewalStatusChangeAsync] Cannot find user for transaction: {Id}", 
+                transactionInfo.OriginalTransactionId);
+            return;
+        }
+        
+        _logger.LogInformation("[UserBillingGrain][HandleRenewalStatusChangeAsync] Processing renewal status change for user {UserId}, product {ProductId}, autoRenew: {AutoRenew}", 
+            userId, transactionInfo.ProductId, transactionInfo.AutoRenewStatus);
+        
+        // Update subscription status but do not affect current user rights
+        await UpdateSubscriptionStateAsync(userId, transactionInfo, "DID_CHANGE_RENEWAL_STATUS");
     }
 }

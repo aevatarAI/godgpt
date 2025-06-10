@@ -142,7 +142,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             State.Status = PaymentStatus.Completed;
             State.CompletedAt = DateTime.UtcNow;
         }
-        State.Method = session.PaymentMethodTypes.MapToPaymentMethod();
+        State.Method = (PaymentMethod)((int)session.PaymentMethodTypes.MapToPaymentMethod());
         State.Mode = session.Mode;
         State.Platform = PaymentPlatform.Stripe;
         if (State.CreatedAt == default)

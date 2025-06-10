@@ -2,6 +2,8 @@ using Aevatar.Application.Grains.Common.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
+using Aevatar.Application.Grains.ChatManager.UserBilling;
+using Microsoft.Extensions.Configuration;
 
 namespace Aevatar.Application.Grains;
 
@@ -18,5 +20,8 @@ public class GodGPTGAgentModule : AbpModule
         Configure<CreditsOptions>(configuration.GetSection("Credits"));
         Configure<RateLimitOptions>(configuration.GetSection("RateLimit"));
         Configure<StripeOptions>(configuration.GetSection("Stripe"));
+        Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
+
+        context.Services.AddHttpClient();
     }
 }

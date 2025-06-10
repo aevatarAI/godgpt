@@ -9,49 +9,49 @@ namespace Aevatar.Application.Grains.Tests.Agents
     //     [Fact]
     //     public async Task Should_Create_Chat_Session()
     //     {
-    //         // 获取ChatManager Grain
+    //         // Get ChatManager Grain
     //         var grain = GrainFactory.GetGrain<IChatManagerGAgent>(Guid.NewGuid());
     //         
-    //         // 创建会话
-    //         var session = await grain.CreateSessionAsync("DefaultLLM", "测试提示词");
+    //         // Create session
+    //         var session = await grain.CreateSessionAsync("DefaultLLM", "Test prompt");
     //         
-    //         // 验证会话创建成功
+    //         // Verify session created successfully
     //         Assert.NotEqual(Guid.Empty, session);
     //     }
     //
     //     [Fact]
     //     public async Task Should_Process_Message()
     //     {
-    //         // 获取ChatManager Grain
+    //         // Get ChatManager Grain
     //         var grain = GrainFactory.GetGrain<IChatManagerGAgent>(Guid.NewGuid());
     //         
-    //         // 创建会话
-    //         var sessionId = await grain.CreateSessionAsync("DefaultLLM", "测试提示词");
+    //         // Create session
+    //         var sessionId = await grain.CreateSessionAsync("DefaultLLM", "Test prompt");
     //         
-    //         // 处理消息
-    //         var response = await grain.ChatWithSessionAsync(sessionId, "DefaultLLM", "测试消息");
+    //         // Process message
+    //         var response = await grain.ChatWithSessionAsync(sessionId, "DefaultLLM", "Test message");
     //         
-    //         // 验证响应
+    //         // Verify response
     //         Assert.NotNull(response);
     //     }
     //
     //     [Fact]
     //     public async Task Should_Maintain_Session_State()
     //     {
-    //         // 获取ChatManager Grain
+    //         // Get ChatManager Grain
     //         var grain = GrainFactory.GetGrain<IChatManagerGAgent>(Guid.NewGuid());
     //         
-    //         // 创建会话
-    //         var sessionId = await grain.CreateSessionAsync("DefaultLLM", "测试提示词");
+    //         // Create session
+    //         var sessionId = await grain.CreateSessionAsync("DefaultLLM", "Test prompt");
     //         
-    //         // 验证会话状态
+    //         // Verify session state
     //         Assert.True(await grain.IsUserSessionAsync(sessionId));
     //         
-    //         // 处理消息
-    //         var response = await grain.ChatWithSessionAsync(sessionId, "DefaultLLM", "测试消息");
+    //         // Process message
+    //         var response = await grain.ChatWithSessionAsync(sessionId, "DefaultLLM", "Test message");
     //         Assert.NotNull(response);
     //         
-    //         // 再次验证会话状态
+    //         // Verify session state again
     //         Assert.True(await grain.IsUserSessionAsync(sessionId));
     //     }
     // }
