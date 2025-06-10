@@ -640,22 +640,6 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 
     #region Utility Methods
 
-    public async Task ResetRateLimitsAsync(string actionType = "conversation")
-    {
-        if (State.RateLimits.ContainsKey(actionType))
-        {
-            State.RateLimits.Remove(actionType);
-        }
-        
-        await WriteStateAsync();
-    }
-
-    public async Task ClearAllAsync()
-    {
-        State = new UserQuotaState();
-        await WriteStateAsync();
-    }
-
     private bool IsSubscriptionActive(SubscriptionInfo subscription, DateTime now)
     {
         return subscription.IsActive && 
