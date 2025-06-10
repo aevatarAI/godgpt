@@ -31,7 +31,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         //"SkyLark-Pro-250415"
         { "CN", new List<string> { "BytePlusDeepSeekV3"} },
         
-        { "DEFAULT", new List<string>() {  "HyperEcho","OpenAILast", "OpenAI" }}
+        { "DEFAULT", new List<string>() {  "Gemini2.5Pro", "HyperEcho","OpenAILast", "OpenAI" }}
     };
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
