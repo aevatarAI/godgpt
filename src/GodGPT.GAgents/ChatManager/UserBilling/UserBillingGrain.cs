@@ -42,9 +42,9 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task ClearAllAsync();
     
     // App Store related methods
-    Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto);
+    Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto, bool savePaymentEnabled);
     Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto);
-    Task<bool> HandleAppStoreNotificationAsync(string jsonPayload, string notificationToken);
+    Task<bool> HandleAppStoreNotificationAsync(Guid userId, string jsonPayload, string notificationToken);
     
 }
 
@@ -1614,7 +1614,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         return string.Empty;
     }
 
-    public async Task<bool> HandleAppStoreNotificationAsync(string jsonPayload, string notificationToken)
+    public async Task<bool> HandleAppStoreNotificationAsync(Guid userId, string jsonPayload, string notificationToken)
     {
         try
         {
@@ -1627,7 +1627,22 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             
             // 2. Parse notification data
             var notification = System.Text.Json.JsonSerializer.Deserialize<AppStoreServerNotification>(jsonPayload);
+
+            var unifiedReceipt = notification.UnifiedReceipt;
+            var latestReceipt = unifiedReceipt.LatestReceipt;
             
+            var verifyResponse = await VerifyAppStoreReceiptAsync(new VerifyReceiptRequestDto
+            {
+                UserId = userId.ToString(),
+                SandboxMode = false,
+                ReceiptData = latestReceipt
+            }, false);
+            if (!verifyResponse.IsValid)
+            {
+                _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Invalid latestReceipt");
+                return false;
+            }
+
             // 3. Extract key information
             var notificationType = notification.NotificationType;
             var environment = notification.Environment;
@@ -1681,52 +1696,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             return false;
         }
     }
-    
-    public async Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto)
-    {
-        try
-        {
-            // 1. Verify App Store receipt
-            var verifyReceiptRequest = new VerifyReceiptRequestDto
-            {
-                ReceiptData = createSubscriptionDto.ReceiptData,
-                SandboxMode = false, // Initial setting is production environment, verification method will automatically handle environment switch
-                UserId = createSubscriptionDto.UserId
-            };
-            
-            var verifyResponse = await VerifyAppStoreReceiptAsync(verifyReceiptRequest);
-            
-            // 2. Return verification result
-            if (verifyResponse.IsValid)
-            {
-                return new AppStoreSubscriptionResponseDto
-                {
-                    Success = true,
-                    SubscriptionId = verifyResponse.OriginalTransactionId,
-                    ExpiresDate = verifyResponse.ExpiresDate,
-                    Status = "active"
-                };
-            }
-            else
-            {
-                return new AppStoreSubscriptionResponseDto
-                {
-                    Success = false,
-                    Error = verifyResponse.Error
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGrain][CreateAppStoreSubscriptionAsync] Error creating subscription: {Message}", ex.Message);
-            return new AppStoreSubscriptionResponseDto
-            {
-                Success = false,
-                Error = ex.Message
-            };
-        }
-    }
-    
+
     private bool VerifyNotificationAuthenticity(string notificationToken)
     {
         // If notification token is not configured, reject all notifications
@@ -2088,7 +2058,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         return false;
     }
 
-    public async Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto)
+    public async Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto, bool savePaymentEnabled)
     {
         try
         {
@@ -2126,7 +2096,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 {
                     _logger.LogInformation("[UserBillingGrain][VerifyAppStoreReceiptAsync] Receipt is from sandbox, retrying with sandbox URL");
                     requestDto.SandboxMode = true;
-                    return await VerifyAppStoreReceiptAsync(requestDto);
+                    return await VerifyAppStoreReceiptAsync(requestDto, savePaymentEnabled);
                 }
                 
                 _logger.LogError("[UserBillingGrain][VerifyAppStoreReceiptAsync] Receipt validation failed with status: {Status}", appleResponse.Status);
@@ -2148,8 +2118,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             }
             
             // 7. Parse date
-            DateTime purchaseDate = DateTime.UtcNow;
-            DateTime expiresDate = DateTime.UtcNow.AddDays(30); // Default 30 days
+            var purchaseDate = DateTime.UtcNow;
+            var expiresDate = DateTime.UtcNow.AddDays(30); // Default 30 days
             
             if (long.TryParse(latestReceiptInfo.PurchaseDateMs, out var purchaseMs))
             {
@@ -2168,117 +2138,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             }
             
             // 8. If there is a user ID, create or update subscription
-            if (!string.IsNullOrEmpty(requestDto.UserId) && Guid.TryParse(requestDto.UserId, out var userId))
+            if (!string.IsNullOrEmpty(requestDto.UserId) && Guid.TryParse(requestDto.UserId, out var userId) && savePaymentEnabled)
             {
-                var appleProduct = await GetAppleProductConfigAsync(latestReceiptInfo.ProductId);
-
-                var paymentGrainId = CommonHelper.GetAppleUserPaymentGrainId(latestReceiptInfo.OriginalTransactionId);
-                var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
-                await paymentGrain.InitializePaymentAsync(new UserPaymentState
-                {
-                    Id = paymentGrainId,
-                    UserId = userId,
-                    PriceId = appleProduct.ProductId,
-                    Amount = appleProduct.Amount,
-                    Currency = appleProduct.Currency,
-                    PaymentType = PaymentType.Subscription,
-                    Status = PaymentStatus.Completed,
-                    Method = PaymentMethod.ApplePay,
-                    Platform = PaymentPlatform.AppStore,
-                    Mode = null,
-                    Description = null,
-                    CreatedAt = purchaseDate,
-                    CompletedAt = DateTime.UtcNow,
-                    LastUpdated = DateTime.UtcNow,
-                    OrderId = latestReceiptInfo.OriginalTransactionId,
-                    SubscriptionId = latestReceiptInfo.OriginalTransactionId,
-                    InvoiceId = latestReceiptInfo.TransactionId
-                });
-
-                // Check if there is previous subscription record
-                var existingPayment = await GetPaymentSummaryBySubscriptionIdAsync(latestReceiptInfo.OriginalTransactionId);
-                var (subscriptionStartDate, subscriptionEndDate) = await CalculateSubscriptionDurationAsync(userId, (PlanType) appleProduct.PlanType, appleProduct.Ultimate);
-                if (existingPayment == null)
-                {
-                    var newPayment = new PaymentSummary
-                    {
-                        PaymentGrainId = paymentGrainId,
-                        OrderId = latestReceiptInfo.OriginalTransactionId,
-                        PlanType = (PlanType) appleProduct.PlanType,
-                        Amount = GetProductAmount(latestReceiptInfo.ProductId),
-                        Currency = appleProduct.Currency,
-                        UserId = userId,
-                        CreatedAt = purchaseDate,
-                        CompletedAt = DateTime.UtcNow,
-                        Status = PaymentStatus.Completed,
-                        SubscriptionId = latestReceiptInfo.OriginalTransactionId,
-                        PriceId = latestReceiptInfo.ProductId,
-                        SubscriptionStartDate = subscriptionStartDate,
-                        SubscriptionEndDate = subscriptionEndDate,
-                        Platform = PaymentPlatform.AppStore,
-                        
-                        AppStoreEnvironment = appleResponse.Environment
-                    };
-                    
-                    // Add invoice details
-                    var invoiceDetail = new UserBillingInvoiceDetail
-                    {
-                        InvoiceId = latestReceiptInfo.TransactionId,
-                        CreatedAt = purchaseDate,
-                        CompletedAt = DateTime.UtcNow,
-                        Status = PaymentStatus.Completed,
-                        SubscriptionStartDate = subscriptionEndDate,
-                        SubscriptionEndDate = subscriptionEndDate
-                    };
-                    
-                    newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
-                    await AddPaymentRecordAsync(newPayment);
-                }
-                else
-                {
-                    _logger.LogWarning("[UserBillingGrain][VerifyAppStoreReceiptAsync] transaction exists {0}, {1}, {2})",
-                        userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
-                }
-                
-                // Update user quota
-                var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
-                var subscriptionDto = appleProduct.Ultimate ? await userQuotaGrain.GetSubscriptionAsync(true) : await userQuotaGrain.GetSubscriptionAsync();
-                _logger.LogDebug("[UserBillingGrain][VerifyAppStoreReceiptAsync] allocate resource {0}, {1}, {2})",
-                    userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
-                if (subscriptionDto.IsActive)
-                {
-                    if (subscriptionDto.PlanType <= (PlanType) appleProduct.PlanType)
-                    {
-                        subscriptionDto.PlanType = (PlanType) appleProduct.PlanType;
-                    }
-                    subscriptionDto.EndDate =
-                        GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionDto.EndDate);
-                }
-                else
-                {
-                    subscriptionDto.IsActive = true;
-                    subscriptionDto.PlanType = (PlanType) appleProduct.PlanType;
-                    subscriptionDto.StartDate = DateTime.UtcNow;
-                    subscriptionDto.EndDate =
-                        GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionDto.StartDate);
-                    await userQuotaGrain.ResetRateLimitsAsync();
-                }
-                subscriptionDto.Status = PaymentStatus.Completed;
-                await userQuotaGrain.UpdateSubscriptionAsync(subscriptionDto, appleProduct.Ultimate);
-
-                //UpdatePremium quota
-                if (appleProduct.Ultimate)
-                {
-                    var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
-                    if (subscriptionInfoDto.IsActive)
-                    {
-                        subscriptionInfoDto.StartDate =
-                            GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionInfoDto.StartDate);
-                        subscriptionInfoDto.EndDate = 
-                            GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionInfoDto.EndDate);
-                        await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
-                    }
-                }
+                await CreateAppStoreSubscriptionAsync(latestReceiptInfo, userId, purchaseDate, appleResponse);
             }
             
             // 9. Return verification result
@@ -2303,6 +2165,170 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             _logger.LogError(ex, "[UserBillingGrain][VerifyAppStoreReceiptAsync] Error verifying receipt: {Message}", ex.Message);
             return new VerifyReceiptResponseDto { IsValid = false, Error = ex.Message };
+        }
+    }
+    
+    public async Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto)
+    {
+        try
+        {
+            // 1. Verify App Store receipt
+            var verifyReceiptRequest = new VerifyReceiptRequestDto
+            {
+                ReceiptData = createSubscriptionDto.ReceiptData,
+                SandboxMode = createSubscriptionDto.SandboxMode,
+                UserId = createSubscriptionDto.UserId
+            };
+            
+            var verifyResponse = await VerifyAppStoreReceiptAsync(verifyReceiptRequest, true);
+            
+            // 2. Return verification result
+            if (verifyResponse.IsValid)
+            {
+                return new AppStoreSubscriptionResponseDto
+                {
+                    Success = true,
+                    SubscriptionId = verifyResponse.OriginalTransactionId,
+                    ExpiresDate = verifyResponse.ExpiresDate,
+                    Status = "active"
+                };
+            }
+            else
+            {
+                return new AppStoreSubscriptionResponseDto
+                {
+                    Success = false,
+                    Error = verifyResponse.Error
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGrain][CreateAppStoreSubscriptionAsync] Error creating subscription: {Message}", ex.Message);
+            return new AppStoreSubscriptionResponseDto
+            {
+                Success = false,
+                Error = ex.Message
+            };
+        }
+    }
+
+    private async Task CreateAppStoreSubscriptionAsync(LatestReceiptInfo latestReceiptInfo, Guid userId,
+        DateTime purchaseDate, AppleVerifyReceiptResponse appleResponse)
+    {
+        var appleProduct = await GetAppleProductConfigAsync(latestReceiptInfo.ProductId);
+
+        var paymentGrainId = CommonHelper.GetAppleUserPaymentGrainId(latestReceiptInfo.OriginalTransactionId);
+        var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
+        await paymentGrain.InitializePaymentAsync(new UserPaymentState
+        {
+            Id = paymentGrainId,
+            UserId = userId,
+            PriceId = appleProduct.ProductId,
+            Amount = appleProduct.Amount,
+            Currency = appleProduct.Currency,
+            PaymentType = PaymentType.Subscription,
+            Status = PaymentStatus.Completed,
+            Method = PaymentMethod.ApplePay,
+            Platform = PaymentPlatform.AppStore,
+            Mode = null,
+            Description = null,
+            CreatedAt = purchaseDate,
+            CompletedAt = DateTime.UtcNow,
+            LastUpdated = DateTime.UtcNow,
+            OrderId = latestReceiptInfo.OriginalTransactionId,
+            SubscriptionId = latestReceiptInfo.OriginalTransactionId,
+            InvoiceId = latestReceiptInfo.TransactionId
+        });
+
+        // Check if there is previous subscription record
+        var existingPayment = await GetPaymentSummaryBySubscriptionIdAsync(latestReceiptInfo.OriginalTransactionId);
+        var (subscriptionStartDate, subscriptionEndDate) =
+            await CalculateSubscriptionDurationAsync(userId, (PlanType)appleProduct.PlanType, appleProduct.Ultimate);
+        if (existingPayment == null)
+        {
+            var newPayment = new PaymentSummary
+            {
+                PaymentGrainId = paymentGrainId,
+                OrderId = latestReceiptInfo.OriginalTransactionId,
+                PlanType = (PlanType)appleProduct.PlanType,
+                Amount = GetProductAmount(latestReceiptInfo.ProductId),
+                Currency = appleProduct.Currency,
+                UserId = userId,
+                CreatedAt = purchaseDate,
+                CompletedAt = DateTime.UtcNow,
+                Status = PaymentStatus.Completed,
+                SubscriptionId = latestReceiptInfo.OriginalTransactionId,
+                PriceId = latestReceiptInfo.ProductId,
+                SubscriptionStartDate = subscriptionStartDate,
+                SubscriptionEndDate = subscriptionEndDate,
+                Platform = PaymentPlatform.AppStore,
+
+                AppStoreEnvironment = appleResponse.Environment
+            };
+
+            // Add invoice details
+            var invoiceDetail = new UserBillingInvoiceDetail
+            {
+                InvoiceId = latestReceiptInfo.TransactionId,
+                CreatedAt = purchaseDate,
+                CompletedAt = DateTime.UtcNow,
+                Status = PaymentStatus.Completed,
+                SubscriptionStartDate = subscriptionEndDate,
+                SubscriptionEndDate = subscriptionEndDate
+            };
+
+            newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
+            await AddPaymentRecordAsync(newPayment);
+        }
+        else
+        {
+            _logger.LogWarning("[UserBillingGrain][VerifyAppStoreReceiptAsync] transaction exists {0}, {1}, {2})",
+                userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
+        }
+
+        // Update user quota
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        var subscriptionDto = appleProduct.Ultimate
+            ? await userQuotaGrain.GetSubscriptionAsync(true)
+            : await userQuotaGrain.GetSubscriptionAsync();
+        _logger.LogDebug("[UserBillingGrain][VerifyAppStoreReceiptAsync] allocate resource {0}, {1}, {2})",
+            userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
+        if (subscriptionDto.IsActive)
+        {
+            if (subscriptionDto.PlanType <= (PlanType)appleProduct.PlanType)
+            {
+                subscriptionDto.PlanType = (PlanType)appleProduct.PlanType;
+            }
+
+            subscriptionDto.EndDate =
+                GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionDto.EndDate);
+        }
+        else
+        {
+            subscriptionDto.IsActive = true;
+            subscriptionDto.PlanType = (PlanType)appleProduct.PlanType;
+            subscriptionDto.StartDate = DateTime.UtcNow;
+            subscriptionDto.EndDate =
+                GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionDto.StartDate);
+            await userQuotaGrain.ResetRateLimitsAsync();
+        }
+
+        subscriptionDto.Status = PaymentStatus.Completed;
+        await userQuotaGrain.UpdateSubscriptionAsync(subscriptionDto, appleProduct.Ultimate);
+
+        //UpdatePremium quota
+        if (appleProduct.Ultimate)
+        {
+            var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync();
+            if (subscriptionInfoDto.IsActive)
+            {
+                subscriptionInfoDto.StartDate =
+                    GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionInfoDto.StartDate);
+                subscriptionInfoDto.EndDate =
+                    GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionInfoDto.EndDate);
+                await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+            }
         }
     }
 

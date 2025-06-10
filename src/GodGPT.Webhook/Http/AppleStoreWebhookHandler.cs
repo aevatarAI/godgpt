@@ -58,9 +58,10 @@ public class AppleStoreWebhookHandler : IWebhookHandler
             // Use a default UserBillingGrain to process the notification
             var defaultUserBillingGrainId = "AppStoreNotificationProcessingGrainId";
             var userBillingGrain = _clusterClient.GetGrain<IUserBillingGrain>(defaultUserBillingGrainId);
-            
+
+            var userId = Guid.NewGuid();
             // Process the notification
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(json, notificationToken);
+            var result = await userBillingGrain.HandleAppStoreNotificationAsync(userId, json, notificationToken);
             if (!result)
             {
                 _logger.LogWarning("[AppleStoreWebhookHandler][Webhook] Failed to process notification");

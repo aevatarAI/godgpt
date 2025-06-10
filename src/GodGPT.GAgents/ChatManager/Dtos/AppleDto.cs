@@ -37,7 +37,7 @@ public class SubscriptionDto
 public class CreateAppStoreSubscriptionDto
 {
     [Id(0)] public string UserId { get; set; }
-    [Id(1)] public bool SandboxMode { get; set; }
+    [Id(1)] public bool SandboxMode { get; set; } = false;
     [Id(2)] public string ProductId { get; set; }
     [Id(3)] public string ReceiptData { get; set; }
 }
