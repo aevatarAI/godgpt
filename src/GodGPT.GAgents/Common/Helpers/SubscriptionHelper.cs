@@ -96,7 +96,8 @@ public static class SubscriptionHelper
         return planType switch
         {
             // Historical compatibility: Day treated as 7 days
-            PlanType.Day or PlanType.Week => 7,
+            PlanType.Day => 1,
+            PlanType.Week => 7,
             PlanType.Month => 30,
             PlanType.Year => 390,
             _ => throw new ArgumentException($"Invalid plan type: {planType}")

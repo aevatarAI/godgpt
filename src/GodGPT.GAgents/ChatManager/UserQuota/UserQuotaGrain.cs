@@ -22,7 +22,6 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task UpdateSubscriptionAsync(string planType, DateTime endDate);
     Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto, bool ultimate = false);
     Task CancelSubscriptionAsync();
-    Task<ExecuteActionResultDto> IsActionAllowedAsync(string actionType = "conversation");
     Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
         string actionType = "conversation");
     Task ResetRateLimitsAsync(string actionType = "conversation");
@@ -451,20 +450,6 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 
     #region Rate Limiting with Ultimate Support
 
-    public async Task<ExecuteActionResultDto> IsActionAllowedAsync(string actionType = "conversation")
-    {
-        // Check for unlimited access first
-        if (await HasUnlimitedAccessAsync())
-        {
-            _logger.LogDebug("[UserQuotaGrain][IsActionAllowedAsync] User {UserId} has unlimited access (Ultimate subscription)", 
-                this.GetPrimaryKeyString());
-            return new ExecuteActionResultDto { Success = true };
-        }
-        
-        // Apply standard rate limiting and credits logic
-        return await ApplyStandardRateLimitingAsync(actionType);
-    }
-
     public async Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
         string actionType = "conversation")
     {
@@ -480,81 +465,19 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         return await ExecuteStandardActionAsync(sessionId, chatManagerGuid, actionType);
     }
 
-    private async Task<ExecuteActionResultDto> ApplyStandardRateLimitingAsync(string actionType)
-    {
-        var now = DateTime.UtcNow;
-        var isSubscribed = await IsSubscribedAsync();
-        
-        // Check credits for non-subscribers
-        if (!isSubscribed)
-        {
-            var requiredCredits = _creditsOptions.CurrentValue.CreditsPerConversation;
-            var credits = (await GetCreditsAsync()).Credits;
-            var isAllowed = credits >= requiredCredits;
-            
-            _logger.LogDebug("[UserQuotaGrain][ApplyStandardRateLimitingAsync] Credits check for user {UserId}: allowed={IsAllowed}, credits={Credits}, required={Required}", 
-                this.GetPrimaryKeyString(), isAllowed, credits, requiredCredits);
-                
-            if (!isAllowed)
-            {
-                return new ExecuteActionResultDto
-                {
-                    Code = ExecuteActionStatus.InsufficientCredits,
-                    Message = "You've run out of credits."
-                };
-            }
-        }
-        
-        // Apply rate limiting
-        var maxTokens = isSubscribed 
-            ? _rateLimiterOptions.CurrentValue.SubscribedUserMaxRequests 
-            : _rateLimiterOptions.CurrentValue.UserMaxRequests;
-        var timeWindow = isSubscribed 
-            ? _rateLimiterOptions.CurrentValue.SubscribedUserTimeWindowSeconds 
-            : _rateLimiterOptions.CurrentValue.UserTimeWindowSeconds;
-            
-        if (!State.RateLimits.TryGetValue(actionType, out var rateLimitInfo))
-        {
-            rateLimitInfo = new RateLimitInfo { Count = maxTokens, LastTime = now };
-            State.RateLimits[actionType] = rateLimitInfo;
-            _logger.LogDebug("[UserQuotaGrain][ApplyStandardRateLimitingAsync] Created new rate limit for user {UserId}, action {ActionType}, max tokens {MaxTokens}", 
-                this.GetPrimaryKeyString(), actionType, maxTokens);
-        }
-        else
-        {
-            var timeElapsed = now - rateLimitInfo.LastTime;
-            var elapsedSeconds = timeElapsed.TotalSeconds;
-            var refillRate = (double)maxTokens / timeWindow;
-            var tokensToAdd = (int)(elapsedSeconds * refillRate);
-            
-            if (tokensToAdd > 0)
-            {
-                rateLimitInfo.Count = Math.Min(maxTokens, rateLimitInfo.Count + tokensToAdd);
-                rateLimitInfo.LastTime = now;
-                
-                _logger.LogDebug("[UserQuotaGrain][ApplyStandardRateLimitingAsync] Refreshed tokens for user {UserId}, action {ActionType}, added {TokensAdded}, current {CurrentTokens}", 
-                    this.GetPrimaryKeyString(), actionType, tokensToAdd, rateLimitInfo.Count);
-            }
-        }
-        
-        if (rateLimitInfo.Count <= 0)
-        {
-            _logger.LogWarning("[UserQuotaGrain][ApplyStandardRateLimitingAsync] Rate limit exceeded for user {UserId}, action {ActionType}", 
-                this.GetPrimaryKeyString(), actionType);
-            return new ExecuteActionResultDto
-            {
-                Code = 20002,
-                Message = $"Message limit reached ({maxTokens} in {timeWindow / 3600} hours). Please try again later."
-            };
-        }
-        
-        return new ExecuteActionResultDto { Success = true };
-    }
-
     private async Task<ExecuteActionResultDto> ExecuteStandardActionAsync(string sessionId, string chatManagerGuid, string actionType)
     {
         var now = DateTime.UtcNow;
-        var isSubscribed = await IsSubscribedAsync();
+
+        if (await IsSubscribedAsync(true))
+        {
+            return new ExecuteActionResultDto
+            {
+                Success = true
+            };
+        }
+
+        var isSubscribed = await IsSubscribedAsync(false);
         var maxTokens = isSubscribed 
             ? _rateLimiterOptions.CurrentValue.SubscribedUserMaxRequests 
             : _rateLimiterOptions.CurrentValue.UserMaxRequests;
