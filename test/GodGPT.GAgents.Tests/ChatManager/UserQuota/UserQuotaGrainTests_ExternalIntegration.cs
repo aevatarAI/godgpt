@@ -127,7 +127,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             // Act - External system calls unified interface for Ultimate subscription
             var updateResult = await SimulateExternalSystemSubscriptionUpdate(
                 userQuotaGrain, 
-                PlanType.WeekUltimate, 
+                PlanType.Week, 
                 startDate, 
                 endDate);
             
@@ -138,7 +138,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             var activeSubscription = await userQuotaGrain.GetSubscriptionAsync();
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
-            activeSubscription.PlanType.ShouldBe(PlanType.WeekUltimate);
+            activeSubscription.PlanType.ShouldBe(PlanType.Week);
             
             // External system doesn't need to know about unlimited access, but we can verify internally
             var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
@@ -184,7 +184,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             // Act - External system calls the same unified interface
             var ultimateUpdateResult = await SimulateExternalSystemSubscriptionUpdate(
                 userQuotaGrain, 
-                PlanType.WeekUltimate, 
+                PlanType.Week, 
                 ultimateStart, 
                 ultimateEnd);
             
@@ -195,7 +195,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             var activeSubscription = await userQuotaGrain.GetSubscriptionAsync();
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
-            activeSubscription.PlanType.ShouldBe(PlanType.WeekUltimate);
+            activeSubscription.PlanType.ShouldBe(PlanType.Week);
             
             // Verify time accumulation happened (Ultimate should have more than 7 days)
             var totalDuration = activeSubscription.EndDate - activeSubscription.StartDate;
@@ -225,7 +225,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             // Add Ultimate subscription via external system
             await SimulateExternalSystemSubscriptionUpdate(
                 userQuotaGrain, 
-                PlanType.MonthUltimate, 
+                PlanType.Month, 
                 DateTime.UtcNow, 
                 DateTime.UtcNow.AddDays(30));
             
@@ -291,13 +291,13 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             var userQuotaGrain = await CreateTestUserQuotaGrainAsync();
             
             // Act - Use legacy API with Ultimate plan type
-            await userQuotaGrain.UpdateSubscriptionAsync("WeekUltimate", DateTime.UtcNow.AddDays(7));
+            await userQuotaGrain.UpdateSubscriptionAsync("Week", DateTime.UtcNow.AddDays(7));
             
             // Assert
             var subscription = await userQuotaGrain.GetSubscriptionAsync();
             subscription.ShouldNotBeNull();
             subscription.IsActive.ShouldBeTrue();
-            subscription.PlanType.ShouldBe(PlanType.WeekUltimate);
+            subscription.PlanType.ShouldBe(PlanType.Week);
             
             // Should have unlimited access
             var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
@@ -327,7 +327,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             // External system adds Ultimate subscription (provides unlimited access)
             await SimulateExternalSystemSubscriptionUpdate(
                 userQuotaGrain, 
-                PlanType.WeekUltimate, 
+                PlanType.Week, 
                 DateTime.UtcNow, 
                 DateTime.UtcNow.AddDays(7));
             

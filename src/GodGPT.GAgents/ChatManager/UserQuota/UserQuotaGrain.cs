@@ -115,7 +115,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         // Check Ultimate subscription first (higher priority)
         if (IsSubscriptionActive(State.UltimateSubscription, now))
         {
-            return ConvertToDto(State.UltimateSubscription);
+            return ConvertToDto(State.UltimateSubscription, true);
         }
         
         // Check Standard subscription (legacy field)
@@ -139,7 +139,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         
         return new DualSubscriptionStatusDto
         {
-            UltimateSubscription = ConvertToDto(State.UltimateSubscription),
+            UltimateSubscription = ConvertToDto(State.UltimateSubscription, true),
             StandardSubscription = ConvertToDto(State.Subscription),
             UltimateActive = ultimateActive,
             StandardActive = standardActive
@@ -254,7 +254,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     public async Task<bool> HasUnlimitedAccessAsync()
     {
         var activeSubscription = await GetActiveSubscriptionAsync();
-        return activeSubscription.IsActive && SubscriptionHelper.IsUltimateSubscription(activeSubscription.PlanType);
+        return activeSubscription.IsActive && activeSubscription.IsUltimate;
     }
 
     #endregion
@@ -310,6 +310,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             throw new ArgumentException($"Invalid plan type: {planType}", nameof(planType));
         }
         
+        // TODO: In a future refactor, this method should accept IsUltimate parameter directly
+        // For now, we assume standard subscription when IsUltimate info is not available
         var subscriptionDto = new SubscriptionInfoDto
         {
             PlanType = parsedPlanType,
@@ -318,11 +320,12 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             EndDate = endDate,
             Status = PaymentStatus.Completed,
             SubscriptionIds = new List<string>(),
-            InvoiceIds = new List<string>()
+            InvoiceIds = new List<string>(),
+            IsUltimate = false  // Default to standard subscription when config info unavailable
         };
         
-        // Route to appropriate subscription based on plan type
-        if (SubscriptionHelper.IsUltimateSubscription(parsedPlanType))
+        // Route to appropriate subscription based on IsUltimate flag
+        if (subscriptionDto.IsUltimate)
         {
             await UpdateUltimateSubscriptionAsync(subscriptionDto);
         }
@@ -340,8 +343,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         _logger.LogInformation("[UserQuotaGrain][UpdateSubscriptionAsync] Updating subscription for user {UserId}: Data={Data}", 
             this.GetPrimaryKeyString(), JsonConvert.SerializeObject(subscriptionInfoDto));
         
-        // Smart routing based on plan type - internal Ultimate logic, unified external interface
-        if (SubscriptionHelper.IsUltimateSubscription(subscriptionInfoDto.PlanType))
+        // Smart routing based on IsUltimate flag - internal Ultimate logic, unified external interface
+        if (subscriptionInfoDto.IsUltimate)
         {
             await UpdateUltimateSubscriptionAsync(subscriptionInfoDto);
         }
@@ -373,7 +376,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         }
         
         // Route to appropriate cancellation logic based on active subscription type
-        if (SubscriptionHelper.IsUltimateSubscription(activeSubscription.PlanType))
+        if (activeSubscription.IsUltimate)
         {
             await CancelUltimateSubscriptionAsync();
         }
@@ -633,7 +636,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
                subscription.EndDate > now;
     }
 
-    private SubscriptionInfoDto ConvertToDto(SubscriptionInfo subscription)
+    private SubscriptionInfoDto ConvertToDto(SubscriptionInfo subscription, bool isUltimate = false)
     {
         return new SubscriptionInfoDto
         {
@@ -643,7 +646,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             StartDate = subscription.StartDate,
             EndDate = subscription.EndDate,
             SubscriptionIds = subscription.SubscriptionIds,
-            InvoiceIds = subscription.InvoiceIds
+            InvoiceIds = subscription.InvoiceIds,
+            IsUltimate = isUltimate
         };
     }
 
@@ -656,6 +660,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         subscription.Status = dto.Status;
         subscription.SubscriptionIds = dto.SubscriptionIds ?? new List<string>();
         subscription.InvoiceIds = dto.InvoiceIds ?? new List<string>();
+        // Note: IsUltimate is not stored in SubscriptionInfo - it's a runtime flag from configuration
     }
 
     #endregion

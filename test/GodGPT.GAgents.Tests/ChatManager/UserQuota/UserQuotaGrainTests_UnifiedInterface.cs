@@ -54,7 +54,8 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
         var start = startDate ?? DateTime.UtcNow;
         return new SubscriptionInfoDto
         {
-            PlanType = PlanType.WeekUltimate,
+            PlanType = PlanType.Week,
+            IsUltimate = true,
             IsActive = true,
             StartDate = start,
             EndDate = start.AddDays(durationDays),
@@ -119,7 +120,7 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             var activeSubscription = await userQuotaGrain.GetSubscriptionAsync();
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
-            activeSubscription.PlanType.ShouldBe(PlanType.WeekUltimate);
+            activeSubscription.PlanType.ShouldBe(PlanType.Week);
             
             // Should have unlimited access for Ultimate subscription
             var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
@@ -164,7 +165,7 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             // Assert - Ultimate should take priority
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
-            activeSubscription.PlanType.ShouldBe(PlanType.WeekUltimate);
+            activeSubscription.PlanType.ShouldBe(PlanType.Week);
             
             // Should have unlimited access
             var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
@@ -260,7 +261,7 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             var activeSubscription = await userQuotaGrain.GetSubscriptionAsync();
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
-            activeSubscription.PlanType.ShouldBe(PlanType.WeekUltimate);
+            activeSubscription.PlanType.ShouldBe(PlanType.Week);
             
             // Calculate expected end date: Ultimate should have accumulated Standard's remaining time
             var expectedMinEndDate = ultimateStart.AddDays(7 + 19); // 7 Ultimate + ~19-20 Standard remaining
@@ -307,7 +308,7 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             
             // Verify Ultimate is active
             var beforeCancel = await userQuotaGrain.GetSubscriptionAsync();
-            beforeCancel.PlanType.ShouldBe(PlanType.WeekUltimate);
+            beforeCancel.PlanType.ShouldBe(PlanType.Week);
             
             // Act - Use unified cancellation interface
             await userQuotaGrain.CancelSubscriptionAsync();

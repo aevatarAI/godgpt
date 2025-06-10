@@ -9,8 +9,5 @@ public enum PlanType
     [Id(3)] None = 0,           // No active subscription
     
     // New subscription types
-    [Id(4)] Week = 4,           // Weekly subscription (new standard plan)
-    [Id(5)] WeekUltimate = 5,   // Weekly Ultimate subscription
-    [Id(6)] MonthUltimate = 6,  // Monthly Ultimate subscription
-    [Id(7)] YearUltimate = 7    // Annual Ultimate subscription
+    [Id(4)] Week = 4            // Weekly subscription (new standard plan)
 }

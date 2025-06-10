@@ -98,8 +98,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 Amount = product.Amount,
                 DailyAvgPrice = dailyAvgPrice,
                 Currency = product.Currency,
-                IsUltimate = SubscriptionHelper.IsUltimateSubscription(planType),
-                PlanDisplayName = SubscriptionHelper.GetPlanDisplayName(planType)
+                IsUltimate = product.IsUltimate,  // Configuration-driven Ultimate detection
+                PlanDisplayName = SubscriptionHelper.GetPlanDisplayName(planType, product.IsUltimate)
             });
         }
         
@@ -912,8 +912,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             
             // For same or lower plan types, extend from current end date
             // For upgrades, start from now and accumulate remaining time (handled in UserQuotaGrain)
-            if (SubscriptionHelper.IsUltimateSubscription(targetPlanType) || 
-                targetPlanType >= activeSubscription.PlanType)
+            if (productConfig.IsUltimate || 
+                SubscriptionHelper.IsUpgradeOrSameLevel(activeSubscription.PlanType, targetPlanType))
             {
                 // Upgrade or Ultimate: start from now, internal logic will handle time accumulation
                 subscriptionStartDate = DateTime.UtcNow;

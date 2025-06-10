@@ -12,4 +12,5 @@ public class SubscriptionInfoDto
     [Id(4)] public DateTime EndDate { get; set; }
     [Id(5)] public List<string> SubscriptionIds { get; set; } = new List<string>();
     [Id(6)] public List<string> InvoiceIds { get; set; } = new List<string>();
+    [Id(7)] public bool IsUltimate { get; set; } = false;
 }

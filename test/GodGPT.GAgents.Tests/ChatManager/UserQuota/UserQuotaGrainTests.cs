@@ -53,7 +53,8 @@ public partial class UserQuotaGrainTests : AevatarOrleansTestBase<AevatarGodGPTT
         var start = startDate ?? DateTime.UtcNow;
         return new SubscriptionInfoDto
         {
-            PlanType = PlanType.WeekUltimate,
+            PlanType = PlanType.Week,
+            IsUltimate = true,
             IsActive = true,
             StartDate = start,
             EndDate = start.AddDays(durationDays),

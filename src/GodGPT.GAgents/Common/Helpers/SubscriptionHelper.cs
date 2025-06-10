@@ -8,13 +8,22 @@ namespace Aevatar.Application.Grains.Common.Helpers;
 public static class SubscriptionHelper
 {
     /// <summary>
-    /// Checks if the plan type is an Ultimate subscription
+    /// Checks if the subscription is Ultimate based on configuration flag
     /// </summary>
+    public static bool IsUltimateSubscription(bool isUltimate)
+    {
+        return isUltimate;
+    }
+
+    /// <summary>
+    /// Legacy method for backward compatibility - checks if plan type suggests Ultimate
+    /// Note: This is deprecated and should be replaced with configuration-driven approach
+    /// </summary>
+    [Obsolete("Use IsUltimateSubscription(bool isUltimate) instead for configuration-driven Ultimate detection")]
     public static bool IsUltimateSubscription(PlanType planType)
     {
-        return planType is PlanType.WeekUltimate 
-            or PlanType.MonthUltimate 
-            or PlanType.YearUltimate;
+        // Legacy hardcoded logic - kept for backward compatibility during migration
+        return false; // All plans are now standard by default, Ultimate is configuration-driven
     }
 
     /// <summary>
@@ -38,36 +47,43 @@ public static class SubscriptionHelper
     }
 
     /// <summary>
-    /// Gets display-friendly plan name
+    /// Gets display-friendly plan name with Ultimate suffix based on configuration
     /// </summary>
-    public static string GetPlanDisplayName(PlanType planType)
+    public static string GetPlanDisplayName(PlanType planType, bool isUltimate = false)
     {
-        return planType switch
+        var baseName = planType switch
         {
             PlanType.Day => "Weekly",  // Display legacy Day as Weekly
             PlanType.Week => "Weekly",
             PlanType.Month => "Monthly",
             PlanType.Year => "Annual",
-            PlanType.WeekUltimate => "Weekly Ultimate",
-            PlanType.MonthUltimate => "Monthly Ultimate",
-            PlanType.YearUltimate => "Annual Ultimate",
             PlanType.None => "No Subscription",
             _ => "Unknown"
         };
+
+        return isUltimate ? $"{baseName} Ultimate" : baseName;
     }
 
     /// <summary>
-    /// Calculates subscription end date based on plan type
-    /// Historical compatibility: Day treated as 7 days
+    /// Legacy method for backward compatibility
+    /// </summary>
+    [Obsolete("Use GetPlanDisplayName(PlanType planType, bool isUltimate) instead")]
+    public static string GetPlanDisplayName(PlanType planType)
+    {
+        return GetPlanDisplayName(planType, false);
+    }
+
+    /// <summary>
+    /// Calculates subscription end date based on plan type (configuration-driven Ultimate logic handled separately)
     /// </summary>
     public static DateTime GetSubscriptionEndDate(PlanType planType, DateTime startDate)
     {
         return planType switch
         {
             // Historical compatibility: Day treated as 7 days
-            PlanType.Day or PlanType.Week or PlanType.WeekUltimate => startDate.AddDays(7),
-            PlanType.Month or PlanType.MonthUltimate => startDate.AddDays(30),
-            PlanType.Year or PlanType.YearUltimate => startDate.AddDays(390),
+            PlanType.Day or PlanType.Week => startDate.AddDays(7),
+            PlanType.Month => startDate.AddDays(30),
+            PlanType.Year => startDate.AddDays(390),
             _ => throw new ArgumentException($"Invalid plan type: {planType}")
         };
     }
@@ -80,9 +96,9 @@ public static class SubscriptionHelper
         return planType switch
         {
             // Historical compatibility: Day treated as 7 days
-            PlanType.Day or PlanType.Week or PlanType.WeekUltimate => 7,
-            PlanType.Month or PlanType.MonthUltimate => 30,
-            PlanType.Year or PlanType.YearUltimate => 390,
+            PlanType.Day or PlanType.Week => 7,
+            PlanType.Month => 30,
+            PlanType.Year => 390,
             _ => throw new ArgumentException($"Invalid plan type: {planType}")
         };
     }
@@ -97,28 +113,83 @@ public static class SubscriptionHelper
     }
 
     /// <summary>
-    /// Validates if an upgrade path is allowed
+    /// Validates if an upgrade path is allowed (updated for configuration-driven Ultimate)
     /// </summary>
-    public static bool IsUpgradePathValid(PlanType fromPlan, PlanType toPlan)
+    public static bool IsUpgradePathValid(PlanType fromPlan, PlanType toPlan, bool fromIsUltimate = false, bool toIsUltimate = false)
     {
         // Standard subscriptions upgrade rules
-        if (IsStandardSubscription(fromPlan))
+        if (IsStandardSubscription(fromPlan) && !fromIsUltimate)
         {
             // Can upgrade to any Ultimate
-            if (IsUltimateSubscription(toPlan)) return true;
+            if (toIsUltimate) return true;
             
-            // Standard upgrades: Day/Week -> Month/Year, Month -> Year
-            return (fromPlan is PlanType.Day or PlanType.Week && toPlan is PlanType.Month or PlanType.Year)
-                || (fromPlan == PlanType.Month && toPlan == PlanType.Year)
-                || (fromPlan == toPlan); // Same plan (renewal)
+            // Standard upgrades based on logical order: Day/Week -> Month/Year, Month -> Year
+            var fromOrder = GetPlanTypeLogicalOrder(fromPlan);
+            var toOrder = GetPlanTypeLogicalOrder(toPlan);
+            
+            // Allow upgrades (higher logical order) or same plan (renewal)
+            return toOrder >= fromOrder;
         }
 
         // Ultimate subscriptions can be replaced by any Ultimate or coexist with standard
-        if (IsUltimateSubscription(fromPlan))
+        if (fromIsUltimate)
         {
-            return IsUltimateSubscription(toPlan) || IsStandardSubscription(toPlan);
+            return toIsUltimate || IsStandardSubscription(toPlan);
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Legacy method for backward compatibility
+    /// </summary>
+    [Obsolete("Use IsUpgradePathValid(PlanType fromPlan, PlanType toPlan, bool fromIsUltimate, bool toIsUltimate) instead")]
+    public static bool IsUpgradePathValid(PlanType fromPlan, PlanType toPlan)
+    {
+        return IsUpgradePathValid(fromPlan, toPlan, false, false);
+    }
+
+    /// <summary>
+    /// Gets the logical order value for plan type comparison (Day=1, Week=2, Month=3, Year=4)
+    /// This handles historical compatibility where enum values don't match logical order
+    /// </summary>
+    public static int GetPlanTypeLogicalOrder(PlanType planType)
+    {
+        return planType switch
+        {
+            PlanType.Day => 1,     // Logical order: 1st level
+            PlanType.Week => 2,    // Logical order: 2nd level  
+            PlanType.Month => 3,   // Logical order: 3rd level
+            PlanType.Year => 4,    // Logical order: 4th level
+            PlanType.None => 0,    // No subscription
+            _ => 0
+        };
+    }
+
+    /// <summary>
+    /// Compares two plan types based on logical order rather than enum values
+    /// Returns: -1 if plan1 < plan2, 0 if equal, 1 if plan1 > plan2
+    /// </summary>
+    public static int ComparePlanTypes(PlanType plan1, PlanType plan2)
+    {
+        var order1 = GetPlanTypeLogicalOrder(plan1);
+        var order2 = GetPlanTypeLogicalOrder(plan2);
+        return order1.CompareTo(order2);
+    }
+
+    /// <summary>
+    /// Checks if target plan is an upgrade from current plan (logical order comparison)
+    /// </summary>
+    public static bool IsUpgrade(PlanType fromPlan, PlanType toPlan)
+    {
+        return ComparePlanTypes(toPlan, fromPlan) > 0;
+    }
+
+    /// <summary>
+    /// Checks if target plan is same level or upgrade from current plan (logical order comparison)
+    /// </summary>
+    public static bool IsUpgradeOrSameLevel(PlanType fromPlan, PlanType toPlan)
+    {
+        return ComparePlanTypes(toPlan, fromPlan) >= 0;
     }
 } 
