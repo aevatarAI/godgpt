@@ -9,7 +9,7 @@ namespace Aevatar.Application.Grains.Agents.ChatManager;
 
 public interface IChatManagerGAgent : IGAgent
 {
-    Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null);
+    Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null, string? guider = null);
     Task<Tuple<string,string>> ChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, ExecutionPromptSettings promptSettings = null);
     [ReadOnly]
     Task<List<SessionInfoDto>> GetSessionListAsync();
@@ -17,6 +17,8 @@ public interface IChatManagerGAgent : IGAgent
     Task<bool> IsUserSessionAsync(Guid sessionId);
     [ReadOnly]
     Task<List<ChatMessage>> GetSessionMessageListAsync(Guid sessionId);
+    [ReadOnly]
+    Task<SessionCreationInfoDto?> GetSessionCreationInfoAsync(Guid sessionId);
     Task<Guid> DeleteSessionAsync(Guid sessionId);
     Task<Guid> RenameSessionAsync(Guid sessionId, string title);
     Task<UserProfileDto> GetUserProfileAsync();

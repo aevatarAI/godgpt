@@ -77,7 +77,7 @@ public class ConfigurationGAgent : GAgentBase<ConfigurationState, ConfigurationL
     public Task<string> GetPrompt()
     {
         // Task.FromResult(State.Prompt);
-        var sysMessage = State.Prompt;
+        var sysMessage = "如果没有特别说明你默认使用英语."+State.Prompt;
 
         var formattedRequirement =
             """

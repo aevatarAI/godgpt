@@ -39,7 +39,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         {
             Gender = "Male",
             BirthDate = DateTime.UtcNow,
-            BirthPlace = "BeiJing",
+            BirthPlace = "Beijing",
             FullName = "Test001"
         });
         _testOutputHelper.WriteLine($"God GAgent GrainId: {godGAgentId.ToString()}");
@@ -68,7 +68,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         {
             Gender = "Male",
             BirthDate = DateTime.UtcNow,
-            BirthPlace = "BeiJing",
+            BirthPlace = "Beijing",
             FullName = "Test001"
         });
         _testOutputHelper.WriteLine($"God GAgent GrainId: {godGAgentId.ToString()}");
@@ -119,7 +119,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             {
                 Gender = "Male",
                 BirthDate = DateTime.UtcNow,
-                BirthPlace = "BeiJing",
+                BirthPlace = "Beijing",
                 FullName = "Test001"
             });
             _testOutputHelper.WriteLine($"God GAgent GrainId: {godGAgentId.ToString()}");
@@ -637,5 +637,84 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
+    }
+
+    [Fact]
+    public async Task ChatMessageCallback_RequestLimitError_DoesNotDuplicateUserMessage_Test()
+    {
+        // Create session and initial message
+        var sessionId = Guid.NewGuid();
+        var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
+        var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
+        var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
+        
+        // Send a normal message, it will be added to chat history
+        var chatId = Guid.NewGuid().ToString();
+        var userMessage = "Test message";
+        await godChat.GodStreamChatAsync(sessionId, "OpenAI", true, userMessage, chatId);
+        
+        // Wait for message processing to complete
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        
+        // Get initial chat history
+        var historyBeforeError = await godChat.GetChatMessageAsync();
+        _testOutputHelper.WriteLine($"Chat history before error: {JsonConvert.SerializeObject(historyBeforeError)}");
+        
+        // Record initial message count
+        int initialMessageCount = historyBeforeError.Count;
+        _testOutputHelper.WriteLine($"Initial message count: {initialMessageCount}");
+        
+        // Record initial user message count
+        var initialUserMessages = historyBeforeError.Where(m => m.ChatRole == ChatRole.User).ToList();
+        int initialUserMessageCount = initialUserMessages.Count;
+        _testOutputHelper.WriteLine($"Initial user message count: {initialUserMessageCount}");
+        
+        // Verify at least contains user message
+        historyBeforeError.Any(m => m.ChatRole == ChatRole.User && m.Content == userMessage).ShouldBeTrue();
+        
+        // Create simulated context and message ID
+        var contextDto = new AIChatContextDto
+        {
+            ChatId = chatId,
+            RequestId = sessionId,
+            MessageId = JsonConvert.SerializeObject(new Dictionary<string, object>()
+            {
+                { "IsHttpRequest", true }, 
+                { "LLM", "OpenAI" }, 
+                { "StreamingModeEnabled", true },
+                { "Message", userMessage },
+                { "Region", null }
+            })
+        };
+        
+        // Directly call callback method, simulate RequestLimitError
+        _testOutputHelper.WriteLine("Simulating RequestLimitError...");
+        await godChat.ChatMessageCallbackAsync(
+            contextDto,
+            AIExceptionEnum.RequestLimitError,
+            "Request limit exceeded",
+            null
+        );
+        
+        // Wait for asynchronous operation to complete
+        await Task.Delay(TimeSpan.FromSeconds(5));
+        
+        // Get chat history again
+        var historyAfterError = await godChat.GetChatMessageAsync();
+        _testOutputHelper.WriteLine($"Chat history after error: {JsonConvert.SerializeObject(historyAfterError)}");
+        
+        // Key assertion: Verify user message count did not increase - user messages should not be added repeatedly
+        var userMessagesAfterError = historyAfterError.Where(m => m.ChatRole == ChatRole.User).ToList();
+        _testOutputHelper.WriteLine($"User messages after error: {userMessagesAfterError.Count}");
+        userMessagesAfterError.Count.ShouldBe(initialUserMessageCount, "User message count should not increase");
+        
+        // Verify user message content did not change
+        userMessagesAfterError.Count.ShouldBe(1);
+        userMessagesAfterError[0].Content.ShouldBe(userMessage);
+        
+        // Note: System may add new reply messages, but will not add user messages repeatedly
+        _testOutputHelper.WriteLine($"Final message count: {historyAfterError.Count}");
+        
+        _testOutputHelper.WriteLine("Bug fix verification passed: No duplicate user messages after RequestLimitError");
     }
 }
