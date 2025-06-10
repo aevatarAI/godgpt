@@ -1,5 +1,6 @@
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Webhook;
 using Aevatar.Webhook.SDK.Handler;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,8 @@ public class AppleStoreWebhookHandler : IWebhookHandler
     private readonly ILogger<AppleStoreWebhookHandler> _logger;
     private readonly IClusterClient _clusterClient;
     private readonly IOptionsMonitor<ApplePayOptions> _appleOptions;
+    
+    private static readonly string AppleNotificationProcessorGrainId = "AppleNotificationProcessorGrainId_1";
 
     public AppleStoreWebhookHandler(
         IClusterClient clusterClient,
@@ -54,21 +57,29 @@ public class AppleStoreWebhookHandler : IWebhookHandler
             var json = await new StreamReader(request.Body).ReadToEndAsync();
             _logger.LogInformation("[AppleStoreWebhookHandler][webhook] json: {0}", json);
 
-            // Find user ID (During notification processing, we extract the original transaction ID from the notification and find the associated user ID)
-            // Use a default UserBillingGrain to process the notification
-            var defaultUserBillingGrainId = "AppStoreNotificationProcessingGrainId";
-            var userBillingGrain = _clusterClient.GetGrain<IUserBillingGrain>(defaultUserBillingGrainId);
-
-            var userId = Guid.NewGuid();
-            // Process the notification
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(userId, json, notificationToken);
+            // 1. Use AppleEventProcessingGrain to parse notification and get userId
+            var appleEventProcessingGrain = _clusterClient.GetGrain<IAppleEventProcessingGrain>(AppleNotificationProcessorGrainId);
+            var userId = await appleEventProcessingGrain.ParseEventAndGetUserIdAsync(json);
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                _logger.LogWarning("[AppleStoreWebhookHandler][webhook] Could not determine user ID from notification");
+                // Return 200 success even if userId is not found, to prevent Apple from retrying
+                return new { success = true, message = "Notification received but no associated user found" };
+            }
+            
+            // 2. Use the found userId to request UserBillingGrain to process the notification
+            var userBillingGrain = _clusterClient.GetGrain<IUserBillingGrain>(userId);
+            var result = await userBillingGrain.HandleAppStoreNotificationAsync(Guid.Parse(userId), json, notificationToken);
+            
             if (!result)
             {
-                _logger.LogWarning("[AppleStoreWebhookHandler][Webhook] Failed to process notification");
+                _logger.LogWarning("[AppleStoreWebhookHandler][Webhook] Failed to process notification for user {UserId}", userId);
                 return new { success = false, message = "Failed to process notification" };
             }
 
-            // Return successful response (Apple requires an HTTP 200 status code)
+            // Return success response
+            _logger.LogInformation("[AppleStoreWebhookHandler][webhook] Successfully processed notification for user {UserId}", userId);
             return new { success = true };
         }
         catch (Exception ex)

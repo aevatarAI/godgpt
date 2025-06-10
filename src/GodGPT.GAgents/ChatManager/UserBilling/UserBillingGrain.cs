@@ -2370,24 +2370,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         return 9.99m;
     }
 
-    private string GetErrorMessageForStatus(int status)
-    {
-        return status switch
-        {
-            21000 => "App Store unable to read provided JSON data",
-            21002 => "Invalid receipt data",
-            21003 => "Receipt unable to verify",
-            21004 => "Provided shared key does not match account's shared key",
-            21005 => "Receipt server currently unavailable",
-            21006 => "Receipt valid, but subscription has expired",
-            21007 => "Receipt from test environment but sent for production environment verification",
-            21008 => "Receipt from production environment but sent for test environment verification",
-            21010 => "Account unable to create or update",
-            21100 => "Internal data access error",
-            _ => $"Unknown error, status code: {status}"
-        };
-    }
-
     private async Task HandleRenewalPreferenceChangeAsync(AppStoreSubscriptionInfo transactionInfo)
     {
         // Find user ID (associated via OriginalTransactionId)

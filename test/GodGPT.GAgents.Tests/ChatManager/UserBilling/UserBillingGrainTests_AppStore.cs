@@ -257,7 +257,7 @@ public partial class UserBillingGrainTests
             };
             
             // Execute test method
-            var result = await userBillingGrain.VerifyAppStoreReceiptAsync(requestDto);
+            var result = await userBillingGrain.VerifyAppStoreReceiptAsync(requestDto, true);
             
             // Log results
             _testOutputHelper.WriteLine($"VerifyAppStoreReceiptAsync result: IsValid={result.IsValid}, Environment={result.Environment}, ProductId={result.ProductId}");
@@ -327,7 +327,7 @@ public partial class UserBillingGrainTests
             var notificationToken = "mock_notification_token"; // Should match the value in configuration
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(notificationJson, notificationToken);
+            var result = await userBillingGrain.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson, notificationToken);
             
             // Log results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result: {result}");
@@ -393,7 +393,7 @@ public partial class UserBillingGrainTests
             var notificationToken = "mock_notification_token"; // Should match the value in configuration
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(notificationJson, notificationToken);
+            var result = await userBillingGrain.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson, notificationToken);
             
             // Log results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result: {result}");
@@ -466,7 +466,7 @@ public partial class UserBillingGrainTests
             var notificationToken = "mock_notification_token"; // Should match the value in configuration
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(notificationJson, notificationToken);
+            var result = await userBillingGrain.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson, notificationToken);
             
             // Log results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result: {result}");
@@ -539,7 +539,7 @@ public partial class UserBillingGrainTests
             var notificationToken = "mock_notification_token"; // Should match the value in configuration
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(notificationJson, notificationToken);
+            var result = await userBillingGrain.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson, notificationToken);
             
             // Log results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result: {result}");
@@ -592,7 +592,7 @@ public partial class UserBillingGrainTests
             var invalidToken = "invalid_token"; // Intentionally use an invalid token
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(notificationJson, invalidToken);
+            var result = await userBillingGrain.HandleAppStoreNotificationAsync(Guid.Parse(userId), notificationJson, invalidToken);
             
             // Record results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result with invalid token: {result}");
