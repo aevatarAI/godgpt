@@ -9,17 +9,12 @@ public class UserQuotaState
     [Id(1)] public bool HasInitialCredits { get; set; } = false;
     [Id(2)] public bool HasShownInitialCreditsToast { get; set; } = false;
     
-    // Legacy single subscription (maintain compatibility)
+    // Standard subscription - reuse existing field for backward compatibility with historical data
     [Id(3)] public SubscriptionInfo Subscription { get; set; } = new SubscriptionInfo();
     [Id(4)] public Dictionary<string, RateLimitInfo> RateLimits { get; set; } = new Dictionary<string, RateLimitInfo>();
     
-    // New: Dual subscription support
-    [Id(5)] public SubscriptionInfo StandardSubscription { get; set; } = new SubscriptionInfo();
-    [Id(6)] public SubscriptionInfo UltimateSubscription { get; set; } = new SubscriptionInfo();
-    
-    // New: Freeze/Unfreeze tracking
-    [Id(7)] public DateTime? StandardSubscriptionFrozenAt { get; set; }
-    [Id(8)] public TimeSpan AccumulatedFrozenTime { get; set; } = TimeSpan.Zero;
+    // Ultimate subscription - new field
+    [Id(5)] public SubscriptionInfo UltimateSubscription { get; set; } = new SubscriptionInfo();
 }
 
 [GenerateSerializer]

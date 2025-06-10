@@ -1,43 +1,32 @@
+using Orleans;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 
 namespace Aevatar.Application.Grains.ChatManager.Dtos;
 
+/// <summary>
+/// Internal DTO for tracking dual subscription status in unified interface design
+/// </summary>
 [GenerateSerializer]
 public class DualSubscriptionStatusDto
 {
     /// <summary>
-    /// Currently active subscription (Ultimate takes priority)
+    /// Ultimate subscription information
     /// </summary>
-    [Id(0)] public SubscriptionInfoDto ActiveSubscription { get; set; }
+    [Id(0)] public SubscriptionInfoDto UltimateSubscription { get; set; } = new();
     
     /// <summary>
-    /// Standard subscription details
+    /// Standard subscription information (using legacy field for backward compatibility)
     /// </summary>
-    [Id(1)] public SubscriptionInfoDto StandardSubscription { get; set; }
+    [Id(1)] public SubscriptionInfoDto StandardSubscription { get; set; } = new();
     
     /// <summary>
-    /// Ultimate subscription details
+    /// Whether Ultimate subscription is currently active
     /// </summary>
-    [Id(2)] public SubscriptionInfoDto UltimateSubscription { get; set; }
+    [Id(2)] public bool UltimateActive { get; set; }
     
     /// <summary>
-    /// Whether standard subscription is currently frozen
+    /// Whether Standard subscription is currently active
     /// </summary>
-    [Id(3)] public bool IsStandardFrozen { get; set; }
-    
-    /// <summary>
-    /// When standard subscription was frozen
-    /// </summary>
-    [Id(4)] public DateTime? FrozenAt { get; set; }
-    
-    /// <summary>
-    /// Total accumulated frozen time
-    /// </summary>
-    [Id(5)] public TimeSpan AccumulatedFrozenTime { get; set; }
-    
-    /// <summary>
-    /// Whether user has unlimited access (Ultimate active)
-    /// </summary>
-    [Id(6)] public bool HasUnlimitedAccess { get; set; }
+    [Id(3)] public bool StandardActive { get; set; }
 } 

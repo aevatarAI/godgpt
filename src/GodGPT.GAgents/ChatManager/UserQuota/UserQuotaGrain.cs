@@ -106,34 +106,26 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     #region Internal Dual Subscription Support (Private Implementation)
 
     /// <summary>
-    /// Gets the active subscription based on priority: Ultimate > Standard (unfrozen)
+    /// Gets the active subscription based on priority: Ultimate > Standard
     /// </summary>
     private async Task<SubscriptionInfoDto> GetActiveSubscriptionAsync()
     {
         var now = DateTime.UtcNow;
         
-        // Priority 1: Ultimate subscription
+        // Check Ultimate subscription first (higher priority)
         if (IsSubscriptionActive(State.UltimateSubscription, now))
         {
-            _logger.LogDebug("[UserQuotaGrain][GetActiveSubscriptionAsync] User {UserId} has active Ultimate subscription", 
-                this.GetPrimaryKeyString());
             return ConvertToDto(State.UltimateSubscription);
         }
         
-        // Priority 2: Standard subscription (considering freeze state)
-        if (IsSubscriptionActive(State.StandardSubscription, now))
+        // Check Standard subscription (legacy field)
+        if (IsSubscriptionActive(State.Subscription, now))
         {
-            // Check if standard subscription should be unfrozen
-            await CheckAndUnfreezeStandardSubscriptionAsync();
-            
-            _logger.LogDebug("[UserQuotaGrain][GetActiveSubscriptionAsync] User {UserId} has active Standard subscription", 
-                this.GetPrimaryKeyString());
-            return ConvertToDto(State.StandardSubscription);
+            return ConvertToDto(State.Subscription);
         }
         
-        _logger.LogDebug("[UserQuotaGrain][GetActiveSubscriptionAsync] User {UserId} has no active subscription", 
-            this.GetPrimaryKeyString());
-        return new SubscriptionInfoDto { IsActive = false, PlanType = PlanType.None };
+        // No active subscription
+        return new SubscriptionInfoDto { IsActive = false };
     }
 
     /// <summary>
@@ -141,177 +133,114 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     /// </summary>
     private async Task<DualSubscriptionStatusDto> GetDualSubscriptionStatusAsync()
     {
-        var activeSubscription = await GetActiveSubscriptionAsync();
-        var ultimateActive = IsSubscriptionActive(State.UltimateSubscription, DateTime.UtcNow);
-        var standardActive = IsSubscriptionActive(State.StandardSubscription, DateTime.UtcNow);
+        var now = DateTime.UtcNow;
+        var ultimateActive = IsSubscriptionActive(State.UltimateSubscription, now);
+        var standardActive = IsSubscriptionActive(State.Subscription, now);
         
         return new DualSubscriptionStatusDto
         {
-            ActiveSubscription = activeSubscription,
-            StandardSubscription = ConvertToDto(State.StandardSubscription),
             UltimateSubscription = ConvertToDto(State.UltimateSubscription),
-            IsStandardFrozen = State.StandardSubscriptionFrozenAt.HasValue,
-            FrozenAt = State.StandardSubscriptionFrozenAt,
-            AccumulatedFrozenTime = State.AccumulatedFrozenTime,
-            HasUnlimitedAccess = ultimateActive
+            StandardSubscription = ConvertToDto(State.Subscription),
+            UltimateActive = ultimateActive,
+            StandardActive = standardActive
         };
     }
 
     /// <summary>
-    /// Updates standard subscription
+    /// Updates standard subscription - only affects Standard data
     /// </summary>
     private async Task UpdateStandardSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto)
     {
-        _logger.LogInformation("[UserQuotaGrain][UpdateStandardSubscriptionAsync] Updating standard subscription for user {UserId}", 
+        _logger.LogInformation("[UserQuotaGrain][UpdateStandardSubscriptionAsync] Updating standard subscription for user {UserId}",
             this.GetPrimaryKeyString());
+
+        // Standard subscription rule: only affects Standard data, regardless of Ultimate status
+        UpdateSubscriptionInfo(State.Subscription, subscriptionInfoDto);
         
-        UpdateSubscriptionInfo(State.StandardSubscription, subscriptionInfoDto);
-        
-        // If Ultimate is active, freeze the standard subscription
-        if (IsSubscriptionActive(State.UltimateSubscription, DateTime.UtcNow))
-        {
-            await FreezeStandardSubscriptionAsync();
-        }
-        
-        await WriteStateAsync();
+        _logger.LogInformation("[UserQuotaGrain][UpdateStandardSubscriptionAsync] Updated Standard subscription, no impact on Ultimate for user {UserId}",
+            this.GetPrimaryKeyString());
     }
 
     /// <summary>
-    /// Updates Ultimate subscription
+    /// Updates Ultimate subscription with time extension mechanism
     /// </summary>
     private async Task UpdateUltimateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto)
     {
-        _logger.LogInformation("[UserQuotaGrain][UpdateUltimateSubscriptionAsync] Updating Ultimate subscription for user {UserId}", 
+        _logger.LogInformation("[UserQuotaGrain][UpdateUltimateSubscriptionAsync] Updating ultimate subscription for user {UserId}",
             this.GetPrimaryKeyString());
+
+        var now = DateTime.UtcNow;
+        var ultimateDays = SubscriptionHelper.GetDaysForPlanType(subscriptionInfoDto.PlanType);
         
-        // If activating Ultimate and Standard is active, accumulate Standard remaining time
-        if (subscriptionInfoDto.IsActive && State.StandardSubscription.IsActive)
+        // Ultimate subscription rule: extend Standard subscription time when Ultimate is purchased and Standard is still active
+        if (State.Subscription.IsActive && State.Subscription.EndDate > now)
         {
-            var now = DateTime.UtcNow;
-            var standardRemainingTime = State.StandardSubscription.EndDate - now;
+            State.Subscription.EndDate = State.Subscription.EndDate.AddDays(ultimateDays);
             
-            // Only accumulate if Standard has remaining time
-            if (standardRemainingTime.TotalSeconds > 0)
-            {
-                // Add Standard remaining time to Ultimate end date
-                subscriptionInfoDto.EndDate = subscriptionInfoDto.EndDate.Add(standardRemainingTime);
-                
-                // Deactivate Standard subscription as its time has been accumulated
-                State.StandardSubscription.IsActive = false;
-                
-                _logger.LogInformation("[UserQuotaGrain][UpdateUltimateSubscriptionAsync] Accumulated Standard remaining time {RemainingTime} into Ultimate subscription for user {UserId}", 
-                    standardRemainingTime, this.GetPrimaryKeyString());
-            }
+            _logger.LogInformation("[UserQuotaGrain][UpdateUltimateSubscriptionAsync] Extended Standard subscription by {Days} days due to Ultimate purchase for user {UserId}",
+                ultimateDays, this.GetPrimaryKeyString());
         }
         
+        // Update Ultimate subscription using standard logic
         UpdateSubscriptionInfo(State.UltimateSubscription, subscriptionInfoDto);
-        
-        // Reset rate limits for unlimited access
-        if (subscriptionInfoDto.IsActive)
-        {
-            await ResetRateLimitsAsync(); // Ultimate gets unlimited access
-        }
-        
-        await WriteStateAsync();
     }
 
     /// <summary>
-    /// Cancels Ultimate subscription and converts remaining time back to Standard
+    /// Cancels Ultimate subscription - affects both Ultimate and Standard
     /// </summary>
     private async Task CancelUltimateSubscriptionAsync()
     {
-        if (!IsSubscriptionActive(State.UltimateSubscription, DateTime.UtcNow))
-        {
-            _logger.LogWarning("[UserQuotaGrain][CancelUltimateSubscriptionAsync] No active Ultimate subscription to cancel for user {UserId}", 
-                this.GetPrimaryKeyString());
-            return;
-        }
-
         var now = DateTime.UtcNow;
         var ultimateRemainingTime = State.UltimateSubscription.EndDate - now;
-        
-        // Use refund logic pattern: subtract purchased days from subscription
         var ultimateDays = SubscriptionHelper.GetDaysForPlanType(State.UltimateSubscription.PlanType);
         
-        // Calculate how much time to refund
+        // Ultimate cancellation rule: reduce Ultimate time and also reduce Standard time if Standard is still active
         if (ultimateRemainingTime.TotalSeconds > 0)
         {
-            // Subtract the Ultimate plan duration (this simulates the refund)
+            // Reduce Ultimate subscription time
             State.UltimateSubscription.EndDate = State.UltimateSubscription.EndDate.AddDays(-ultimateDays);
             
-            // If EndDate becomes past, deactivate the subscription
+            // If Standard is still active, also reduce its time accordingly
+            if (State.Subscription.IsActive && State.Subscription.EndDate > now)
+            {
+                State.Subscription.EndDate = State.Subscription.EndDate.AddDays(-ultimateDays);
+                
+                _logger.LogInformation("[UserQuotaGrain][CancelUltimateSubscriptionAsync] Reduced Standard subscription by {Days} days due to Ultimate cancellation for user {UserId}",
+                    ultimateDays, this.GetPrimaryKeyString());
+                
+                // If Standard time becomes expired, set to cancelled status
+                if (State.Subscription.EndDate <= now)
+                {
+                    State.Subscription.IsActive = false;
+                    State.Subscription.Status = PaymentStatus.Cancelled;
+                    
+                    _logger.LogInformation("[UserQuotaGrain][CancelUltimateSubscriptionAsync] Standard subscription expired due to Ultimate cancellation for user {UserId}",
+                        this.GetPrimaryKeyString());
+                }
+            }
+            
+            // Check if Ultimate subscription is fully cancelled
             if (State.UltimateSubscription.EndDate <= now)
             {
                 State.UltimateSubscription.IsActive = false;
                 State.UltimateSubscription.Status = PaymentStatus.Cancelled;
                 
-                // Restore Standard subscription with remaining time (like refund pattern)
-                if (ultimateRemainingTime.TotalDays > 0)
-                {
-                    State.StandardSubscription.IsActive = true;
-                    State.StandardSubscription.PlanType = PlanType.Month; // Default to Month plan
-                    State.StandardSubscription.StartDate = now;
-                    State.StandardSubscription.EndDate = now.Add(ultimateRemainingTime);
-                    State.StandardSubscription.Status = PaymentStatus.Completed;
-                    
-                    _logger.LogInformation("[UserQuotaGrain][CancelUltimateSubscriptionAsync] Restored Standard subscription with remaining time {RemainingTime} for user {UserId}", 
-                        ultimateRemainingTime, this.GetPrimaryKeyString());
-                }
+                _logger.LogInformation("[UserQuotaGrain][CancelUltimateSubscriptionAsync] Ultimate subscription fully cancelled for user {UserId}",
+                    this.GetPrimaryKeyString());
             }
-            
-            _logger.LogInformation("[UserQuotaGrain][CancelUltimateSubscriptionAsync] Processed Ultimate subscription cancellation for user {UserId}, reduced by {Days} days", 
-                this.GetPrimaryKeyString(), ultimateDays);
+            else
+            {
+                _logger.LogInformation("[UserQuotaGrain][CancelUltimateSubscriptionAsync] Processed Ultimate subscription cancellation for user {UserId}, reduced by {Days} days, new end date: {EndDate}", 
+                    this.GetPrimaryKeyString(), ultimateDays, State.UltimateSubscription.EndDate);
+            }
         }
         else
         {
-            // No remaining time, just cancel
             State.UltimateSubscription.IsActive = false;
             State.UltimateSubscription.Status = PaymentStatus.Cancelled;
-        }
-        
-        _logger.LogInformation("[UserQuotaGrain][CancelUltimateSubscriptionAsync] Cancelled Ultimate subscription for user {UserId}", 
-            this.GetPrimaryKeyString());
             
-        await WriteStateAsync();
-    }
-
-    /// <summary>
-    /// Freezes standard subscription when Ultimate becomes active
-    /// This method is kept for backward compatibility but should not be used in new logic
-    /// </summary>
-    [Obsolete("Use time accumulation logic in UpdateUltimateSubscriptionAsync instead")]
-    private async Task FreezeStandardSubscriptionAsync()
-    {
-        if (State.StandardSubscription.IsActive && !State.StandardSubscriptionFrozenAt.HasValue)
-        {
-            State.StandardSubscriptionFrozenAt = DateTime.UtcNow;
-            _logger.LogInformation("[UserQuotaGrain][FreezeStandardSubscriptionAsync] Standard subscription frozen at {FrozenTime} for user {UserId}", 
-                State.StandardSubscriptionFrozenAt, this.GetPrimaryKeyString());
-            await WriteStateAsync();
-        }
-    }
-
-    /// <summary>
-    /// Unfreezes standard subscription when Ultimate expires
-    /// This method is kept for backward compatibility but should not be used in new logic
-    /// </summary>
-    [Obsolete("Use time accumulation logic in UpdateUltimateSubscriptionAsync instead")]
-    private async Task UnfreezeStandardSubscriptionAsync()
-    {
-        if (State.StandardSubscriptionFrozenAt.HasValue)
-        {
-            var frozenDuration = DateTime.UtcNow - State.StandardSubscriptionFrozenAt.Value;
-            State.AccumulatedFrozenTime += frozenDuration;
-            
-            // Extend standard subscription by frozen duration
-            State.StandardSubscription.EndDate = State.StandardSubscription.EndDate.Add(frozenDuration);
-            
-            // Reset freeze state
-            State.StandardSubscriptionFrozenAt = null;
-            
-            _logger.LogInformation("[UserQuotaGrain][UnfreezeStandardSubscriptionAsync] Standard subscription unfrozen for user {UserId}, extended by {Duration}", 
-                this.GetPrimaryKeyString(), frozenDuration);
-            await WriteStateAsync();
+            _logger.LogInformation("[UserQuotaGrain][CancelUltimateSubscriptionAsync] Ultimate subscription expired and cancelled for user {UserId}",
+                this.GetPrimaryKeyString());
         }
     }
 
@@ -452,20 +381,20 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         {
             // Handle Standard subscription cancellation
             var now = DateTime.UtcNow;
-            var standardRemainingTime = State.StandardSubscription.EndDate - now;
-            var standardDays = SubscriptionHelper.GetDaysForPlanType(State.StandardSubscription.PlanType);
+            var standardRemainingTime = State.Subscription.EndDate - now;
+            var standardDays = SubscriptionHelper.GetDaysForPlanType(State.Subscription.PlanType);
             
             // Apply refund logic pattern for Standard subscription
             if (standardRemainingTime.TotalSeconds > 0)
             {
                 // Subtract the plan duration (simulates refund)
-                State.StandardSubscription.EndDate = State.StandardSubscription.EndDate.AddDays(-standardDays);
+                State.Subscription.EndDate = State.Subscription.EndDate.AddDays(-standardDays);
                 
                 // If EndDate becomes past, deactivate
-                if (State.StandardSubscription.EndDate <= now)
+                if (State.Subscription.EndDate <= now)
                 {
-                    State.StandardSubscription.IsActive = false;
-                    State.StandardSubscription.Status = PaymentStatus.Cancelled;
+                    State.Subscription.IsActive = false;
+                    State.Subscription.Status = PaymentStatus.Cancelled;
                 }
                 
                 _logger.LogInformation("[UserQuotaGrain][CancelSubscriptionAsync] Processed Standard subscription cancellation for user {UserId}, reduced by {Days} days", 
@@ -473,8 +402,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             }
             else
             {
-                State.StandardSubscription.IsActive = false;
-                State.StandardSubscription.Status = PaymentStatus.Cancelled;
+                State.Subscription.IsActive = false;
+                State.Subscription.Status = PaymentStatus.Cancelled;
             }
             
             _logger.LogInformation("[UserQuotaGrain][CancelSubscriptionAsync] Cancelled Standard subscription for user {UserId}", 
@@ -702,16 +631,6 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         return subscription.IsActive && 
                subscription.StartDate <= now &&
                subscription.EndDate > now;
-    }
-
-    private async Task CheckAndUnfreezeStandardSubscriptionAsync()
-    {
-        // If Ultimate is no longer active and standard is frozen, unfreeze it
-        if (!IsSubscriptionActive(State.UltimateSubscription, DateTime.UtcNow) && 
-            State.StandardSubscriptionFrozenAt.HasValue)
-        {
-            await UnfreezeStandardSubscriptionAsync();
-        }
     }
 
     private SubscriptionInfoDto ConvertToDto(SubscriptionInfo subscription)
