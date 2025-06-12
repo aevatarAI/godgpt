@@ -29,4 +29,12 @@ public interface IChatManagerGAgent : IGAgent
     Task<Guid> GenerateChatShareContentAsync(Guid sessionId);
     [ReadOnly]
     Task<ShareLinkDto> GetChatShareContentAsync(Guid sessionId, Guid shareId);
+    /// <summary>
+    /// Search sessions by keyword with fuzzy matching
+    /// </summary>
+    /// <param name="keyword">Search keyword</param>
+    /// <param name="maxResults">Maximum number of results to return (default: 1000)</param>
+    /// <returns>List of matching sessions with content preview</returns>
+    [ReadOnly]
+    Task<List<SessionInfoDto>> SearchSessionsAsync(string keyword, int maxResults = 1000);
 }
