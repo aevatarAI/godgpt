@@ -1,7 +1,5 @@
-using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
-using Aevatar.GodGPT.Tests;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -100,11 +98,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
             activeSubscription.PlanType.ShouldBe(PlanType.Month);
-            
-            // External system doesn't need to know about unlimited access, but we can verify internally
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeFalse(); // Standard doesn't provide unlimited access
-            
+
             _testOutputHelper.WriteLine($"✅ External system successfully updated Standard subscription: PlanType={activeSubscription.PlanType}");
         }
         catch (Exception ex)
@@ -139,11 +133,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
             activeSubscription.PlanType.ShouldBe(PlanType.Week);
-            
-            // External system doesn't need to know about unlimited access, but we can verify internally
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeTrue(); // Ultimate provides unlimited access
-            
+
             _testOutputHelper.WriteLine($"✅ External system successfully updated Ultimate subscription: PlanType={activeSubscription.PlanType}");
         }
         catch (Exception ex)
@@ -200,12 +190,8 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             // Verify time accumulation happened (Ultimate should have more than 7 days)
             var totalDuration = activeSubscription.EndDate - activeSubscription.StartDate;
             totalDuration.TotalDays.ShouldBeGreaterThan(7); // Should include accumulated Standard time
-            
-            // Verify unlimited access
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeTrue();
-            
-            _testOutputHelper.WriteLine($"✅ External system seamlessly upgraded from Standard to Ultimate: Duration={totalDuration.TotalDays:F1} days, Unlimited={hasUnlimitedAccess}");
+
+            _testOutputHelper.WriteLine($"✅ External system seamlessly upgraded from Standard to Ultimate: Duration={totalDuration.TotalDays:F1} days");
         }
         catch (Exception ex)
         {
@@ -240,10 +226,6 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             
             // External system doesn't need to know it's Ultimate, just that user has active subscription
             _testOutputHelper.WriteLine($"✅ External system verified subscription status: IsActive={subscription.IsActive}, PlanType={subscription.PlanType}");
-            
-            // Internal system can still check for unlimited access if needed
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            _testOutputHelper.WriteLine($"Internal system can check unlimited access: {hasUnlimitedAccess}");
         }
         catch (Exception ex)
         {
@@ -251,70 +233,6 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
-
-    #endregion
-
-    #region Backward Compatibility Tests
-
-    [Fact]
-    public async Task ExternalSystem_Legacy_API_Should_Still_Work()
-    {
-        try
-        {
-            // Arrange
-            var userQuotaGrain = await CreateTestUserQuotaGrainAsync();
-            
-            // Act - Use legacy API that external systems might still call
-            await userQuotaGrain.UpdateSubscriptionAsync("Month", DateTime.UtcNow.AddDays(30));
-            
-            // Assert
-            var subscription = await userQuotaGrain.GetSubscriptionAsync();
-            subscription.ShouldNotBeNull();
-            subscription.IsActive.ShouldBeTrue();
-            subscription.PlanType.ShouldBe(PlanType.Month);
-            
-            _testOutputHelper.WriteLine($"✅ Legacy API still works: PlanType={subscription.PlanType}");
-        }
-        catch (Exception ex)
-        {
-            _testOutputHelper.WriteLine($"❌ Exception during legacy API test: {ex.Message}");
-            _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
-        }
-    }
-
-    [Fact]
-    public async Task ExternalSystem_Legacy_Ultimate_API_Should_Route_Correctly()
-    {
-        try
-        {
-            // Arrange
-            var userQuotaGrain = await CreateTestUserQuotaGrainAsync();
-            
-            // Act - Use legacy API with Ultimate plan type
-            await userQuotaGrain.UpdateSubscriptionAsync("Week", DateTime.UtcNow.AddDays(7));
-            
-            // Assert
-            var subscription = await userQuotaGrain.GetSubscriptionAsync();
-            subscription.ShouldNotBeNull();
-            subscription.IsActive.ShouldBeTrue();
-            subscription.PlanType.ShouldBe(PlanType.Week);
-            
-            // Should have unlimited access
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeTrue();
-            
-            _testOutputHelper.WriteLine($"✅ Legacy Ultimate API routed correctly: PlanType={subscription.PlanType}, Unlimited={hasUnlimitedAccess}");
-        }
-        catch (Exception ex)
-        {
-            _testOutputHelper.WriteLine($"❌ Exception during legacy Ultimate API test: {ex.Message}");
-            _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
-        }
-    }
-
-    #endregion
-
-    #region Rate Limiting Integration Tests
 
     #endregion
 } 

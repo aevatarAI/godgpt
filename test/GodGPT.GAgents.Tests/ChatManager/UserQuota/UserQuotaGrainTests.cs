@@ -1,7 +1,4 @@
-using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
-using Aevatar.Application.Grains.Common.Constants;
-using Aevatar.GodGPT.Tests;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -32,38 +29,6 @@ public partial class UserQuotaGrainTests : AevatarOrleansTestBase<AevatarGodGPTT
         _testOutputHelper.WriteLine($"Created test UserQuotaGrain with UserId: {userId}");
         return userQuotaGrain;
     }
-
-    private SubscriptionInfoDto CreateStandardSubscription(DateTime? startDate = null, int durationDays = 30)
-    {
-        var start = startDate ?? DateTime.UtcNow;
-        return new SubscriptionInfoDto
-        {
-            PlanType = PlanType.Month,
-            IsActive = true,
-            StartDate = start,
-            EndDate = start.AddDays(durationDays),
-            Status = PaymentStatus.Completed,
-            SubscriptionIds = new List<string> { $"sub_standard_{Guid.NewGuid()}" },
-            InvoiceIds = new List<string> { $"in_standard_{Guid.NewGuid()}" }
-        };
-    }
-
-    private SubscriptionInfoDto CreateUltimateSubscription(DateTime? startDate = null, int durationDays = 7)
-    {
-        var start = startDate ?? DateTime.UtcNow;
-        return new SubscriptionInfoDto
-        {
-            PlanType = PlanType.Week,
-            IsUltimate = true,
-            IsActive = true,
-            StartDate = start,
-            EndDate = start.AddDays(durationDays),
-            Status = PaymentStatus.Completed,
-            SubscriptionIds = new List<string> { $"sub_ultimate_{Guid.NewGuid()}" },
-            InvoiceIds = new List<string> { $"in_ultimate_{Guid.NewGuid()}" }
-        };
-    }
-
     #endregion
 
     #region Basic Functionality Tests

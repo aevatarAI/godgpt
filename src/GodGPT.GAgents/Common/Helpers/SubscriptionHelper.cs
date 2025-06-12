@@ -116,38 +116,14 @@ public static class SubscriptionHelper
     /// <summary>
     /// Validates if an upgrade path is allowed (updated for configuration-driven Ultimate)
     /// </summary>
-    public static bool IsUpgradePathValid(PlanType fromPlan, PlanType toPlan, bool fromIsUltimate = false, bool toIsUltimate = false)
-    {
-        // Standard subscriptions upgrade rules
-        if (IsStandardSubscription(fromPlan) && !fromIsUltimate)
-        {
-            // Can upgrade to any Ultimate
-            if (toIsUltimate) return true;
-            
-            // Standard upgrades based on logical order: Day/Week -> Month/Year, Month -> Year
-            var fromOrder = GetPlanTypeLogicalOrder(fromPlan);
-            var toOrder = GetPlanTypeLogicalOrder(toPlan);
-            
-            // Allow upgrades (higher logical order) or same plan (renewal)
-            return toOrder >= fromOrder;
-        }
-
-        // Ultimate subscriptions can be replaced by any Ultimate or coexist with standard
-        if (fromIsUltimate)
-        {
-            return toIsUltimate || IsStandardSubscription(toPlan);
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Legacy method for backward compatibility
-    /// </summary>
-    [Obsolete("Use IsUpgradePathValid(PlanType fromPlan, PlanType toPlan, bool fromIsUltimate, bool toIsUltimate) instead")]
     public static bool IsUpgradePathValid(PlanType fromPlan, PlanType toPlan)
     {
-        return IsUpgradePathValid(fromPlan, toPlan, false, false);
+        // upgrades based on logical order: Day/Week -> Month/Year, Month -> Year
+        var fromOrder = GetPlanTypeLogicalOrder(fromPlan);
+        var toOrder = GetPlanTypeLogicalOrder(toPlan);
+            
+        // Allow upgrades (higher logical order) or same plan (renewal)
+        return toOrder > fromOrder;
     }
 
     /// <summary>

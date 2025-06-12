@@ -22,9 +22,4 @@ public class StripeProductDto
     /// Indicates if this is an Ultimate subscription plan
     /// </summary>
     [Id(6)] public bool IsUltimate { get; set; }
-    
-    /// <summary>
-    /// Gets the display-friendly plan name
-    /// </summary>
-    [Id(7)] public string PlanDisplayName { get; set; }
 }

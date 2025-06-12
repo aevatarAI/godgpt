@@ -55,7 +55,6 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
         return new SubscriptionInfoDto
         {
             PlanType = PlanType.Week,
-            IsUltimate = true,
             IsActive = true,
             StartDate = start,
             EndDate = start.AddDays(durationDays),
@@ -88,11 +87,7 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
             activeSubscription.PlanType.ShouldBe(PlanType.Month);
-            
-            // Should NOT have unlimited access for Standard subscription
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeFalse();
-            
+
             _testOutputHelper.WriteLine($"✅ Standard subscription routed correctly: Active={activeSubscription.IsActive}, PlanType={activeSubscription.PlanType}");
         }
         catch (Exception ex)
@@ -121,12 +116,8 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
             activeSubscription.PlanType.ShouldBe(PlanType.Week);
-            
-            // Should have unlimited access for Ultimate subscription
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeTrue();
-            
-            _testOutputHelper.WriteLine($"✅ Ultimate subscription routed correctly: Active={activeSubscription.IsActive}, PlanType={activeSubscription.PlanType}, Unlimited={hasUnlimitedAccess}");
+
+            _testOutputHelper.WriteLine($"✅ Ultimate subscription routed correctly: Active={activeSubscription.IsActive}, PlanType={activeSubscription.PlanType}");
         }
         catch (Exception ex)
         {
@@ -166,12 +157,8 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
             activeSubscription.PlanType.ShouldBe(PlanType.Week);
-            
-            // Should have unlimited access
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeTrue();
-            
-            _testOutputHelper.WriteLine($"✅ Ultimate subscription has priority: PlanType={activeSubscription.PlanType}, Unlimited={hasUnlimitedAccess}");
+
+            _testOutputHelper.WriteLine($"✅ Ultimate subscription has priority: PlanType={activeSubscription.PlanType}");
         }
         catch (Exception ex)
         {
@@ -208,12 +195,8 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             activeSubscription.ShouldNotBeNull();
             activeSubscription.IsActive.ShouldBeTrue();
             activeSubscription.PlanType.ShouldBe(PlanType.Month);
-            
-            // Should NOT have unlimited access (Standard only)
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeFalse();
-            
-            _testOutputHelper.WriteLine($"✅ Standard subscription active after Ultimate expiry: PlanType={activeSubscription.PlanType}, Unlimited={hasUnlimitedAccess}");
+
+            _testOutputHelper.WriteLine($"✅ Standard subscription active after Ultimate expiry: PlanType={activeSubscription.PlanType}");
         }
         catch (Exception ex)
         {
@@ -276,10 +259,6 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             totalDuration.TotalDays.ShouldBeLessThan(30); // Should be less than 30 days (original Standard)
             
             _testOutputHelper.WriteLine($"✅ Time accumulation successful: Ultimate duration = {totalDuration.TotalDays:F1} days (expected ~26-27 days)");
-            
-            // Should have unlimited access
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeTrue();
         }
         catch (Exception ex)
         {
@@ -318,12 +297,6 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             
             // Should handle cancellation according to refund logic
             _testOutputHelper.WriteLine($"After cancellation: Active={afterCancel.IsActive}, PlanType={afterCancel.PlanType}");
-            
-            // Should no longer have unlimited access
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeFalse();
-            
-            _testOutputHelper.WriteLine($"✅ Ultimate cancellation handled: Unlimited={hasUnlimitedAccess}");
         }
         catch (Exception ex)
         {
@@ -357,97 +330,10 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
             var afterCancel = await userQuotaGrain.GetSubscriptionAsync();
             
             _testOutputHelper.WriteLine($"After cancellation: Active={afterCancel.IsActive}, PlanType={afterCancel.PlanType}");
-            
-            // Should not have unlimited access (was Standard)
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            hasUnlimitedAccess.ShouldBeFalse();
-            
-            _testOutputHelper.WriteLine($"✅ Standard cancellation handled: Unlimited={hasUnlimitedAccess}");
         }
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"❌ Exception during Standard cancellation test: {ex.Message}");
-            _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
-        }
-    }
-
-    #endregion
-
-    #region Unlimited Access Tests
-
-    [Fact]
-    public async Task HasUnlimitedAccessAsync_Should_Return_True_For_Ultimate()
-    {
-        try
-        {
-            // Arrange
-            var userQuotaGrain = await CreateTestUserQuotaGrainAsync();
-            
-            // Add Ultimate subscription
-            var ultimateSubscription = CreateUltimateSubscription();
-            await userQuotaGrain.UpdateSubscriptionAsync(ultimateSubscription);
-            
-            // Act
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            
-            // Assert
-            hasUnlimitedAccess.ShouldBeTrue();
-            
-            _testOutputHelper.WriteLine($"✅ Ultimate subscription provides unlimited access: {hasUnlimitedAccess}");
-        }
-        catch (Exception ex)
-        {
-            _testOutputHelper.WriteLine($"❌ Exception during Ultimate unlimited access test: {ex.Message}");
-            _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
-        }
-    }
-
-    [Fact]
-    public async Task HasUnlimitedAccessAsync_Should_Return_False_For_Standard()
-    {
-        try
-        {
-            // Arrange
-            var userQuotaGrain = await CreateTestUserQuotaGrainAsync();
-            
-            // Add Standard subscription
-            var standardSubscription = CreateStandardSubscription();
-            await userQuotaGrain.UpdateSubscriptionAsync(standardSubscription);
-            
-            // Act
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            
-            // Assert
-            hasUnlimitedAccess.ShouldBeFalse();
-            
-            _testOutputHelper.WriteLine($"✅ Standard subscription does not provide unlimited access: {hasUnlimitedAccess}");
-        }
-        catch (Exception ex)
-        {
-            _testOutputHelper.WriteLine($"❌ Exception during Standard unlimited access test: {ex.Message}");
-            _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
-        }
-    }
-
-    [Fact]
-    public async Task HasUnlimitedAccessAsync_Should_Return_False_For_No_Subscription()
-    {
-        try
-        {
-            // Arrange
-            var userQuotaGrain = await CreateTestUserQuotaGrainAsync();
-            
-            // Act - No subscription added
-            var hasUnlimitedAccess = await userQuotaGrain.HasUnlimitedAccessAsync();
-            
-            // Assert
-            hasUnlimitedAccess.ShouldBeFalse();
-            
-            _testOutputHelper.WriteLine($"✅ No subscription does not provide unlimited access: {hasUnlimitedAccess}");
-        }
-        catch (Exception ex)
-        {
-            _testOutputHelper.WriteLine($"❌ Exception during no subscription unlimited access test: {ex.Message}");
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }

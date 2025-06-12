@@ -98,23 +98,23 @@ namespace GodGPT.GAgents.Tests.Common.Helpers
         public void IsUpgradePathValid_Should_Use_Logical_Order_For_Standard_Subscriptions()
         {
             // Standard to Standard upgrades based on logical order
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Week, false, false).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Month, false, false).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Year, false, false).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Week, PlanType.Month, false, false).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Week, PlanType.Year, false, false).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Month, PlanType.Year, false, false).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Week).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Month).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Year).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Week, PlanType.Month).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Week, PlanType.Year).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Month, PlanType.Year).ShouldBeTrue();
             
             // Standard to Standard renewals (same plan)
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Day, false, false).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Week, PlanType.Week, false, false).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Month, PlanType.Month, false, false).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Year, PlanType.Year, false, false).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Day).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Week, PlanType.Week).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Month, PlanType.Month).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Year, PlanType.Year).ShouldBeTrue();
             
             // Standard to Ultimate should always be valid
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Week, false, true).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Month, PlanType.Week, false, true).ShouldBeTrue();
-            SubscriptionHelper.IsUpgradePathValid(PlanType.Year, PlanType.Week, false, true).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Day, PlanType.Week).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Month, PlanType.Week).ShouldBeTrue();
+            SubscriptionHelper.IsUpgradePathValid(PlanType.Year, PlanType.Week).ShouldBeTrue();
         }
     }
 } 
