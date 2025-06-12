@@ -1208,7 +1208,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     SubscriptionStartDate = invoiceDetail.SubscriptionStartDate,
                     SubscriptionEndDate = invoiceDetail.SubscriptionEndDate,
                     UserId = paymentSummary.UserId,
-                    PriceId = paymentSummary.PriceId
+                    PriceId = paymentSummary.PriceId,
+                    Platform = paymentSummary.Platform
                 }));
             }
         }
