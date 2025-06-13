@@ -62,9 +62,9 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
                     return string.Empty;
                 }
                 
-                _logger.LogInformation("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] NotificationType {0}, SubType={1}",
+                _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] type={0}, subType={1}",
                     decodedPayload.NotificationType, decodedPayload.Subtype);
-                _logger.LogInformation("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] NotificationType {0}, SubType={1}, Json: {2}",
+                _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] type={0}, SubType={1}, Json: {2}",
                     decodedPayload.NotificationType, decodedPayload.Subtype, json);
                 //Filter by type
                 if (decodedPayload.NotificationType != AppStoreNotificationType.DID_RENEW.ToString() 
