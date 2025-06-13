@@ -39,8 +39,8 @@ public class AppleStoreWebhookHandlerTests : AevatarOrleansTestBase<AevatarGodGP
             ;
         var appleEventProcessingGrain =  Cluster.GrainFactory.GetGrain<IAppleEventProcessingGrain>(AppleNotificationProcessorGrainId);
         var userIdB = await appleEventProcessingGrain.ParseEventAndGetUserIdAsync(json);
-        userIdB.ShouldNotBeNull();
-        userIdB.ShouldBe(userIdA.ToString());
+        userIdB.ShouldNotBe(default);
+        userIdB.ShouldBe(userIdA);
         
         var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userIdA));
         var result = await userBillingGrain.HandleAppStoreNotificationAsync(userIdA, json);
