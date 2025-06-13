@@ -68,7 +68,12 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
                     decodedPayload.NotificationType, decodedPayload.Subtype ?? string.Empty, json);
                 //Filter by type
                 if (decodedPayload.NotificationType != AppStoreNotificationType.DID_RENEW.ToString() 
-                    && decodedPayload.NotificationType != AppStoreNotificationType.REFUND.ToString())
+                    /*&& decodedPayload.NotificationType != AppStoreNotificationType.REFUND.ToString()*/
+                    && !(decodedPayload.NotificationType ==  AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS.ToString() 
+                         && decodedPayload.Subtype == AppStoreNotificationSubtype.AUTO_RENEW_DISABLED.ToString())
+                    && decodedPayload.NotificationType != AppStoreNotificationType.EXPIRED.ToString()
+                    && decodedPayload.NotificationType != AppStoreNotificationType.REVOKE.ToString()
+                   )
                 {
                     _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Filter NotificationType {0}, SubType={1}",
                         decodedPayload.NotificationType, decodedPayload.Subtype);

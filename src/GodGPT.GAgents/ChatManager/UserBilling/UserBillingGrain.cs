@@ -1718,6 +1718,43 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             // 10. Process based on notification type and subtype
             switch (notificationTypeEnum)
             {
+                case AppStoreNotificationType.DID_RENEW:
+                    // Handle successful renewal
+                    if (subtypeEnum == AppStoreNotificationSubtype.BILLING_RECOVERY)
+                    {
+                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
+                    }
+                    await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
+                    break;
+                case AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS:
+                    // Handle auto-renewal status changes
+                    if (subtypeEnum == AppStoreNotificationSubtype.AUTO_RENEW_ENABLED)
+                    {
+                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Auto-renewal enabled");
+                        await HandleRenewalStatusChangeAsync(userId.ToString(), appStoreTransactionInfo);
+                    }
+                    else if (subtypeEnum == AppStoreNotificationSubtype.AUTO_RENEW_DISABLED)
+                    {
+                        //cancel subscription
+                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Auto-renewal disabled userId={0}, otxnId={1}, txnId={2}",
+                            userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
+                        await HandleAppStoreSubscriptionCancellationAsync(userId, signedTransactionInfo, signedRenewalInfo);
+                    }
+                    break;
+                case AppStoreNotificationType.EXPIRED:
+                    //cancel subscription
+                    //subtypeEnum: AppStoreNotificationSubtype.VOLUNTARY/AppStoreNotificationSubtype.BILLING_RETRY
+                    //             AppStoreNotificationSubtype.PRICE_INCREASE/AppStoreNotificationSubtype.PRODUCT_NOT_FOR_SALE
+                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription expired userId={0}, otxnId={1}, txnId={2}", 
+                        userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
+                    await HandleAppStoreSubscriptionCancellationAsync(userId, signedTransactionInfo, signedRenewalInfo);
+                    break;
+                case AppStoreNotificationType.REVOKE:
+                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Family Sharing purchase revoked userId={0}, otxnId={1}, txnId={2}",
+                        userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
+                    await HandleAppStoreSubscriptionCancellationAsync(userId, signedTransactionInfo, signedRenewalInfo);
+                    break;
+
                 case AppStoreNotificationType.CONSUMPTION_REQUEST:
                     // Handle consumption data request for refund
                     _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Received consumption data request for refund");
@@ -1742,19 +1779,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     }
                     break;
 
-                case AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS:
-                    // Handle auto-renewal status changes
-                    if (subtypeEnum == AppStoreNotificationSubtype.AUTO_RENEW_ENABLED)
-                    {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Auto-renewal enabled");
-                    }
-                    else if (subtypeEnum == AppStoreNotificationSubtype.AUTO_RENEW_DISABLED)
-                    {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Auto-renewal disabled");
-                    }
-                    await HandleRenewalStatusChangeAsync(userId.ToString(), appStoreTransactionInfo);
-                    break;
-
                 case AppStoreNotificationType.DID_FAIL_TO_RENEW:
                     // Handle renewal failure
                     if (subtypeEnum == AppStoreNotificationSubtype.GRACE_PERIOD)
@@ -1763,35 +1787,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                         // Continue providing service through grace period
                     }
                     await HandleFailedRenewalAsync(userId.ToString(), appStoreTransactionInfo);
-                    break;
-
-                case AppStoreNotificationType.DID_RENEW:
-                    // Handle successful renewal
-                    if (subtypeEnum == AppStoreNotificationSubtype.BILLING_RECOVERY)
-                    {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
-                    }
-                    await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
-                    break;
-
-                case AppStoreNotificationType.EXPIRED:
-                    // Handle subscription expiration
-                    switch (subtypeEnum)
-                    {
-                        case AppStoreNotificationSubtype.VOLUNTARY:
-                            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription expired voluntarily");
-                            break;
-                        case AppStoreNotificationSubtype.BILLING_RETRY:
-                            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription expired after billing retry period");
-                            break;
-                        case AppStoreNotificationSubtype.PRICE_INCREASE:
-                            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription expired due to price increase");
-                            break;
-                        case AppStoreNotificationSubtype.PRODUCT_NOT_FOR_SALE:
-                            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription expired as product not for sale");
-                            break;
-                    }
-                    await HandleExpiredAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
 
                 case AppStoreNotificationType.GRACE_PERIOD_EXPIRED:
@@ -1859,11 +1854,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     await HandleRenewalExtensionAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
 
-                case AppStoreNotificationType.REVOKE:
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Family Sharing purchase revoked");
-                    await HandleRevokeAsync(userId.ToString(), appStoreTransactionInfo);
-                    break;
-
                 case AppStoreNotificationType.SUBSCRIBED:
                     // Handle new subscription
                     if (subtypeEnum == AppStoreNotificationSubtype.INITIAL_BUY)
@@ -1896,37 +1886,21 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
     }
 
-    /// <summary>
-    /// Get user ID from AppAccountToken if available, otherwise fall back to lookup by transaction ID
-    /// </summary>
-    private async Task<string> GetUserIdFromTransactionInfoAsync(AppStoreSubscriptionInfo transactionInfo)
+    private async Task HandleAppStoreSubscriptionCancellationAsync(Guid userId, 
+        AppStoreJWSTransactionDecodedPayload signedTransactionInfo, JWSRenewalInfoDecodedPayload signedRenewalInfo)
     {
-        if (transactionInfo == null)
+        var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(signedTransactionInfo.OriginalTransactionId);
+        if (existingSubscription == null)
         {
-            _logger.LogWarning("[UserBillingGrain][GetUserIdFromTransactionInfoAsync] Transaction info is null");
-            return null;
+            _logger.LogError("[UserBillingGrain][HandleSubscriptionCancellationAsync] Subscription not found. userId={0}, otxnId={1}, txnId={2}", 
+                userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
+            return;
         }
 
-        // Otherwise, fall back to lookup by original transaction ID
-        var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
-        
-        if (string.IsNullOrEmpty(userId))
-        {
-            _logger.LogWarning("[UserBillingGrain][GetUserIdFromTransactionInfoAsync] Could not find user ID for transaction: {TransactionId}", 
-                transactionInfo.OriginalTransactionId);
-        }
-        else
-        {
-            _logger.LogInformation("[UserBillingGrain][GetUserIdFromTransactionInfoAsync] Found user ID by transaction lookup: {UserId}", userId);
-        }
-        
-        return userId;
-    }
-    
-    private async Task<string> GetUserIdByOriginalTransactionIdAsync(string originalTransactionId)
-    {
-        var payment = await GetPaymentSummaryBySubscriptionIdAsync(originalTransactionId);
-        return payment?.UserId.ToString();
+        existingSubscription.Status = PaymentStatus.Cancelled;
+        await WriteStateAsync();
+        _logger.LogDebug("[UserBillingGrain][HandleSubscriptionCancellationAsync] Cancel subscription complated. userId={0}, otxnId={1}, txnId={2}", 
+            userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
     }
     
     /// <summary>
@@ -3004,26 +2978,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, product {ProductId}, originaltransaction: {Id}, trancaction: {trancactionId}",
             userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
     }
-    
-    private async Task HandleExpiredAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
-    {
-        if (string.IsNullOrEmpty(userId))
-        {
-            _logger.LogWarning("[UserBillingGrain][HandleExpiredAsync] UserId is empty for transaction: {Id}", 
-                transactionInfo.OriginalTransactionId);
-            return;
-        }
-        
-        _logger.LogInformation("[UserBillingGrain][HandleExpiredAsync] Processing subscription expiration for user {UserId}, product {ProductId}", 
-            userId, transactionInfo.ProductId);
-        
-        // Update subscription status - expired
-        await UpdateSubscriptionStateAsync(userId, transactionInfo, "EXPIRED");
-        
-        // Revoke user access
-        await RevokeUserQuotaAsync(userId);
-    }
-    
+
     private async Task HandleGracePeriodExpiredAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
     {
         if (string.IsNullOrEmpty(userId))
@@ -3121,25 +3076,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         
         // Just log the renewal extension attempt
         // The actual extension will be reported in a subsequent RENEWAL_EXTENDED notification
-    }
-    
-    private async Task HandleRevokeAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
-    {
-        if (string.IsNullOrEmpty(userId))
-        {
-            _logger.LogWarning("[UserBillingGrain][HandleRevokeAsync] UserId is empty for transaction: {Id}", 
-                transactionInfo.OriginalTransactionId);
-            return;
-        }
-        
-        _logger.LogInformation("[UserBillingGrain][HandleRevokeAsync] Processing revocation for user {UserId}, product {ProductId}", 
-            userId, transactionInfo.ProductId);
-        
-        // Update subscription status - revoked (from Family Sharing)
-        await UpdateSubscriptionStateAsync(userId, transactionInfo, "REVOKE");
-        
-        // Revoke user access
-        await RevokeUserQuotaAsync(userId);
     }
     
     public async Task<GrainResultDto<AppStoreJWSTransactionDecodedPayload>> GetAppStoreTransactionInfoAsync(string transactionId, string environment)

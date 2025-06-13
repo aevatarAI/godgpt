@@ -55,7 +55,6 @@ public class AppleStoreWebhookHandler : IWebhookHandler
             var json = await new StreamReader(request.Body).ReadToEndAsync();
             _logger.LogInformation("[AppleStoreWebhookHandler][webhook] json: {0}", json);
 
-            //TODO Test Notifications
             // 1. Use AppleEventProcessingGrain to parse notification and get userId
             var appleEventProcessingGrain = _clusterClient.GetGrain<IAppleEventProcessingGrain>(AppleNotificationProcessorGrainId);
             var userId = await appleEventProcessingGrain.ParseEventAndGetUserIdAsync(json);
