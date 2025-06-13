@@ -13,18 +13,15 @@ public class AppleStoreWebhookHandler : IWebhookHandler
 {
     private readonly ILogger<AppleStoreWebhookHandler> _logger;
     private readonly IClusterClient _clusterClient;
-    private readonly IOptionsMonitor<ApplePayOptions> _appleOptions;
     
     private static readonly string AppleNotificationProcessorGrainId = "AppleNotificationProcessorGrainId_1";
 
     public AppleStoreWebhookHandler(
         IClusterClient clusterClient,
-        ILogger<AppleStoreWebhookHandler> logger,
-        IOptionsMonitor<ApplePayOptions> appleOptions)
+        ILogger<AppleStoreWebhookHandler> logger)
     {
         _clusterClient = clusterClient;
         _logger = logger;
-        _appleOptions = appleOptions;
     }
 
     public string RelativePath => "api/webhooks/godgpt-appstore-payment";

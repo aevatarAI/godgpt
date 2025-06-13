@@ -63,8 +63,7 @@ public class UserBillingGrainTests_WebhookHandler
             // Create AppleStoreWebhookHandler instance
             var handler = new AppleStoreWebhookHandler(
                 _mockClusterClient.Object,
-                _mockLogger.Object,
-                null // Skip AppleOptions, as we don't need to verify notification token in tests
+                _mockLogger.Object// Skip AppleOptions, as we don't need to verify notification token in tests
             );
             
             // Execute test method
@@ -120,8 +119,7 @@ public class UserBillingGrainTests_WebhookHandler
             // Create AppleStoreWebhookHandler instance
             var handler = new AppleStoreWebhookHandler(
                 _mockClusterClient.Object,
-                _mockLogger.Object,
-                null // Skip AppleOptions, as we don't need to verify notification token in tests
+                _mockLogger.Object // Skip AppleOptions, as we don't need to verify notification token in tests
             );
             
             // Execute test method
@@ -180,8 +178,7 @@ public class UserBillingGrainTests_WebhookHandler
             // Create AppleStoreWebhookHandler instance
             var handler = new AppleStoreWebhookHandler(
                 _mockClusterClient.Object,
-                _mockLogger.Object,
-                null // Skip AppleOptions, as we don't need to verify notification token in tests
+                _mockLogger.Object // Skip AppleOptions, as we don't need to verify notification token in tests
             );
             
             // Execute test method
