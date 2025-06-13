@@ -62,6 +62,8 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
                     return string.Empty;
                 }
                 
+                _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] NotificationType {0}, SubType={1}",
+                    decodedPayload.NotificationType, decodedPayload.Subtype);
                 _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] NotificationType {0}, SubType={1}, Json: {2}",
                     decodedPayload.NotificationType, decodedPayload.Subtype, json);
                 //Filter by type
