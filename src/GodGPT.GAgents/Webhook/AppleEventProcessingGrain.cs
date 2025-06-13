@@ -62,6 +62,7 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
                     return string.Empty;
                 }
                 
+                _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Test");
                 _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] type={0}, subType={1}",
                     decodedPayload.NotificationType, decodedPayload.Subtype);
                 _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] type={0}, SubType={1}, Json: {2}",
