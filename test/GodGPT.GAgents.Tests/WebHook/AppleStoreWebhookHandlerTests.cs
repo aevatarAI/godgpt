@@ -1,6 +1,7 @@
 using System.Security.AccessControl;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Webhook;
 using Shouldly;
 using Xunit.Abstractions;
@@ -59,6 +60,12 @@ public class AppleStoreWebhookHandlerTests : AevatarOrleansTestBase<AevatarGodGP
         var transactionId = "2000000939299589";
         var userId = Guid.NewGuid();
         await CreateAppStoreSubscriptionAsync(userId, transactionId);
+        
+        var userQuotaGrain =  Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        var subscription = await userQuotaGrain.GetSubscriptionAsync();
+        subscription.IsActive.ShouldBeFalse();
+        subscription = await userQuotaGrain.GetSubscriptionAsync(true);
+        subscription.IsActive.ShouldBeTrue();
 
         var userBillingGrain =  Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
         var paymentSummaries = await userBillingGrain.GetPaymentHistoryAsync();

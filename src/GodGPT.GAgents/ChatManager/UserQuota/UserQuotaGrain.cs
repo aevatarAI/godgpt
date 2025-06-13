@@ -205,6 +205,18 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         _logger.LogInformation("[UserQuotaGrain][UpdateSubscriptionAsync] Updated subscription for user {UserId}: Data={PlanType}", 
             this.GetPrimaryKeyString(), JsonConvert.SerializeObject(subscriptionInfoDto));
         var subscription = ultimate ? State.UltimateSubscription : State.Subscription;
+        if (subscription == null)
+        {
+            subscription = new SubscriptionInfo();
+            if (ultimate)
+            {
+                State.UltimateSubscription = subscription;
+            }
+            else
+            {
+                State.Subscription = subscription;
+            }
+        }
         subscription.PlanType = subscriptionInfoDto.PlanType;
         subscription.IsActive = subscriptionInfoDto.IsActive;
         subscription.StartDate = subscriptionInfoDto.StartDate;
