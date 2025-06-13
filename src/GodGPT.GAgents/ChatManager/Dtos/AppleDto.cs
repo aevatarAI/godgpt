@@ -64,7 +64,7 @@ public class AppStoreSubscriptionInfo
     [Id(5)] public bool IsTrialPeriod { get; set; }
     [Id(6)] public bool AutoRenewStatus { get; set; }
     [Id(7)] public string Environment { get; set; }
-    [Id(8)] public string LatestReceiptData { get; set; }
+    // [Id(8)] public string LatestReceiptData { get; set; }
 }
 
 /// <summary>
@@ -549,15 +549,15 @@ public class AppStoreServerNotificationV2
 [GenerateSerializer]
 public class JWSRenewalInfoDecodedPayload
 {
-    [Id(0)] public int ExpirationIntent { get; set; }
     [Id(1)] public string OriginalTransactionId { get; set; }
     [Id(2)] public string AutoRenewProductId { get; set; }
     [Id(3)] public string ProductId { get; set; }
     [Id(4)] public int AutoRenewStatus { get; set; }
-    [Id(5)] public bool IsInBillingRetryPeriod { get; set; }
-    [Id(6)] public long SignedDate { get; set; }
-    [Id(7)] public string Environment { get; set; }
-    [Id(8)] public long RecentSubscriptionStartDate { get; set; }
-    [Id(9)] public long RenewalDate { get; set; }
-    [Id(10)] public string AppTransactionId { get; set; }
+    [Id(5)] public decimal RenewalPrice { get; set; }
+    [Id(6)] public string Currency { get; set; }
+    [Id(7)] public long SignedDate { get; set; }
+    [Id(8)] public string Environment { get; set; }
+    [Id(9)] public long RecentSubscriptionStartDate { get; set; }
+    [Id(10)] public long RenewalDate { get; set; }
+    [Id(11)] public string AppTransactionId { get; set; }
 }

@@ -1673,21 +1673,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             string subtype = decodedPayload.Subtype ?? "";
                 
             // 5. Extract transaction info from decoded payload
-            var appStoreTransactionInfo = ExtractTransactionInfoFromV2(decodedPayload);
+            var (appStoreTransactionInfo, signedTransactionInfo, signedRenewalInfo) = ExtractTransactionInfoFromV2(decodedPayload);
             if (appStoreTransactionInfo == null)
             {
                 _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Failed to extract transaction info from payload");
                 return false;
             }
-                
-            // 6. If userId is empty and we have AppAccountToken in the transaction info, use it
-            if (userId == Guid.Empty && !string.IsNullOrEmpty(appStoreTransactionInfo.LatestReceiptData) &&
-                Guid.TryParse(appStoreTransactionInfo.LatestReceiptData, out var parsedUserId))
-            {
-                userId = parsedUserId;
-                _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Using AppAccountToken as userId: {UserId}", userId);
-            }
-            
+
             // 7. Log notification information
             _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Received notification type: {Type}, subtype: {Subtype}, environment: {Env}", 
                 notificationType, subtype, environment);
@@ -1708,20 +1700,20 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
             _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Processing notification type: {Type}, subtype: {SubType}", notificationTypeEnum, subtypeEnum);
             
-            // 9. If userId is still empty at this point, try to get it from the transaction info
-            if (userId == Guid.Empty && appStoreTransactionInfo != null)
-            {
-                var userIdStr = await GetUserIdFromTransactionInfoAsync(appStoreTransactionInfo);
-                if (!string.IsNullOrEmpty(userIdStr) && Guid.TryParse(userIdStr, out var parsedId))
-                {
-                    userId = parsedId;
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Found userId from transaction info: {UserId}", userId);
-                }
-                else
-                {
-                    _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Could not determine userId from notification");
-                }
-            }
+            // // 9. If userId is still empty at this point, try to get it from the transaction info
+            // if (userId == Guid.Empty && appStoreTransactionInfo != null)
+            // {
+            //     var userIdStr = await GetUserIdFromTransactionInfoAsync(appStoreTransactionInfo);
+            //     if (!string.IsNullOrEmpty(userIdStr) && Guid.TryParse(userIdStr, out var parsedId))
+            //     {
+            //         userId = parsedId;
+            //         _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Found userId from transaction info: {UserId}", userId);
+            //     }
+            //     else
+            //     {
+            //         _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Could not determine userId from notification");
+            //     }
+            // }
             
             // 10. Process based on notification type and subtype
             switch (notificationTypeEnum)
@@ -1779,7 +1771,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     {
                         _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
                     }
-                    await HandleDidRenewAsync(userId.ToString(), appStoreTransactionInfo);
+                    await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
                     break;
 
                 case AppStoreNotificationType.EXPIRED:
@@ -1914,16 +1906,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogWarning("[UserBillingGrain][GetUserIdFromTransactionInfoAsync] Transaction info is null");
             return null;
         }
-        
-        // If AppAccountToken is available in LatestReceiptData, use that as user ID
-        if (!string.IsNullOrEmpty(transactionInfo.LatestReceiptData) && 
-            Guid.TryParse(transactionInfo.LatestReceiptData, out _))
-        {
-            _logger.LogInformation("[UserBillingGrain][GetUserIdFromTransactionInfoAsync] Using AppAccountToken as user ID: {UserId}", 
-                transactionInfo.LatestReceiptData);
-            return transactionInfo.LatestReceiptData;
-        }
-        
+
         // Otherwise, fall back to lookup by original transaction ID
         var userId = await GetUserIdByOriginalTransactionIdAsync(transactionInfo.OriginalTransactionId);
         
@@ -1949,22 +1932,31 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     /// <summary>
     /// Extracts transaction info from a JWT payload in V2 format
     /// </summary>
-    private AppStoreSubscriptionInfo ExtractTransactionInfoFromV2(ResponseBodyV2DecodedPayload decodedPayload)
+    private new Tuple<AppStoreSubscriptionInfo, AppStoreJWSTransactionDecodedPayload, JWSRenewalInfoDecodedPayload> ExtractTransactionInfoFromV2(ResponseBodyV2DecodedPayload decodedPayload)
     {
         try
         {
             if (decodedPayload?.Data == null)
             {
                 _logger.LogWarning("[UserBillingGrain][ExtractTransactionInfoFromV2] No data in payload");
-                return null;
+                return new Tuple<AppStoreSubscriptionInfo, AppStoreJWSTransactionDecodedPayload, JWSRenewalInfoDecodedPayload>(null, null, null);
             }
             
             var transactionInfo = new AppStoreSubscriptionInfo();
+            AppStoreJWSTransactionDecodedPayload transactionPayload = null;
+            JWSRenewalInfoDecodedPayload renewalPayload = null;
             
             // Try to decode transaction info
             if (!string.IsNullOrEmpty(decodedPayload.Data.SignedTransactionInfo))
             {
-                var transactionPayload = DecodeJwtPayload<JWSTransactionDecodedPayload>(decodedPayload.Data.SignedTransactionInfo);
+                try
+                {
+                    transactionPayload = AppStoreHelper.DecodeJwtPayload<AppStoreJWSTransactionDecodedPayload>(decodedPayload.Data.SignedTransactionInfo);
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "[UserBillingGrain][ExtractTransactionInfoFromV2] Error decoding SignedTransactionInfo  payload");
+                }
                 if (transactionPayload != null)
                 {
                     transactionInfo.OriginalTransactionId = transactionPayload.OriginalTransactionId;
@@ -1976,26 +1968,21 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     {
                         transactionInfo.ExpiresDate = DateTimeOffset.FromUnixTimeMilliseconds(transactionPayload.ExpiresDate.Value).DateTime;
                     }
-                    
-                    transactionInfo.IsTrialPeriod = transactionPayload.IsTrialPeriod ?? false;
-                    
-                    // Extract user ID from AppAccountToken if available
-                    if (!string.IsNullOrEmpty(transactionPayload.AppAccountToken))
-                    {
-                        // Store AppAccountToken for later use (should be userId in our system)
-                        _logger.LogInformation("[UserBillingGrain][ExtractTransactionInfoFromV2] Found AppAccountToken: {Token}", 
-                            transactionPayload.AppAccountToken);
-                        
-                        // Store the app account token in LatestReceiptData property for use in GetUserIdFromTransactionInfoAsync
-                        transactionInfo.LatestReceiptData = transactionPayload.AppAccountToken;
-                    }
+                    transactionInfo.IsTrialPeriod = false;
                 }
             }
             
             // Try to decode renewal info
             if (!string.IsNullOrEmpty(decodedPayload.Data.SignedRenewalInfo))
             {
-                var renewalPayload = DecodeJwtPayload<JWSRenewalInfoDecodedPayload>(decodedPayload.Data.SignedRenewalInfo);
+                try
+                {
+                    renewalPayload = AppStoreHelper.DecodeJwtPayload<JWSRenewalInfoDecodedPayload>(decodedPayload.Data.SignedRenewalInfo);
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(e, "[UserBillingGrain][ExtractTransactionInfoFromV2] Error decoding SignedRenewalInfo  payload");
+                }
                 if (renewalPayload != null)
                 {
                     transactionInfo.AutoRenewStatus = renewalPayload.AutoRenewStatus == 1;
@@ -2018,7 +2005,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             
             transactionInfo.Environment = decodedPayload.Data?.Environment;
             
-            return transactionInfo;
+            return new (transactionInfo, transactionPayload, renewalPayload);
         }
         catch (Exception ex)
         {
@@ -2026,125 +2013,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             return null;
         }
     }
-    
-    /// <summary>
-    /// Decodes a JWT payload without signature verification
-    /// </summary>
-    private T DecodeJwtPayload<T>(string jwt) where T : class
-    {
-        try
-        {
-            // JWT format: header.payload.signature
-            var parts = jwt.Split('.');
-            if (parts.Length != 3)
-            {
-                _logger.LogWarning("[UserBillingGrain][DecodeJwtPayload] Invalid JWT format");
-                return null;
-            }
-            
-            // Decode the payload part (second part)
-            var payloadBase64 = parts[1];
-            
-            // Add padding if needed
-            var padding = 4 - (payloadBase64.Length % 4);
-            if (padding < 4)
-            {
-                payloadBase64 += new string('=', padding);
-            }
-            
-            // Replace URL-safe characters
-            payloadBase64 = payloadBase64.Replace('-', '+').Replace('_', '/');
-            
-            // Decode Base64
-            var payloadBytes = Convert.FromBase64String(payloadBase64);
-            var payloadJson = System.Text.Encoding.UTF8.GetString(payloadBytes);
-            
-            // Deserialize JSON
-            var decodedPayload = System.Text.Json.JsonSerializer.Deserialize<T>(payloadJson);
-            
-            return decodedPayload;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGrain][DecodeJwtPayload] Error decoding payload");
-            return null;
-        }
-    }
-    
-    private AppStoreSubscriptionInfo ExtractTransactionInfo(AppStoreServerNotification notification)
-    {
-        if (notification == null || notification.UnifiedReceipt == null)
-        {
-            _logger.LogWarning("[UserBillingGrain][ExtractTransactionInfo] Notification or UnifiedReceipt is null");
-            return new AppStoreSubscriptionInfo();
-        }
-        
-        // Find the latest receipt information (sorted by expiration date)
-        var latestReceiptInfo = notification.UnifiedReceipt.LatestReceiptInfo?
-            .OrderByDescending(r => 
-                long.TryParse(r.ExpiresDateMs, out var expiresMs) ? expiresMs : 0)
-            .FirstOrDefault();
-        
-        if (latestReceiptInfo == null)
-        {
-            _logger.LogWarning("[UserBillingGrain][ExtractTransactionInfo] No receipt info found in notification");
-            return new AppStoreSubscriptionInfo();
-        }
-        
-        // Parse timestamp to DateTime
-        DateTime purchaseDate = DateTime.UtcNow;
-        DateTime expiresDate = DateTime.UtcNow.AddDays(30); // Default 30 days
-        
-        if (long.TryParse(latestReceiptInfo.PurchaseDateMs, out var purchaseMs))
-        {
-            purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(purchaseMs).DateTime;
-        }
-        
-        if (long.TryParse(latestReceiptInfo.ExpiresDateMs, out var expiresMs))
-        {
-            expiresDate = DateTimeOffset.FromUnixTimeMilliseconds(expiresMs).DateTime;
-        }
-        
-        // Parse trial period flag
-        bool isTrialPeriod = false;
-        if (!string.IsNullOrEmpty(latestReceiptInfo.IsTrialPeriod))
-        {
-            bool.TryParse(latestReceiptInfo.IsTrialPeriod, out isTrialPeriod);
-        }
-        
-        // Parse auto-renewal status
-        bool autoRenewStatus = false;
-        if (notification.UnifiedReceipt.PendingRenewalInfo?.Count > 0)
-        {
-            var pendingRenewal = notification.UnifiedReceipt.PendingRenewalInfo
-                .FirstOrDefault(p => p.OriginalTransactionId == latestReceiptInfo.OriginalTransactionId);
-                
-            if (pendingRenewal != null && !string.IsNullOrEmpty(pendingRenewal.AutoRenewStatus))
-            {
-                autoRenewStatus = pendingRenewal.AutoRenewStatus == "1";
-            }
-        }
-        else
-        {
-            // If there is no PendingRenewalInfo, use the value from the notification
-            autoRenewStatus = notification.AutoRenewStatus;
-        }
-        
-        // Build and return the subscription information object
-        return new AppStoreSubscriptionInfo
-        {
-            OriginalTransactionId = latestReceiptInfo.OriginalTransactionId,
-            TransactionId = latestReceiptInfo.TransactionId,
-            ProductId = latestReceiptInfo.ProductId,
-            PurchaseDate = purchaseDate,
-            ExpiresDate = expiresDate,
-            IsTrialPeriod = isTrialPeriod,
-            AutoRenewStatus = autoRenewStatus,
-            Environment = notification.Environment,
-            LatestReceiptData = notification.UnifiedReceipt.LatestReceipt
-        };
-    }
-    
+
     private async Task HandleInitialPurchaseAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
     {
         if (string.IsNullOrEmpty(userId))
@@ -2204,7 +2073,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         // Find existing subscription record
         var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(subscriptionInfo.OriginalTransactionId);
-        
         // Create invoice details
         var invoiceDetail = new UserBillingInvoiceDetail
         {
@@ -2573,7 +2441,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             {
                 // We need to create or update subscription record
                 _logger.LogInformation("[UserBillingGrain][VerifyAppStoreTransactionAsync] Creating subscription for user: {UserId}", userId);
-                await CreateAppStoreSubscriptionAsync(userId, purchaseDate, transactionInfo);
+                await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
             }
             
             // Return verification result
@@ -2646,7 +2514,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
     }
     
-    private async Task CreateAppStoreSubscriptionAsync(Guid userId, DateTime purchaseDate, AppStoreJWSTransactionDecodedPayload appleResponse)
+    private async Task CreateAppStoreSubscriptionAsync(Guid userId, AppStoreJWSTransactionDecodedPayload appleResponse)
     {
         // Check if there is previous subscription record
         var existingPayment = await GetPaymentSummaryBySubscriptionIdAsync(appleResponse.OriginalTransactionId);
@@ -2657,6 +2525,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             return;
         }
         
+        var purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(appleResponse.PurchaseDate).DateTime;
         var appleProduct = await GetAppleProductConfigAsync(appleResponse.ProductId);
         var paymentGrainId = CommonHelper.GetAppleUserPaymentGrainId(appleResponse.OriginalTransactionId);
         var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
@@ -2711,13 +2580,18 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             CreatedAt = purchaseDate,
             CompletedAt = DateTime.UtcNow,
             Status = PaymentStatus.Completed,
-            SubscriptionStartDate = subscriptionEndDate,
+            SubscriptionStartDate = subscriptionStartDate,
             SubscriptionEndDate = subscriptionEndDate
         };
 
         newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
         await AddPaymentRecordAsync(newPayment);
+        await UpdateUserQuotaOnApplePaySuccess(userId, appleResponse, appleProduct);
+    }
 
+    private async Task UpdateUserQuotaOnApplePaySuccess(Guid userId, AppStoreJWSTransactionDecodedPayload appleResponse,
+        AppleProduct appleProduct)
+    {
         // Update user quota
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
         var subscriptionDto = appleProduct.IsUltimate
@@ -2728,7 +2602,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var subscriptionIds = subscriptionDto.SubscriptionIds;
         if (!subscriptionIds.IsNullOrEmpty())
         {
-            _logger.LogDebug("[UserBillingGrain][VerifyAppStoreTransactionAsync] cancel stripe subscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
+            _logger.LogDebug(
+                "[UserBillingGrain][VerifyAppStoreTransactionAsync] cancel stripe subscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
                 userId, appleResponse.OriginalTransactionId, JsonConvert.SerializeObject(subscriptionIds));
             foreach (var subscriptionId in subscriptionIds)
             {
@@ -2741,9 +2616,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 });
             }
         }
+
         if (subscriptionDto.IsActive)
         {
-            if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscriptionDto.PlanType) <= SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType)appleProduct.PlanType))
+            if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscriptionDto.PlanType) <=
+                SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType)appleProduct.PlanType))
             {
                 subscriptionDto.PlanType = (PlanType)appleProduct.PlanType;
             }
@@ -2770,8 +2647,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var premiumSubscriptionDto = await userQuotaGrain.GetSubscriptionAsync();
             if (!premiumSubscriptionDto.SubscriptionIds.IsNullOrEmpty())
             {
-                _logger.LogDebug("[UserBillingGrain][VerifyAppStoreTransactionAsync] cancel stripe premiumSubscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
-                    userId, appleResponse.OriginalTransactionId, JsonConvert.SerializeObject(premiumSubscriptionDto.SubscriptionIds));
+                _logger.LogDebug(
+                    "[UserBillingGrain][VerifyAppStoreTransactionAsync] cancel stripe premiumSubscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
+                    userId, appleResponse.OriginalTransactionId,
+                    JsonConvert.SerializeObject(premiumSubscriptionDto.SubscriptionIds));
                 foreach (var subscriptionId in premiumSubscriptionDto.SubscriptionIds)
                 {
                     await CancelSubscriptionAsync(new CancelSubscriptionDto
@@ -2783,6 +2662,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     });
                 }
             }
+
             if (premiumSubscriptionDto.IsActive)
             {
                 premiumSubscriptionDto.StartDate =
@@ -2793,7 +2673,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             }
         }
     }
-    
+
     private async Task CreateAppStoreSubscriptionAsync(LatestReceiptInfo latestReceiptInfo, Guid userId,
         DateTime purchaseDate, AppleVerifyReceiptResponse appleResponse)
     {
@@ -2855,7 +2735,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 CreatedAt = purchaseDate,
                 CompletedAt = DateTime.UtcNow,
                 Status = PaymentStatus.Completed,
-                SubscriptionStartDate = subscriptionEndDate,
+                SubscriptionStartDate = subscriptionStartDate,
                 SubscriptionEndDate = subscriptionEndDate
             };
 
@@ -3059,20 +2939,70 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         // 3. Revoke access if no grace period
     }
     
-    private async Task HandleDidRenewAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
+    private async Task HandleDidRenewAsync(Guid userId, AppStoreJWSTransactionDecodedPayload transactionInfo,
+        JWSRenewalInfoDecodedPayload jwsRenewalInfoDecodedPayload)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (userId == default)
         {
             _logger.LogWarning("[UserBillingGrain][HandleDidRenewAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleDidRenewAsync] Processing successful renewal for user {UserId}, product {ProductId}", 
-            userId, transactionInfo.ProductId);
+        _logger.LogInformation("[UserBillingGrain][HandleDidRenewAsync] Processing successful renewal for user {UserId}, product {ProductId}, OriginalTransaction: {Id}", 
+            userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId);
         
-        // Update subscription status - successfully renewed
-        await UpdateSubscriptionStateAsync(userId, transactionInfo, "DID_RENEW");
+        // Find existing subscription record
+        var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(transactionInfo.OriginalTransactionId);
+        if (existingSubscription == null)
+        {
+            _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] PaymentSummary not exist. {0}", transactionInfo.OriginalTransactionId);
+            await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
+            return;
+        }
+
+        var invoiceDetails = existingSubscription.InvoiceDetails ?? new List<UserBillingInvoiceDetail>();
+        var invoiceDetail = invoiceDetails.FirstOrDefault(t => t.InvoiceId == transactionInfo.TransactionId);
+        if (invoiceDetail != null)
+        {
+            _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, originaltransaction: {Id}, trancaction: {trancactionId}",
+                userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
+            return;
+        }
+
+        // Create invoice details
+        var appleProduct = await GetAppleProductConfigAsync(transactionInfo.ProductId);
+        var purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(transactionInfo.PurchaseDate).DateTime;
+        var (subscriptionStartDate, subscriptionEndDate) =
+            await CalculateSubscriptionDurationAsync(userId, (PlanType)appleProduct.PlanType, appleProduct.IsUltimate);
+        existingSubscription.CreatedAt = purchaseDate;
+        existingSubscription.CompletedAt = DateTime.UtcNow;
+        existingSubscription.Status = PaymentStatus.Completed;
+        existingSubscription.SubscriptionId = transactionInfo.OriginalTransactionId;
+        existingSubscription.PriceId = transactionInfo.ProductId;
+        existingSubscription.SubscriptionStartDate = subscriptionStartDate;
+        existingSubscription.SubscriptionEndDate = subscriptionEndDate;
+        existingSubscription.Platform = PaymentPlatform.AppStore;
+        existingSubscription.AppStoreEnvironment = transactionInfo.Environment;
+
+        // Add invoice details
+        invoiceDetail = new UserBillingInvoiceDetail
+        {
+            InvoiceId = transactionInfo.TransactionId,
+            CreatedAt = purchaseDate,
+            CompletedAt = DateTime.UtcNow,
+            Status = PaymentStatus.Completed,
+            SubscriptionStartDate = subscriptionStartDate,
+            SubscriptionEndDate = subscriptionEndDate
+        };
+        invoiceDetails.Add(invoiceDetail);
+        existingSubscription.InvoiceDetails = invoiceDetails;
+        await WriteStateAsync();
+        
+        // Grant or revoke user rights
+        await UpdateUserQuotaOnApplePaySuccess(userId, transactionInfo, appleProduct);
+        _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, product {ProductId}, originaltransaction: {Id}, trancaction: {trancactionId}",
+            userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
     }
     
     private async Task HandleExpiredAsync(string userId, AppStoreSubscriptionInfo transactionInfo)

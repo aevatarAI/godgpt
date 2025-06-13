@@ -14,7 +14,7 @@ namespace Aevatar.Application.Grains.Webhook;
 
 public interface IAppleEventProcessingGrain : IGrainWithStringKey
 {
-    Task<string> ParseEventAndGetUserIdAsync([Immutable] string json);
+    Task<Guid> ParseEventAndGetUserIdAsync([Immutable] string json);
 }
 
 [StatelessWorker]
@@ -33,7 +33,7 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
     }
 
     [ReadOnly]
-    public async Task<string> ParseEventAndGetUserIdAsync([Immutable] string json)
+    public async Task<Guid> ParseEventAndGetUserIdAsync([Immutable] string json)
     {
         try
         {
@@ -59,21 +59,20 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
                 if (decodedPayload == null || decodedPayload.Data == null)
                 {
                     _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Failed to decode V2 payload");
-                    return string.Empty;
+                    return default;
                 }
                 
-                _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Test");
-                _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] type={0}, subType={1}",
-                    decodedPayload.NotificationType, decodedPayload.Subtype);
+                _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] type={0}, subType={1}",
+                    decodedPayload.NotificationType, decodedPayload.Subtype ?? string.Empty);
                 _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] type={0}, SubType={1}, Json: {2}",
-                    decodedPayload.NotificationType, decodedPayload.Subtype, json);
+                    decodedPayload.NotificationType, decodedPayload.Subtype ?? string.Empty, json);
                 //Filter by type
                 if (decodedPayload.NotificationType != AppStoreNotificationType.DID_RENEW.ToString() 
                     && decodedPayload.NotificationType != AppStoreNotificationType.REFUND.ToString())
                 {
                     _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Filter NotificationType {0}, SubType={1}",
                         decodedPayload.NotificationType, decodedPayload.Subtype);
-                    return string.Empty;
+                    return default;
                 }
 
                 // 3. Extract transaction information
@@ -118,7 +117,7 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
                 if (string.IsNullOrEmpty(originalTransactionIdV2))
                 {
                     _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Could not extract original transaction ID from V2 notification");
-                    return string.Empty;
+                    return default;
                 }
                 
                 _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Found original transaction ID: {Id}", 
@@ -135,15 +134,14 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
                 
                 if (paymentDetailsDtoV2 != null && paymentDetailsDtoV2.UserId != Guid.Empty)
                 {
-                    var userId = paymentDetailsDtoV2.UserId.ToString();
                     _logger.LogInformation("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Found user ID: {UserId} for transaction: {TransactionId}", 
-                        userId, originalTransactionIdV2);
-                    return userId;
+                        paymentDetailsDtoV2.UserId.ToString(), originalTransactionIdV2);
+                    return paymentDetailsDtoV2.UserId;
                 }
                 
                 _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] No user found for original transaction ID: {Id}", 
                     originalTransactionIdV2);
-                return string.Empty;
+                return default;
             }
             
             // If not V2 format, try to parse with V1 format (preserve original logic)
@@ -152,7 +150,7 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
             if (notification == null || notification.UnifiedReceipt == null)
             {
                 _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Invalid notification format");
-                return string.Empty;
+                return default;
             }
             
             // 2. Extract the original transaction ID
@@ -160,7 +158,7 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
             if (string.IsNullOrEmpty(originalTransactionId))
             {
                 _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Could not extract original transaction ID");
-                return string.Empty;
+                return default;
             }
             
             _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Found original transaction ID: {Id}", 
@@ -177,21 +175,20 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
             
             if (paymentDetailsDto != null && paymentDetailsDto.UserId != Guid.Empty)
             {
-                var userId = paymentDetailsDto.UserId.ToString();
                 _logger.LogInformation("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Found user ID: {UserId} for transaction: {TransactionId}", 
-                    userId, originalTransactionId);
-                return userId;
+                    paymentDetailsDto.UserId.ToString(), originalTransactionId);
+                return paymentDetailsDto.UserId;
             }
             
             _logger.LogWarning("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] No user found for original transaction ID: {Id}", 
                 originalTransactionId);
-            return string.Empty;
+            return default;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Error processing notification: {Message}", 
                 ex.Message);
-            return string.Empty;
+            return default;
         }
     }
     
