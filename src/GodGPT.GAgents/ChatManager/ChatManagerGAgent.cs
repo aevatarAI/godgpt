@@ -637,7 +637,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         var credits = await userQuotaGrain.GetCreditsAsync();
         var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
-        var ultimateSubscriptionInfo = subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync(true);
+        var ultimateSubscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync(true);
 
         return new UserProfileDto
         {
