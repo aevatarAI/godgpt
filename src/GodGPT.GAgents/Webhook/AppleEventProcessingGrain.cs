@@ -62,6 +62,17 @@ public class AppleEventProcessingGrain : Grain, IAppleEventProcessingGrain
                     return string.Empty;
                 }
                 
+                _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] NotificationType {0}, SubType={1}, Json: {2}",
+                    decodedPayload.NotificationType, decodedPayload.Subtype, json);
+                //Filter by type
+                if (decodedPayload.NotificationType != AppStoreNotificationType.DID_RENEW.ToString() 
+                    && decodedPayload.NotificationType != AppStoreNotificationType.REFUND.ToString())
+                {
+                    _logger.LogDebug("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Filter NotificationType {0}, SubType={1}",
+                        decodedPayload.NotificationType, decodedPayload.Subtype);
+                    return string.Empty;
+                }
+
                 // 3. Extract transaction information
                 string originalTransactionIdV2 = null;
                 
