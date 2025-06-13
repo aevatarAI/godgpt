@@ -22,7 +22,9 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
     private readonly ILogger<UserBillingGrain> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
 
-    public UserPaymentGrain(ILogger<UserBillingGrain> logger, IOptionsMonitor<StripeOptions> stripeOptions)
+    public UserPaymentGrain(
+        ILogger<UserBillingGrain> logger, 
+        IOptionsMonitor<StripeOptions> stripeOptions)
     {
         _logger = logger;
         _stripeOptions = stripeOptions;
@@ -142,7 +144,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             State.Status = PaymentStatus.Completed;
             State.CompletedAt = DateTime.UtcNow;
         }
-        State.Method = session.PaymentMethodTypes.MapToPaymentMethod();
+        State.Method = (PaymentMethod)((int)session.PaymentMethodTypes.MapToPaymentMethod());
         State.Mode = session.Mode;
         State.Platform = PaymentPlatform.Stripe;
         if (State.CreatedAt == default)

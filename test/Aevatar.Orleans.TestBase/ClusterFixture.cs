@@ -118,7 +118,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
 
                     services.AddSemanticKernel()
                         .AddQdrantVectorStore()
-                        .AddAzureOpenAITextEmbedding();
+                        .AddAzureOpenAITextEmbedding()
+                        .AddHttpClient();
                 })
                 .AddMemoryStreams("Aevatar")
                 .AddMemoryGrainStorage("PubSubStore")
@@ -126,7 +127,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .UseAevatar()
                 .AddLogStorageBasedLogConsistencyProvider("LogStorage")
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
-                .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"));
+                .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
+                .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
         }
     }
 

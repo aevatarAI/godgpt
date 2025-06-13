@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Http;
 using Aevatar.Webhook.SDK.Handler;
 using GodGPT.Webhook.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,5 +20,6 @@ public class GodGPTWebHookTemplateModule : AbpModule
         Configure<AbpAutoMapperOptions>(options => { options.AddMaps<GodGPTWebHookTemplateModule>(); });
         var services = context.Services;
         services.AddSingleton<IWebhookHandler, GodGPTWebhookHandler>();
+        services.AddSingleton<IWebhookHandler, AppleStoreWebhookHandler>();
     }
 }

@@ -5,7 +5,9 @@ using System.Threading.Tasks;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.Common.Helpers;
 using Shouldly;
+using Xunit;
 
 namespace GodGPT.GAgents.Tests.ChatManager.UserBilling
 {
@@ -22,7 +24,7 @@ namespace GodGPT.GAgents.Tests.ChatManager.UserBilling
                     (p.InvoiceDetails != null && p.InvoiceDetails.Any(i => 
                         i.Status == PaymentStatus.Completed && i.SubscriptionEndDate != null && i.SubscriptionEndDate > now))
                 )
-                .OrderByDescending(p => p.PlanType)
+                .OrderByDescending(p => SubscriptionHelper.GetPlanTypeLogicalOrder(p.PlanType))
                 .Select(p => p.PlanType)
                 .DefaultIfEmpty(PlanType.None)
                 .First();

@@ -24,6 +24,7 @@
 
     <ItemGroup>
         <ProjectReference Include="..\..\src\GodGPT.GAgents\GodGPT.GAgents.csproj" />
+        <ProjectReference Include="..\..\src\GodGPT.Webhook\GodGPT.Webhook.csproj" />
         <ProjectReference Include="..\Aevatar.Orleans.TestBase\Aevatar.Orleans.TestBase.csproj" />
     </ItemGroup>
 

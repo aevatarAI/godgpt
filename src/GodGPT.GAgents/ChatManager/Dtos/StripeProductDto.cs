@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.Common.Helpers;
 
 namespace Aevatar.Application.Grains.ChatManager.Dtos;
 
@@ -16,4 +17,9 @@ public class StripeProductDto
     [Id(3)] public decimal Amount { get; set; }
     [Id(4)] public string DailyAvgPrice { get; set; }
     [Id(5)] public string Currency { get; set; }
+    
+    /// <summary>
+    /// Indicates if this is an Ultimate subscription plan
+    /// </summary>
+    [Id(6)] public bool IsUltimate { get; set; }
 }
