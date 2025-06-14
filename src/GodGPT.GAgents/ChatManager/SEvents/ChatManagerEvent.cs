@@ -190,6 +190,7 @@ public class UserProfileDto
     [Id(4)] public CreditsInfoDto Credits { get; set; }
     [Id(5)] public SubscriptionInfoDto Subscription { get; set; }
     [Id(6)] public SubscriptionInfoDto UltimateSubscription { get; set; }
+    [Id(7)] public Guid Id { get; set; }
 }
 
 [GenerateSerializer]

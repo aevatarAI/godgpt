@@ -647,7 +647,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             FullName = State.FullName,
             Credits = credits,
             Subscription = subscriptionInfo,
-            UltimateSubscription = ultimateSubscriptionInfo
+            UltimateSubscription = ultimateSubscriptionInfo,
+            Id = this.GetPrimaryKey()
         };
     }
     
