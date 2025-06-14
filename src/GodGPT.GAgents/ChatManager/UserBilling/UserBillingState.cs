@@ -38,6 +38,7 @@ public class PaymentSummary
     [Id(17)] public string PriceId { get; set; }
     [Id(18)] public List<UserBillingInvoiceDetail> InvoiceDetails { get; set; } = new List<UserBillingInvoiceDetail>();
     [Id(19)] public string AppStoreEnvironment { get; set; }
+    [Id(20)] public string MembershipLevel { get; set; }
 }
 
 [GenerateSerializer]

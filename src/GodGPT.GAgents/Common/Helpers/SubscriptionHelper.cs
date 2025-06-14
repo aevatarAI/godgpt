@@ -169,4 +169,9 @@ public static class SubscriptionHelper
     {
         return ComparePlanTypes(toPlan, fromPlan) >= 0;
     }
+
+    public static string GetMembershipLevel(bool isUltimate)
+    {
+        return isUltimate ? MembershipLevel.Membership_Level_Ultimate : MembershipLevel.Membership_Level_Premium;
+    }
 } 

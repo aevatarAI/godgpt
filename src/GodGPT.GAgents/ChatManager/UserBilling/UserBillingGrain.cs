@@ -1196,6 +1196,29 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var paymentSummaries = State.PaymentHistory;
         foreach (var paymentSummary in paymentSummaries)
         {
+            if (paymentSummary.MembershipLevel.IsNullOrWhiteSpace())
+            {
+                var membershipLevel = MembershipLevel.Membership_Level_Premium;
+                try
+                {
+                    if (paymentSummary.Platform == PaymentPlatform.AppStore)
+                    {
+                        var productConfig = await GetAppleProductConfigAsync(paymentSummary.PriceId);
+                        membershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate);
+                    }
+                    else
+                    {
+                        var productConfig = await GetProductConfigAsync(paymentSummary.PriceId);
+                        membershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate);
+                    }
+                }
+                catch (ArgumentException e)
+                {
+                    _logger.LogWarning("[UserBillingGrain][GetPaymentHistoryAsync] {0}. {1}", e.Message, paymentSummary.PriceId);
+                }
+                paymentSummary.MembershipLevel = membershipLevel;
+            }
+            
             if (paymentSummary.InvoiceDetails.IsNullOrEmpty())
             {
                 paymentHistories.Add(paymentSummary);
@@ -1217,7 +1240,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     SubscriptionEndDate = invoiceDetail.SubscriptionEndDate,
                     UserId = paymentSummary.UserId,
                     PriceId = paymentSummary.PriceId,
-                    Platform = paymentSummary.Platform
+                    Platform = paymentSummary.Platform,
+                    MembershipLevel = paymentSummary.MembershipLevel
                 }));
             }
         }
@@ -1342,6 +1366,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             existingPaymentSummary.UserId = paymentDetails.UserId;
             existingPaymentSummary.PriceId = paymentDetails.PriceId;
             existingPaymentSummary.PlanType = (PlanType)productConfig.PlanType;
+            existingPaymentSummary.MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate);
             existingPaymentSummary.Amount = productConfig.Amount;
             existingPaymentSummary.Currency = productConfig.Currency;
             existingPaymentSummary.Status = paymentDetails.Status;
@@ -1368,6 +1393,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 UserId = paymentDetails.UserId,
                 PriceId = paymentDetails.PriceId,
                 PlanType = (PlanType)productConfig.PlanType,
+                MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                 Amount = productConfig.Amount,
                 Currency = productConfig.Currency,
                 CreatedAt = paymentDetails.CreatedAt,
@@ -2543,7 +2569,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             SubscriptionStartDate = subscriptionStartDate,
             SubscriptionEndDate = subscriptionEndDate,
             Platform = PaymentPlatform.AppStore,
-
+            MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
             AppStoreEnvironment = appleResponse.Environment
         };
 
@@ -2954,6 +2980,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         existingSubscription.Status = PaymentStatus.Completed;
         existingSubscription.SubscriptionId = transactionInfo.OriginalTransactionId;
         existingSubscription.PriceId = transactionInfo.ProductId;
+        existingSubscription.PlanType = (PlanType)appleProduct.PlanType;
+        existingSubscription.MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate);
         existingSubscription.SubscriptionStartDate = subscriptionStartDate;
         existingSubscription.SubscriptionEndDate = subscriptionEndDate;
         existingSubscription.Platform = PaymentPlatform.AppStore;
