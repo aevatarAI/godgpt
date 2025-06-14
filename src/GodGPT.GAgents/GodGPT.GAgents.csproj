@@ -43,11 +43,9 @@
     </ItemGroup>
 
     <ItemGroup>
-        <Content Include="ChatManager/UserBilling/Certificates/AppleRootCA-G3.cer">
-            <Pack>true</Pack>
-            <PackagePath>contentFiles\any\any\ChatManager\UserBilling\Certificates\</PackagePath>
-            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
+        <None Include="ChatManager/UserBilling/Certificates/AppleRootCA-G3.cer">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>
