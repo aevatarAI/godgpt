@@ -125,7 +125,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
                            subscriptionInfo.StartDate <= now &&
                            subscriptionInfo.EndDate > now;
 
-        if (!isSubscribed && subscriptionInfo.IsActive)
+        if (subscriptionInfo.IsActive && subscriptionInfo.EndDate <= now)
         {
             _logger.LogDebug("[UserQuotaGrain][IsSubscribedAsync] Subscription for user {UserId} expired. Start: {StartDate}, End: {EndDate}, Now: {Now}, Ultimate: {Ultimate}", 
                 this.GetPrimaryKeyString(), subscriptionInfo.StartDate, subscriptionInfo.EndDate, now, ultimate);
