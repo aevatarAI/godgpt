@@ -50,6 +50,18 @@ public class AppleStoreWebhookHandlerTests : AevatarOrleansTestBase<AevatarGodGP
         paymentHistory.ShouldNotBeNull();
         paymentHistory.Count.ShouldBe(2);
     }
+    
+    [Fact]
+    public async Task HandleAsyncTestJwtTokenTest()
+    {
+
+        for (int i = 0; i < 10; i++)
+        {
+            var transactionId = "2000000940378793";
+            var userIdA = Guid.NewGuid();
+            await CreateAppStoreSubscriptionAsync(userIdA, transactionId);
+        }
+    }
 
     [Fact]
     public async Task GetAppStoreTransactionInfoAsyncTest()

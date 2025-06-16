@@ -3136,7 +3136,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             // Generate JWT token for authentication
             // Note: This is a placeholder. In a production environment, you would need to implement
             // JWT generation according to Apple's documentation.
-            string jwtToken = GenerateAppStoreApiJwt();
+            string jwtToken = await GenerateAppStoreApiJwtAsync();
+            //string jwtToken = GenerateAppStoreApiJwtWithRsa();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
             
             // Send request
@@ -3220,7 +3221,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     }
 
     // Generate JWT token for App Store API authentication
-    private string GenerateAppStoreApiJwt()
+    private async Task<string> GenerateAppStoreApiJwtAsync()
     {
         try
         {
@@ -3263,12 +3264,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             byte[] privateKeyBytes = Convert.FromBase64String(privateKeyContent);
             
             // Import the private key
-            var ecdsa = ECDsa.Create();
-            ecdsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
-            try
-            {
+            using (var ecdsa = ECDsa.Create()) {
+                ecdsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+
                 // Create the signing credentials using the EC key
-                var securityKey = new ECDsaSecurityKey(ecdsa) { KeyId = Guid.NewGuid().ToString() };
+                //var securityKey = new ECDsaSecurityKey(ecdsa) { KeyId = keyId };
+                var securityKey = new ECDsaSecurityKey(ecdsa)
+                {
+                    KeyId = Guid.NewGuid().ToString(),
+                    CryptoProviderFactory = new CryptoProviderFactory { CacheSignatureProviders = false }
+                };
                 var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.EcdsaSha256);
                 
                 // Step 3: Create and sign the JWT token
@@ -3293,10 +3298,6 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 _logger.LogDebug("[UserPaymentGrain][GenerateAppStoreApiJwt] JWT token generated successfully");
                 
                 return token;
-            }
-            finally
-            {
-                ecdsa.Dispose();
             }
         }
         catch (Exception ex)
@@ -3477,5 +3478,76 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         
         // Convert from Base64
         return Convert.FromBase64String(base64);
+    }
+
+    /// <summary>
+    /// Generate JWT token for App Store API using RSA private key (RS256)
+    /// </summary>
+    /// <returns>JWT token string</returns>
+    private string GenerateAppStoreApiJwtWithRsa()
+    {
+        try
+        {
+            _logger.LogInformation("[UserPaymentGrain][GenerateAppStoreApiJwtWithRsa] Generating JWT token for App Store API using RSA");
+            string keyId = _appleOptions.CurrentValue.KeyId;
+            string issuerId = _appleOptions.CurrentValue.IssuerId;
+            string bundleId = _appleOptions.CurrentValue.BundleId;
+            string privateKeyContent = _appleOptions.CurrentValue.PrivateKey; // Should be PKCS#8 Base64 encoded RSA private key
+
+            // Step 1: Create JWT header
+            var header = new Dictionary<string, object>
+            {
+                { "alg", "RS256" }, // Algorithm must be RS256 (RSA with SHA-256)
+                { "kid", keyId },    // Key ID from App Store Connect
+                { "typ", "JWT" }
+            };
+
+            // Step 2: Create JWT payload
+            var now = DateTimeOffset.UtcNow;
+            var expirationTime = now.AddMinutes(10);
+            var claims = new Dictionary<string, object>
+            {
+                { "iss", issuerId },
+                { "iat", now.ToUnixTimeSeconds() },
+                { "exp", expirationTime.ToUnixTimeSeconds() },
+                { "aud", "appstoreconnect-v1" },
+                { "bid", bundleId }
+            };
+
+            // Step 3: Decode the Base64 encoded private key
+            byte[] privateKeyBytes = Convert.FromBase64String(privateKeyContent);
+            using (var rsa = RSA.Create())
+            {
+                rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+                var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
+                var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
+
+                // Step 4: Create and sign the JWT token
+                var securityTokenDescriptor = new SecurityTokenDescriptor
+                {
+                    Claims = claims,
+                    SigningCredentials = signingCredentials
+                };
+
+                var tokenHandler = new JwtSecurityTokenHandler();
+                var securityToken = tokenHandler.CreateJwtSecurityToken(securityTokenDescriptor);
+
+                // Add custom header parameters
+                foreach (var item in header)
+                {
+                    securityToken.Header[item.Key] = item.Value;
+                }
+
+                // Generate the final token string
+                string token = tokenHandler.WriteToken(securityToken);
+                _logger.LogDebug("[UserPaymentGrain][GenerateAppStoreApiJwtWithRsa] JWT token generated successfully");
+                return token;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserPaymentGrain][GenerateAppStoreApiJwtWithRsa] Error generating JWT token: {ErrorMessage}", ex.Message);
+            throw new InvalidOperationException("Failed to generate App Store API JWT token with RSA. Please check your configuration.", ex);
+        }
     }
 }
