@@ -3268,7 +3268,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             try
             {
                 // Create the signing credentials using the EC key
-                var securityKey = new ECDsaSecurityKey(ecdsa) { KeyId = keyId };
+                var securityKey = new ECDsaSecurityKey(ecdsa) { KeyId = Guid.NewGuid().ToString() };
                 var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.EcdsaSha256);
                 
                 // Step 3: Create and sign the JWT token
