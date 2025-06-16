@@ -3263,35 +3263,41 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             byte[] privateKeyBytes = Convert.FromBase64String(privateKeyContent);
             
             // Import the private key
-            using var ecdsa = ECDsa.Create();
+            var ecdsa = ECDsa.Create();
             ecdsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
-            
-            // Create the signing credentials using the EC key
-            var securityKey = new ECDsaSecurityKey(ecdsa) { KeyId = keyId };
-            var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.EcdsaSha256);
-            
-            // Step 3: Create and sign the JWT token
-            var securityTokenDescriptor = new SecurityTokenDescriptor
+            try
             {
-                Claims = claims,
-                SigningCredentials = signingCredentials
-            };
-            
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var securityToken = tokenHandler.CreateJwtSecurityToken(securityTokenDescriptor);
-            
-            // Add custom header parameters
-            foreach (var item in header)
-            {
-                securityToken.Header[item.Key] = item.Value;
+                // Create the signing credentials using the EC key
+                var securityKey = new ECDsaSecurityKey(ecdsa) { KeyId = keyId };
+                var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.EcdsaSha256);
+                
+                // Step 3: Create and sign the JWT token
+                var securityTokenDescriptor = new SecurityTokenDescriptor
+                {
+                    Claims = claims,
+                    SigningCredentials = signingCredentials
+                };
+                
+                var tokenHandler = new JwtSecurityTokenHandler();
+                var securityToken = tokenHandler.CreateJwtSecurityToken(securityTokenDescriptor);
+                
+                // Add custom header parameters
+                foreach (var item in header)
+                {
+                    securityToken.Header[item.Key] = item.Value;
+                }
+                
+                // Generate the final token string
+                string token = tokenHandler.WriteToken(securityToken);
+                
+                _logger.LogDebug("[UserPaymentGrain][GenerateAppStoreApiJwt] JWT token generated successfully");
+                
+                return token;
             }
-            
-            // Generate the final token string
-            string token = tokenHandler.WriteToken(securityToken);
-            
-            _logger.LogDebug("[UserPaymentGrain][GenerateAppStoreApiJwt] JWT token generated successfully");
-            
-            return token;
+            finally
+            {
+                ecdsa.Dispose();
+            }
         }
         catch (Exception ex)
         {
