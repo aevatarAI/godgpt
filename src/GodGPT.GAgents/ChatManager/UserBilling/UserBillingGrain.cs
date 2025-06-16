@@ -2450,7 +2450,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             {
                 // We need to create or update subscription record
                 _logger.LogInformation("[UserBillingGrain][VerifyAppStoreTransactionAsync] Creating subscription for user: {UserId}", userId);
-                await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
+                //await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
+                await HandleDidRenewAsync(userId, transactionInfo, null);
             }
             
             // Return verification result
@@ -2953,7 +2954,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (userId == default)
         {
-            _logger.LogWarning("[UserBillingGrain][HandleDidRenewAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGrain][HandleDidRenewAsync] UserId is empty for transaction: {Id}, ", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
@@ -2965,7 +2966,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(transactionInfo.OriginalTransactionId);
         if (existingSubscription == null)
         {
-            _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] PaymentSummary not exist. {0}", transactionInfo.OriginalTransactionId);
+            _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] PaymentSummary not exist.{0}, {1}, {2}", 
+                userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
             await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
             return;
         }
