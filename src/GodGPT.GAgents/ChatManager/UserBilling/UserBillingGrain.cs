@@ -2954,7 +2954,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (userId == default)
         {
-            _logger.LogWarning("[UserBillingGrain][HandleDidRenewAsync] UserId is empty for transaction: {Id}, ", 
+            _logger.LogWarning("[UserBillingGrain][HandleDidRenewAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
