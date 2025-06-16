@@ -110,7 +110,7 @@ public static class SubscriptionHelper
     public static decimal CalculateDailyAveragePrice(PlanType planType, decimal amount)
     {
         var days = GetDaysForPlanType(planType);
-        return Math.Round(amount / days, 2);
+        return Math.Round(amount / days, 2, MidpointRounding.ToZero);
     }
 
     /// <summary>

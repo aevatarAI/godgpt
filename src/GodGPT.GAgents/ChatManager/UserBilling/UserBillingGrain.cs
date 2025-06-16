@@ -155,15 +155,15 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 dailyAvgPrice = product.Amount.ToString();
             } else if (product.PlanType == (int)PlanType.Week)
             {
-                dailyAvgPrice = Math.Round(product.Amount / 7, 2).ToString();
+                dailyAvgPrice = Math.Round(product.Amount / 7, 2, MidpointRounding.ToZero).ToString();
             }
             else if (product.PlanType == (int)PlanType.Month)
             {
-                dailyAvgPrice = Math.Round(product.Amount / 30, 2).ToString();
+                dailyAvgPrice = Math.Round(product.Amount / 30, 2, MidpointRounding.ToZero).ToString();
             }
             else if (product.PlanType == (int)PlanType.Year)
             {
-                dailyAvgPrice = Math.Round(product.Amount / 390, 2).ToString();
+                dailyAvgPrice = Math.Round(product.Amount / 390, 2, MidpointRounding.ToZero).ToString();
             }
 
             productDtos.Add(new AppleProductDto
