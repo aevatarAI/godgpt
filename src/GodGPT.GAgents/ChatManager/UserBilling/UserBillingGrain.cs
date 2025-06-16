@@ -1924,6 +1924,15 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         existingSubscription.Status = PaymentStatus.Cancelled;
+        var invoiceDetails = existingSubscription.InvoiceDetails;
+        if (!invoiceDetails.IsNullOrEmpty())
+        {
+            var invoiceDetail = invoiceDetails.FirstOrDefault(t => t.InvoiceId == signedTransactionInfo.TransactionId);
+            if (invoiceDetail != null)
+            {
+                invoiceDetail.Status = PaymentStatus.Cancelled;
+            }
+        }
         await WriteStateAsync();
         _logger.LogDebug("[UserBillingGrain][HandleSubscriptionCancellationAsync] Cancel subscription complated. userId={0}, otxnId={1}, txnId={2}", 
             userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
