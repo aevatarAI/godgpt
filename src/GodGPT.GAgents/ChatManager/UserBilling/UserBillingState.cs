@@ -50,5 +50,7 @@ public class UserBillingInvoiceDetail
     [Id(3)] public PaymentStatus Status { get; set; }
     [Id(4)] public DateTime SubscriptionStartDate { get; set; }
     [Id(5)] public DateTime SubscriptionEndDate { get; set; }
+    [Id(6)] public string PriceId { get; set; }
+    [Id(7)] public string MembershipLevel { get; set; }
 }
 

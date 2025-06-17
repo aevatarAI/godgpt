@@ -1239,9 +1239,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     SubscriptionStartDate = invoiceDetail.SubscriptionStartDate,
                     SubscriptionEndDate = invoiceDetail.SubscriptionEndDate,
                     UserId = paymentSummary.UserId,
-                    PriceId = paymentSummary.PriceId,
+                    PriceId = invoiceDetail.PriceId.IsNullOrWhiteSpace() ? paymentSummary.PriceId : invoiceDetail.PriceId,
                     Platform = paymentSummary.Platform,
-                    MembershipLevel = paymentSummary.MembershipLevel
+                    MembershipLevel = invoiceDetail.MembershipLevel.IsNullOrWhiteSpace() ? paymentSummary.MembershipLevel : invoiceDetail.MembershipLevel
                 }));
             }
         }
@@ -2591,7 +2591,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             CompletedAt = DateTime.UtcNow,
             Status = PaymentStatus.Completed,
             SubscriptionStartDate = subscriptionStartDate,
-            SubscriptionEndDate = subscriptionEndDate
+            SubscriptionEndDate = subscriptionEndDate,
+            PriceId = appleResponse.ProductId,
+            MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate)
         };
 
         newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
@@ -3006,7 +3008,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             CompletedAt = DateTime.UtcNow,
             Status = PaymentStatus.Completed,
             SubscriptionStartDate = subscriptionStartDate,
-            SubscriptionEndDate = subscriptionEndDate
+            SubscriptionEndDate = subscriptionEndDate,
+            PriceId = transactionInfo.ProductId,
+            MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate)
         };
         invoiceDetails.Add(invoiceDetail);
         existingSubscription.InvoiceDetails = invoiceDetails;
