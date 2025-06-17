@@ -2443,9 +2443,23 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     Error = $"Transaction verification failed: {transactionResult.Message}" 
                 };
             }
-            
+
             var transactionInfo = transactionResult.Data;
             
+            var paymentGrainId = CommonHelper.GetAppleUserPaymentGrainId(transactionInfo.OriginalTransactionId);
+            var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
+            var paymentDetailsDto = await paymentGrain.GetPaymentDetailsAsync();
+            if (paymentDetailsDto != null && paymentDetailsDto.UserId != Guid.Empty && paymentDetailsDto.UserId.ToString() != requestDto.UserId )
+            {
+                _logger.LogError("[UserBillingGrain][VerifyAppStoreTransactionAsync] Failed to verify transaction: invalid user data. transaction: {0}, {1}, {2}", 
+                    transactionInfo.OriginalTransactionId, paymentDetailsDto.UserId.ToString(), requestDto.UserId);
+                return new VerifyReceiptResponseDto 
+                { 
+                    IsValid = false, 
+                    Error = $"Transaction verification failed: invalid user data" 
+                };
+            }
+
             // Extract transaction details
             var purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(transactionInfo.PurchaseDate).DateTime;
             var expiresDate = transactionInfo.ExpiresDate.HasValue 
