@@ -2535,7 +2535,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             return;
         }
         
-        var purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(appleResponse.PurchaseDate).DateTime;
+        var purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(appleResponse.PurchaseDate).UtcDateTime;
         var appleProduct = await GetAppleProductConfigAsync(appleResponse.ProductId);
         var paymentGrainId = CommonHelper.GetAppleUserPaymentGrainId(appleResponse.OriginalTransactionId);
         var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
@@ -2985,7 +2985,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
         // Create invoice details
         var appleProduct = await GetAppleProductConfigAsync(transactionInfo.ProductId);
-        var purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(transactionInfo.PurchaseDate).DateTime;
+        var purchaseDate = DateTimeOffset.FromUnixTimeMilliseconds(transactionInfo.PurchaseDate).UtcDateTime;
         var (subscriptionStartDate, subscriptionEndDate) =
             await CalculateSubscriptionDurationAsync(userId, (PlanType)appleProduct.PlanType, appleProduct.IsUltimate);
         existingSubscription.CreatedAt = purchaseDate;
