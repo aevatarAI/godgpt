@@ -52,6 +52,13 @@ public interface IUserBillingGrain : IGrainWithStringKey
     Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto);
     Task<bool> HandleAppStoreNotificationAsync(Guid userId, string jsonPayload);
     Task<GrainResultDto<AppStoreJWSTransactionDecodedPayload>> GetAppStoreTransactionInfoAsync(string transactionId, string environment);
+    /// <summary>
+    /// Determines whether there is an active (renewing) Apple subscription.
+    /// An active Apple subscription is defined as a payment record with Platform=AppStore,
+    /// InvoiceDetails is not null or empty, and all InvoiceDetail's Status are not Cancelled.
+    /// </summary>
+    /// <returns>True if there is an active Apple subscription; otherwise, false.</returns>
+    Task<bool> HasActiveAppleSubscriptionAsync();
 }
 
 public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
@@ -1230,7 +1237,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     PaymentGrainId = paymentSummary.PaymentGrainId,
                     OrderId = paymentSummary.OrderId,
                     PlanType = paymentSummary.PlanType,
-                    Amount = paymentSummary.Amount,
+                    Amount = invoiceDetail.Amount == null ? paymentSummary.Amount : (decimal) invoiceDetail.Amount,
                     Currency = paymentSummary.Currency,
                     CreatedAt = invoiceDetail.CreatedAt,
                     CompletedAt = invoiceDetail.CompletedAt,
@@ -2593,7 +2600,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             SubscriptionStartDate = subscriptionStartDate,
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = appleResponse.ProductId,
-            MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate)
+            MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
+            Amount = appleProduct.Amount
         };
 
         newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
@@ -3010,7 +3018,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             SubscriptionStartDate = subscriptionStartDate,
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = transactionInfo.ProductId,
-            MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate)
+            MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
+            Amount = appleProduct.Amount
         };
         invoiceDetails.Add(invoiceDetail);
         existingSubscription.InvoiceDetails = invoiceDetails;
@@ -3555,5 +3564,22 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             _logger.LogError(ex, "[UserPaymentGrain][GenerateAppStoreApiJwtWithRsa] Error generating JWT token: {ErrorMessage}", ex.Message);
             throw new InvalidOperationException("Failed to generate App Store API JWT token with RSA. Please check your configuration.", ex);
         }
+    }
+
+    /// <summary>
+    /// Determines whether there is an active (renewing) Apple subscription.
+    /// An active Apple subscription is defined as a payment record with Platform=AppStore,
+    /// InvoiceDetails is not null or empty, and all InvoiceDetail's Status are not Cancelled.
+    /// </summary>
+    /// <returns>True if there is an active Apple subscription; otherwise, false.</returns>
+    public async Task<bool> HasActiveAppleSubscriptionAsync()
+    {
+        var hasActive = State.PaymentHistory.Any(payment =>
+            payment.Platform == PaymentPlatform.AppStore &&
+            payment.InvoiceDetails != null && payment.InvoiceDetails.Any() &&
+            payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled));
+
+        _logger.LogInformation("[UserBillingGrain][HasActiveAppleSubscriptionAsync] Has active Apple subscription: {HasActive}", hasActive);
+        return hasActive;
     }
 }
