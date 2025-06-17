@@ -14,6 +14,8 @@ using Aevatar.Application.Grains.Tests;
 using Microsoft.AspNetCore.Http;
 using Volo.Abp;
 using Xunit.Abstractions;
+using System.IO;
+using System.Collections.Generic;
 
 namespace Aevatar.GodGPT.Tests;
 
@@ -716,5 +718,89 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         _testOutputHelper.WriteLine($"Final message count: {historyAfterError.Count}");
         
         _testOutputHelper.WriteLine("Bug fix verification passed: No duplicate user messages after RequestLimitError");
+    }
+
+    public class Root
+    {
+        public string Code { get; set; }
+        public Data Data { get; set; }
+        public string Message { get; set; }
+    }
+
+    public class Data
+    {
+        public int TotalCount { get; set; }
+        public List<Item> Items { get; set; }
+    }
+
+    public class Item
+    {
+        public string Title { get; set; }
+        public string ChatManagerGuid { get; set; }
+        public string AIAgentIds { get; set; }
+        public string ChatHistory { get; set; }
+    }
+
+    public class ChatMsg
+    {
+        public int chatRole { get; set; }
+        public string content { get; set; }
+    }
+
+    [Fact]
+    public void ExportChatHistoryToMarkdown_Test()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var jsonPath = "~/Documents/ChatHistory.json";
+        var mdPath = "~/Documents/ChatHistory/ChatHistory.md";
+        try
+        {
+            var mdDir = Path.GetDirectoryName(mdPath);
+            if (!Directory.Exists(mdDir))
+            {
+                Directory.CreateDirectory(mdDir);
+            }
+            var json = File.ReadAllText(jsonPath, Encoding.UTF8);
+            var root = JsonConvert.DeserializeObject<Root>(json);
+            if (root?.Data?.Items == null)
+            {
+                _testOutputHelper.WriteLine("No items found in data.items");
+                return;
+            }
+            using var writer = new StreamWriter(mdPath, false, Encoding.UTF8);
+            int dialogIndex = 1;
+            foreach (var item in root.Data.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.ChatHistory)) continue;
+                List<ChatMsg> chatMsgs = null;
+                try
+                {
+                    chatMsgs = JsonConvert.DeserializeObject<List<ChatMsg>>(item.ChatHistory);
+                }
+                catch (Exception ex)
+                {
+                    _testOutputHelper.WriteLine($"Failed to parse chatHistory: {ex.Message}");
+                    continue;
+                }
+                if (chatMsgs == null || chatMsgs.Count == 0) continue;
+                writer.WriteLine($"## 对话{dialogIndex}");
+                foreach (var msg in chatMsgs)
+                {
+                    if (msg.chatRole != 0)
+                    {
+                        continue;
+                    }
+                    var role = msg.chatRole == 0 ? "用户" : "系统";
+                    writer.WriteLine($"- {role}：{msg.content.Replace("\n", " ").Replace("\r", "")}");
+                }
+                writer.WriteLine("\n---\n");
+                dialogIndex++;
+            }
+        }
+        catch (Exception ex)
+        {
+            _testOutputHelper.WriteLine($"Exception: {ex.Message}");
+            throw;
+        }
     }
 }
