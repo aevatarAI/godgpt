@@ -1236,7 +1236,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 {
                     PaymentGrainId = paymentSummary.PaymentGrainId,
                     OrderId = paymentSummary.OrderId,
-                    PlanType = paymentSummary.PlanType,
+                    PlanType = invoiceDetail.PlanType == PlanType.None ?  paymentSummary.PlanType : invoiceDetail.PlanType,
                     Amount = invoiceDetail.Amount == null ? paymentSummary.Amount : (decimal) invoiceDetail.Amount,
                     Currency = paymentSummary.Currency,
                     CreatedAt = invoiceDetail.CreatedAt,
@@ -2601,7 +2601,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = appleResponse.ProductId,
             MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
-            Amount = appleProduct.Amount
+            Amount = appleProduct.Amount,
+            PlanType = (PlanType)appleProduct.PlanType
         };
 
         newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
@@ -3019,7 +3020,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = transactionInfo.ProductId,
             MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
-            Amount = appleProduct.Amount
+            Amount = appleProduct.Amount,
+            PlanType = (PlanType)appleProduct.PlanType
         };
         invoiceDetails.Add(invoiceDetail);
         existingSubscription.InvoiceDetails = invoiceDetails;
