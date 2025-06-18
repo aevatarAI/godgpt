@@ -10,6 +10,7 @@ public class VerifyReceiptRequestDto
     [Id(0)] public string UserId { get; set; }
     [Id(1)] public bool SandboxMode { get; set; }
     [Id(2)] public string ReceiptData { get; set; }
+    [Id(3)] public string TransactionId { get; set; }
 }
 
 [GenerateSerializer]
@@ -39,8 +40,7 @@ public class CreateAppStoreSubscriptionDto
 {
     [Id(0)] public string UserId { get; set; }
     [Id(1)] public bool SandboxMode { get; set; } = false;
-    [Id(2)] public string ProductId { get; set; }
-    [Id(3)] public string ReceiptData { get; set; }
+    [Id(2)] public string TransactionId { get; set; }
 }
 
 [GenerateSerializer]
@@ -53,17 +53,18 @@ public class AppStoreSubscriptionResponseDto
     [Id(4)] public string Error { get; set; }
 }
 
+[GenerateSerializer]
 public class AppStoreSubscriptionInfo
 {
-    public string OriginalTransactionId { get; set; }
-    public string TransactionId { get; set; }
-    public string ProductId { get; set; }
-    public DateTime PurchaseDate { get; set; }
-    public DateTime ExpiresDate { get; set; }
-    public bool IsTrialPeriod { get; set; }
-    public bool AutoRenewStatus { get; set; }
-    public string Environment { get; set; }
-    public string LatestReceiptData { get; set; }
+    [Id(0)] public string OriginalTransactionId { get; set; }
+    [Id(1)] public string TransactionId { get; set; }
+    [Id(2)] public string ProductId { get; set; }
+    [Id(3)] public DateTime PurchaseDate { get; set; }
+    [Id(4)] public DateTime ExpiresDate { get; set; }
+    [Id(5)] public bool IsTrialPeriod { get; set; }
+    [Id(6)] public bool AutoRenewStatus { get; set; }
+    [Id(7)] public string Environment { get; set; }
+    // [Id(8)] public string LatestReceiptData { get; set; }
 }
 
 /// <summary>
@@ -73,94 +74,119 @@ public class AppStoreSubscriptionInfo
 public enum AppStoreNotificationType
 {
     /// <summary>
-    /// Customer subscribes to a subscription for the first time or purchases a one-time purchase.
-    /// </summary>
-    INITIAL_BUY,
-    
-    /// <summary>
-    /// Customer's subscription automatically renews successfully.
-    /// </summary>
-    RENEWAL,
-    
-    /// <summary>
-    /// Customer resubscribes to an active subscription that was canceled but is still within its subscription period.
-    /// </summary>
-    INTERACTIVE_RENEWAL,
-    
-    /// <summary>
-    /// Customer's subscription fails to renew due to a billing issue.
-    /// </summary>
-    DID_FAIL_TO_RENEW,
-    
-    /// <summary>
-    /// Customer changes the subscription renewal preference, including downgrading, crossgrading, or upgrading.
-    /// </summary>
-    DID_CHANGE_RENEWAL_PREF,
-    
-    /// <summary>
-    /// Customer changes the subscription renewal status - enables or disables automatic renewal.
-    /// </summary>
-    DID_CHANGE_RENEWAL_STATUS,
-    
-    /// <summary>
-    /// Customer's subscription successfully renews, possibly after a billing retry.
-    /// </summary>
-    DID_RENEW,
-    
-    /// <summary>
-    /// Customer's subscription expires after the subscription renewal fails.
-    /// </summary>
-    EXPIRED,
-    
-    /// <summary>
-    /// Customer's subscription expires after the billing retry period.
-    /// </summary>
-    GRACE_PERIOD_EXPIRED,
-    
-    /// <summary>
-    /// Customer receives a refund for a purchase.
-    /// </summary>
-    REFUND,
-    
-    /// <summary>
-    /// Customer's request for a refund is declined.
-    /// </summary>
-    REFUND_DECLINE,
-    
-    /// <summary>
-    /// Apple extends the subscription renewal date for all subscribers.
-    /// </summary>
-    RENEWAL_EXTENDED,
-    
-    /// <summary>
-    /// Status of a subscription date extension.
-    /// </summary>
-    RENEWAL_EXTENSION,
-    
-    /// <summary>
-    /// Customer redeems an offer code.
-    /// </summary>
-    OFFER_REDEEMED,
-    
-    /// <summary>
-    /// Price of a subscription increases.
-    /// </summary>
-    PRICE_INCREASE,
-    
-    /// <summary>
-    /// App Store revokes a family shared purchase.
-    /// </summary>
-    REVOKE,
-    
-    /// <summary>
-    /// Test notification sent by Apple.
-    /// </summary>
-    TEST,
-    
-    /// <summary>
     /// Unknown notification type.
     /// </summary>
-    UNKNOWN
+    UNKNOWN,
+
+    /// <summary>
+    /// Customer initiated a refund request for a consumable in-app purchase or auto-renewable subscription.
+    /// </summary>
+    CONSUMPTION_REQUEST,
+
+    /// <summary>
+    /// Customer made a change to their subscription plan.
+    /// </summary>
+    DID_CHANGE_RENEWAL_PREF,
+
+    /// <summary>
+    /// Customer made a change to the subscription renewal status.
+    /// </summary>
+    DID_CHANGE_RENEWAL_STATUS,
+
+    /// <summary>
+    /// Subscription failed to renew due to a billing issue.
+    /// </summary>
+    DID_FAIL_TO_RENEW,
+
+    /// <summary>
+    /// Subscription successfully renewed.
+    /// </summary>
+    DID_RENEW,
+
+    /// <summary>
+    /// Subscription expired.
+    /// </summary>
+    EXPIRED,
+
+    /// <summary>
+    /// External purchase token created but not reported.
+    /// </summary>
+    EXTERNAL_PURCHASE_TOKEN,
+
+    /// <summary>
+    /// Billing grace period has ended without renewing the subscription.
+    /// </summary>
+    GRACE_PERIOD_EXPIRED,
+
+    /// <summary>
+    /// Subscription metadata was changed.
+    /// </summary>
+    METADATA_UPDATE,
+
+    /// <summary>
+    /// Subscription was migrated to Advanced Commerce API.
+    /// </summary>
+    MIGRATION,
+
+    /// <summary>
+    /// Customer with an active subscription redeemed a subscription offer.
+    /// </summary>
+    OFFER_REDEEMED,
+
+    /// <summary>
+    /// Customer purchased a consumable, non-consumable, or non-renewing subscription.
+    /// </summary>
+    ONE_TIME_CHARGE,
+
+    /// <summary>
+    /// Subscription price was changed.
+    /// </summary>
+    PRICE_CHANGE,
+
+    /// <summary>
+    /// System informed the customer of an auto-renewable subscription price increase.
+    /// </summary>
+    PRICE_INCREASE,
+
+    /// <summary>
+    /// App Store successfully refunded a transaction.
+    /// </summary>
+    REFUND,
+
+    /// <summary>
+    /// App Store declined a refund request.
+    /// </summary>
+    REFUND_DECLINED,
+
+    /// <summary>
+    /// App Store reversed a previously granted refund.
+    /// </summary>
+    REFUND_REVERSED,
+
+    /// <summary>
+    /// App Store extended the subscription renewal date.
+    /// </summary>
+    RENEWAL_EXTENDED,
+
+    /// <summary>
+    /// App Store is attempting to extend the subscription renewal date.
+    /// </summary>
+    RENEWAL_EXTENSION,
+
+    /// <summary>
+    /// In-app purchase is no longer available through Family Sharing.
+    /// </summary>
+    REVOKE,
+
+    /// <summary>
+    /// Customer subscribed to an auto-renewable subscription.
+    /// </summary>
+    SUBSCRIBED,
+
+    /// <summary>
+    /// Test notification requested by developer.
+    /// </summary>
+    TEST
 }
 
 /// <summary>
@@ -170,407 +196,368 @@ public enum AppStoreNotificationType
 public enum AppStoreNotificationSubtype
 {
     /// <summary>
-    /// Initial purchase of the subscription.
+    /// No specific subtype or not applicable.
     /// </summary>
-    INITIAL_BUY,
-    
+    NONE,
+
     /// <summary>
-    /// Customer resubscribed or restored their subscription.
+    /// Customer accepted the price increase.
     /// </summary>
-    RESUBSCRIBE,
-    
+    ACCEPTED,
+
     /// <summary>
-    /// Customer upgraded their subscription.
-    /// </summary>
-    UPGRADE,
-    
-    /// <summary>
-    /// Customer downgraded their subscription.
-    /// </summary>
-    DOWNGRADE,
-    
-    /// <summary>
-    /// Customer enabled auto-renewal for their subscription.
+    /// Customer enabled subscription auto-renewal.
     /// </summary>
     AUTO_RENEW_ENABLED,
-    
+
     /// <summary>
-    /// Customer disabled auto-renewal for their subscription.
+    /// Customer disabled subscription auto-renewal.
     /// </summary>
     AUTO_RENEW_DISABLED,
-    
+
     /// <summary>
-    /// Subscription is in grace period.
+    /// Subscription recovered after billing failure.
     /// </summary>
-    GRACE_PERIOD,
-    
-    /// <summary>
-    /// Subscription expired voluntarily (customer disabled auto-renewal).
-    /// </summary>
-    VOLUNTARY,
-    
+    BILLING_RECOVERY,
+
     /// <summary>
     /// Subscription expired after billing retry period.
     /// </summary>
     BILLING_RETRY,
-    
+
     /// <summary>
-    /// Subscription expired because customer didn't consent to a price increase.
+    /// Customer downgraded their subscription.
     /// </summary>
-    PRICE_INCREASE,
-    
+    DOWNGRADE,
+
     /// <summary>
-    /// Subscription expired because the product is no longer available.
-    /// </summary>
-    PRODUCT_NOT_FOR_SALE,
-    
-    /// <summary>
-    /// Successful billing recovery of a lapsed subscription.
-    /// </summary>
-    BILLING_RECOVERY,
-    
-    /// <summary>
-    /// Notification for a renewal extension summary.
-    /// </summary>
-    SUMMARY,
-    
-    /// <summary>
-    /// Renewal extension failed.
+    /// Renewal extension failed for specific subscription.
     /// </summary>
     FAILURE,
-    
+
     /// <summary>
-    /// Customer has not responded to a price increase notification.
+    /// Subscription is in grace period.
+    /// </summary>
+    GRACE_PERIOD,
+
+    /// <summary>
+    /// First time subscription purchase.
+    /// </summary>
+    INITIAL_BUY,
+
+    /// <summary>
+    /// Customer has not responded to price increase.
     /// </summary>
     PENDING,
-    
+
     /// <summary>
-    /// Customer has accepted a price increase.
+    /// Subscription expired due to price increase.
     /// </summary>
-    ACCEPTED,
-    
+    PRICE_INCREASE,
+
     /// <summary>
-    /// No specific subtype or not applicable.
+    /// Subscription expired because product not available.
     /// </summary>
-    NONE,
-    
+    PRODUCT_NOT_FOR_SALE,
+
+    /// <summary>
+    /// Customer resubscribed after subscription expired.
+    /// </summary>
+    RESUBSCRIBE,
+
+    /// <summary>
+    /// Renewal extension completed for all eligible subscribers.
+    /// </summary>
+    SUMMARY,
+
+    /// <summary>
+    /// External purchase token not reported.
+    /// </summary>
+    UNREPORTED,
+
+    /// <summary>
+    /// Customer upgraded their subscription.
+    /// </summary>
+    UPGRADE,
+
+    /// <summary>
+    /// Subscription expired voluntarily.
+    /// </summary>
+    VOLUNTARY,
+
     /// <summary>
     /// Unknown subtype.
     /// </summary>
     UNKNOWN
 }
 
-/// <summary>
-/// App Store Server Notification V2 format (root object)
-/// </summary>
-public class AppStoreServerNotificationV2
-{
-    [JsonPropertyName("signedPayload")]
-    public string SignedPayload { get; set; }
-}
-
-/// <summary>
-/// Decoded payload for App Store Server Notification V2
-/// </summary>
+[GenerateSerializer]
 public class ResponseBodyV2DecodedPayload
 {
-    /// <summary>
-    /// The notification type.
-    /// </summary>
-    [JsonPropertyName("notificationType")]
-    public string NotificationType { get; set; }
-    
-    /// <summary>
-    /// Additional information that qualifies the notification type.
-    /// </summary>
-    [JsonPropertyName("subtype")]
-    public string Subtype { get; set; }
-    
-    /// <summary>
-    /// A unique identifier for the notification.
-    /// </summary>
-    [JsonPropertyName("notificationUUID")]
-    public string NotificationUUID { get; set; }
-    
-    /// <summary>
-    /// The version of the notification.
-    /// </summary>
-    [JsonPropertyName("version")]
-    public string Version { get; set; }
-    
-    /// <summary>
-    /// The time the server generated the notification.
-    /// </summary>
-    [JsonPropertyName("signedDate")]
-    public long SignedDate { get; set; }
-    
-    /// <summary>
-    /// The data associated with the notification.
-    /// </summary>
-    [JsonPropertyName("data")]
-    public NotificationDataV2 Data { get; set; }
-    
-    /// <summary>
-    /// The server environment that the notification applies to, either sandbox or production.
-    /// </summary>
-    [JsonPropertyName("environment")]
-    public string Environment { get; set; }
+    [Id(0)] public string NotificationType { get; set; }
+    [Id(1)] public string Subtype { get; set; }
+    [Id(2)] public string NotificationUUID { get; set; }
+    [Id(3)] public ResponseBodyV2Data Data { get; set; }
+    [Id(4)] public long SignedDate { get; set; }
+}
+
+[GenerateSerializer]
+public class ResponseBodyV2Data
+{
+    [Id(0)] public string AppAppleId { get; set; }
+    [Id(1)] public string BundleId { get; set; }
+    [Id(2)] public string BundleVersion { get; set; }
+    [Id(3)] public string Environment { get; set; }
+    [Id(4)] public string SignedTransactionInfo { get; set; }
+    [Id(5)] public string SignedRenewalInfo { get; set; }
+    [Id(6)] public int Status { get; set; }
 }
 
 /// <summary>
 /// Data container for App Store Server Notification V2
 /// </summary>
+
+[GenerateSerializer]
 public class NotificationDataV2
 {
     /// <summary>
     /// The app Apple ID.
     /// </summary>
-    [JsonPropertyName("appAppleId")]
-    public long? AppAppleId { get; set; }
+    [Id(0)] public long? AppAppleId { get; set; }
     
     /// <summary>
     /// The Bundle ID of the app.
     /// </summary>
-    [JsonPropertyName("bundleId")]
-    public string BundleId { get; set; }
+    [Id(1)] public string BundleId { get; set; }
     
     /// <summary>
     /// The Bundle version of the app.
     /// </summary>
-    [JsonPropertyName("bundleVersion")]
-    public string BundleVersion { get; set; }
+    [Id(2)] public string BundleVersion { get; set; }
     
     /// <summary>
     /// Transaction information signed by the App Store, in JWT format.
     /// </summary>
-    [JsonPropertyName("signedTransactionInfo")]
-    public string SignedTransactionInfo { get; set; }
+    [Id(3)] public string SignedTransactionInfo { get; set; }
     
     /// <summary>
     /// Subscription renewal information signed by the App Store, in JWT format.
     /// </summary>
-    [JsonPropertyName("signedRenewalInfo")]
-    public string SignedRenewalInfo { get; set; }
+    [Id(4)] public string SignedRenewalInfo { get; set; }
 }
 
 /// <summary>
 /// Decoded Transaction Info from JWT token in V2 notifications
 /// </summary>
+[GenerateSerializer]
 public class JWSTransactionDecodedPayload
 {
     /// <summary>
     /// The original transaction identifier.
     /// </summary>
     [JsonPropertyName("originalTransactionId")]
-    public string OriginalTransactionId { get; set; }
+    [Id(0)] public string OriginalTransactionId { get; set; }
     
     /// <summary>
     /// The transaction identifier.
     /// </summary>
     [JsonPropertyName("transactionId")]
-    public string TransactionId { get; set; }
+    [Id(1)] public string TransactionId { get; set; }
     
     /// <summary>
     /// The product identifier.
     /// </summary>
     [JsonPropertyName("productId")]
-    public string ProductId { get; set; }
+    [Id(2)] public string ProductId { get; set; }
     
     /// <summary>
     /// The purchase date, in milliseconds since 1970.
     /// </summary>
     [JsonPropertyName("purchaseDate")]
-    public long PurchaseDate { get; set; }
+    [Id(3)] public long PurchaseDate { get; set; }
     
     /// <summary>
     /// The expiration date for a subscription, in milliseconds since 1970.
     /// </summary>
     [JsonPropertyName("expiresDate")]
-    public long? ExpiresDate { get; set; }
+    [Id(4)] public long? ExpiresDate { get; set; }
     
     /// <summary>
     /// A value that indicates whether the transaction was purchased using a promotional offer.
     /// </summary>
     [JsonPropertyName("isTrialPeriod")]
-    public bool? IsTrialPeriod { get; set; }
+    [Id(5)] public bool? IsTrialPeriod { get; set; }
     
     /// <summary>
     /// A value that indicates the in-app ownership type.
     /// </summary>
     [JsonPropertyName("ownershipType")]
-    public string OwnershipType { get; set; }
+    [Id(6)] public string OwnershipType { get; set; }
     
     /// <summary>
     /// A string that identifies the version of the subscription.
     /// </summary>
     [JsonPropertyName("subscriptionGroupIdentifier")]
-    public string SubscriptionGroupIdentifier { get; set; }
+    [Id(7)] public string SubscriptionGroupIdentifier { get; set; }
     
     /// <summary>
     /// A value that represents the user's status within the family.
     /// </summary>
     [JsonPropertyName("type")]
-    public string Type { get; set; }
+    [Id(8)] public string Type { get; set; }
     
     /// <summary>
     /// A UUID you created to identify the user's account in your system.
     /// </summary>
     [JsonPropertyName("appAccountToken")]
-    public string AppAccountToken { get; set; }
-}
-
-/// <summary>
-/// Decoded Renewal Info from JWT token in V2 notifications
-/// </summary>
-public class JWSRenewalInfoDecodedPayload
-{
-    /// <summary>
-    /// The current renewal preference.
-    /// </summary>
-    [JsonPropertyName("autoRenewProductId")]
-    public string AutoRenewProductId { get; set; }
-    
-    /// <summary>
-    /// The auto-renewal status.
-    /// </summary>
-    [JsonPropertyName("autoRenewStatus")]
-    public int AutoRenewStatus { get; set; }
-    
-    /// <summary>
-    /// The reason auto-renewal status changed.
-    /// </summary>
-    [JsonPropertyName("renewalDate")]
-    public long? RenewalDate { get; set; }
-    
-    /// <summary>
-    /// The original transaction identifier.
-    /// </summary>
-    [JsonPropertyName("originalTransactionId")]
-    public string OriginalTransactionId { get; set; }
-    
-    /// <summary>
-    /// The product identifier.
-    /// </summary>
-    [JsonPropertyName("productId")]
-    public string ProductId { get; set; }
+    [Id(9)] public string AppAccountToken { get; set; }
 }
 
 /// <summary>
 /// V1版本的App Store服务器通知
 /// </summary>
+[GenerateSerializer]
 public class AppStoreServerNotification
 {
     [JsonPropertyName("notification_type")]
-    public string NotificationType { get; set; }
+    [Id(0)] public string NotificationType { get; set; }
     
     [JsonPropertyName("subtype")]
-    public string Subtype { get; set; }
+    [Id(1)] public string Subtype { get; set; }
     
     [JsonPropertyName("environment")]
-    public string Environment { get; set; }
+    [Id(2)] public string Environment { get; set; }
     
     [JsonPropertyName("auto_renew_status")]
-    public bool AutoRenewStatus { get; set; }
+    [Id(3)] public bool AutoRenewStatus { get; set; }
     
     [JsonPropertyName("auto_renew_product_id")]
-    public string AutoRenewProductId { get; set; }
+    [Id(4)] public string AutoRenewProductId { get; set; }
     
     [JsonPropertyName("unified_receipt")]
-    public UnifiedReceiptInfo UnifiedReceipt { get; set; }
+    [Id(5)] public UnifiedReceiptInfo UnifiedReceipt { get; set; }
 }
 
+[GenerateSerializer]
 public class UnifiedReceiptInfo
 {
     [JsonPropertyName("latest_receipt")]
-    public string LatestReceipt { get; set; }
+    [Id(0)] public string LatestReceipt { get; set; }
     
     [JsonPropertyName("latest_receipt_info")]
-    public List<LatestReceiptInfo> LatestReceiptInfo { get; set; }
+    [Id(1)] public List<LatestReceiptInfo> LatestReceiptInfo { get; set; }
     
     [JsonPropertyName("pending_renewal_info")]
-    public List<PendingRenewalInfo> PendingRenewalInfo { get; set; }
+    [Id(2)] public List<PendingRenewalInfo> PendingRenewalInfo { get; set; }
     
     [JsonPropertyName("status")]
-    public int Status { get; set; }
+    [Id(3)] public int Status { get; set; }
 }
 
+[GenerateSerializer]
 public class LatestReceiptInfo
 {
     [JsonPropertyName("transaction_id")]
-    public string TransactionId { get; set; }
+    [Id(0)] public string TransactionId { get; set; }
     
     [JsonPropertyName("original_transaction_id")]
-    public string OriginalTransactionId { get; set; }
+    [Id(1)] public string OriginalTransactionId { get; set; }
     
     [JsonPropertyName("product_id")]
-    public string ProductId { get; set; }
+    [Id(2)] public string ProductId { get; set; }
     
     [JsonPropertyName("purchase_date_ms")]
-    public string PurchaseDateMs { get; set; }
+    [Id(3)] public string PurchaseDateMs { get; set; }
     
     [JsonPropertyName("expires_date_ms")]
-    public string ExpiresDateMs { get; set; }
+    [Id(4)] public string ExpiresDateMs { get; set; }
     
     [JsonPropertyName("is_trial_period")]
-    public string IsTrialPeriod { get; set; }
+    [Id(5)] public string IsTrialPeriod { get; set; }
 }
 
+[GenerateSerializer]
 public class PendingRenewalInfo
 {
     [JsonPropertyName("auto_renew_product_id")]
-    public string AutoRenewProductId { get; set; }
+    [Id(0)] public string AutoRenewProductId { get; set; }
     
     [JsonPropertyName("auto_renew_status")]
-    public string AutoRenewStatus { get; set; }
+    [Id(1)] public string AutoRenewStatus { get; set; }
     
     [JsonPropertyName("original_transaction_id")]
-    public string OriginalTransactionId { get; set; }
+    [Id(2)] public string OriginalTransactionId { get; set; }
 }
-
+[GenerateSerializer]
 public class AppleVerifyReceiptResponse
 {
     [JsonPropertyName("status")]
-    public int Status { get; set; }
+    [Id(0)] public int Status { get; set; }
     
     [JsonPropertyName("environment")]
-    public string Environment { get; set; }
+    [Id(1)] public string Environment { get; set; }
     
     [JsonPropertyName("receipt")]
-    public ReceiptInfo Receipt { get; set; }
+    [Id(2)] public ReceiptInfo Receipt { get; set; }
     
     [JsonPropertyName("latest_receipt")]
-    public string LatestReceipt { get; set; }
+    [Id(3)] public string LatestReceipt { get; set; }
     
     [JsonPropertyName("latest_receipt_info")]
-    public List<LatestReceiptInfo> LatestReceiptInfo { get; set; }
+    [Id(4)] public List<LatestReceiptInfo> LatestReceiptInfo { get; set; }
     
     [JsonPropertyName("pending_renewal_info")]
-    public List<PendingRenewalInfo> PendingRenewalInfo { get; set; }
+    [Id(5)] public List<PendingRenewalInfo> PendingRenewalInfo { get; set; }
 }
 
+[GenerateSerializer]
 public class ReceiptInfo
 {
     [JsonPropertyName("in_app")]
-    public List<InAppPurchaseInfo> InApp { get; set; }
+    [Id(0)] public List<InAppPurchaseInfo> InApp { get; set; }
 }
 
+[GenerateSerializer]
 public class InAppPurchaseInfo
 {
     [JsonPropertyName("transaction_id")]
-    public string TransactionId { get; set; }
+    [Id(0)] public string TransactionId { get; set; }
     
     [JsonPropertyName("original_transaction_id")]
-    public string OriginalTransactionId { get; set; }
+    [Id(1)] public string OriginalTransactionId { get; set; }
     
     [JsonPropertyName("product_id")]
-    public string ProductId { get; set; }
+    [Id(2)] public string ProductId { get; set; }
     
     [JsonPropertyName("purchase_date_ms")]
-    public string PurchaseDateMs { get; set; }
+    [Id(3)] public string PurchaseDateMs { get; set; }
     
     [JsonPropertyName("expires_date_ms")]
-    public string ExpiresDateMs { get; set; }
+    [Id(4)] public string ExpiresDateMs { get; set; }
     
     [JsonPropertyName("is_trial_period")]
-    public string IsTrialPeriod { get; set; }
+    [Id(5)] public string IsTrialPeriod { get; set; }
 } 
+
+[GenerateSerializer]
+public class AppStoreServerNotificationV2
+{
+    [Id(0)]
+    public string SignedPayload { get; set; }
+}
+
+[GenerateSerializer]
+public class JWSRenewalInfoDecodedPayload
+{
+    [Id(1)] public string OriginalTransactionId { get; set; }
+    [Id(2)] public string AutoRenewProductId { get; set; }
+    [Id(3)] public string ProductId { get; set; }
+    [Id(4)] public int AutoRenewStatus { get; set; }
+    [Id(5)] public decimal RenewalPrice { get; set; }
+    [Id(6)] public string Currency { get; set; }
+    [Id(7)] public long SignedDate { get; set; }
+    [Id(8)] public string Environment { get; set; }
+    [Id(9)] public long RecentSubscriptionStartDate { get; set; }
+    [Id(10)] public long RenewalDate { get; set; }
+    [Id(11)] public string AppTransactionId { get; set; }
+}

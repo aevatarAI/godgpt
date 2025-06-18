@@ -110,7 +110,7 @@ public static class SubscriptionHelper
     public static decimal CalculateDailyAveragePrice(PlanType planType, decimal amount)
     {
         var days = GetDaysForPlanType(planType);
-        return Math.Round(amount / days, 2);
+        return Math.Round(amount / days, 2, MidpointRounding.ToZero);
     }
 
     /// <summary>
@@ -168,5 +168,10 @@ public static class SubscriptionHelper
     public static bool IsUpgradeOrSameLevel(PlanType fromPlan, PlanType toPlan)
     {
         return ComparePlanTypes(toPlan, fromPlan) >= 0;
+    }
+
+    public static string GetMembershipLevel(bool isUltimate)
+    {
+        return isUltimate ? MembershipLevel.Membership_Level_Ultimate : MembershipLevel.Membership_Level_Premium;
     }
 } 

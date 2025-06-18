@@ -107,13 +107,25 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     public async Task<bool> IsSubscribedAsync(bool ultimate = false)
     {
         var subscriptionInfo = ultimate ? State.UltimateSubscription : State.Subscription;
+        if (subscriptionInfo == null)
+        {
+            subscriptionInfo = new SubscriptionInfo();
+            if (ultimate)
+            {
+                State.UltimateSubscription = subscriptionInfo;
+            }
+            else
+            {
+                State.Subscription = subscriptionInfo;
+            }
+        }
 
         var now = DateTime.UtcNow;
         var isSubscribed = subscriptionInfo.IsActive && 
                            subscriptionInfo.StartDate <= now &&
                            subscriptionInfo.EndDate > now;
 
-        if (!isSubscribed && subscriptionInfo.IsActive)
+        if (subscriptionInfo.IsActive && subscriptionInfo.EndDate <= now)
         {
             _logger.LogDebug("[UserQuotaGrain][IsSubscribedAsync] Subscription for user {UserId} expired. Start: {StartDate}, End: {EndDate}, Now: {Now}, Ultimate: {Ultimate}", 
                 this.GetPrimaryKeyString(), subscriptionInfo.StartDate, subscriptionInfo.EndDate, now, ultimate);
@@ -150,12 +162,27 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         await WriteStateAsync();
     }
 
-    public Task<SubscriptionInfoDto> GetSubscriptionAsync(bool ultimate = false)
+    public async Task<SubscriptionInfoDto> GetSubscriptionAsync(bool ultimate = false)
     {
         _logger.LogDebug("[UserQuotaGrain][GetSubscriptionAsync] Getting subscription info for user {UserId}, ultimate={Ultimate}",
             this.GetPrimaryKeyString(), ultimate);
         var subscriptionInfo = ultimate ? State.UltimateSubscription : State.Subscription;
-        return Task.FromResult(new SubscriptionInfoDto
+        
+        if (subscriptionInfo == null)
+        {
+            subscriptionInfo = new SubscriptionInfo();
+            if (ultimate)
+            {
+                State.UltimateSubscription = subscriptionInfo;
+            }
+            else
+            {
+                State.Subscription = subscriptionInfo;
+            }
+            await WriteStateAsync(); 
+        }
+        
+        return new SubscriptionInfoDto
         {
             IsActive = subscriptionInfo.IsActive,
             PlanType = subscriptionInfo.PlanType,
@@ -164,7 +191,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             EndDate = subscriptionInfo.EndDate,
             SubscriptionIds = subscriptionInfo.SubscriptionIds,
             InvoiceIds = subscriptionInfo.InvoiceIds
-        });
+        };
     }
 
     public async Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync(bool ultimate = false)
@@ -178,6 +205,18 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         _logger.LogInformation("[UserQuotaGrain][UpdateSubscriptionAsync] Updated subscription for user {UserId}: Data={PlanType}", 
             this.GetPrimaryKeyString(), JsonConvert.SerializeObject(subscriptionInfoDto));
         var subscription = ultimate ? State.UltimateSubscription : State.Subscription;
+        if (subscription == null)
+        {
+            subscription = new SubscriptionInfo();
+            if (ultimate)
+            {
+                State.UltimateSubscription = subscription;
+            }
+            else
+            {
+                State.Subscription = subscription;
+            }
+        }
         subscription.PlanType = subscriptionInfoDto.PlanType;
         subscription.IsActive = subscriptionInfoDto.IsActive;
         subscription.StartDate = subscriptionInfoDto.StartDate;

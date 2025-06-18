@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Webhook;
@@ -13,18 +14,15 @@ public class AppleStoreWebhookHandler : IWebhookHandler
 {
     private readonly ILogger<AppleStoreWebhookHandler> _logger;
     private readonly IClusterClient _clusterClient;
-    private readonly IOptionsMonitor<ApplePayOptions> _appleOptions;
     
     private static readonly string AppleNotificationProcessorGrainId = "AppleNotificationProcessorGrainId_1";
 
     public AppleStoreWebhookHandler(
         IClusterClient clusterClient,
-        ILogger<AppleStoreWebhookHandler> logger,
-        IOptionsMonitor<ApplePayOptions> appleOptions)
+        ILogger<AppleStoreWebhookHandler> logger)
     {
         _clusterClient = clusterClient;
         _logger = logger;
-        _appleOptions = appleOptions;
     }
 
     public string RelativePath => "api/webhooks/godgpt-appstore-payment";
@@ -61,7 +59,7 @@ public class AppleStoreWebhookHandler : IWebhookHandler
             var appleEventProcessingGrain = _clusterClient.GetGrain<IAppleEventProcessingGrain>(AppleNotificationProcessorGrainId);
             var userId = await appleEventProcessingGrain.ParseEventAndGetUserIdAsync(json);
             
-            if (string.IsNullOrEmpty(userId))
+            if (userId == default)
             {
                 _logger.LogWarning("[AppleStoreWebhookHandler][webhook] Could not determine user ID from notification");
                 // Return 200 success even if userId is not found, to prevent Apple from retrying
@@ -69,15 +67,15 @@ public class AppleStoreWebhookHandler : IWebhookHandler
             }
             
             // 2. Use the found userId to request UserBillingGrain to process the notification
-            var userBillingGrain = _clusterClient.GetGrain<IUserBillingGrain>(userId);
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(Guid.Parse(userId), json, notificationToken);
+            var userBillingGrain = _clusterClient.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+            var result = await userBillingGrain.HandleAppStoreNotificationAsync(userId, json);
             
             if (!result)
             {
                 _logger.LogWarning("[AppleStoreWebhookHandler][Webhook] Failed to process notification for user {UserId}", userId);
                 return new { success = false, message = "Failed to process notification" };
             }
-
+            
             // Return success response
             _logger.LogInformation("[AppleStoreWebhookHandler][webhook] Successfully processed notification for user {UserId}", userId);
             return new { success = true };

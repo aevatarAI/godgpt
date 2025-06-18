@@ -22,7 +22,9 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
     private readonly ILogger<UserBillingGrain> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
 
-    public UserPaymentGrain(ILogger<UserBillingGrain> logger, IOptionsMonitor<StripeOptions> stripeOptions)
+    public UserPaymentGrain(
+        ILogger<UserBillingGrain> logger, 
+        IOptionsMonitor<StripeOptions> stripeOptions)
     {
         _logger = logger;
         _stripeOptions = stripeOptions;

@@ -57,14 +57,13 @@ public class UserBillingGrainTests_WebhookHandler
             
             // Mock UserBillingGrain.HandleAppStoreNotificationAsync return value
             _mockUserBillingGrain
-                .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>(), It.IsAny<string>()))
+                .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>()))
                 .ReturnsAsync(true);
             
             // Create AppleStoreWebhookHandler instance
             var handler = new AppleStoreWebhookHandler(
                 _mockClusterClient.Object,
-                _mockLogger.Object,
-                null // Skip AppleOptions, as we don't need to verify notification token in tests
+                _mockLogger.Object// Skip AppleOptions, as we don't need to verify notification token in tests
             );
             
             // Execute test method
@@ -77,8 +76,7 @@ public class UserBillingGrainTests_WebhookHandler
             // Verify method calls
             _mockUserBillingGrain.Verify(
                 g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),
-                    It.Is<string>(json => json == notificationJson),
-                    It.Is<string>(token => token == notificationToken)
+                    It.Is<string>(json => json == notificationJson)
                 ),
                 Times.Once
             );
@@ -115,14 +113,13 @@ public class UserBillingGrainTests_WebhookHandler
             
             // Mock UserBillingGrain.HandleAppStoreNotificationAsync to throw exception
             _mockUserBillingGrain
-                .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>(), It.IsAny<string>()))
+                .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>()))
                 .ThrowsAsync(new Exception("Test exception"));
             
             // Create AppleStoreWebhookHandler instance
             var handler = new AppleStoreWebhookHandler(
                 _mockClusterClient.Object,
-                _mockLogger.Object,
-                null // Skip AppleOptions, as we don't need to verify notification token in tests
+                _mockLogger.Object // Skip AppleOptions, as we don't need to verify notification token in tests
             );
             
             // Execute test method
@@ -140,8 +137,7 @@ public class UserBillingGrainTests_WebhookHandler
             // Verify method calls
             _mockUserBillingGrain.Verify(
                 g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),
-                    It.Is<string>(json => json == notificationJson),
-                    It.Is<string>(token => token == notificationToken)
+                    It.Is<string>(json => json == notificationJson)
                 ),
                 Times.Once
             );
@@ -176,14 +172,13 @@ public class UserBillingGrainTests_WebhookHandler
             
             // Mock UserBillingGrain.HandleAppStoreNotificationAsync return value
             _mockUserBillingGrain
-                .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>(), It.IsAny<string>()))
+                .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>()))
                 .ReturnsAsync(false); // Expect validation to fail when token is missing
             
             // Create AppleStoreWebhookHandler instance
             var handler = new AppleStoreWebhookHandler(
                 _mockClusterClient.Object,
-                _mockLogger.Object,
-                null // Skip AppleOptions, as we don't need to verify notification token in tests
+                _mockLogger.Object // Skip AppleOptions, as we don't need to verify notification token in tests
             );
             
             // Execute test method
@@ -196,9 +191,8 @@ public class UserBillingGrainTests_WebhookHandler
             // Verify method calls
             _mockUserBillingGrain.Verify(
                 g => g.HandleAppStoreNotificationAsync(
-                    It.IsAny<Guid>(),It.IsAny<string>(),
-                    It.Is<string>(token => token == string.Empty)
-                ),
+                    It.IsAny<Guid>(),It.IsAny<string>())
+                ,
                 Times.Once
             );
         }
