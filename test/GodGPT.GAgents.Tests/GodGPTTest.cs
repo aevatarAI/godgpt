@@ -14,6 +14,8 @@ using Aevatar.Application.Grains.Tests;
 using Microsoft.AspNetCore.Http;
 using Volo.Abp;
 using Xunit.Abstractions;
+using System.IO;
+using System.Collections.Generic;
 
 namespace Aevatar.GodGPT.Tests;
 
@@ -140,7 +142,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         {
             _testOutputHelper.WriteLine($"Exception during GodChatAsync test: {ex.Message}");
             _testOutputHelper.WriteLine($"Stack trace: {ex.StackTrace}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -197,7 +199,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
     [Fact]
     public async Task MultipleLLM_Test()
     {
-        // Supported LLM model list (adjust based on models actually supported in the project)
+        // List of supported LLM models (adjust based on project's actual supported models)
         var llmModels = new[] { "OpenAI", "BytePlusDeepSeekV3" };
         var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
         
@@ -227,7 +229,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
                 // Wait for response to complete
                 await Task.Delay(TimeSpan.FromSeconds(20));
                 
-                // Verify response
+                // Verify if there is a response
                 var chatMessages = await godChat.GetChatMessageAsync();
                 _testOutputHelper.WriteLine($"Response from {llm}: {JsonConvert.SerializeObject(chatMessages)}");
                 
@@ -237,8 +239,8 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             catch (Exception ex)
             {
                 _testOutputHelper.WriteLine($"Error testing {llm}: {ex.Message}");
-                // Don't let failure of a single model cause the entire test to fail
-                // In a real environment, some models may be unavailable which is normal
+                // Don't fail the test if a single model fails, just log the error
+                // In a real environment, it's normal for some models to be unavailable
             }
         }
     }
@@ -274,14 +276,14 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         var chatHistory = await godChat.GetChatMessageAsync();
         _testOutputHelper.WriteLine($"Chat History: {JsonConvert.SerializeObject(chatHistory)}");
         
-        // Verify history
+        // Verify history record
         chatHistory.ShouldNotBeEmpty();
         
-        // Fix: Verify history count is at least equal to sent message count
-        // (may include system messages or other messages)
+        // Fix: Verify history record count is at least equal to the number of sent messages
+        // (because it may contain system messages or other messages)
         chatHistory.Count.ShouldBeGreaterThanOrEqualTo(messages.Length);
         
-        // Fix: Don't directly compare message content, just check if there are enough records
+        // Fix: Don't directly compare message content, just check if there are enough message records
         _testOutputHelper.WriteLine($"Verified chat history contains at least {messages.Length} messages");
     }
     
@@ -341,14 +343,14 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             // Check if the answer of the sixth round of conversation contains age-related information
             _testOutputHelper.WriteLine($"AI response to age question: {responses[5]}");
             
-            // Since the specific content of AI's reply may change, just log it, not hard assertion
+            // Since the specific content of AI's reply may vary, just log it, don't make a hard assertion
             responses.Count.ShouldBe(conversation.Length);
         }
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during MultiRoundConversation test: {ex.Message}");
             _testOutputHelper.WriteLine($"Stack trace: {ex.StackTrace}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -389,7 +391,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during message test: {ex.Message}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -420,7 +422,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during InitAsync test: {ex.Message}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -442,7 +444,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
                 Temperature = "0.7" // Medium temperature, neither too high nor too low
             };
             
-            // Use settings for chat
+            // Use settings for chatting
             var chatId = Guid.NewGuid().ToString();
             await godChat.GodStreamChatAsync(grainId, "OpenAI", true, 
                 "Tell me a short story", 
@@ -454,13 +456,13 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             var chatHistory = await godChat.GetChatMessageAsync();
             _testOutputHelper.WriteLine($"Chat history with prompt settings: {JsonConvert.SerializeObject(chatHistory)}");
             
-            // Verify history
+            // Verify history record
             chatHistory.ShouldNotBeEmpty();
         }
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during PromptSettings test: {ex.Message}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -497,13 +499,13 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
                 await godChat.GodChatAsync("OpenAI", $"My session number is {i}");
             }
             
-            // Send a message in each session again
+            // Send a message in each session
             for (int i = 0; i < godChats.Count; i++)
             {
                 var response = await godChats[i].GodChatAsync("OpenAI", "What was my session number?");
                 _testOutputHelper.WriteLine($"Session {i} response: {response}");
                 
-                // Get history of that session
+                // Get history record of that session
                 var history = await godChats[i].GetChatMessageAsync();
                 _testOutputHelper.WriteLine($"Session {i} history count: {history.Count}");
                 
@@ -514,7 +516,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during MultiSession test: {ex.Message}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -550,7 +552,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during StreamingMode_Disabled test: {ex.Message}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -566,7 +568,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, null);
             var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
             
-            // Test only default region, avoid test failure due to unsupported region
+            // Test only default region, avoid failing test if unsupported region
             var region = "DEFAULT";
             
             _testOutputHelper.WriteLine($"Testing region: {region}");
@@ -590,7 +592,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during RegionSpecific test: {ex.Message}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -634,7 +636,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         catch (Exception ex)
         {
             _testOutputHelper.WriteLine($"Exception during ChatMessageCallback test: {ex.Message}");
-            // Record exception but don't let test fail
+            // Log exception but don't fail the test
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
@@ -716,5 +718,89 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         _testOutputHelper.WriteLine($"Final message count: {historyAfterError.Count}");
         
         _testOutputHelper.WriteLine("Bug fix verification passed: No duplicate user messages after RequestLimitError");
+    }
+
+    public class Root
+    {
+        public string Code { get; set; }
+        public Data Data { get; set; }
+        public string Message { get; set; }
+    }
+
+    public class Data
+    {
+        public int TotalCount { get; set; }
+        public List<Item> Items { get; set; }
+    }
+
+    public class Item
+    {
+        public string Title { get; set; }
+        public string ChatManagerGuid { get; set; }
+        public string AIAgentIds { get; set; }
+        public string ChatHistory { get; set; }
+    }
+
+    public class ChatMsg
+    {
+        public int chatRole { get; set; }
+        public string content { get; set; }
+    }
+
+    [Fact]
+    public void ExportChatHistoryToMarkdown_Test()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var jsonPath = "~/Documents/ChatHistory.json";
+        var mdPath = "~/Documents/ChatHistory/ChatHistory.md";
+        try
+        {
+            var mdDir = Path.GetDirectoryName(mdPath);
+            if (!Directory.Exists(mdDir))
+            {
+                Directory.CreateDirectory(mdDir);
+            }
+            var json = File.ReadAllText(jsonPath, Encoding.UTF8);
+            var root = JsonConvert.DeserializeObject<Root>(json);
+            if (root?.Data?.Items == null)
+            {
+                _testOutputHelper.WriteLine("No items found in data.items");
+                return;
+            }
+            using var writer = new StreamWriter(mdPath, false, Encoding.UTF8);
+            int dialogIndex = 1;
+            foreach (var item in root.Data.Items)
+            {
+                if (string.IsNullOrWhiteSpace(item.ChatHistory)) continue;
+                List<ChatMsg> chatMsgs = null;
+                try
+                {
+                    chatMsgs = JsonConvert.DeserializeObject<List<ChatMsg>>(item.ChatHistory);
+                }
+                catch (Exception ex)
+                {
+                    _testOutputHelper.WriteLine($"Failed to parse chatHistory: {ex.Message}");
+                    continue;
+                }
+                if (chatMsgs == null || chatMsgs.Count == 0) continue;
+                writer.WriteLine($"## 对话{dialogIndex}");
+                foreach (var msg in chatMsgs)
+                {
+                    if (msg.chatRole != 0)
+                    {
+                        continue;
+                    }
+                    var role = msg.chatRole == 0 ? "用户" : "系统";
+                    writer.WriteLine($"- {role}：{msg.content.Replace("\n", " ").Replace("\r", "")}");
+                }
+                writer.WriteLine("\n---\n");
+                dialogIndex++;
+            }
+        }
+        catch (Exception ex)
+        {
+            _testOutputHelper.WriteLine($"Exception: {ex.Message}");
+            throw;
+        }
     }
 }

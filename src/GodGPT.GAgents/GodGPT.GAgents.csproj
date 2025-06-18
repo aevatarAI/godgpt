@@ -16,6 +16,9 @@
     <ItemGroup>
         <PackageReference Include="Aevatar.Core" />
         <PackageReference Include="Aevatar.Core.Abstractions" />
+        <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />
+        <PackageReference Include="Microsoft.IdentityModel.Tokens" />
+        <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
         <PackageReference Include="Volo.Abp.AutoMapper" />
         <PackageReference Include="Aevatar.GAgents.AIGAgent" />
         <PackageReference Include="Aevatar.GAgents.AI.Abstractions" />
@@ -37,6 +40,12 @@
         <PackageReference Include="Microsoft.Orleans.Streaming" />
         <PackageReference Include="Microsoft.Orleans.Runtime" />
         <PackageReference Include="Microsoft.Orleans.EventSourcing" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="ChatManager/UserBilling/Certificates/AppleRootCA-G3.cer">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>

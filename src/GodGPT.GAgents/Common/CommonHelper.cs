@@ -27,7 +27,12 @@ public class CommonHelper
     public static string GetUserBillingGAgentId(Guid chatManagerId)
     {
         return string.Join("_", chatManagerId.ToString(), "Billing");
-    }  
+    }
+
+    public static Guid GetAppleUserPaymentGrainId(string transactionId)
+    {
+        return StringToGuid(string.Join("_", transactionId, "AppStore"));
+    }
     
     /// <summary>
     /// A method to load the content of a file.

@@ -10,7 +10,7 @@ public class UserQuotaState
     [Id(2)] public bool HasShownInitialCreditsToast { get; set; } = false;
     [Id(3)] public SubscriptionInfo Subscription { get; set; } = new SubscriptionInfo();
     [Id(4)] public Dictionary<string, RateLimitInfo> RateLimits { get; set; } = new Dictionary<string, RateLimitInfo>();
-    
+    [Id(5)] public SubscriptionInfo UltimateSubscription { get; set; } = new SubscriptionInfo();
 }
 
 [GenerateSerializer]

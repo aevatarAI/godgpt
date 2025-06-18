@@ -11,8 +11,8 @@ using Xunit.Abstractions;
 namespace Aevatar.Application.Grains.Tests.GodChat
 {
     // /// <summary>
-    // /// 测试GodGPT功能
-    // /// 从Aevatar.GodGPT.Tests迁移而来
+    // /// Test GodGPT functionality
+    // /// Migrated from Aevatar.GodGPT.Tests
     // /// </summary>
     // public class GodChatTest : GodGPTTestBase
     // {
@@ -26,13 +26,13 @@ namespace Aevatar.Application.Grains.Tests.GodChat
     //     [Fact]
     //     public async Task ChatAsync_Test()
     //     {
-    //         // 获取聊天管理器
+    //         // Get chat manager
     //         var grainId = Guid.NewGuid();
     //         _testOutputHelper.WriteLine($"Chat Manager GrainId: {grainId}");
     //         
     //         var chatManagerGrain = GrainFactory.GetGrain<IChatManagerGAgent>(grainId);
     //         
-    //         // 创建一个会话
+    //         // Create a session
     //         var userProfile = new UserProfileDto
     //         {
     //             Gender = "Male",
@@ -44,23 +44,23 @@ namespace Aevatar.Application.Grains.Tests.GodChat
     //         var godGAgentId = await chatManagerGrain.CreateSessionAsync("OpenAI", string.Empty, userProfile);
     //         _testOutputHelper.WriteLine($"God GAgent GrainId: {godGAgentId}");
     //
-    //         // 创建聊天ID
+    //         // Create chat ID
     //         var chatId = Guid.NewGuid();
     //         _testOutputHelper.WriteLine($"ChatId: {chatId}");
     //         
-    //         // 进行聊天
+    //         // Perform chat
     //         var godChat = GrainFactory.GetGrain<IGodChat>(godGAgentId);
     //         await godChat.GodStreamChatAsync(grainId, "OpenAI", true, "Who are you",
     //             chatId.ToString(), null);
     //             
-    //         // 等待聊天完成
+    //         // Wait for chat to complete
     //         await Task.Delay(TimeSpan.FromSeconds(10));
     //         
-    //         // 获取并验证聊天消息
+    //         // Get and verify chat messages
     //         var chatMessage = await godChat.GetChatMessageAsync();
     //         _testOutputHelper.WriteLine($"chatMessage: {JsonConvert.SerializeObject(chatMessage)}");
     //         
-    //         // 断言
+    //         // Assert
     //         chatMessage.ShouldNotBeEmpty();
     //         chatMessage.Count.ShouldBe(2);
     //     }

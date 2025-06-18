@@ -31,7 +31,7 @@ namespace Aevatar.Application.Grains.Tests.Core
     //     }
     // }
 
-    // 简单的IBrainFactory实现，用于测试
+    // Simple IBrainFactory implementation for testing
     // public class MockBrainFactory : IBrainFactory
     // {
     //     public Task<string> GenerateResponseAsync(string prompt, string? llm = null, Dictionary<string, object>? options = null)
@@ -39,7 +39,7 @@ namespace Aevatar.Application.Grains.Tests.Core
     //         return Task.FromResult("Mock response for testing");
     //     }
     //
-    //     // 必须实现这个方法，但我们返回null因为测试不会实际使用它
+    //     // Must implement this method, but we return null since tests won't actually use it
     //     public object GetBrain(object config)
     //     {
     //         return new object();
@@ -50,28 +50,28 @@ namespace Aevatar.Application.Grains.Tests.Core
     // {
     //     public void Configure(ISiloBuilder siloBuilder)
     //     {
-    //         // 加载配置文件
+    //         // Load configuration file
     //         IConfiguration configuration = new ConfigurationBuilder()
     //             .SetBasePath(Directory.GetCurrentDirectory())
     //             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
     //             .Build();
     //
-    //         // 配置测试环境
+    //         // Configure test environment
     //         siloBuilder
     //             .AddMemoryGrainStorage("PubSubStore")
     //             .AddMemoryGrainStorage("LogStorage")
     //             .ConfigureServices(services => 
     //             {
-    //                 // 注册配置
+    //                 // Register configuration
     //                 services.AddSingleton(configuration);
     //                 
-    //                 // 注册IBrainFactory的简单实现
+    //                 // Register simple IBrainFactory implementation
     //                 services.AddSingleton<IBrainFactory, MockBrainFactory>();
     //                 
-    //                 // 添加内存缓存
+    //                 // Add memory cache
     //                 services.AddMemoryCache();
     //                 
-    //                 // 添加日志服务
+    //                 // Add logging service
     //                 services.AddLogging(logging => 
     //                 {
     //                     logging.AddConsole();

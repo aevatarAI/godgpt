@@ -637,6 +637,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         var credits = await userQuotaGrain.GetCreditsAsync();
         var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
+        var ultimateSubscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync(true);
 
         return new UserProfileDto
         {
@@ -645,7 +646,9 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             BirthPlace = State.BirthPlace,
             FullName = State.FullName,
             Credits = credits,
-            Subscription = subscriptionInfo
+            Subscription = subscriptionInfo,
+            UltimateSubscription = ultimateSubscriptionInfo,
+            Id = this.GetPrimaryKey()
         };
     }
     
