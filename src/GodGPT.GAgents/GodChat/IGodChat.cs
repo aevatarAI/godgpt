@@ -10,20 +10,21 @@ namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
 public interface IGodChat : IGAgent
 {
+    [Obsolete]
     Task<string> GodChatAsync(string llm, string message, ExecutionPromptSettings? promptSettings = null);
-    Task InitAsync(Guid ChatManagerGuid);
-
+    [Obsolete]
     Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false, string? region = null, bool addToHistory = true);
-
-    [ReadOnly]
-    Task<List<ChatMessage>> GetChatMessageAsync();
-
-    Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
-        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
+    
+    Task InitAsync(Guid ChatManagerGuid);
     Task SetUserProfileAsync(UserProfileDto? userProfileDto);
     Task<UserProfileDto?> GetUserProfileAsync();
-
+    [ReadOnly]
+    Task<List<ChatMessage>> GetChatMessageAsync();
+    Task<List<ChatMessage>> ChatWithSessionAsync(string chatId, string prompt, bool includeHistory = false,
+        ExecutionPromptSettings promptSettings = null, string? region = null, bool streamingModeEnabled = true);
+    Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
     Task ChatMessageCallbackAsync(AIChatContextDto aiChatContextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage,
         AIStreamChatContent? aiStreamChatContent);
