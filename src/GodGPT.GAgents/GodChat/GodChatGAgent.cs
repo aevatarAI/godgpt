@@ -43,7 +43,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return;
         }
         
-        var proxyIds = await InitializeRegionProxiesAsync(DefaultRegion);;
+        var proxyIds = await InitializeRegionProxiesAsync(DefaultRegion, configuration.StreamingModeEnabled);
         Dictionary<string, List<Guid>> regionProxies = new();
         regionProxies[DefaultRegion] = proxyIds;
         RaiseEvent(new UpdateRegionProxiesLogEvent
@@ -71,45 +71,46 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogDebug(
             $"[GodChatGAgent][RequestStreamChatEvent] decommission :{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
         await PublishAsync(chatMessage);
+    }
 
-        // string chatId = Guid.NewGuid().ToString();
-        // Logger.LogDebug(
-        //     $"[GodChatGAgent][RequestStreamGodChatEvent] start:{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
-        // var title = "";
-        // var content = "";
-        // var isLastChunk = false;
-        //
-        // try
-        // {
-        //     if (State.StreamingModeEnabled)
-        //     {
-        //         Logger.LogDebug("State.StreamingModeEnabled is on");
-        //         await StreamChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content, chatId);
-        //     }
-        //     else
-        //     {
-        //         var response = await ChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content);
-        //         content = response.Item1;
-        //         title = response.Item2;
-        //         isLastChunk = true;
-        //     }
-        // }
-        // catch (Exception e)
-        // {
-        //     Logger.LogError(e, $"[GodChatGAgent][RequestStreamGodChatEvent] handle error:{e.ToString()}");
-        // }
-        //
-        // await PublishAsync(new ResponseStreamGodChat()
-        // {
-        //     ChatId = chatId,
-        //     Response = content,
-        //     NewTitle = title,
-        //     IsLastChunk = isLastChunk,
-        //     SerialNumber = -1,
-        //     SessionId = @event.SessionId
-        // });
-        //
-        // Logger.LogDebug($"[GodChatGAgent][RequestStreamGodChatEvent] end:{JsonConvert.SerializeObject(@event)}");
+    public async Task<List<ChatMessage>> ChatWithSessionAsync(string chatId, string prompt, bool includeHistory = false,
+        ExecutionPromptSettings promptSettings = null, string? region = null, bool streamingModeEnabled = true)
+    {
+        var aiAgentStatusProxy = await GetProxyByRegionAsync(region, streamingModeEnabled);
+        if (aiAgentStatusProxy == null)
+        {
+            Logger.LogWarning(
+                $"[GodChatGAgent][ChatWithSessionAsync] No available proxies for region {region}, sessionId {this.GetPrimaryKey().ToString()}");
+            return new List<ChatMessage>();
+        }
+        
+        Logger.LogDebug(
+            $"[GodChatGAgent][ChatWithSessionAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {this.GetPrimaryKey().ToString()}, chat {chatId}");
+            
+        var settings = promptSettings ?? new ExecutionPromptSettings();
+        settings.Temperature = "0.9";
+            
+        var chatList = await aiAgentStatusProxy.ChatWithHistory(prompt, 
+            history: includeHistory ? State.ChatHistory : null,
+            promptSettings: settings,
+            context: new AIChatContextDto()
+            {
+                ChatId = chatId,
+                RequestId = this.GetPrimaryKey()
+            });
+
+        if (chatList.IsNullOrEmpty())
+        {
+            return chatList;
+        }
+
+        RaiseEvent(new AddChatHistoryLogEvent
+        {
+            ChatList = chatList
+        });
+        await ConfirmEvents();
+        
+        return chatList;
     }
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
@@ -302,18 +303,18 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         return aiChatContextDto;
     }
     
-    private async Task<IAIAgentStatusProxy?> GetProxyByRegionAsync(string? region)
+    private async Task<IAIAgentStatusProxy?> GetProxyByRegionAsync(string? region, bool streamingModeEnabled = true)
     {
         Logger.LogDebug($"[GodChatGAgent][GetProxyByRegionAsync] session {this.GetPrimaryKey().ToString()}, Region: {region}");
         if (string.IsNullOrWhiteSpace(region))
         {
-            return await GetProxyByRegionAsync(DefaultRegion);
+            return await GetProxyByRegionAsync(DefaultRegion, streamingModeEnabled);
         }
         
         if (State.RegionProxies == null || !State.RegionProxies.TryGetValue(region, out var proxyIds) || proxyIds.IsNullOrEmpty())
         {
             Logger.LogDebug($"[GodChatGAgent][GetProxyByRegionAsync] session {this.GetPrimaryKey().ToString()}, No proxies found for region {region}, initializing.");
-            proxyIds = await InitializeRegionProxiesAsync(region);
+            proxyIds = await InitializeRegionProxiesAsync(region, streamingModeEnabled);
             Dictionary<string, List<Guid>> regionProxies = new()
             {
                 {region, proxyIds}
@@ -341,10 +342,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return null;
         }
 
-        return await GetProxyByRegionAsync(DefaultRegion);;
+        return await GetProxyByRegionAsync(DefaultRegion, streamingModeEnabled);
     }
     
-    private async Task<List<Guid>> InitializeRegionProxiesAsync(string region)
+    private async Task<List<Guid>> InitializeRegionProxiesAsync(string region, bool streamingModeEnabled = true)
     {
         var llmsForRegion = GetLLMsForRegion(region);
         if (llmsForRegion.IsNullOrEmpty())
@@ -361,7 +362,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             {
                 Instructions = await GetConfiguration().GetPrompt(),
                 LLMConfig = new LLMConfigDto { SystemLLM = llm },
-                StreamingModeEnabled = true,
+                StreamingModeEnabled = streamingModeEnabled,
                 StreamingConfig = new StreamingConfig { BufferingSize = 32 },
                 RequestRecoveryDelay = RequestRecoveryDelay,
                 ParentId = this.GetPrimaryKey()

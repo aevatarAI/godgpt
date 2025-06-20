@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Aevatar;
 using Aevatar.Application.Grains;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Services;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.SemanticKernel.Extensions;
@@ -87,6 +88,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                     {
                         Mapper = sp.GetRequiredService<IMapper>()
                     });
+                    services.AddSingleton<ISystemAuthenticationService, SystemAuthenticationService>();
 
                     //services.AddMediatR(typeof(TestSiloConfigurations).Assembly);
 
@@ -128,7 +130,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .AddLogStorageBasedLogConsistencyProvider("LogStorage")
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
-                .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
+                .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
+                .Configure<SystemAuthenticationOptions>(configuration.GetSection("SystemAuth"));
         }
     }
 
