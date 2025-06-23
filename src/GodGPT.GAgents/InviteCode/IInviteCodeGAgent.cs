@@ -1,7 +1,7 @@
 using Aevatar.Core.Abstractions;
 using Orleans.Concurrency;
 
-namespace GodGPT.GAgents.Invitation;
+namespace Aevatar.Application.Grains.Agents.Invitation;
 
 public interface IInviteCodeGAgent : IGAgent
 {
@@ -16,6 +16,12 @@ public interface IInviteCodeGAgent : IGAgent
     [ReadOnly]
     Task<(bool isValid, string inviterId)> ValidateAndGetInviterAsync();
 
+    /// <summary>
+    /// Checks if the invite code has been initialized with an inviter.
+    /// </summary>
+    [ReadOnly]
+    Task<bool> IsInitialized();
+    
     /// <summary>
     /// Deactivate the invite code
     /// </summary>

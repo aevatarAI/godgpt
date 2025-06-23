@@ -2,7 +2,7 @@ using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Core.Abstractions;
 using Orleans.Concurrency;
 
-namespace Aevatar.Application.Grains.Invitation;
+namespace Aevatar.Application.Grains.Agents.Invitation;
 
 public interface IInvitationGAgent : IGAgent
 {
@@ -11,6 +11,12 @@ public interface IInvitationGAgent : IGAgent
     /// </summary>
     Task<string> GenerateInviteCodeAsync();
 
+    /// <summary>
+    /// Records a new user who has successfully used the invite code.
+    /// </summary>
+    /// <param name="inviteeId">The ID of the new user (invitee).</param>
+    Task RecordNewInviteeAsync(string inviteeId);
+    
     /// <summary>
     /// Get invitation statistics for the user
     /// </summary>

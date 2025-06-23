@@ -1,10 +1,10 @@
+using Aevatar.Application.Grains.Agents.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
-using GodGPT.GAgents.Invitation.SEvents;
 using Microsoft.Extensions.Logging;
 using Orleans.Providers;
 
-namespace GodGPT.GAgents.Invitation;
+namespace Aevatar.Application.Grains.Agents.Invitation;
 
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
@@ -47,17 +47,15 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
             return (false, string.Empty);
         }
 
-        var isValid = (DateTime.UtcNow - State.CreatedAt).TotalHours <= 72;
-        if (!isValid)
-        {
-            await DeactivateCodeAsync();
-            return (false, string.Empty);
-        }
-
         RaiseEvent(new IncrementUsageCountLogEvent());
         await ConfirmEvents();
 
         return (true, State.InviterId);
+    }
+
+    public Task<bool> IsInitialized()
+    {
+        return Task.FromResult(!string.IsNullOrEmpty(State.InviterId));
     }
 
     public async Task DeactivateCodeAsync()
@@ -85,7 +83,7 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
             case DeactivateInviteCodeLogEvent:
                 State.IsActive = false;
                 break;
-
+            
             case IncrementUsageCountLogEvent:
                 State.UsageCount++;
                 break;

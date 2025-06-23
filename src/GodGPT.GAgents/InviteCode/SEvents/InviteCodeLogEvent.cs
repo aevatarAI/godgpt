@@ -1,6 +1,6 @@
 using Aevatar.Core.Abstractions;
 
-namespace GodGPT.GAgents.Invitation.SEvents;
+namespace Aevatar.Application.Grains.Agents.SEvents;
 
 [GenerateSerializer]
 public class InviteCodeLogEvent : StateLogEventBase<InviteCodeLogEvent>
