@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Core.Abstractions;
 
 namespace Aevatar.Application.Grains.Invitation.SEvents;
@@ -35,7 +36,7 @@ public class AddRewardLogEvent : InvitationLogEvent
 {
     [Id(0)] public string InviteeId { get; set; }
     [Id(1)] public int Credits { get; set; }
-    [Id(2)] public string RewardType { get; set; }
+    [Id(2)] public RewardTypeEnum RewardType { get; set; }
 }
 
 [GenerateSerializer]
@@ -43,9 +44,3 @@ public class UpdateValidInvitesLogEvent : InvitationLogEvent
 {
     [Id(0)] public int ValidInvites { get; set; }
 }
-
-[GenerateSerializer]
-public class UpdateTotalCreditsLogEvent : InvitationLogEvent
-{
-    [Id(0)] public int TotalCredits { get; set; }
-} 

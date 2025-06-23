@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Core.Abstractions;
 
 namespace GodGPT.GAgents.Invitation;
@@ -33,6 +34,6 @@ public class RewardRecord
 {
     [Id(0)] public string InviteeId { get; set; }
     [Id(1)] public int Credits { get; set; }
-    [Id(2)] public string RewardType { get; set; }
+    [Id(2)] public RewardTypeEnum RewardType { get; set; }
     [Id(3)] public DateTime IssuedAt { get; set; }
 } 
