@@ -35,7 +35,7 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task ResetQuotaAsync();
     Task<GrainResultDto<int>> UpdateCreditsAsync(string operatorUserId, int creditsChange);
     Task AddCreditsAsync(int credits);
-    Task<bool> RedeemInitialRewardAsync(DateTime dateTime);
+    Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime);
 }
 
 [StorageProvider(ProviderName = "PubSubStore")]
@@ -510,18 +510,18 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         await WriteStateAsync();
     }
 
-    public async Task<bool> RedeemInitialRewardAsync(DateTime dateTime)
+    public async Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime)
     {
         if (!State.CanReceiveInviteReward)
         {
             _logger.LogWarning("User {UserId} cannot receive invite reward, either already redeemed or expired.",
-                this.GetPrimaryKeyString());
+                userId);
             return false;
         }
 
         if ((DateTime.UtcNow - dateTime).TotalHours > 72)
         {
-            _logger.LogWarning("User {UserId} invite reward redemption window expired.", this.GetPrimaryKeyString());
+            _logger.LogWarning("User {UserId} invite reward redemption window expired.", userId);
             State.CanReceiveInviteReward = false;
             await WriteStateAsync();
             return false;

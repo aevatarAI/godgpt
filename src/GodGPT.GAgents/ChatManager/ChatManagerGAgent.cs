@@ -738,18 +738,18 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         else
         {
             var registeredAtUtc = State.RegisteredAtUtc;
-            await userQuotaGrain.RedeemInitialRewardAsync(registeredAtUtc.Value);
+            await userQuotaGrain.RedeemInitialRewardAsync(this.GrainContext.GrainId.ToString(), registeredAtUtc.Value);
         }
 
         if (!redeemResult)
         {
-            Logger.LogWarning("Failed to redeem initial reward for user {UserId} with code {InviteCode}. Eligibility check failed (e.g., outside 72-hour window).", this.GetPrimaryKeyString(), inviteCode);
+            Logger.LogWarning("Failed to redeem initial reward for user {UserId} with code {InviteCode}. Eligibility check failed (e.g., outside 72-hour window).", this.GrainContext.GrainId.GetGuidKey());
             return false;
         }
 
         // Step 2: If eligible, record the invitee in the inviter's grain.
         var inviterGrain = GrainFactory.GetGrain<IInvitationGAgent>(Guid.Parse(inviterId));
-        await inviterGrain.RecordNewInviteeAsync(this.GetPrimaryKeyString());
+        await inviterGrain.RecordNewInviteeAsync(inviterGrain.GetGrainId().ToString());
         
         return true;
     }
