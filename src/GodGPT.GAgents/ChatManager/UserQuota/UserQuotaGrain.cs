@@ -29,6 +29,7 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task UpdateQuotaAsync(string productId, DateTime expiresDate);
     Task ResetQuotaAsync();
     Task<GrainResultDto<int>> UpdateCreditsAsync(string operatorUserId, int creditsChange);
+    Task AddCreditsAsync(int credits);
 }
 
 public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
@@ -475,5 +476,25 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     {
         var authorizedUsers = _creditsOptions.CurrentValue.OperatorUserId;
         return authorizedUsers.Contains(operatorUserId);
+    }
+
+    public async Task AddCreditsAsync(int credits)
+    {
+        await InitializeCreditsAsync();
+        
+        if (credits < 0)
+        {
+            _logger.LogWarning("[UserQuotaGrain][AddCreditsAsync] Attempt to add negative credits: {Credits}", credits);
+            return;
+        }
+        
+        var oldCredits = State.Credits;
+        State.Credits += credits;
+        
+        _logger.LogInformation(
+            "[UserQuotaGrain][AddCreditsAsync] Credits updated: {OldCredits} -> {NewCredits} (added: {Added})",
+            oldCredits, State.Credits, credits);
+        
+        await WriteStateAsync();
     }
 }
