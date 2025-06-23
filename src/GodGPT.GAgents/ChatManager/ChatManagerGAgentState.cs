@@ -16,6 +16,7 @@ public class ChatManagerGAgentState : AIGAgentStateBase
     [Id(7)] public int MaxShareCount { get; set; }
     [Id(8)] public int CurrentShareCount { get; set; } = 0;
     [Id(9)] public bool? IsFirstConversation { get; set; }
+    [Id(10)] public DateTime? RegisteredAtUtc { get; set; }
 
     public SessionInfo? GetSession(Guid sessionId)
     {

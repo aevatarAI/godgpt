@@ -1,15 +1,13 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Core.Abstractions;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
-using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.Invitation.SEvents;
 using Aevatar.Core;
-using GodGPT.GAgents.Invitation.SEvents;
 using Microsoft.Extensions.Logging;
 using Orleans.Providers;
-using Volo.Abp;
+using System.Text;
 
-namespace GodGPT.GAgents.Invitation;
+namespace Aevatar.Application.Grains.Agents.Invitation;
 
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
@@ -30,19 +28,36 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
 
     public async Task<string> GenerateInviteCodeAsync()
     {
-        var inviteCode = GenerateUniqueInviteCode();
-        var inviteCodeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(inviteCode));
-        var success = await inviteCodeGrain.InitializeAsync(this.GetPrimaryKey().ToString());
-
-        if (!success)
+        if (!string.IsNullOrEmpty(State.CurrentInviteCode))
         {
-            return await GenerateInviteCodeAsync(); // Retry with a new code
+            return State.CurrentInviteCode;
         }
+
+        var inviteCode = await GenerateUniqueCodeAsync();
+        var inviteCodeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(inviteCode));
+        await inviteCodeGrain.InitializeAsync(this.GetPrimaryKeyString());
 
         RaiseEvent(new SetInviteCodeLogEvent { InviteCode = inviteCode });
         await ConfirmEvents();
 
         return inviteCode;
+    }
+
+    public async Task RecordNewInviteeAsync(string inviteeId)
+    {
+        if (State.Invitees.ContainsKey(inviteeId))
+        {
+            _logger.LogWarning("Attempted to record an existing invitee: {InviteeId}", inviteeId);
+            return;
+        }
+        
+        RaiseEvent(new AddInviteeLogEvent
+        {
+            InviteeId = inviteeId,
+            InvitedAt = DateTime.UtcNow
+        });
+
+        await ConfirmEvents();
     }
 
     public Task<InvitationStatsDto> GetInvitationStatsAsync()
@@ -214,6 +229,38 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             "AnnualUltimate" => 20000,
             _ => 0
         };
+    }
+
+    private async Task<string> GenerateUniqueCodeAsync()
+    {
+        long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        while (true)
+        {
+            string code = ToBase62(timestamp);
+            var codeGrainId = CommonHelper.StringToGuid(code);
+            var codeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(codeGrainId);
+            var isUsed = await codeGrain.IsInitialized();
+
+            if (!isUsed)
+            {
+                return code;
+            }
+            timestamp++;
+        }
+    }
+
+    private string ToBase62(long number)
+    {
+        const string chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        var sb = new StringBuilder();
+        if (number == 0)
+            return "0";
+        while (number > 0)
+        {
+            sb.Insert(0, chars[(int)(number % 62)]);
+            number /= 62;
+        }
+        return sb.ToString();
     }
 
     protected sealed override void GAgentTransitionState(InvitationState state, StateLogEventBase<InvitationLogEvent> @event)

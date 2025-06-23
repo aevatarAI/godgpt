@@ -1,6 +1,9 @@
 using Aevatar.Application.Grains.Common.Constants;
+using System;
+using System.Collections.Generic;
 
 namespace Aevatar.Application.Grains.ChatManager.UserQuota;
+
 
 [GenerateSerializer]
 public class UserQuotaState
@@ -11,6 +14,8 @@ public class UserQuotaState
     [Id(3)] public SubscriptionInfo Subscription { get; set; } = new SubscriptionInfo();
     [Id(4)] public Dictionary<string, RateLimitInfo> RateLimits { get; set; } = new Dictionary<string, RateLimitInfo>();
     [Id(5)] public SubscriptionInfo UltimateSubscription { get; set; } = new SubscriptionInfo();
+    [Id(6)] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    [Id(7)] public bool CanReceiveInviteReward { get; set; } = true;
 }
 
 [GenerateSerializer]

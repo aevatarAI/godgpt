@@ -29,4 +29,17 @@ public interface IChatManagerGAgent : IGAgent
     Task<Guid> GenerateChatShareContentAsync(Guid sessionId);
     [ReadOnly]
     Task<ShareLinkDto> GetChatShareContentAsync(Guid sessionId, Guid shareId);
+
+    /// <summary>
+    /// Generates a unique invitation code for the current user.
+    /// </summary>
+    /// <returns>The invitation code.</returns>
+    Task<string> GenerateInviteCodeAsync();
+
+    /// <summary>
+    /// Redeems an invitation code for the current user.
+    /// </summary>
+    /// <param name="inviteCode">The invitation code to redeem.</param>
+    /// <returns>True if redemption is successful, otherwise false.</returns>
+    Task<bool> RedeemInviteCodeAsync(string inviteCode);
 }

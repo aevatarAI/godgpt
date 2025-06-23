@@ -1,6 +1,6 @@
 using Aevatar.Core.Abstractions;
 
-namespace GodGPT.GAgents.Invitation;
+namespace Aevatar.Application.Grains.Agents.Invitation;
 
 [GenerateSerializer]
 public class InvitationState : StateBase

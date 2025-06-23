@@ -1,13 +1,13 @@
-using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
+using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
+using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core.Abstractions;
@@ -24,8 +24,6 @@ using Newtonsoft.Json;
 using Orleans.Concurrency;
 using Orleans.Providers;
 using Volo.Abp;
-
-namespace Aevatar.Application.Grains.Agents.ChatManager;
 
 [Json.Schema.Generation.Description("manage chat agent")]
 [StorageProvider(ProviderName = "PubSubStore")]
@@ -706,6 +704,53 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         
         var shareLinkGrain = GrainFactory.GetGrain<IShareLinkGrain>(shareId);
         return await shareLinkGrain.GetShareContentAsync();
+    }
+
+    public async Task<string> GenerateInviteCodeAsync()
+    {
+        IInvitationGAgent invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(this.GrainContext.GrainId.GetGuidKey());
+        var inviteCode = await invitationAgent.GenerateInviteCodeAsync();
+        return inviteCode;
+    }
+
+    public async Task<bool> RedeemInviteCodeAsync(string inviteCode)
+    {
+        var codeGrainId = CommonHelper.StringToGuid(inviteCode);
+        var codeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(codeGrainId);
+
+        var (isValid, inviterId) = await codeGrain.ValidateAndGetInviterAsync();
+
+        if (!isValid)
+        {
+            Logger.LogWarning("Invalid invite code redemption attempt: {InviteCode}", inviteCode);
+            return false;
+        }
+        
+        // Step 1: First, check if the current user (invitee) is eligible for the reward.
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GrainContext.GrainId.GetGuidKey()));
+        bool redeemResult = false;
+        if (State.RegisteredAtUtc == null)
+        {
+            Logger.LogWarning("State.RegisteredAtUtc == null");
+            redeemResult = false;
+        }
+        else
+        {
+            var registeredAtUtc = State.RegisteredAtUtc;
+            await userQuotaGrain.RedeemInitialRewardAsync(registeredAtUtc.Value);
+        }
+
+        if (!redeemResult)
+        {
+            Logger.LogWarning("Failed to redeem initial reward for user {UserId} with code {InviteCode}. Eligibility check failed (e.g., outside 72-hour window).", this.GetPrimaryKeyString(), inviteCode);
+            return false;
+        }
+
+        // Step 2: If eligible, record the invitee in the inviter's grain.
+        var inviterGrain = GrainFactory.GetGrain<IInvitationGAgent>(Guid.Parse(inviterId));
+        await inviterGrain.RecordNewInviteeAsync(this.GetPrimaryKeyString());
+        
+        return true;
     }
 
     public async Task<UserProfileDto> GetLastSessionUserProfileAsync()
