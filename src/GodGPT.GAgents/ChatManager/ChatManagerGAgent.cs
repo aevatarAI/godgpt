@@ -10,6 +10,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Share;
 using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
+using Aevatar.Application.Grains.Invitation;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -637,6 +638,22 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
         var ultimateSubscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync(true);
 
+        var invitationGrain = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
+        var scheduledRewards = (await invitationGrain.GetRewardHistoryAsync())
+            .Where(r => r.IsScheduled && 
+           r.ScheduledDate.HasValue && 
+           DateTime.UtcNow > r.ScheduledDate.Value && 
+           !string.IsNullOrEmpty(r.InvoiceId))
+            .ToList();
+            
+        foreach (var reward in scheduledRewards)
+        {
+            Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Processing scheduled reward for user {this.GetPrimaryKey()}, credits: {reward.Credits}");
+            await userQuotaGrain.AddCreditsAsync(reward.Credits);
+            await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
+            credits.Credits += reward.Credits;
+        }
+        
         return new UserProfileDto
         {
             Gender = State.Gender,
@@ -709,7 +726,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
     public async Task<string> GenerateInviteCodeAsync()
     {
-        IInvitationGAgent invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(this.GrainContext.GrainId.GetGuidKey());
+        IInvitationGAgent invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
         var inviteCode = await invitationAgent.GenerateInviteCodeAsync();
         return inviteCode;
     }
@@ -728,7 +745,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
         
         // Step 1: First, check if the current user (invitee) is eligible for the reward.
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GrainContext.GrainId.GetGuidKey()));
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         bool redeemResult = false;
         if (State.RegisteredAtUtc == null)
         {
@@ -738,18 +755,21 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         else
         {
             var registeredAtUtc = State.RegisteredAtUtc;
-            await userQuotaGrain.RedeemInitialRewardAsync(this.GrainContext.GrainId.ToString(), registeredAtUtc.Value);
+            await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
         }
 
         if (!redeemResult)
         {
-            Logger.LogWarning("Failed to redeem initial reward for user {UserId} with code {InviteCode}. Eligibility check failed (e.g., outside 72-hour window).", this.GrainContext.GrainId.GetGuidKey());
+            Logger.LogWarning($"Failed to redeem initial reward for user {this.GetPrimaryKey().ToString()} with code {inviteCode}. Eligibility check failed (e.g., outside 72-hour window).");
             return false;
         }
 
         // Step 2: If eligible, record the invitee in the inviter's grain.
-        var inviterGrain = GrainFactory.GetGrain<IInvitationGAgent>(Guid.Parse(inviterId));
-        await inviterGrain.RecordNewInviteeAsync(inviterGrain.GetGrainId().ToString());
+        var inviterGuid = Guid.Parse(inviterId);
+        var inviterGrain = GrainFactory.GetGrain<IInvitationGAgent>(inviterGuid);
+        await inviterGrain.ProcessInviteeRegistrationAsync(this.GetPrimaryKey().ToString());
+
+        await SetInviterAsync(inviterGuid);
         
         return true;
     }
@@ -789,6 +809,10 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         switch (@event)
         {
             case CreateSessionInfoEventLog @createSessionInfo:
+                if (State.SessionInfoList.IsNullOrEmpty() && State.RegisteredAtUtc == null)
+                {
+                    State.RegisteredAtUtc = DateTime.UtcNow;
+                }
                 State.SessionInfoList.Add(new SessionInfo()
                 {
                     SessionId = @createSessionInfo.SessionId,
@@ -879,7 +903,6 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             });
             await ConfirmEvents();
         }
-        
         await base.OnAIGAgentActivateAsync(cancellationToken);
     }
 

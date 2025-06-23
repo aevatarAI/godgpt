@@ -1,15 +1,14 @@
+using System.Text;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
-using Aevatar.Core.Abstractions;
+using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
-using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.Invitation.SEvents;
 using Aevatar.Core;
+using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
-using Orleans.Providers;
-using System.Text;
 
-namespace Aevatar.Application.Grains.Agents.Invitation;
+namespace Aevatar.Application.Grains.Invitation;
 
 [GAgent(nameof(InvitationGAgent))]
 public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>, IInvitationGAgent
@@ -41,23 +40,6 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         await ConfirmEvents();
 
         return inviteCode;
-    }
-
-    public async Task RecordNewInviteeAsync(string inviteeId)
-    {
-        if (State.Invitees.ContainsKey(inviteeId))
-        {
-            _logger.LogWarning("Attempted to record an existing invitee: {InviteeId}", inviteeId);
-            return;
-        }
-        
-        RaiseEvent(new AddInviteeLogEvent
-        {
-            InviteeId = inviteeId,
-            InvitedAt = DateTime.UtcNow
-        });
-
-        await ConfirmEvents();
     }
 
     public Task<InvitationStatsDto> GetInvitationStatsAsync()
@@ -102,7 +84,10 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             InviteeId = r.InviteeId,
             Credits = r.Credits,
             RewardType = r.RewardType.ToString(),
-            IssuedAt = r.IssuedAt
+            IssuedAt = r.IssuedAt,
+            IsScheduled = r.IsScheduled,
+            ScheduledDate = r.ScheduledDate,
+            InvoiceId = r.InvoiceId
         }).ToList());
     }
 
@@ -125,7 +110,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
 
     public async Task ProcessInviteeChatCompletionAsync(string inviteeId)
     {
-        if (State.Invitees.TryGetValue(inviteeId, out var invitee) && invitee.HasCompletedChat)
+        if (!State.Invitees.TryGetValue(inviteeId, out var invitee) || invitee.HasCompletedChat)
         {
             return;
         }
@@ -155,7 +140,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         
     }
 
-    public async Task ProcessInviteeSubscriptionAsync(string inviteeId, PlanType planType, bool isUltimate)
+    public async Task ProcessInviteeSubscriptionAsync(string inviteeId, PlanType planType, bool isUltimate,
+        string invoiceId)
     {
         if (!State.Invitees.TryGetValue(inviteeId, out var invitee) || invitee.HasPaid)
         {
@@ -179,11 +165,20 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         });
         await ConfirmEvents();
         
-        // For annual plans, schedule the reward for 7 days later
+        // For annual plans, schedule the reward for 30 days later
         if (planType == PlanType.Year)
         {
-            // TODO: Implement delayed reward mechanism
-            _logger.LogInformation($"Scheduled reward of {credits} credits for invitee {inviteeId} in 7 days");
+            RaiseEvent(new AddRewardLogEvent
+            {
+                InviteeId = inviteeId,
+                Credits = credits,
+                RewardType = RewardTypeEnum.SubscriptionReward,
+                IsScheduled = true,
+                ScheduledDate = DateTime.UtcNow.AddDays(30),
+                InvoiceId = invoiceId
+            });
+            await ConfirmEvents();
+            _logger.LogInformation($"Scheduled reward of {credits} credits for invitee {inviteeId} in 30 days");
         }
         else
         {
@@ -296,21 +291,6 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                     invitee.PaidAt = updateStatus.PaidAt;
                     invitee.IsValid = updateStatus.HasCompletedChat;
                 }
-                else
-                {
-                    var inviteeInfo = new InviteeInfo
-                    {
-                        InviteeId = updateStatus.InviteeId,
-                        InvitedAt = DateTime.UtcNow,
-                        HasCompletedChat = updateStatus.HasCompletedChat,
-                        HasPaid = updateStatus.HasPaid,
-                        PaidPlan = updateStatus.PaidPlan,
-                        PaidAt = updateStatus.PaidAt,
-                        RewardIssued = false,
-                        IsValid = true
-                    };
-                    State.Invitees[updateStatus.InviteeId] = inviteeInfo;
-                }
                 break;
 
             case AddRewardLogEvent addReward:
@@ -319,14 +299,51 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                     InviteeId = addReward.InviteeId,
                     Credits = addReward.Credits,
                     RewardType = addReward.RewardType,
-                    IssuedAt = DateTime.UtcNow
+                    IssuedAt = DateTime.UtcNow,
+                    IsScheduled = addReward.IsScheduled,
+                    ScheduledDate = addReward.ScheduledDate,
+                    InvoiceId = addReward.InvoiceId
                 });
-                State.TotalCreditsEarned += addReward.Credits;
+                if (!addReward.IsScheduled)
+                {
+                    State.TotalCreditsEarned += addReward.Credits;
+                }
                 break;
 
             case UpdateValidInvitesLogEvent updateValidInvites:
                 State.ValidInvites = updateValidInvites.ValidInvites;
                 break;
+
+            case MarkRewardIssuedLogEvent markIssued:
+                var reward = State.RewardHistory.FirstOrDefault(r => 
+                    r.InviteeId == markIssued.InviteeId && 
+                    r.InvoiceId == markIssued.InvoiceId &&
+                    r.IsScheduled);
+                
+                if (reward != null)
+                {
+                    reward.IsScheduled = false;
+                    State.TotalCreditsEarned += reward.Credits;
+                }
+                break;
+        }
+    }
+
+    public async Task MarkRewardAsIssuedAsync(string inviteeId, string invoiceId)
+    {
+        var reward = State.RewardHistory.FirstOrDefault(r => 
+            r.InviteeId == inviteeId && 
+            r.InvoiceId == invoiceId && 
+            r.IsScheduled);
+        
+        if (reward != null)
+        {
+            RaiseEvent(new MarkRewardIssuedLogEvent
+            {
+                InviteeId = inviteeId,
+                InvoiceId = invoiceId
+            });
+            await ConfirmEvents();
         }
     }
 } 

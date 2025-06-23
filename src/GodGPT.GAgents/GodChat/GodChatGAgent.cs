@@ -509,7 +509,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
             await ConfirmEvents();
 
-            //
             var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
             var inviterId = await chatManagerGAgent.GetInviterAsync();
             if (inviterId != null && inviterId != Guid.Empty)

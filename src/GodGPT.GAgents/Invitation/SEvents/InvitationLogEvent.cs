@@ -38,10 +38,20 @@ public class AddRewardLogEvent : InvitationLogEvent
     [Id(0)] public string InviteeId { get; set; }
     [Id(1)] public int Credits { get; set; }
     [Id(2)] public RewardTypeEnum RewardType { get; set; }
+    [Id(3)] public bool IsScheduled { get; set; }
+    [Id(4)] public DateTime? ScheduledDate { get; set; }
+    [Id(5)] public string InvoiceId { get; set; }
 }
 
 [GenerateSerializer]
 public class UpdateValidInvitesLogEvent : InvitationLogEvent
 {
     [Id(0)] public int ValidInvites { get; set; }
+}
+
+[GenerateSerializer]
+public class MarkRewardIssuedLogEvent : InvitationLogEvent
+{
+    [Id(0)] public string InviteeId { get; set; }
+    [Id(1)] public string InvoiceId { get; set; }
 }

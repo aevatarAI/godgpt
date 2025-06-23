@@ -36,4 +36,7 @@ public class RewardRecord
     [Id(1)] public int Credits { get; set; }
     [Id(2)] public RewardTypeEnum RewardType { get; set; }
     [Id(3)] public DateTime IssuedAt { get; set; }
+    [Id(4)] public bool IsScheduled { get; set; }
+    [Id(5)] public DateTime? ScheduledDate { get; set; }
+    [Id(6)] public string InvoiceId { get; set; }
 } 

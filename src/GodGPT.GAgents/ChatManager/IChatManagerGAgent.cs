@@ -42,4 +42,6 @@ public interface IChatManagerGAgent : IGAgent
     /// <param name="inviteCode">The invitation code to redeem.</param>
     /// <returns>True if redemption is successful, otherwise false.</returns>
     Task<bool> RedeemInviteCodeAsync(string inviteCode);
+
+    Task<Guid?> GetInviterAsync();
 }

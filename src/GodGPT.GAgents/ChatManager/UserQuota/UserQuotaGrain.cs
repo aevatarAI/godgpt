@@ -1,8 +1,8 @@
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.ChatManager.Dtos;
+using Aevatar.Application.Grains.Common.Helpers;
 using Aevatar.Core.Abstractions;
-using GodGPT.GAgents.ChatManager.UserQuota.SEvents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -376,18 +376,6 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 
     #endregion
 
-    private void UpdateSubscriptionInfo(SubscriptionInfo subscription, SubscriptionInfoDto dto)
-    {
-        subscription.PlanType = dto.PlanType;
-        subscription.IsActive = dto.IsActive;
-        subscription.StartDate = dto.StartDate;
-        subscription.EndDate = dto.EndDate;
-        subscription.Status = dto.Status;
-        subscription.SubscriptionIds = dto.SubscriptionIds ?? new List<string>();
-        subscription.InvoiceIds = dto.InvoiceIds ?? new List<string>();
-        // Note: IsUltimate is not stored in SubscriptionInfo - it's a runtime flag from configuration
-    }
-
     public async Task UpdateQuotaAsync(string productId, DateTime expiresDate)
     {
         _logger.LogInformation(
@@ -527,8 +515,29 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             return false;
         }
 
-        // TODO: This is where the business logic for granting the initial reward (e.g., a 7-day trial) would go.
+        // This is where the business logic for granting the initial reward (e.g., a 7-day trial) would go.
         // For now, we just mark that the reward has been redeemed.
+        if (await IsSubscribedAsync(false))
+        {
+            //TODO
+            _logger.LogWarning("User {UserId} invite reward redemption window expired.", userId);
+            State.CanReceiveInviteReward = false;
+            await WriteStateAsync();
+            return false;
+        }
+
+        var startDate = DateTime.UtcNow;
+        await UpdateSubscriptionAsync(new SubscriptionInfoDto
+        {
+            IsActive = true,
+            PlanType = PlanType.Week,
+            Status = PaymentStatus.Completed,
+            StartDate = DateTime.UtcNow,
+            EndDate = SubscriptionHelper.GetSubscriptionEndDate(PlanType.Week, startDate),
+            SubscriptionIds = null,
+            InvoiceIds = null
+        }, false);
+        
         return true;
     }
 }

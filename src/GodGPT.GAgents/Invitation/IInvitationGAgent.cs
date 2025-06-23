@@ -1,8 +1,9 @@
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Core.Abstractions;
+using Aevatar.Application.Grains.Agents.Invitation;
 using Orleans.Concurrency;
 
-namespace Aevatar.Application.Grains.Agents.Invitation;
+namespace Aevatar.Application.Grains.Invitation;
 
 public interface IInvitationGAgent : IGAgent
 {
@@ -11,12 +12,6 @@ public interface IInvitationGAgent : IGAgent
     /// </summary>
     Task<string> GenerateInviteCodeAsync();
 
-    /// <summary>
-    /// Records a new user who has successfully used the invite code.
-    /// </summary>
-    /// <param name="inviteeId">The ID of the new user (invitee).</param>
-    Task RecordNewInviteeAsync(string inviteeId);
-    
     /// <summary>
     /// Get invitation statistics for the user
     /// </summary>
@@ -48,7 +43,14 @@ public interface IInvitationGAgent : IGAgent
     /// <summary>
     /// Process invitee's subscription purchase
     /// </summary>
-    Task ProcessInviteeSubscriptionAsync(string inviteeId, PlanType planType, bool isUltimate);
+    Task ProcessInviteeSubscriptionAsync(string inviteeId, PlanType planType, bool isUltimate, string invoiceId);
+
+    /// <summary>
+    /// Mark a scheduled reward as issued
+    /// </summary>
+    /// <param name="inviteeId">The ID of the invitee</param>
+    /// <param name="invoiceId">The invoice ID of the reward</param>
+    Task MarkRewardAsIssuedAsync(string inviteeId, string invoiceId);
 }
 
 [GenerateSerializer]
@@ -76,4 +78,7 @@ public class RewardHistoryDto
     [Id(1)] public int Credits { get; set; }
     [Id(2)] public string RewardType { get; set; }
     [Id(3)] public DateTime IssuedAt { get; set; }
+    [Id(4)] public bool IsScheduled { get; set; }
+    [Id(5)] public DateTime? ScheduledDate { get; set; }
+    [Id(6)] public string InvoiceId { get; set; }
 } 
