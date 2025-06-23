@@ -12,8 +12,6 @@ using Volo.Abp;
 
 namespace GodGPT.GAgents.Invitation;
 
-[StorageProvider(ProviderName = "PubSubStore")]
-[LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(InvitationGAgent))]
 public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>, IInvitationGAgent
 {
@@ -141,14 +139,14 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         
     }
 
-    public async Task ProcessInviteeSubscriptionAsync(string inviteeId, string planType)
+    public async Task ProcessInviteeSubscriptionAsync(string inviteeId, PlanType planType, bool isUltimate)
     {
         if (!State.Invitees.TryGetValue(inviteeId, out var invitee) || invitee.HasPaid)
         {
             return;
         }
 
-        var credits = GetSubscriptionRewardCredits(planType);
+        var credits = GetSubscriptionRewardCredits(planType, isUltimate);
         if (credits <= 0)
         {
             return;
@@ -160,11 +158,12 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             HasCompletedChat = invitee.HasCompletedChat,
             HasPaid = true,
             PaidPlan = planType,
-            PaidAt = DateTime.UtcNow
+            PaidAt = DateTime.UtcNow,
+            MembershipLevel = isUltimate ? MembershipLevel.Membership_Level_Ultimate : MembershipLevel.Membership_Level_Premium
         });
 
         // For annual plans, schedule the reward for 7 days later
-        if (planType.StartsWith("Annual"))
+        if (planType == PlanType.Year)
         {
             // TODO: Implement delayed reward mechanism
             _logger.LogInformation($"Scheduled reward of {credits} credits for invitee {inviteeId} in 7 days");
@@ -200,18 +199,28 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             .Select(s => s[random.Next(s.Length)]).ToArray());
     }
 
-    private int GetSubscriptionRewardCredits(string planType)
+    private int GetSubscriptionRewardCredits(PlanType planType, bool isUltimate)
     {
-        return planType switch
+        if (isUltimate)
         {
-            "WeeklyPremium" => 100,
-            "WeeklyUltimate" => 500,
-            "MonthlyPremium" => 400,
-            "MonthlyUltimate" => 2000,
-            "AnnualPremium" => 4000,
-            "AnnualUltimate" => 20000,
-            _ => 0
-        };
+            return planType switch
+            {
+                PlanType.Week => 500,
+                PlanType.Month => 2000,
+                PlanType.Year => 20000,
+                _ => 0
+            };
+        }
+        else
+        {
+            return planType switch
+            {
+                PlanType.Week => 100,
+                PlanType.Month => 400,
+                PlanType.Year => 4000,
+                _ => 0
+            };
+        }
     }
 
     protected sealed override void GAgentTransitionState(InvitationState state, StateLogEventBase<InvitationLogEvent> @event)

@@ -23,7 +23,7 @@ public class InviteeInfo
     [Id(1)] public DateTime InvitedAt { get; set; }
     [Id(2)] public bool HasCompletedChat { get; set; }
     [Id(3)] public bool HasPaid { get; set; }
-    [Id(4)] public string PaidPlan { get; set; }
+    [Id(4)] public PlanType PaidPlan { get; set; }
     [Id(5)] public DateTime? PaidAt { get; set; }
     [Id(6)] public bool RewardIssued { get; set; }
     [Id(7)] public bool IsValid { get; set; }

@@ -27,8 +27,9 @@ public class UpdateInviteeStatusLogEvent : InvitationLogEvent
     [Id(0)] public string InviteeId { get; set; }
     [Id(1)] public bool HasCompletedChat { get; set; }
     [Id(2)] public bool HasPaid { get; set; }
-    [Id(3)] public string PaidPlan { get; set; }
+    [Id(3)] public PlanType PaidPlan { get; set; }
     [Id(4)] public DateTime? PaidAt { get; set; }
+    [Id(5)] public string MembershipLevel { get; set; }
 }
 
 [GenerateSerializer]
