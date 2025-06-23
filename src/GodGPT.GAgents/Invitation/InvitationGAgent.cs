@@ -161,7 +161,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             PaidAt = DateTime.UtcNow,
             MembershipLevel = isUltimate ? MembershipLevel.Membership_Level_Ultimate : MembershipLevel.Membership_Level_Premium
         });
-
+        await ConfirmEvents();
+        
         // For annual plans, schedule the reward for 7 days later
         if (planType == PlanType.Year)
         {
@@ -172,8 +173,6 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         {
             await IssueReward(inviteeId, credits, RewardTypeEnum.SubscriptionReward);
         }
-
-        await ConfirmEvents();
     }
 
     private async Task IssueReward(string inviteeId, int credits, RewardTypeEnum rewardType)
