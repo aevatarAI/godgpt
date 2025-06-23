@@ -55,3 +55,9 @@ public class SetMaxShareCountLogEvent : ChatManageEventLog
 {
     [Id(0)] public int MaxShareCount { get; set; }
 }
+
+[GenerateSerializer]
+public class SetInviterEventLog : ChatManageEventLog
+{
+    [Id(0)] public Guid InviterId { get; set; }
+}

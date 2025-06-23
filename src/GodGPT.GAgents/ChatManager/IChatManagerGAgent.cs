@@ -29,4 +29,7 @@ public interface IChatManagerGAgent : IGAgent
     Task<Guid> GenerateChatShareContentAsync(Guid sessionId);
     [ReadOnly]
     Task<ShareLinkDto> GetChatShareContentAsync(Guid sessionId, Guid shareId);
+    Task<Guid> SetInviterAsync(Guid inviterId);
+    [ReadOnly]
+    Task<Guid?> GetInviterAsync();
 }

@@ -191,6 +191,7 @@ public class UserProfileDto
     [Id(5)] public SubscriptionInfoDto Subscription { get; set; }
     [Id(6)] public SubscriptionInfoDto UltimateSubscription { get; set; }
     [Id(7)] public Guid Id { get; set; }
+    [Id(8)] public Guid? InviterId { get; set; }
 }
 
 [GenerateSerializer]
