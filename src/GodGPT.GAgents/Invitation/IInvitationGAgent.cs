@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Core.Abstractions;
 using Orleans.Concurrency;
 
@@ -47,7 +48,7 @@ public interface IInvitationGAgent : IGAgent
     /// <summary>
     /// Process invitee's subscription purchase
     /// </summary>
-    Task ProcessInviteeSubscriptionAsync(string inviteeId, string planType);
+    Task ProcessInviteeSubscriptionAsync(string inviteeId, PlanType planType, bool isUltimate);
 }
 
 [GenerateSerializer]

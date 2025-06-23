@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Core.Abstractions;
 
 namespace Aevatar.Application.Grains.Agents.Invitation;
@@ -22,7 +23,7 @@ public class InviteeInfo
     [Id(1)] public DateTime InvitedAt { get; set; }
     [Id(2)] public bool HasCompletedChat { get; set; }
     [Id(3)] public bool HasPaid { get; set; }
-    [Id(4)] public string PaidPlan { get; set; }
+    [Id(4)] public PlanType PaidPlan { get; set; }
     [Id(5)] public DateTime? PaidAt { get; set; }
     [Id(6)] public bool RewardIssued { get; set; }
     [Id(7)] public bool IsValid { get; set; }
@@ -33,6 +34,6 @@ public class RewardRecord
 {
     [Id(0)] public string InviteeId { get; set; }
     [Id(1)] public int Credits { get; set; }
-    [Id(2)] public string RewardType { get; set; }
+    [Id(2)] public RewardTypeEnum RewardType { get; set; }
     [Id(3)] public DateTime IssuedAt { get; set; }
 } 

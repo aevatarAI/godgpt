@@ -17,6 +17,7 @@ public class ChatManagerGAgentState : AIGAgentStateBase
     [Id(8)] public int CurrentShareCount { get; set; } = 0;
     [Id(9)] public bool? IsFirstConversation { get; set; }
     [Id(10)] public DateTime? RegisteredAtUtc { get; set; }
+    [Id(11)] public Guid? InviterId { get; set; }
 
     public SessionInfo? GetSession(Guid sessionId)
     {

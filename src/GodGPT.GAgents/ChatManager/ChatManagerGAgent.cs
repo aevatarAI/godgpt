@@ -646,7 +646,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Credits = credits,
             Subscription = subscriptionInfo,
             UltimateSubscription = ultimateSubscriptionInfo,
-            Id = this.GetPrimaryKey()
+            Id = this.GetPrimaryKey(),
+            InviterId = State.InviterId
         };
     }
     
@@ -766,6 +767,22 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return userProfileDto ?? new UserProfileDto();
     }
 
+    public async Task<Guid> SetInviterAsync(Guid inviterId)
+    {
+        RaiseEvent(new SetInviterEventLog()
+        {
+            InviterId = inviterId
+        });
+
+        await ConfirmEvents();
+        return this.GetPrimaryKey();
+    }
+
+    public Task<Guid?> GetInviterAsync()
+    {
+        return Task.FromResult(State.InviterId);
+    }
+
     protected override void AIGAgentTransitionState(ChatManagerGAgentState state,
         StateLogEventBase<ChatManageEventLog> @event)
     {
@@ -777,7 +794,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                     SessionId = @createSessionInfo.SessionId,
                     Title = @createSessionInfo.Title,
                     CreateAt = @createSessionInfo.CreateAt,
-                    Guider = @createSessionInfo.Guider // Store role information in session state
+                    Guider = @createSessionInfo.Guider
                 });
                 break;
             case DeleteSessionEventLog @deleteSessionEventLog:
@@ -803,6 +820,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 State.BirthPlace = string.Empty;
                 State.FullName = string.Empty;
                 State.CurrentShareCount = 0;
+                State.InviterId = null;
                 break;
             case SetUserProfileEventLog @setFortuneInfoEventLog:
                 State.Gender = @setFortuneInfoEventLog.Gender;
@@ -826,6 +844,9 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 break;
             case SetMaxShareCountLogEvent setMaxShareCountLogEvent:
                 State.MaxShareCount = setMaxShareCountLogEvent.MaxShareCount;
+                break;
+            case SetInviterEventLog setInviterEventLog:
+                State.InviterId = setInviterEventLog.InviterId;
                 break;
         }
     }
