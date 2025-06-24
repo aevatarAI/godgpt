@@ -6,8 +6,6 @@ using Orleans.Providers;
 
 namespace Aevatar.Application.Grains.Agents.Invitation;
 
-[StorageProvider(ProviderName = "PubSubStore")]
-[LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(InviteCodeGAgent))]
 public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>, IInviteCodeGAgent
 {

@@ -26,6 +26,8 @@ using Orleans.Concurrency;
 using Orleans.Providers;
 using Volo.Abp;
 
+namespace Aevatar.Application.Grains.Agents.ChatManager;
+
 [Json.Schema.Generation.Description("manage chat agent")]
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
@@ -872,7 +874,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             case SetInviterEventLog setInviterEventLog:
                 State.InviterId = setInviterEventLog.InviterId;
                 break;
-        }
+        }   
     }
 
     protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)

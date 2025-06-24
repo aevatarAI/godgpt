@@ -10,7 +10,6 @@ using Newtonsoft.Json;
 namespace Aevatar.Application.Grains.ChatManager.UserQuota;
 
 using Orleans;
-using Orleans.Providers;
 
 public interface IUserQuotaGrain : IGrainWithStringKey
 {
@@ -38,8 +37,6 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime);
 }
 
-[StorageProvider(ProviderName = "PubSubStore")]
-[LogConsistencyProvider(ProviderName = "LogStorage")]
 public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 {
     private readonly ILogger<UserQuotaGrain> _logger;
@@ -52,6 +49,18 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         _logger = logger;
         _creditsOptions = creditsOptions;
         _rateLimiterOptions = rateLimiterOptions;
+    }
+
+    public override async Task OnActivateAsync(CancellationToken cancellationToken)
+    {
+        await ReadStateAsync();
+        await base.OnActivateAsync(cancellationToken);
+    }
+
+    public override async Task OnDeactivateAsync(DeactivationReason reason, CancellationToken cancellationToken)
+    {
+        await WriteStateAsync();
+        await base.OnDeactivateAsync(reason, cancellationToken);
     }
 
     public async Task<bool> InitializeCreditsAsync()
