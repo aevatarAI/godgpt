@@ -640,11 +640,12 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
         var ultimateSubscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync(true);
 
+        var utcNow = DateTime.UtcNow;
         var invitationGrain = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
         var scheduledRewards = (await invitationGrain.GetRewardHistoryAsync())
             .Where(r => r.IsScheduled && 
            r.ScheduledDate.HasValue && 
-           DateTime.UtcNow > r.ScheduledDate.Value && 
+           utcNow > r.ScheduledDate.Value && 
            !string.IsNullOrEmpty(r.InvoiceId))
             .ToList();
             

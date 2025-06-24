@@ -34,7 +34,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
 
         var inviteCode = await GenerateUniqueCodeAsync();
         var inviteCodeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(inviteCode));
-        await inviteCodeGrain.InitializeAsync(this.GetPrimaryKeyString());
+        await inviteCodeGrain.InitializeAsync(this.GetPrimaryKey().ToString());
 
         RaiseEvent(new SetInviteCodeLogEvent { InviteCode = inviteCode });
         await ConfirmEvents();
@@ -59,18 +59,41 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         var currentInvites = State.ValidInvites;
         var tiers = new List<RewardTierDto>();
 
-        // Calculate dynamic tiers based on current invites
-        var baseCount = (currentInvites / 3) * 3;
-        for (var i = 0; i < 6; i++)
+        int currentLevel;
+        if (currentInvites == 0)
         {
-            var inviteCount = baseCount + (i * 3);
-            if (i < 4) inviteCount = Math.Max(inviteCount, i * 3); // Ensure first 4 tiers are always visible
+            currentLevel = 0;
+        }
+        else if (currentInvites == 1)
+        {
+            currentLevel = 1;
+        }
+        else
+        {
+            currentLevel = 1 + (currentInvites - 1) / 3;
+        }
 
+        const int totalLevels = 6;
+        int startLevel;
+        
+        if (currentLevel <= 4)
+        {
+            startLevel = 1;
+        }
+        else
+        {
+            startLevel = currentLevel - 3;
+        }
+
+        for (int i = 0; i < totalLevels; i++)
+        {
+            int level = startLevel + i;
+            int inviteCount = level == 1 ? 1 : 1 + (level - 1) * 3;
             tiers.Add(new RewardTierDto
             {
                 InviteCount = inviteCount,
-                Credits = inviteCount <= 0 ? 30 : 100, // First invite 30, then 100 per 3 invites
-                IsCompleted = currentInvites >= inviteCount
+                Credits = level == 1 ? 30 : 100,
+                IsCompleted = level <= currentLevel
             });
         }
 
@@ -236,12 +259,16 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
     private async Task<string> GenerateUniqueCodeAsync()
     {
         long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        int attemptCount = 0;
         while (true)
         {
+            attemptCount++;
             string code = ToBase62(timestamp);
             var codeGrainId = CommonHelper.StringToGuid(code);
             var codeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(codeGrainId);
             var isUsed = await codeGrain.IsInitialized();
+
+            _logger.LogDebug($"[InvitationGAgent][GenerateUniqueCodeAsync] Attempt {attemptCount}: Generated invite code {code}, isUsed: {isUsed}");
 
             if (!isUsed)
             {
