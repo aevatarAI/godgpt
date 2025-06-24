@@ -745,19 +745,27 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Logger.LogWarning("Invalid invite code redemption attempt: {InviteCode}", inviteCode);
             return false;
         }
+
+        if (inviterId.Equals(this.GetPrimaryKey().ToString()))
+        {
+            Logger.LogWarning(
+                "Invalid invite code,the code belongs to the user themselves. userId:{A} InviteCode:{InviteCode}",
+                this.GetPrimaryKey().ToString(), inviteCode);
+            return false;
+        }
         
         // Step 1: First, check if the current user (invitee) is eligible for the reward.
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         bool redeemResult = false;
         if (State.RegisteredAtUtc == null)
         {
-            Logger.LogWarning("State.RegisteredAtUtc == null");
+            Logger.LogWarning("State.RegisteredAtUtc == null userId:{A}", this.GetPrimaryKey().ToString());
             redeemResult = false;
         }
         else
         {
             var registeredAtUtc = State.RegisteredAtUtc;
-            await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
+            redeemResult = await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
         }
 
         if (!redeemResult)

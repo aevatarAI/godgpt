@@ -511,14 +511,15 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     {
         if (!State.CanReceiveInviteReward)
         {
-            _logger.LogWarning("User {UserId} cannot receive invite reward, either already redeemed or expired.",
+            _logger.LogWarning("User {UserId} cannot receive invite reward, CanReceiveInviteReward is false",
                 userId);
             return false;
         }
 
         if ((DateTime.UtcNow - dateTime).TotalHours > 72)
         {
-            _logger.LogWarning("User {UserId} invite reward redemption window expired.", userId);
+            _logger.LogWarning("User {UserId} invite reward redemption window expired. now={A} checkIime={B}", userId,
+                DateTime.UtcNow, dateTime);
             State.CanReceiveInviteReward = false;
             await WriteStateAsync();
             return false;
@@ -529,7 +530,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         if (await IsSubscribedAsync(false))
         {
             //TODO
-            _logger.LogWarning("User {UserId} invite reward redemption window expired.", userId);
+            _logger.LogWarning("User {UserId} cannot receive invite,reward,IsSubscribedAsync is true.", userId);
             State.CanReceiveInviteReward = false;
             await WriteStateAsync();
             return false;
