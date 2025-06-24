@@ -756,6 +756,17 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         
         // Step 1: First, check if the current user (invitee) is eligible for the reward.
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+
+        if (State.RegisteredAtUtc == null && State.SessionInfoList.IsNullOrEmpty())
+        {
+            RaiseEvent(new SetRegisteredAtUtcEventLog()
+            {
+                RegisteredAtUtc = DateTime.UtcNow
+            });
+
+            await ConfirmEvents();
+        }
+        
         bool redeemResult = false;
         if (State.RegisteredAtUtc == null)
         {
@@ -818,6 +829,9 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         switch (@event)
         {
+            case SetRegisteredAtUtcEventLog @setRegisteredAtUtcEventLog:
+                State.RegisteredAtUtc = setRegisteredAtUtcEventLog.RegisteredAtUtc;
+                break;
             case CreateSessionInfoEventLog @createSessionInfo:
                 if (State.SessionInfoList.IsNullOrEmpty() && State.RegisteredAtUtc == null)
                 {

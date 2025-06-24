@@ -61,3 +61,9 @@ public class SetInviterEventLog : ChatManageEventLog
 {
     [Id(0)] public Guid InviterId { get; set; }
 }
+
+[GenerateSerializer]
+public class SetRegisteredAtUtcEventLog : ChatManageEventLog
+{
+    [Id(0)] public DateTime RegisteredAtUtc { get; set; }
+}
