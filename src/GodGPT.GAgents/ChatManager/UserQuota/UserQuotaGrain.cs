@@ -516,7 +516,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             return false;
         }
 
-        if ((DateTime.UtcNow - dateTime).TotalHours > 72)
+        //if ((DateTime.UtcNow - dateTime).TotalHours > 72)
+        if ((DateTime.UtcNow - dateTime).TotalHours > 6)
         {
             _logger.LogWarning("User {UserId} invite reward redemption window expired. now={A} checkIime={B}", userId,
                 DateTime.UtcNow, dateTime);
