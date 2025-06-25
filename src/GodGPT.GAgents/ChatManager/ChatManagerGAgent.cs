@@ -526,6 +526,203 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return Task.FromResult(result);
     }
 
+    public async Task<List<SessionInfoDto>> SearchSessionsAsync(string keyword, int maxResults = 1000)
+    {
+        Logger.LogDebug($"[ChatGAgentManager][SearchSessionsAsync] keyword: {keyword}, maxResults: {maxResults}");
+
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return new List<SessionInfoDto>();
+        }
+
+        // Use the complete keyword for matching (no word splitting)
+        var searchKeyword = keyword.Trim().ToLowerInvariant();
+        
+        // Validate keyword length to prevent performance issues
+        if (searchKeyword.Length > 200)
+        {
+            Logger.LogWarning($"[ChatGAgentManager][SearchSessionsAsync] Keyword too long: {searchKeyword.Length} chars");
+            return new List<SessionInfoDto>();
+        }
+        
+        var searchResults = new List<(SessionInfoDto dto, int matchScore)>();
+
+        // Search through sessions (limit to most recent 1000 for performance)
+        var sessionsToSearch = State.SessionInfoList
+            .OrderByDescending(s => s.CreateAt)
+            .Take(1000)
+            .ToList();
+
+        foreach (var sessionInfo in sessionsToSearch)
+        {
+            try
+            {
+                var titleLower = sessionInfo.Title?.ToLowerInvariant() ?? "";
+                var matchScore = 0;
+                var hasMatch = false;
+
+                // Check title matching
+                var titleMatchScore = 0;
+                if (titleLower.Contains(searchKeyword))
+                {
+                    titleMatchScore = titleLower == searchKeyword ? 100 : 50; // Complete match gets higher score
+                    hasMatch = true;
+                }
+
+                // Get chat content for content matching
+                string contentPreview = "";
+                try
+                {
+                    var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
+                    var chatMessages = await godChat.GetChatMessageAsync();
+                    contentPreview = ExtractChatContent(chatMessages);
+                }
+                catch (Exception contentEx)
+                {
+                    Logger.LogWarning(contentEx, $"[ChatGAgentManager][SearchSessionsAsync] Failed to extract content for session {sessionInfo.SessionId}");
+                    contentPreview = ""; // Continue search without content matching
+                }
+                
+                var contentLower = contentPreview.ToLowerInvariant();
+
+                // Check content matching
+                var contentMatchScore = 0;
+                if (!string.IsNullOrEmpty(contentPreview) && contentLower.Contains(searchKeyword))
+                {
+                    contentMatchScore = contentLower == searchKeyword ? 30 : 15; // Complete content match vs partial match
+                    hasMatch = true;
+                }
+
+                if (hasMatch)
+                {
+                    matchScore = titleMatchScore * 2 + contentMatchScore; // Title matching gets higher priority
+
+                    var createAt = sessionInfo.CreateAt;
+                    if (createAt == default || createAt == DateTime.MinValue)
+                    {
+                        // Use a reasonable fallback time instead of hardcoded future date
+                        createAt = DateTime.UtcNow.AddDays(-365); // 1 year ago as fallback
+                    }
+
+                    var dto = new SessionInfoDto
+                    {
+                        SessionId = sessionInfo.SessionId,
+                        Title = sessionInfo.Title,
+                        CreateAt = createAt,
+                        Guider = sessionInfo.Guider,
+                        Content = contentPreview,
+                        IsMatch = true
+                    };
+
+                    searchResults.Add((dto, matchScore));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, $"[ChatGAgentManager][SearchSessionsAsync] Failed to process session {sessionInfo.SessionId}");
+                // Continue processing other sessions
+                continue;
+            }
+        }
+
+        // Sort by match score (descending) then by creation time (descending)
+        var result = searchResults
+            .OrderByDescending(r => r.matchScore)
+            .ThenByDescending(r => r.dto.CreateAt)
+            .Take(maxResults)
+            .Select(r => r.dto)
+            .ToList();
+
+        Logger.LogDebug($"[ChatGAgentManager][SearchSessionsAsync] Found {result.Count} matches for keyword: {keyword}");
+        return result;
+    }
+
+    /// <summary>
+    /// Extract chat content preview from chat messages
+    /// </summary>
+    /// <param name="messages">List of chat messages</param>
+    /// <returns>Content preview (first 60 characters)</returns>
+    private static string ExtractChatContent(List<ChatMessage> messages)
+    {
+        if (messages == null || messages.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            // Priority 1: Find user messages with substantial content (>5 chars)
+            var userMessage = messages
+                .Where(m => m != null && 
+                           m.ChatRole == ChatRole.User && 
+                           !string.IsNullOrWhiteSpace(m.Content) && 
+                           m.Content.Trim().Length > 5)
+                .FirstOrDefault();
+                
+            if (userMessage?.Content != null)
+            {
+                string content = userMessage.Content.Trim();
+                return SafeTruncateContent(content);
+            }
+
+            // Priority 2: Find assistant messages with substantial content
+            var assistantMessage = messages
+                .Where(m => m != null && 
+                           m.ChatRole == ChatRole.Assistant && 
+                           !string.IsNullOrWhiteSpace(m.Content) && 
+                           m.Content.Trim().Length > 5)
+                .FirstOrDefault();
+                
+            if (assistantMessage?.Content != null)
+            {
+                string content = assistantMessage.Content.Trim();
+                return SafeTruncateContent(content);
+            }
+
+            // Fallback: any non-empty message
+            var anyMessage = messages
+                .Where(m => m != null && !string.IsNullOrWhiteSpace(m.Content))
+                .FirstOrDefault();
+                
+            if (anyMessage?.Content != null)
+            {
+                string content = anyMessage.Content.Trim();
+                return SafeTruncateContent(content);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log but don't throw - return empty string for graceful degradation
+            // Note: Cannot use Logger in static method, but error is rare and non-critical
+            // Logger.LogWarning(ex, "[ChatGAgentManager][ExtractChatContent] Error extracting content");
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Safely truncate content to 60 characters with ellipsis
+    /// </summary>
+    /// <param name="content">Content to truncate</param>
+    /// <returns>Truncated content</returns>
+    private static string SafeTruncateContent(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+        {
+            return string.Empty;
+        }
+        
+        try
+        {
+            return content.Length <= 60 ? content : content.Substring(0, 60) + "...";
+        }
+        catch (Exception)
+        {
+            // Fallback in case of unexpected string issues
+            return content.Length > 60 ? content[..Math.Min(60, content.Length)] + "..." : content;
+        }
+    }
+
     public async Task<bool> IsUserSessionAsync(Guid sessionId)
     {
         var sessionInfo = State.GetSession(sessionId);
