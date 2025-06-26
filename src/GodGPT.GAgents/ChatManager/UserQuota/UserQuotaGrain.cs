@@ -166,7 +166,11 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 
     public async Task ClearAllAsync()
     {
-        State = new UserQuotaState();
+        var canReceiveInviteReward = State.CanReceiveInviteReward;
+        State = new UserQuotaState
+        {
+            CanReceiveInviteReward = canReceiveInviteReward
+        };
         await WriteStateAsync();
     }
 
