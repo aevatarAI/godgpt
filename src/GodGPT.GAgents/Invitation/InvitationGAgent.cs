@@ -154,7 +154,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             await IssueReward(inviteeId, 30, RewardTypeEnum.FirstInviteReward);
         }
         // Issue group reward if completing a group of 3
-        else if ((State.ValidInvites + 1) % 3 == 0)
+        else if ((State.ValidInvites) % 3 == 0)
         {
             await IssueReward(inviteeId, 100, RewardTypeEnum.GroupInviteReward);
         }
@@ -197,8 +197,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                 Credits = credits,
                 RewardType = RewardTypeEnum.SubscriptionReward,
                 IsScheduled = true,
+                //TODO Testing
                 //ScheduledDate = DateTime.UtcNow.AddDays(30),
-                //Testnet
                 ScheduledDate = DateTime.UtcNow.AddMinutes(30),
                 InvoiceId = invoiceId
             });
