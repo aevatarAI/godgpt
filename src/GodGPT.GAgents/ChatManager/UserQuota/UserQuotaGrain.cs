@@ -166,15 +166,15 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 
     public async Task ClearAllAsync()
     {
-        _logger.LogInformation("IUserQuotaGrain ClearAllAsync before userId={A} CanReceiveInviteReward={B}",
-            this.GetPrimaryKey().ToString(), State.CanReceiveInviteReward);
+        _logger.LogInformation("IUserQuotaGrain ClearAllAsync before GrainId={A} CanReceiveInviteReward={B}",
+            this.GrainContext.GrainId, State.CanReceiveInviteReward);
         var canReceiveInviteReward = State.CanReceiveInviteReward;
         State = new UserQuotaState
         {
             CanReceiveInviteReward = canReceiveInviteReward
         };
-        _logger.LogInformation("IUserQuotaGrain ClearAllAsync before userId={A} CanReceiveInviteReward={B}",
-            this.GetPrimaryKey().ToString(), State.CanReceiveInviteReward);
+        _logger.LogInformation("IUserQuotaGrain ClearAllAsync before GrainId={A} CanReceiveInviteReward={B}",
+            this.GrainContext.GrainId, State.CanReceiveInviteReward);
         await WriteStateAsync();
     }
 
