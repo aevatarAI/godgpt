@@ -36,7 +36,11 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         var inviteCodeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(inviteCode));
         await inviteCodeGrain.InitializeAsync(this.GetPrimaryKey().ToString());
 
-        RaiseEvent(new SetInviteCodeLogEvent { InviteCode = inviteCode });
+        RaiseEvent(new SetInviteCodeLogEvent
+        {
+            InviteCode = inviteCode,
+            InviterId = this.GetPrimaryKey().ToString()
+        });
         await ConfirmEvents();
 
         return inviteCode;
@@ -299,6 +303,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         switch (@event)
         {
             case SetInviteCodeLogEvent setInviteCode:
+                State.InviterId = setInviteCode.InviterId;
                 State.CurrentInviteCode = setInviteCode.InviteCode;
                 break;
 

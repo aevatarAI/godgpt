@@ -12,6 +12,7 @@ public class InvitationLogEvent : StateLogEventBase<InvitationLogEvent>
 public class SetInviteCodeLogEvent : InvitationLogEvent
 {
     [Id(0)] public string InviteCode { get; set; }
+    [Id(1)] public string InviterId { get; set; }
 }
 
 [GenerateSerializer]
