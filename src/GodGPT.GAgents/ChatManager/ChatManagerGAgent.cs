@@ -940,15 +940,13 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
         if (!isValid)
         {
-            Logger.LogWarning("Invalid invite code redemption attempt: {InviteCode}", inviteCode);
+            Logger.LogWarning($"Invalid invite code redemption attempt: {inviteCode}");
             return false;
         }
 
         if (inviterId.Equals(this.GetPrimaryKey().ToString()))
         {
-            Logger.LogWarning(
-                "Invalid invite code,the code belongs to the user themselves. userId:{A} InviteCode:{InviteCode}",
-                this.GetPrimaryKey().ToString(), inviteCode);
+            Logger.LogWarning($"Invalid invite code,the code belongs to the user themselves. userId:{this.GetPrimaryKey().ToString()} InviteCode:{inviteCode}");
             return false;
         }
         
@@ -968,13 +966,11 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         bool redeemResult = false;
         
         var registeredAtUtc = State.RegisteredAtUtc;
-        Logger.LogWarning("State.RegisteredAtUtc {A} {B}", 
-            this.GetPrimaryKey().ToString(), 
-            registeredAtUtc?.ToString() ?? "null");
+        Logger.LogWarning($"State.RegisteredAtUtc {this.GetPrimaryKey().ToString()} {registeredAtUtc?.ToString() ?? "null"}");
         
         if (registeredAtUtc == null)
         {
-            Logger.LogWarning("State.RegisteredAtUtc == null userId:{A}", this.GetPrimaryKey().ToString());
+            Logger.LogWarning($"State.RegisteredAtUtc == null userId:{this.GetPrimaryKey().ToString()}");
             redeemResult = false;
         }
         else
@@ -982,8 +978,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             //show time
             var now = DateTime.UtcNow;
             var minutes = (now - registeredAtUtc.Value).TotalMinutes;
-            Logger.LogWarning("State.RegisteredAtUtc userId:{A} RegisteredAtUtc={B} now={C} minutes={D}",
-                this.GetPrimaryKey().ToString(), registeredAtUtc.Value, now, minutes);
+            Logger.LogWarning($"State.RegisteredAtUtc userId:{this.GetPrimaryKey().ToString()} RegisteredAtUtc={registeredAtUtc.Value} now={now} minutes={minutes}");
             //
             
             redeemResult = await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
