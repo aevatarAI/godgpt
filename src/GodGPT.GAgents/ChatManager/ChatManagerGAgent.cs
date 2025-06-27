@@ -974,6 +974,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         else
         {
             var registeredAtUtc = State.RegisteredAtUtc;
+            
             redeemResult = await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
         }
 

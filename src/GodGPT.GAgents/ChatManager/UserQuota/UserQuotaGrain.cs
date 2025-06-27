@@ -517,6 +517,14 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 
     public async Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime)
     {
+        //show time
+        var now = DateTime.UtcNow;
+        var minutes = (now - dateTime).TotalMinutes;
+        _logger.LogWarning("RedeemInitialRewardAsync userId:{A} RegisteredAtUtc={B} now={C} minutes={D}",
+            this.GetPrimaryKey().ToString(),
+            dateTime, now, minutes);
+        //
+        
         if (!State.CanReceiveInviteReward)
         {
             _logger.LogWarning("User {UserId} cannot receive invite reward, CanReceiveInviteReward is false",
@@ -525,7 +533,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         }
 
         //if ((DateTime.UtcNow - dateTime).TotalHours > 72)
-        if ((DateTime.UtcNow - dateTime).TotalMinutes > 30)
+        if ((DateTime.UtcNow - dateTime).TotalMinutes > 5)
         {
             _logger.LogWarning("User {UserId} invite reward redemption window expired. now={A} checkIime={B}", userId,
                 DateTime.UtcNow, dateTime);
