@@ -517,13 +517,6 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 
     public async Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime)
     {
-        //show time
-        var now = DateTime.UtcNow;
-        var minutes = (now - dateTime).TotalMinutes;
-        _logger.LogWarning("RedeemInitialRewardAsync userId:{A} RegisteredAtUtc={B} now={C} minutes={D}",
-            userId, dateTime, now, minutes);
-        //
-        
         if (!State.CanReceiveInviteReward)
         {
             _logger.LogWarning("User {UserId} cannot receive invite reward, CanReceiveInviteReward is false",

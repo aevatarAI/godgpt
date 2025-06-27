@@ -966,6 +966,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
         
         bool redeemResult = false;
+        Logger.LogWarning("State.RegisteredAtUtc {A} {B}", this.GetPrimaryKey().ToString(), State.RegisteredAtUtc);
         if (State.RegisteredAtUtc == null)
         {
             Logger.LogWarning("State.RegisteredAtUtc == null userId:{A}", this.GetPrimaryKey().ToString());
@@ -973,7 +974,15 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
         else
         {
+            
             var registeredAtUtc = State.RegisteredAtUtc;
+
+            //show time
+            var now = DateTime.UtcNow;
+            var minutes = (now - registeredAtUtc.Value).TotalMinutes;
+            Logger.LogWarning("State.RegisteredAtUtc userId:{A} RegisteredAtUtc={B} now={C} minutes={D}",
+                this.GetPrimaryKey().ToString(), registeredAtUtc.Value, now, minutes);
+            //
             
             redeemResult = await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
         }
