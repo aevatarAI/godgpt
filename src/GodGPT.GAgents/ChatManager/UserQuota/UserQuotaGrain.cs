@@ -542,7 +542,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             await WriteStateAsync();
             return false;
         }
-
+        _logger.LogWarning($"User {userId} receive invite,reward begin");
         var startDate = DateTime.UtcNow;
         await UpdateSubscriptionAsync(new SubscriptionInfoDto
         {
@@ -557,7 +557,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         
         State.CanReceiveInviteReward = false;
         await WriteStateAsync();
-        
+        _logger.LogWarning($"User {userId} receive invite,reward end");
         return true;
     }
 }
