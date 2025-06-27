@@ -521,8 +521,7 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         var now = DateTime.UtcNow;
         var minutes = (now - dateTime).TotalMinutes;
         _logger.LogWarning("RedeemInitialRewardAsync userId:{A} RegisteredAtUtc={B} now={C} minutes={D}",
-            this.GetPrimaryKey().ToString(),
-            dateTime, now, minutes);
+            userId, dateTime, now, minutes);
         //
         
         if (!State.CanReceiveInviteReward)
