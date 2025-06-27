@@ -966,17 +966,19 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
         
         bool redeemResult = false;
-        Logger.LogWarning("State.RegisteredAtUtc {A} {B}", this.GetPrimaryKey().ToString(), State.RegisteredAtUtc);
-        if (State.RegisteredAtUtc == null)
+        
+        var registeredAtUtc = State.RegisteredAtUtc;
+        Logger.LogWarning("State.RegisteredAtUtc {A} {B}", 
+            this.GetPrimaryKey().ToString(), 
+            registeredAtUtc?.ToString() ?? "null");
+        
+        if (registeredAtUtc == null)
         {
             Logger.LogWarning("State.RegisteredAtUtc == null userId:{A}", this.GetPrimaryKey().ToString());
             redeemResult = false;
         }
         else
         {
-            
-            var registeredAtUtc = State.RegisteredAtUtc;
-
             //show time
             var now = DateTime.UtcNow;
             var minutes = (now - registeredAtUtc.Value).TotalMinutes;
