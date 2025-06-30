@@ -13,6 +13,8 @@
 5. **开发阶段**: 积分发放暂时使用 TODO，重点计算推特ID和积分额度
 6. **时间控制**: 使用UTC时间戳进行精确的时间控制和跨日检测
 7. **系统恢复**: 支持系统瘫痪后的恢复和补偿机制
+8. **日志**: 所有日志打印方式采用 $赋值,参考 Logger.LogWarning($"AAA: {B.C} DDD {E.F}");
+9. **代码注释**: 代码注释使用英文
 
 ## 功能需求
 
@@ -68,8 +70,12 @@
 
 ### 4.6 数据保留
 
-- **数据保存期**: 推文数据最多保存 7 天
-- **记录内容**: 用户ID、推特ID、阅读数、用户粉丝数、发送时间、积分记录
+- **数据保存期**: 推文数据最多保存 5 天（可配置，默认5天）
+- **记录内容**: 
+  - 用户ID、推特ID、阅读数、用户粉丝数、发送时间
+  - **推文类型**（Original/Reply/Retweet/Quote）- 支持未来功能扩展
+  - 积分记录、处理状态、分享链接信息
+  - UTC时间戳、处理时间戳等时间相关字段
 
 ### 4.7 推文类型过滤
 
@@ -89,47 +95,145 @@
 
 ## 系统架构设计
 
-### Agent 分工
+### 总体架构流程图
 
-#### Agent1: TwitterInteractionGrain
-- **职责**: 被动与 Twitter API 交互
-- **功能**: 
-  - 获取推文详情（浏览量、作者信息）
-  - 验证分享链接有效性
-  - 推文类型识别和过滤
-  - Twitter API 认证管理
+```mermaid
+sequenceDiagram
+    participant TM as TweetMonitorGrain<br/>(数据拉取与存储)
+    participant TI as TwitterInteractionGrain<br/>(API交互服务)
+    participant TR as TwitterRewardGrain<br/>(奖励计算与发放)
+    participant TA as Twitter API
+    participant CM as ChatManagerGAgent<br/>(积分发放)
+    
+    Note over TM,TR: 系统启动 - 三个Agent各司其职
+    
+    rect rgb(230, 240, 255)
+        Note over TM,TI: 🔄 定时任务1: 推文数据拉取 (付费API优化，默认30分钟)
+        
+        TM->>TM: 定时器触发(降低频率，增加批量)
+        TM->>TI: 调用搜索推文API(批量100条)
+        TI->>TA: 搜索 @GodGPT_ 推文(最近30分钟，100条)
+        TA-->>TI: 返回推文列表
+        
+        TI->>TI: 推文类型识别
+        TI->>TI: 过滤非Original类型
+        TI->>TI: 提取分享链接信息
+        TI-->>TM: 返回处理后的推文数据
+        
+        TM->>TM: 本地去重存储
+        TM->>TM: 推文类型分类存储
+        TM->>TM: 保存分享链接验证结果(boolean)
+        TM->>TM: 设置数据过期标记(可配置天数)
+    end
+    
+    rect rgb(255, 240, 230)
+        Note over TR,CM: 🎯 定时任务2: 积分奖励计算 (每日00:00 UTC)
+        
+        TR->>TR: UTC 00:00定时器触发
+        TR->>TR: 检查TaskDailyExecutionRecord防重复
+        TR->>TM: 查询指定时间区间推文
+        Note right of TM: 倒数第三天24小时<br/>仅返回Original类型
+        TM-->>TR: 返回符合条件的推文
+        
+        TR->>TI: 获取推文详细信息
+        TI->>TA: 批量获取推文数据
+        TA-->>TI: 返回浏览量、粉丝数等
+        TI-->>TR: 返回完整推文信息
+        
+        loop 每个用户
+            TR->>TR: 检查UserDailyRewardRecord
+            TR->>TR: 计算基础奖励(2 Credits/条，检查上限)
+            TR->>TR: 计算附加奖励(8档阶梯)
+            TR->>TR: 检查分享链接加成(HasValidShareLink)
+            TR->>TR: 应用分享链接加成(×1.1倍，向下取整)
+            TR->>TR: 检查每日上限(500 Credits)
+            
+            TR->>CM: 发放积分到用户账户
+            CM-->>TR: 确认积分发放成功
+            TR->>TR: 更新UserDailyRewardRecord
+        end
+        
+        TR->>TR: 记录TaskDailyExecutionRecord
+        TR->>TR: 更新UTC日期标识为下一天
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over TM,TR: 🔧 系统管理与恢复机制
+        
+        TR->>TM: 检测系统瘫痪状态
+        alt 发现数据缺失
+            TR->>TM: 触发指定区间数据补偿
+            TM->>TI: 重新拉取缺失时间段数据
+            TI->>TA: 历史推文搜索
+            TA-->>TI: 返回历史数据
+            TI-->>TM: 补充存储历史推文
+            TM-->>TR: 确认数据补偿完成
+        end
+        
+        TR->>TR: 更新执行时间戳
+        TR->>TR: 重置防重复标志
+    end
+    
+    Note over TM,TR: 📊 持续运行 - 数据驱动的积分奖励生态
+```
 
-#### Agent2: TweetMonitorGrain  
-- **职责**: 定时拉取和存储推文数据
-- **功能**:
-  - **定时任务1**: 每10分钟拉取最新推文ID
-  - 本地去重保存，确保数据更新
-  - 推文类型分类存储
-  - 数据清理（7天过期）
-  - 时间区间查询接口
-  - 支持按区间重新拉取数据（系统恢复）
+### Agent 分工详解
 
-#### Agent3: TwitterRewardGrain
-- **职责**: 定时计算和发放积分
-- **功能**:
-  - **定时任务2**: 严格时间控制的奖励计算
-  - UTC时间戳精确控制执行时机
-  - 防重复发送机制（发送标志管理）
-  - 可配置时间区间处理
-  - 系统瘫痪恢复支持
-  - 积分发放历史追踪
+#### 🔄 Agent1: TwitterInteractionGrain  
+- **设计理念**: 纯粹的API交互层，专注于与Twitter API的通信
+- **核心职责**: 
+  - 🔍 获取推文详情（浏览量、作者信息、发布时间）
+  - 🏷️ 推文类型识别和过滤（Original/Reply/Retweet/Quote）
+  - 🔗 提取和验证分享链接（检查是否包含app.godgpt.fun格式）
+  - 🔐 Twitter API 认证管理和错误处理
+- **交互模式**: 被动响应式，不包含定时任务逻辑
+- **分享链接处理**: 提取链接信息供存储，验证有效性供奖励计算使用
+- **设计优势**: 高内聚低耦合，便于API变更适配和单元测试
+
+#### 📊 Agent2: TweetMonitorGrain  
+- **设计理念**: 数据采集和存储中心，负责推文数据的生命周期管理
+- **API优化策略**: 降低频率+增加批量+去重机制，充分利用付费账号优势
+- **核心职责**:
+  - ⏰ **定时任务1**: 可配置间隔批量拉取（默认30分钟/100条）
+  - 🔄 本地去重保存，确保数据完整性（基于推文ID去重）
+  - 📂 推文类型分类存储（仅保存Original类型用于奖励）
+  - 🔗 保存分享链接验证结果（HasValidShareLink boolean值）
+  - 🗑️ 数据清理（可配置保留期，默认5天自动删除）  
+  - 📅 时间区间查询接口（支持UTC时间戳精确查询）
+  - 🔧 支持按区间重新拉取数据（系统恢复机制）
+- **数据流**: TweetMonitorGrain ↔ TwitterInteractionGrain ↔ Twitter API
+- **配置灵活性**: 支持定时频率、批量大小和数据保留期的动态配置
+- **设计优势**: 数据持久化层解耦，支持离线分析和系统恢复
+
+#### 🎯 Agent3: TwitterRewardGrain
+- **设计理念**: 奖励计算和发放引擎，严格控制奖励发放的时机和逻辑
+- **核心职责**:
+  - ⏰ **定时任务2**: 严格时间控制的奖励计算（每日00:00 UTC）
+  - 🕒 UTC时间戳精确控制执行时机（基于UTC 0点日期标识）
+  - 👤 **用户记录管理**: UserDailyRewardRecord追踪每用户每日领取状态
+  - 📋 **任务记录管理**: TaskDailyExecutionRecord防重复执行机制
+  - 💰 **奖励计算逻辑**: 基础奖励 + 附加奖励 + 分享链接加成(×1.1倍，向下取整)
+  - 🛡️ **领取限制控制**: 基础奖励10条上限，附加奖励500 Credits上限
+  - ⚙️ 可配置时间区间处理（支持N-M分钟灵活配置）
+  - 🔄 系统瘫痪恢复支持（检测并补偿缺失数据）
+  - 📈 积分发放历史追踪（完整审计记录）
+- **业务流**: 检查记录 → 数据查询 → 奖励计算 → 积分发放 → 更新记录 → 日期更新
+- **记录机制**: 基于UTC 0点时间戳的用户和任务状态管理
+- **设计优势**: 业务逻辑集中管理，时间控制精确，支持系统级恢复
 
 ### 核心定时任务设计
 
 #### 定时任务1: 推文数据拉取
-- **执行频率**: 每10分钟
+- **执行频率**: 可配置间隔（默认10分钟）
 - **执行逻辑**: 
-  - 拉取最近10分钟内的 @GodGPT_ 推文
+  - 拉取最近一个间隔内的 @GodGPT_ 推文
   - 本地去重（基于推文ID）
   - 过滤推文类型（仅保留原创推文）
   - 排除自身账号推文
+  - 验证分享链接并存储boolean结果
   - 更新本地存储
 - **失败恢复**: 支持手动触发指定时间区间的数据拉取
+- **配置灵活性**: 支持运行时修改拉取频率
 
 #### 定时任务2: 积分奖励计算  
 - **执行频率**: 每日00:00 UTC
@@ -145,8 +249,9 @@
   - 支持修改时间区间参数
   - 支持手动触发指定区间的奖励计算
 
-## 配置项设计
+## 配置管理设计
 
+### appsettings.json 配置文件
 ```json
 {
   "TwitterReward": {
@@ -155,21 +260,23 @@
     "ApiSecret": "...",
     "MonitorHandle": "@GodGPT_",
     "ShareLinkDomain": "https://app.godgpt.fun",
-    "SelfAccountId": "1234567890",  // 系统自身Twitter账号ID，用于过滤
+    "SelfAccountId": "1234567890",
     
-    // 定时任务配置
-    "PullSchedule": "*/10 * * * *",  // 每10分钟拉取推文
-    "RewardSchedule": "0 0 * * *",   // 每日00:00 UTC计算奖励
-    "EnablePullTask": true,          // 是否启用推文拉取任务
-    "EnableRewardTask": true,        // 是否启用奖励计算任务
+    // 定时任务配置 - 针对付费API优化
+    "PullIntervalMinutes": 30,
+    "PullBatchSize": 100,
+    "PullSchedule": "*/30 * * * *",
+    "RewardSchedule": "0 0 * * *",
+    "EnablePullTask": true,
+    "EnableRewardTask": true,
     
     // 时间区间配置
-    "TimeOffsetMinutes": 2880,       // N: 距离当前时间的起始偏移(48小时)
-    "TimeWindowMinutes": 1440,       // M: 检索时间窗口长度(24小时)
-    "TestTimeOffset": 0,             // 测试时的时间偏移(小时)
+    "TimeOffsetMinutes": 2880,
+    "TimeWindowMinutes": 1440,
+    "TestTimeOffset": 0,
     
-    // 系统管理
-    "DataRetentionDays": 7,
+    // 数据管理配置
+    "DataRetentionDays": 5,
     "MaxRetryAttempts": 3,
     "RetryDelayMinutes": 5,
     
@@ -177,6 +284,185 @@
     "PullTaskTargetId": "12345678-1234-1234-1234-a00000000001",
     "RewardTaskTargetId": "12345678-1234-1234-1234-a00000000002"
   }
+}
+```
+
+### TwitterRewardOptions 配置类
+```csharp
+public class TwitterRewardOptions
+{
+    public const string SectionName = "TwitterReward";
+    
+    // Twitter API 配置
+    public string BearerToken { get; set; } = string.Empty;
+    public string ApiKey { get; set; } = string.Empty;
+    public string ApiSecret { get; set; } = string.Empty;
+    public string MonitorHandle { get; set; } = "@GodGPT_";
+    public string ShareLinkDomain { get; set; } = "https://app.godgpt.fun";
+    public string SelfAccountId { get; set; } = string.Empty;
+    
+    // 定时任务配置
+    public int PullIntervalMinutes { get; set; } = 30;
+    public int PullBatchSize { get; set; } = 100;
+    public string PullSchedule { get; set; } = "*/30 * * * *";
+    public string RewardSchedule { get; set; } = "0 0 * * *";
+    public bool EnablePullTask { get; set; } = true;
+    public bool EnableRewardTask { get; set; } = true;
+    
+    // 时间区间配置
+    public int TimeOffsetMinutes { get; set; } = 2880;  // 48小时
+    public int TimeWindowMinutes { get; set; } = 1440;  // 24小时
+    public int TestTimeOffset { get; set; } = 0;
+    
+    // 数据管理配置
+    public int DataRetentionDays { get; set; } = 5;
+    public int MaxRetryAttempts { get; set; } = 3;
+    public int RetryDelayMinutes { get; set; } = 5;
+    
+    // ReminderTargetId版本控制
+    public string PullTaskTargetId { get; set; } = "12345678-1234-1234-1234-a00000000001";
+    public string RewardTaskTargetId { get; set; } = "12345678-1234-1234-1234-a00000000002";
+}
+```
+
+### 依赖注入配置注册
+```csharp
+// 在 Startup.cs 或 Program.cs 中注册
+public void ConfigureServices(IServiceCollection services)
+{
+    // 注册Twitter奖励配置
+    services.Configure<TwitterRewardOptions>(
+        Configuration.GetSection(TwitterRewardOptions.SectionName));
+    
+    // 其他服务注册...
+}
+```
+
+### 在Grain中使用配置
+```csharp
+public class TwitterRewardGrain : IGrainWithStringKey, ITwitterRewardGrain
+{
+    private readonly TwitterRewardOptions _options;
+    
+    public TwitterRewardGrain(IOptions<TwitterRewardOptions> options)
+    {
+        _options = options.Value;
+    }
+    
+    public async Task CalculateRewardsAsync()
+    {
+        // 使用配置参数
+        var pullInterval = _options.PullIntervalMinutes;
+        var batchSize = _options.PullBatchSize;
+        var retentionDays = _options.DataRetentionDays;
+        var timeOffset = _options.TimeOffsetMinutes;
+        
+        // 业务逻辑...
+    }
+}
+
+public class TweetMonitorGrain : IGrainWithStringKey, ITweetMonitorGrain
+{
+    private readonly TwitterRewardOptions _options;
+    
+    public TweetMonitorGrain(IOptions<TwitterRewardOptions> options)
+    {
+        _options = options.Value;
+    }
+    
+    public async Task StartPullTaskAsync()
+    {
+        // 使用配置参数
+        if (!_options.EnablePullTask)
+        {
+            return; // 任务被禁用
+        }
+        
+        var intervalMinutes = _options.PullIntervalMinutes;
+        var batchSize = _options.PullBatchSize;
+        var targetId = _options.PullTaskTargetId;
+        
+        // 启动定时任务...
+    }
+}
+
+public class TwitterInteractionGrain : IGrainWithStringKey, ITwitterInteractionGrain
+{
+    private readonly TwitterRewardOptions _options;
+    
+    public TwitterInteractionGrain(IOptions<TwitterRewardOptions> options)
+    {
+        _options = options.Value;
+    }
+    
+    public async Task<List<TweetDto>> SearchTweetsAsync()
+    {
+        // 使用配置参数
+        var bearerToken = _options.BearerToken;
+        var monitorHandle = _options.MonitorHandle;
+        var batchSize = _options.PullBatchSize;
+        var selfAccountId = _options.SelfAccountId;
+        
+        // Twitter API 调用...
+    }
+}
+```
+
+### 配置验证和默认值管理
+```csharp
+public class TwitterRewardOptionsValidator : IValidateOptions<TwitterRewardOptions>
+{
+    public ValidateOptionsResult Validate(string name, TwitterRewardOptions options)
+    {
+        if (string.IsNullOrEmpty(options.BearerToken))
+        {
+            return ValidateOptionsResult.Fail("Twitter BearerToken is required");
+        }
+        
+        if (options.PullIntervalMinutes < 1 || options.PullIntervalMinutes > 1440)
+        {
+            return ValidateOptionsResult.Fail("PullIntervalMinutes must be between 1 and 1440");
+        }
+        
+        if (options.PullBatchSize < 1 || options.PullBatchSize > 500)
+        {
+            return ValidateOptionsResult.Fail("PullBatchSize must be between 1 and 500");
+        }
+        
+        if (options.DataRetentionDays < 1 || options.DataRetentionDays > 30)
+        {
+            return ValidateOptionsResult.Fail("DataRetentionDays must be between 1 and 30");
+        }
+        
+        return ValidateOptionsResult.Success;
+    }
+}
+
+// 在依赖注入中注册验证器
+services.AddSingleton<IValidateOptions<TwitterRewardOptions>, TwitterRewardOptionsValidator>();
+```
+
+### 配置热更新支持
+```csharp
+public class TwitterRewardGrain : IGrainWithStringKey, ITwitterRewardGrain
+{
+    private readonly IOptionsMonitor<TwitterRewardOptions> _optionsMonitor;
+    
+    public TwitterRewardGrain(IOptionsMonitor<TwitterRewardOptions> optionsMonitor)
+    {
+        _optionsMonitor = optionsMonitor;
+    }
+    
+    public async Task CalculateRewardsAsync()
+    {
+        // 获取最新配置（支持热更新）
+        var options = _optionsMonitor.CurrentValue;
+        
+        var retentionDays = options.DataRetentionDays;
+        var timeOffset = options.TimeOffsetMinutes;
+        
+        // 业务逻辑...
+    }
 }
 ```
 
@@ -191,14 +477,13 @@ public class TweetRecord
     public string AuthorHandle { get; set; }
     public DateTime CreatedAt { get; set; }
     public int CreatedAtTimestamp { get; set; }  // UTC时间戳(秒)
-    public TweetType Type { get; set; }          // 推文类型
+    public TweetType Type { get; set; }          // 推文类型 - 关键字段，支持未来扩展
     public int ViewCount { get; set; }
     public int FollowerCount { get; set; }
-    public bool HasShareLink { get; set; }
-    public string ShareLinkUrl { get; set; }
-    public bool IsShareLinkValid { get; set; }
+    public bool HasValidShareLink { get; set; }  // 是否包含有效分享链接(boolean，优化存储)
     public bool IsProcessed { get; set; }        // 是否已处理
     public int ProcessedTimestamp { get; set; }  // 处理时间戳
+    public int DataRetentionExpiry { get; set; } // 数据过期时间戳(可配置天数后)
 }
 
 public enum TweetType
@@ -241,6 +526,38 @@ public class TaskExecutionRecord
 }
 ```
 
+### UserDailyRewardRecord - 用户每日领取记录
+```csharp
+public class UserDailyRewardRecord
+{
+    public string UserId { get; set; }
+    public int UtcDateTimestamp { get; set; }        // UTC 0点时间戳作为日期标识
+    public int BaseTweetCount { get; set; }          // 当天已领取基础奖励的推文数
+    public int BaseTotalRewards { get; set; }        // 当天基础奖励总计
+    public bool HasReceivedBonusReward { get; set; } // 是否已领取当天附加奖励
+    public int BonusTotalRewards { get; set; }       // 当天附加奖励总计
+    public List<string> ProcessedTweetIds { get; set; } // 已处理的推文ID列表
+    public int CreatedTimestamp { get; set; }        // 记录创建时间戳
+    public int UpdatedTimestamp { get; set; }        // 记录更新时间戳
+}
+```
+
+### TaskDailyExecutionRecord - 任务每日执行记录
+```csharp
+public class TaskDailyExecutionRecord
+{
+    public string TaskName { get; set; }             // 任务名称（如"RewardCalculation"）
+    public int UtcDateTimestamp { get; set; }        // UTC 0点时间戳作为日期标识
+    public bool IsExecuted { get; set; }             // 当天是否已执行
+    public int ExecutionTimestamp { get; set; }      // 执行时间戳
+    public bool IsSuccessful { get; set; }           // 是否执行成功
+    public int ProcessedUserCount { get; set; }      // 处理的用户数量
+    public int TotalRewardsSent { get; set; }        // 发送的总奖励数
+    public string ProcessingPeriod { get; set; }     // 处理的时间区间标识
+    public string ErrorMessage { get; set; }         // 错误信息（如有）
+}
+```
+
 ### TimeRange
 ```csharp
 public class TimeRange
@@ -264,6 +581,82 @@ public class TimeRange
     }
 }
 ```
+
+### UtcDateHelper - UTC日期时间戳工具类
+```csharp
+public static class UtcDateHelper
+{
+    /// <summary>
+    /// 获取当前UTC日期的0点时间戳
+    /// </summary>
+    public static int GetCurrentUtcDateTimestamp()
+    {
+        var utcNow = DateTime.UtcNow;
+        var utcDate = new DateTime(utcNow.Year, utcNow.Month, utcNow.Day, 0, 0, 0, DateTimeKind.Utc);
+        return (int)((DateTimeOffset)utcDate).ToUnixTimeSeconds();
+    }
+    
+    /// <summary>
+    /// 获取下一个UTC日期的0点时间戳
+    /// </summary>
+    public static int GetNextUtcDateTimestamp(int currentUtcDateTimestamp)
+    {
+        return currentUtcDateTimestamp + (24 * 60 * 60); // 加24小时
+    }
+    
+    /// <summary>
+    /// 检查时间戳是否为今天UTC日期
+    /// </summary>
+    public static bool IsToday(int utcDateTimestamp)
+    {
+        return utcDateTimestamp == GetCurrentUtcDateTimestamp();
+    }
+    
+    /// <summary>
+    /// 从UTC时间戳转换为可读日期字符串
+    /// </summary>
+    public static string ToDateString(int utcDateTimestamp)
+    {
+        var dateTime = DateTimeOffset.FromUnixTimeSeconds(utcDateTimestamp).DateTime;
+        return dateTime.ToString("yyyy-MM-dd UTC");
+    }
+}
+```
+
+## 推文类型字段的重要性与扩展性
+
+### 当前核心用途
+- **奖励机制筛选**: 推文类型是奖励发放的核心筛选条件，只有 `TweetType.Original` 类型的推文才能获得积分
+- **反刷分保护**: 防止用户通过回复、转推等方式恶意刷取积分，确保奖励机制的公平性
+- **数据完整性**: 为所有推文记录完整的类型信息，支持后续分析和处理
+
+### 未来扩展潜力
+- **差异化奖励策略**: 
+  - 为不同类型推文设置不同的奖励倍率
+  - 引入转推、回复的二级奖励机制
+  - 基于推文类型的营销活动策划
+  
+- **用户行为分析**:
+  - 分析用户在不同推文类型上的表现差异
+  - 追踪用户互动偏好和参与模式
+  - 生成用户画像和行为报告
+  
+- **营销效果评估**:
+  - 评估不同推文类型的传播效果
+  - 分析原创内容vs转发内容的影响力
+  - 优化内容策略和用户激励机制
+
+### 数据分析价值
+- **内容质量评估**: 通过推文类型分析内容的原创性和质量
+- **社交影响力测量**: 区分直接影响(原创)和间接影响(转发/回复)
+- **参与度深度分析**: 了解用户在不同互动类型上的活跃程度
+- **竞争对手分析**: 对比不同推文类型在行业中的表现
+
+### 技术实现保障
+- **存储优化**: 推文类型字段占用空间小，但提供强大的筛选和分析能力
+- **查询效率**: 支持基于推文类型的高效索引和查询
+- **向前兼容**: 设计支持未来新增推文类型的扩展需求
+- **测试覆盖**: 推文类型识别和处理逻辑的全面测试保障
 
 ## 测试考虑
 
