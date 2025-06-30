@@ -6,7 +6,7 @@
 
 | 功能名称 | 状态 | 分支 | 开发机器 | 优先级 | 描述 |
 |---------|------|------|----------|--------|------|
-| Twitter Credits Reward System | 🚧 | feature/twitter-credits-reward | 16:1e:a9:7a:1c:39 | High | 基于用户发送推特给用户送 godgpt 的 credits<br/>✅ 需求分析完成<br/>✅ 系统设计完成<br/>✅ 时间控制机制设计<br/>✅ 系统管理功能设计<br/>✅ 定时任务架构设计<br/>✅ 详细业务流程设计<br/>✅ 完整接口和DTO定义<br/>✅ 独立测试接口设计<br/>📋 三Agent架构设计<br/>🔄 待实现代码 |
+| Twitter Credits Reward System | 🚧 | feature/twitter-credits-reward | 16:1e:a9:7a:1c:39 | High | 基于用户发送推特给用户送 godgpt 的 credits<br/>✅ 需求分析完成<br/>✅ 系统设计完成<br/>✅ 时间控制机制设计<br/>✅ 系统管理功能设计<br/>✅ 定时任务架构设计<br/>✅ 详细业务流程设计<br/>✅ 完整接口和DTO定义<br/>✅ 独立测试接口设计<br/>✅ 标准Mermaid泳道图<br/>📋 三Agent架构设计<br/>🔄 待实现代码 |
 
 ### 状态说明
 - 🔜 待开发
