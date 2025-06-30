@@ -18,6 +18,8 @@ using System.Security.Cryptography;
 using Microsoft.IdentityModel.Tokens;
 using Aevatar.Application.Grains.Common;
 using System.Security.Cryptography.X509Certificates;
+using Aevatar.Application.Grains.Agents.ChatManager;
+using Aevatar.Application.Grains.Invitation;
 using Newtonsoft.Json.Linq;
 
 namespace Aevatar.Application.Grains.ChatManager.UserBilling;
@@ -1014,6 +1016,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     await userQuotaGrain.UpdateSubscriptionAsync(premiumSubscription);
                 }
             }
+            
+            //Invite users to pay rewards
+            await ProcessInviteeSubscriptionAsync(userId, (PlanType) productConfig.PlanType, productConfig.IsUltimate, invoiceDetail.InvoiceId);
+            _logger.LogWarning("[UserBillingGrain][HandleStripeWebhookEventAsync] Process invitee subscription completed, user {UserId}",
+                userId);
+            
         } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
             _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Cancel User subscription {0}, {1}, {2}",
@@ -2622,6 +2630,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
         await AddPaymentRecordAsync(newPayment);
         await UpdateUserQuotaOnApplePaySuccess(userId, appleResponse, appleProduct);
+        //Invite users to pay rewards
+        await ProcessInviteeSubscriptionAsync(userId, (PlanType) appleProduct.PlanType, appleProduct.IsUltimate, appleResponse.TransactionId);
+        _logger.LogWarning("[UserBillingGrain][CreateAppStoreSubscriptionAsync] Process invitee subscription completed, user {UserId}",
+            userId);
     }
 
     private async Task UpdateUserQuotaOnApplePaySuccess(Guid userId, AppStoreJWSTransactionDecodedPayload appleResponse,
@@ -2983,7 +2995,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 transactionInfo.OriginalTransactionId);
             return;
         }
-        
+
         _logger.LogInformation("[UserBillingGrain][HandleDidRenewAsync] Processing successful renewal for user {UserId}, product {ProductId}, OriginalTransaction: {Id}", 
             userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId);
         
@@ -3044,6 +3056,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         // Grant or revoke user rights
         await UpdateUserQuotaOnApplePaySuccess(userId, transactionInfo, appleProduct);
         _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, product {ProductId}, originaltransaction: {Id}, trancaction: {trancactionId}",
+            userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
+        //Invite users to pay rewards
+        await ProcessInviteeSubscriptionAsync(userId, (PlanType) appleProduct.PlanType, appleProduct.IsUltimate, transactionInfo.TransactionId);
+        _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] Process invitee subscription completed, user {UserId}, product {ProductId}, originaltransaction: {Id}, trancaction: {trancactionId}",
             userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
     }
 
@@ -3597,5 +3613,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
         _logger.LogInformation("[UserBillingGrain][HasActiveAppleSubscriptionAsync] Has active Apple subscription: {HasActive}", hasActive);
         return hasActive;
+    }
+    
+    private async Task ProcessInviteeSubscriptionAsync(Guid userId, PlanType planType, bool isUltimate, string invoiceId)
+    {
+        var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(userId);
+        var inviterId = await chatManagerGAgent.GetInviterAsync();
+        if (inviterId != null && inviterId != Guid.Empty)
+        {
+            var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
+            await invitationGAgent.ProcessInviteeSubscriptionAsync(userId.ToString(), planType, isUltimate, invoiceId);
+        }
     }
 }

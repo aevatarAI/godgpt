@@ -1,3 +1,5 @@
+using Aevatar.Application.Grains.Common.Constants;
+
 namespace Aevatar.Application.Grains.Common.Options;
 
 [GenerateSerializer]

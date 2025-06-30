@@ -1,15 +1,16 @@
-using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
+using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
+using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
+using Aevatar.Application.Grains.Invitation;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -525,6 +526,203 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return Task.FromResult(result);
     }
 
+    public async Task<List<SessionInfoDto>> SearchSessionsAsync(string keyword, int maxResults = 1000)
+    {
+        Logger.LogDebug($"[ChatGAgentManager][SearchSessionsAsync] keyword: {keyword}, maxResults: {maxResults}");
+
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            return new List<SessionInfoDto>();
+        }
+
+        // Use the complete keyword for matching (no word splitting)
+        var searchKeyword = keyword.Trim().ToLowerInvariant();
+        
+        // Validate keyword length to prevent performance issues
+        if (searchKeyword.Length > 200)
+        {
+            Logger.LogWarning($"[ChatGAgentManager][SearchSessionsAsync] Keyword too long: {searchKeyword.Length} chars");
+            return new List<SessionInfoDto>();
+        }
+        
+        var searchResults = new List<(SessionInfoDto dto, int matchScore)>();
+
+        // Search through sessions (limit to most recent 1000 for performance)
+        var sessionsToSearch = State.SessionInfoList
+            .OrderByDescending(s => s.CreateAt)
+            .Take(1000)
+            .ToList();
+
+        foreach (var sessionInfo in sessionsToSearch)
+        {
+            try
+            {
+                var titleLower = sessionInfo.Title?.ToLowerInvariant() ?? "";
+                var matchScore = 0;
+                var hasMatch = false;
+
+                // Check title matching
+                var titleMatchScore = 0;
+                if (titleLower.Contains(searchKeyword))
+                {
+                    titleMatchScore = titleLower == searchKeyword ? 100 : 50; // Complete match gets higher score
+                    hasMatch = true;
+                }
+
+                // Get chat content for content matching
+                string contentPreview = "";
+                try
+                {
+                    var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
+                    var chatMessages = await godChat.GetChatMessageAsync();
+                    contentPreview = ExtractChatContent(chatMessages);
+                }
+                catch (Exception contentEx)
+                {
+                    Logger.LogWarning(contentEx, $"[ChatGAgentManager][SearchSessionsAsync] Failed to extract content for session {sessionInfo.SessionId}");
+                    contentPreview = ""; // Continue search without content matching
+                }
+                
+                var contentLower = contentPreview.ToLowerInvariant();
+
+                // Check content matching
+                var contentMatchScore = 0;
+                if (!string.IsNullOrEmpty(contentPreview) && contentLower.Contains(searchKeyword))
+                {
+                    contentMatchScore = contentLower == searchKeyword ? 30 : 15; // Complete content match vs partial match
+                    hasMatch = true;
+                }
+
+                if (hasMatch)
+                {
+                    matchScore = titleMatchScore * 2 + contentMatchScore; // Title matching gets higher priority
+
+                    var createAt = sessionInfo.CreateAt;
+                    if (createAt == default || createAt == DateTime.MinValue)
+                    {
+                        // Use a reasonable fallback time instead of hardcoded future date
+                        createAt = DateTime.UtcNow.AddDays(-365); // 1 year ago as fallback
+                    }
+
+                    var dto = new SessionInfoDto
+                    {
+                        SessionId = sessionInfo.SessionId,
+                        Title = sessionInfo.Title,
+                        CreateAt = createAt,
+                        Guider = sessionInfo.Guider,
+                        Content = contentPreview,
+                        IsMatch = true
+                    };
+
+                    searchResults.Add((dto, matchScore));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, $"[ChatGAgentManager][SearchSessionsAsync] Failed to process session {sessionInfo.SessionId}");
+                // Continue processing other sessions
+                continue;
+            }
+        }
+
+        // Sort by match score (descending) then by creation time (descending)
+        var result = searchResults
+            .OrderByDescending(r => r.matchScore)
+            .ThenByDescending(r => r.dto.CreateAt)
+            .Take(maxResults)
+            .Select(r => r.dto)
+            .ToList();
+
+        Logger.LogDebug($"[ChatGAgentManager][SearchSessionsAsync] Found {result.Count} matches for keyword: {keyword}");
+        return result;
+    }
+
+    /// <summary>
+    /// Extract chat content preview from chat messages
+    /// </summary>
+    /// <param name="messages">List of chat messages</param>
+    /// <returns>Content preview (first 60 characters)</returns>
+    private static string ExtractChatContent(List<ChatMessage> messages)
+    {
+        if (messages == null || messages.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            // Priority 1: Find user messages with substantial content (>5 chars)
+            var userMessage = messages
+                .Where(m => m != null && 
+                           m.ChatRole == ChatRole.User && 
+                           !string.IsNullOrWhiteSpace(m.Content) && 
+                           m.Content.Trim().Length > 5)
+                .FirstOrDefault();
+                
+            if (userMessage?.Content != null)
+            {
+                string content = userMessage.Content.Trim();
+                return SafeTruncateContent(content);
+            }
+
+            // Priority 2: Find assistant messages with substantial content
+            var assistantMessage = messages
+                .Where(m => m != null && 
+                           m.ChatRole == ChatRole.Assistant && 
+                           !string.IsNullOrWhiteSpace(m.Content) && 
+                           m.Content.Trim().Length > 5)
+                .FirstOrDefault();
+                
+            if (assistantMessage?.Content != null)
+            {
+                string content = assistantMessage.Content.Trim();
+                return SafeTruncateContent(content);
+            }
+
+            // Fallback: any non-empty message
+            var anyMessage = messages
+                .Where(m => m != null && !string.IsNullOrWhiteSpace(m.Content))
+                .FirstOrDefault();
+                
+            if (anyMessage?.Content != null)
+            {
+                string content = anyMessage.Content.Trim();
+                return SafeTruncateContent(content);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Log but don't throw - return empty string for graceful degradation
+            // Note: Cannot use Logger in static method, but error is rare and non-critical
+            // Logger.LogWarning(ex, "[ChatGAgentManager][ExtractChatContent] Error extracting content");
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Safely truncate content to 60 characters with ellipsis
+    /// </summary>
+    /// <param name="content">Content to truncate</param>
+    /// <returns>Truncated content</returns>
+    private static string SafeTruncateContent(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+        {
+            return string.Empty;
+        }
+        
+        try
+        {
+            return content.Length <= 60 ? content : content.Substring(0, 60) + "...";
+        }
+        catch (Exception)
+        {
+            // Fallback in case of unexpected string issues
+            return content.Length > 60 ? content[..Math.Min(60, content.Length)] + "..." : content;
+        }
+    }
+
     public async Task<bool> IsUserSessionAsync(Guid sessionId)
     {
         var sessionInfo = State.GetSession(sessionId);
@@ -639,6 +837,23 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
         var ultimateSubscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync(true);
 
+        var utcNow = DateTime.UtcNow;
+        var invitationGrain = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
+        var scheduledRewards = (await invitationGrain.GetRewardHistoryAsync())
+            .Where(r => r.IsScheduled && 
+           r.ScheduledDate.HasValue && 
+           utcNow > r.ScheduledDate.Value && 
+           !string.IsNullOrEmpty(r.InvoiceId))
+            .ToList();
+            
+        foreach (var reward in scheduledRewards)
+        {
+            Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Processing scheduled reward for user {this.GetPrimaryKey()}, credits: {reward.Credits}");
+            await userQuotaGrain.AddCreditsAsync(reward.Credits);
+            await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
+            credits.Credits += reward.Credits;
+        }
+        
         return new UserProfileDto
         {
             Gender = State.Gender,
@@ -648,7 +863,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Credits = credits,
             Subscription = subscriptionInfo,
             UltimateSubscription = ultimateSubscriptionInfo,
-            Id = this.GetPrimaryKey()
+            Id = this.GetPrimaryKey(),
+            InviterId = State.InviterId
         };
     }
     
@@ -708,6 +924,82 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return await shareLinkGrain.GetShareContentAsync();
     }
 
+    public async Task<string> GenerateInviteCodeAsync()
+    {
+        IInvitationGAgent invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
+        var inviteCode = await invitationAgent.GenerateInviteCodeAsync();
+        return inviteCode;
+    }
+
+    public async Task<bool> RedeemInviteCodeAsync(string inviteCode)
+    {
+        var codeGrainId = CommonHelper.StringToGuid(inviteCode);
+        var codeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(codeGrainId);
+
+        var (isValid, inviterId) = await codeGrain.ValidateAndGetInviterAsync();
+
+        if (!isValid)
+        {
+            Logger.LogWarning($"Invalid invite code redemption attempt: {inviteCode}");
+            return false;
+        }
+
+        if (inviterId.Equals(this.GetPrimaryKey().ToString()))
+        {
+            Logger.LogWarning($"Invalid invite code,the code belongs to the user themselves. userId:{this.GetPrimaryKey().ToString()} InviteCode:{inviteCode}");
+            return false;
+        }
+        
+        // Step 1: First, check if the current user (invitee) is eligible for the reward.
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+
+        if (State.RegisteredAtUtc == null && State.SessionInfoList.IsNullOrEmpty())
+        {
+            RaiseEvent(new SetRegisteredAtUtcEventLog()
+            {
+                RegisteredAtUtc = DateTime.UtcNow
+            });
+
+            await ConfirmEvents();
+        }
+        
+        bool redeemResult = false;
+        
+        var registeredAtUtc = State.RegisteredAtUtc;
+        Logger.LogWarning($"State.RegisteredAtUtc {this.GetPrimaryKey().ToString()} {registeredAtUtc?.ToString() ?? "null"}");
+        
+        if (registeredAtUtc == null)
+        {
+            Logger.LogWarning($"State.RegisteredAtUtc == null userId:{this.GetPrimaryKey().ToString()}");
+            redeemResult = false;
+        }
+        else
+        {
+            //show time
+            var now = DateTime.UtcNow;
+            var minutes = (now - registeredAtUtc.Value).TotalMinutes;
+            Logger.LogWarning($"State.RegisteredAtUtc userId:{this.GetPrimaryKey().ToString()} RegisteredAtUtc={registeredAtUtc.Value} now={now} minutes={minutes}");
+            //
+            
+            redeemResult = await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
+        }
+
+        if (!redeemResult)
+        {
+            Logger.LogWarning($"Failed to redeem initial reward for user {this.GetPrimaryKey().ToString()} with code {inviteCode}. Eligibility check failed");
+            return false;
+        }
+
+        // Step 2: If eligible, record the invitee in the inviter's grain.
+        var inviterGuid = Guid.Parse(inviterId);
+        var inviterGrain = GrainFactory.GetGrain<IInvitationGAgent>(inviterGuid);
+        await inviterGrain.ProcessInviteeRegistrationAsync(this.GetPrimaryKey().ToString());
+
+        await SetInviterAsync(inviterGuid);
+        
+        return true;
+    }
+
     public async Task<UserProfileDto> GetLastSessionUserProfileAsync()
     {
         var sessionInfo = State.SessionInfoList.LastOrDefault(new SessionInfo());
@@ -721,18 +1013,41 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return userProfileDto ?? new UserProfileDto();
     }
 
+    public async Task<Guid> SetInviterAsync(Guid inviterId)
+    {
+        RaiseEvent(new SetInviterEventLog()
+        {
+            InviterId = inviterId
+        });
+
+        await ConfirmEvents();
+        return this.GetPrimaryKey();
+    }
+
+    public Task<Guid?> GetInviterAsync()
+    {
+        return Task.FromResult(State.InviterId);
+    }
+
     protected override void AIGAgentTransitionState(ChatManagerGAgentState state,
         StateLogEventBase<ChatManageEventLog> @event)
     {
         switch (@event)
         {
+            case SetRegisteredAtUtcEventLog @setRegisteredAtUtcEventLog:
+                State.RegisteredAtUtc = setRegisteredAtUtcEventLog.RegisteredAtUtc;
+                break;
             case CreateSessionInfoEventLog @createSessionInfo:
+                if (State.SessionInfoList.IsNullOrEmpty() && State.RegisteredAtUtc == null)
+                {
+                    State.RegisteredAtUtc = DateTime.UtcNow;
+                }
                 State.SessionInfoList.Add(new SessionInfo()
                 {
                     SessionId = @createSessionInfo.SessionId,
                     Title = @createSessionInfo.Title,
                     CreateAt = @createSessionInfo.CreateAt,
-                    Guider = @createSessionInfo.Guider // Store role information in session state
+                    Guider = @createSessionInfo.Guider
                 });
                 break;
             case DeleteSessionEventLog @deleteSessionEventLog:
@@ -758,6 +1073,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 State.BirthPlace = string.Empty;
                 State.FullName = string.Empty;
                 State.CurrentShareCount = 0;
+                State.InviterId = null;
                 break;
             case SetUserProfileEventLog @setFortuneInfoEventLog:
                 State.Gender = @setFortuneInfoEventLog.Gender;
@@ -782,7 +1098,10 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             case SetMaxShareCountLogEvent setMaxShareCountLogEvent:
                 State.MaxShareCount = setMaxShareCountLogEvent.MaxShareCount;
                 break;
-        }
+            case SetInviterEventLog setInviterEventLog:
+                State.InviterId = setInviterEventLog.InviterId;
+                break;
+        }   
     }
 
     protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
@@ -813,7 +1132,6 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             });
             await ConfirmEvents();
         }
-        
         await base.OnAIGAgentActivateAsync(cancellationToken);
     }
 
