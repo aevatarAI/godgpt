@@ -18,16 +18,21 @@
 
 ### 4.1 基础奖励机制
 
-- **触发条件**: 用户发布带有 `@GodGPT_` 的推文
+- **触发条件**: 用户主动发布带有 `@GodGPT_` 的原创推文（TweetType.Original）
 - **奖励额度**: 每条推文奖励 2 Credits
 - **奖励上限**: 每用户最多 20 Credits（对应10条推文）
 - **监控要求**: 系统监听 @GodGPT_ 的推文，记录推文ID、作者ID及发布时间
+- **类型限制**: 仅限原创推文，不包括回复、转推、引用推文
 
 ### 4.2 附加奖励机制
 
 - **执行时间**: 每日 00:00 UTC
 - **检索范围**: 过去72-48小时之间（倒数第三天）的24小时内推文
-- **筛选条件**: 带有 @GodGPT_ 标签且 views ≥ 20 的推文
+- **筛选条件**: 
+  - 带有 @GodGPT_ 标签的推文
+  - 推文浏览量 views ≥ 20
+  - **推文类型必须为 Original（原创推文）**
+  - 排除 Reply（回复）、Retweet（转推）、Quote（引用推文）类型
 - **奖励计算**: 根据【浏览量 + 粉丝数】档位发放 Credits
 
 #### 奖励档位表
@@ -362,7 +367,7 @@ public interface ITweetMonitorGrain : IGrainWithStringKey
     Task<PullTweetResultDto> PullTweetsAsync(PullTweetRequestDto request);
     Task<PullTweetResultDto> PullTweetsByPeriodAsync(int startTimestamp, int endTimestamp);
     
-    // 数据查询
+    // 数据查询（仅返回Original类型推文）
     Task<List<TweetRecordDto>> GetTweetsByPeriodAsync(int startTimestamp, int endTimestamp);
     Task<List<TweetRecordDto>> GetUnprocessedTweetsAsync(int maxCount = 100);
     
@@ -378,6 +383,10 @@ public interface ITwitterInteractionGrain : IGrainWithStringKey
     Task<TweetDetailsDto> GetTweetDetailsAsync(string tweetId);
     Task<UserInfoDto> GetUserInfoAsync(string userId);
     Task<bool> ValidateShareLinkAsync(string url);
+    
+    // 推文类型识别和过滤
+    Task<TweetType> DetermineTweetTypeAsync(string tweetId);
+    Task<bool> IsOriginalTweetAsync(string tweetId);
 }
 ```
 
@@ -389,6 +398,7 @@ public class PullTweetRequestDto
     public int EndTimestamp { get; set; }
     public int MaxResults { get; set; } = 100;
     public bool ForceRefresh { get; set; } = false;
+    public List<TweetType> AllowedTypes { get; set; } = new List<TweetType> { TweetType.Original }; // 默认仅原创推文
 }
 
 public class PullTweetResultDto
@@ -398,6 +408,8 @@ public class PullTweetResultDto
     public int NewTweets { get; set; }
     public int DuplicateSkipped { get; set; }
     public int FilteredOut { get; set; }
+    public int TypeFilteredOut { get; set; }        // 因推文类型被过滤的数量
+    public Dictionary<TweetType, int> TypeStatistics { get; set; } // 各类型推文统计
     public List<string> ProcessedTweetIds { get; set; }
     public string ErrorMessage { get; set; }
     public int ProcessingTimestamp { get; set; }
@@ -433,8 +445,9 @@ sequenceDiagram
     TIG->>API: Search @GodGPT_ tweets
     API-->>TIG: Return tweet list
     TIG-->>TMG: TwitterApiResultDto
-    TMG->>TMG: DeduplicateAndFilter(tweets)
-    TMG->>Storage: SaveToLocalStorage(filteredTweets)
+         TMG->>TMG: DeduplicateAndFilter(tweets)
+     TMG->>TMG: FilterByType(仅保留Original类型)
+     TMG->>Storage: SaveToLocalStorage(filteredTweets)
     TMG->>TMG: UpdateExecutionStatus()
     TMG->>TMG: ScheduleNextReminder()
 ```
@@ -538,9 +551,9 @@ sequenceDiagram
     Timer->>TRG: ReceiveReminder("DailyReward")
     TRG->>TRG: CheckTargetId & DailyWindow
     TRG->>TRG: CalculateProcessingPeriod(N-M, N)
-    TRG->>TRG: CheckIfPeriodProcessed(periodId)
-    TRG->>TMG: GetTweetsByPeriodAsync(timeRange)
-    TMG-->>TRG: List<TweetRecordDto>
+         TRG->>TRG: CheckIfPeriodProcessed(periodId)
+     TRG->>TMG: GetTweetsByPeriodAsync(timeRange)
+     TMG-->>TRG: List<TweetRecordDto>(仅Original类型)
     
     loop 处理每条推文
         TRG->>TIG: GetTweetDetailsAsync(tweetId)
