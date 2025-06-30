@@ -336,6 +336,415 @@ public enum TaskControlAction
 }
 ```
 
+## 详细业务流程设计
+
+### 流程1: 推文数据拉取流程
+
+#### 业务描述
+每10分钟定时拉取最新的@GodGPT_推文，进行去重、分类、过滤后存储到本地。
+
+#### 涉及类和接口
+
+**主要Grain类**:
+- `TweetMonitorGrain : IGrainWithStringKey, IRemindable`
+- `TwitterInteractionGrain : IGrainWithStringKey`
+
+**核心接口**:
+```csharp
+public interface ITweetMonitorGrain : IGrainWithStringKey
+{
+    // 定时任务控制
+    Task<bool> StartPullTaskAsync(string targetId);
+    Task<bool> StopPullTaskAsync();
+    Task<TaskExecutionStatusDto> GetTaskStatusAsync();
+    
+    // 数据拉取
+    Task<PullTweetResultDto> PullTweetsAsync(PullTweetRequestDto request);
+    Task<PullTweetResultDto> PullTweetsByPeriodAsync(int startTimestamp, int endTimestamp);
+    
+    // 数据查询
+    Task<List<TweetRecordDto>> GetTweetsByPeriodAsync(int startTimestamp, int endTimestamp);
+    Task<List<TweetRecordDto>> GetUnprocessedTweetsAsync(int maxCount = 100);
+    
+    // 数据管理
+    Task<int> CleanupExpiredDataAsync();
+    Task<DataStatisticsDto> GetDataStatisticsAsync();
+}
+
+public interface ITwitterInteractionGrain : IGrainWithStringKey
+{
+    // Twitter API 交互
+    Task<TwitterApiResultDto> SearchTweetsAsync(SearchTweetsRequestDto request);
+    Task<TweetDetailsDto> GetTweetDetailsAsync(string tweetId);
+    Task<UserInfoDto> GetUserInfoAsync(string userId);
+    Task<bool> ValidateShareLinkAsync(string url);
+}
+```
+
+**请求/响应DTO**:
+```csharp
+public class PullTweetRequestDto
+{
+    public int StartTimestamp { get; set; }
+    public int EndTimestamp { get; set; }
+    public int MaxResults { get; set; } = 100;
+    public bool ForceRefresh { get; set; } = false;
+}
+
+public class PullTweetResultDto
+{
+    public bool Success { get; set; }
+    public int TotalFound { get; set; }
+    public int NewTweets { get; set; }
+    public int DuplicateSkipped { get; set; }
+    public int FilteredOut { get; set; }
+    public List<string> ProcessedTweetIds { get; set; }
+    public string ErrorMessage { get; set; }
+    public int ProcessingTimestamp { get; set; }
+}
+
+public class TaskExecutionStatusDto
+{
+    public string TaskName { get; set; }
+    public bool IsEnabled { get; set; }
+    public bool IsRunning { get; set; }
+    public int LastExecutionTimestamp { get; set; }
+    public int LastSuccessTimestamp { get; set; }
+    public int NextScheduledTimestamp { get; set; }
+    public int RetryCount { get; set; }
+    public string LastError { get; set; }
+}
+```
+
+#### 执行步骤泳道图
+
+```
+Timer -> TweetMonitorGrain: ReceiveReminder("PullTweets")
+TweetMonitorGrain -> TweetMonitorGrain: CheckTargetId & ExecutionWindow
+TweetMonitorGrain -> TweetMonitorGrain: CalculateTimeRange(currentTime, 10min)
+TweetMonitorGrain -> TwitterInteractionGrain: SearchTweetsAsync(timeRange)
+TwitterInteractionGrain -> Twitter API: Search @GodGPT_ tweets
+Twitter API -> TwitterInteractionGrain: Return tweet list
+TwitterInteractionGrain -> TweetMonitorGrain: TwitterApiResultDto
+TweetMonitorGrain -> TweetMonitorGrain: DeduplicateAndFilter(tweets)
+TweetMonitorGrain -> TweetMonitorGrain: SaveToLocalStorage(filteredTweets)
+TweetMonitorGrain -> TweetMonitorGrain: UpdateExecutionStatus()
+TweetMonitorGrain -> TweetMonitorGrain: ScheduleNextReminder()
+```
+
+### 流程2: 积分奖励计算流程
+
+#### 业务描述
+每日00:00 UTC执行，获取指定时间区间内的推文，计算基础和附加奖励，记录发送状态。
+
+#### 涉及类和接口
+
+**主要Grain类**:
+- `TwitterRewardGrain : IGrainWithStringKey, IRemindable`
+- `TweetMonitorGrain : IGrainWithStringKey`
+- `TwitterInteractionGrain : IGrainWithStringKey`
+
+**核心接口**:
+```csharp
+public interface ITwitterRewardGrain : IGrainWithStringKey
+{
+    // 定时任务控制
+    Task<bool> StartRewardTaskAsync(string targetId);
+    Task<bool> StopRewardTaskAsync();
+    Task<TaskExecutionStatusDto> GetTaskStatusAsync();
+    
+    // 奖励计算
+    Task<RewardCalculationResultDto> CalculateRewardsAsync(RewardCalculationRequestDto request);
+    Task<RewardCalculationResultDto> CalculateRewardsByPeriodAsync(int startTimestamp, int endTimestamp);
+    
+    // 奖励查询
+    Task<List<RewardRecordDto>> GetRewardHistoryAsync(string userId, int days = 30);
+    Task<RewardStatisticsDto> GetRewardStatisticsAsync(int startTimestamp, int endTimestamp);
+    
+    // 系统管理
+    Task<bool> UpdateTimeConfigAsync(int offsetMinutes, int windowMinutes);
+    Task<List<string>> GetProcessedPeriodsAsync(int days = 7);
+}
+```
+
+**请求/响应DTO**:
+```csharp
+public class RewardCalculationRequestDto
+{
+    public int StartTimestamp { get; set; }
+    public int EndTimestamp { get; set; }
+    public bool ForceRecalculate { get; set; } = false;
+    public List<string> TargetUserIds { get; set; } // 可选，指定用户
+}
+
+public class RewardCalculationResultDto
+{
+    public bool Success { get; set; }
+    public int ProcessedTweets { get; set; }
+    public int AffectedUsers { get; set; }
+    public int TotalBaseRewards { get; set; }
+    public int TotalBonusRewards { get; set; }
+    public int TotalCreditsAwarded { get; set; }
+    public List<UserRewardDto> UserRewards { get; set; }
+    public string ProcessingPeriod { get; set; }
+    public string ErrorMessage { get; set; }
+    public int CalculationTimestamp { get; set; }
+}
+
+public class UserRewardDto
+{
+    public string UserId { get; set; }
+    public string UserHandle { get; set; }
+    public int BaseRewards { get; set; }
+    public int BonusRewards { get; set; }
+    public int TotalRewards { get; set; }
+    public int ProcessedTweetCount { get; set; }
+    public List<TweetRewardDetailDto> TweetDetails { get; set; }
+    public bool RewardsSent { get; set; }
+}
+
+public class TweetRewardDetailDto
+{
+    public string TweetId { get; set; }
+    public int ViewCount { get; set; }
+    public int FollowerCount { get; set; }
+    public int BaseReward { get; set; }
+    public int BonusReward { get; set; }
+    public bool HasShareLink { get; set; }
+    public double ShareLinkMultiplier { get; set; }
+    public int FinalReward { get; set; }
+    public string RewardTier { get; set; }
+}
+```
+
+#### 执行步骤泳道图
+
+```
+Timer -> TwitterRewardGrain: ReceiveReminder("DailyReward")
+TwitterRewardGrain -> TwitterRewardGrain: CheckTargetId & DailyWindow
+TwitterRewardGrain -> TwitterRewardGrain: CalculateProcessingPeriod(N-M, N)
+TwitterRewardGrain -> TwitterRewardGrain: CheckIfPeriodProcessed(periodId)
+TwitterRewardGrain -> TweetMonitorGrain: GetTweetsByPeriodAsync(timeRange)
+TweetMonitorGrain -> TwitterRewardGrain: List<TweetRecordDto>
+TwitterRewardGrain -> TwitterInteractionGrain: GetTweetDetailsAsync(tweetId) [for each]
+TwitterInteractionGrain -> Twitter API: Get current metrics
+Twitter API -> TwitterInteractionGrain: Updated view/follower counts
+TwitterInteractionGrain -> TwitterRewardGrain: TweetDetailsDto
+TwitterRewardGrain -> TwitterRewardGrain: CalculateRewardTier(views, followers)
+TwitterRewardGrain -> TwitterRewardGrain: ApplyShareLinkMultiplier(if applicable)
+TwitterRewardGrain -> TwitterRewardGrain: ApplyDailyLimits(userRewards)
+TwitterRewardGrain -> TwitterRewardGrain: TODO: SendCreditsToUser(userRewards)
+TwitterRewardGrain -> TwitterRewardGrain: RecordRewardHistory(processedRewards)
+TwitterRewardGrain -> TwitterRewardGrain: UpdateExecutionStatus(periodId)
+```
+
+### 流程3: 系统管理控制流程
+
+#### 业务描述
+通过管理接口控制定时任务的开启、停止、配置修改等操作。
+
+#### 涉及类和接口
+
+**管理接口**:
+```csharp
+public interface ITwitterSystemManagerGrain : IGrainWithStringKey
+{
+    // 任务控制
+    Task<bool> StartTaskAsync(string taskName, string targetId);
+    Task<bool> StopTaskAsync(string taskName);
+    Task<List<TaskExecutionStatusDto>> GetAllTaskStatusAsync();
+    
+    // 配置管理
+    Task<bool> UpdateTimeConfigAsync(string taskName, int offsetMinutes, int windowMinutes);
+    Task<TwitterRewardConfigDto> GetCurrentConfigAsync();
+    Task<bool> SetConfigAsync(TwitterRewardConfigDto config);
+    
+    // 手动执行
+    Task<PullTweetResultDto> ManualPullTweetsAsync(int startTimestamp, int endTimestamp);
+    Task<RewardCalculationResultDto> ManualCalculateRewardsAsync(int startTimestamp, int endTimestamp);
+    
+    // 系统状态
+    Task<SystemHealthDto> GetSystemHealthAsync();
+    Task<List<string>> GetProcessingHistoryAsync(int days = 7);
+}
+```
+
+**配置和状态DTO**:
+```csharp
+public class TwitterRewardConfigDto
+{
+    public string MonitorHandle { get; set; }
+    public string SelfAccountId { get; set; }
+    public bool EnablePullTask { get; set; }
+    public bool EnableRewardTask { get; set; }
+    public int TimeOffsetMinutes { get; set; }
+    public int TimeWindowMinutes { get; set; }
+    public int DataRetentionDays { get; set; }
+    public int MaxRetryAttempts { get; set; }
+    public string PullTaskTargetId { get; set; }
+    public string RewardTaskTargetId { get; set; }
+}
+
+public class SystemHealthDto
+{
+    public bool IsHealthy { get; set; }
+    public DateTime LastUpdateTime { get; set; }
+    public int ActiveTasks { get; set; }
+    public int PendingTweets { get; set; }
+    public int PendingRewards { get; set; }
+    public List<string> Warnings { get; set; }
+    public List<string> Errors { get; set; }
+    public Dictionary<string, object> Metrics { get; set; }
+}
+```
+
+### 流程4: 数据恢复补偿流程
+
+#### 业务描述
+系统故障后，检测丢失的时间区间，支持按区间重新拉取和处理数据。
+
+#### 涉及类和接口
+
+**恢复接口**:
+```csharp
+public interface ITwitterRecoveryGrain : IGrainWithStringKey
+{
+    // 故障检测
+    Task<List<MissingPeriodDto>> DetectMissingPeriodsAsync(int startTimestamp, int endTimestamp);
+    Task<SystemOutageDto> DetectSystemOutageAsync();
+    
+    // 数据恢复
+    Task<RecoveryResultDto> RecoverPeriodAsync(int startTimestamp, int endTimestamp);
+    Task<RecoveryResultDto> RecoverMultiplePeriodsAsync(List<TimeRange> periods);
+    
+    // 状态验证
+    Task<bool> ValidateDataIntegrityAsync(int startTimestamp, int endTimestamp);
+    Task<DataIntegrityReportDto> GenerateIntegrityReportAsync(int days = 7);
+}
+```
+
+**恢复相关DTO**:
+```csharp
+public class MissingPeriodDto
+{
+    public int StartTimestamp { get; set; }
+    public int EndTimestamp { get; set; }
+    public string PeriodId { get; set; }
+    public string MissingType { get; set; } // "TweetData", "RewardCalculation", "Both"
+    public int ExpectedTweetCount { get; set; }
+    public int ActualTweetCount { get; set; }
+    public bool HasRewardRecord { get; set; }
+}
+
+public class SystemOutageDto
+{
+    public bool OutageDetected { get; set; }
+    public int OutageStartTimestamp { get; set; }
+    public int OutageEndTimestamp { get; set; }
+    public int OutageDurationMinutes { get; set; }
+    public List<MissingPeriodDto> AffectedPeriods { get; set; }
+    public string RecoveryPlan { get; set; }
+}
+
+public class RecoveryResultDto
+{
+    public bool Success { get; set; }
+    public int RecoveredTweets { get; set; }
+    public int RecalculatedRewards { get; set; }
+    public int AffectedUsers { get; set; }
+    public List<string> ProcessedPeriods { get; set; }
+    public List<string> FailedPeriods { get; set; }
+    public string ErrorMessage { get; set; }
+    public int RecoveryTimestamp { get; set; }
+}
+```
+
+## 独立测试接口设计
+
+### 测试专用接口
+```csharp
+public interface ITwitterTestingGrain : IGrainWithStringKey
+{
+    // 时间控制测试
+    Task<bool> SetTestTimeOffsetAsync(int offsetHours);
+    Task<int> GetCurrentTestTimestampAsync();
+    Task<bool> SimulateTimePassageAsync(int minutes);
+    
+    // 数据模拟
+    Task<bool> InjectTestTweetDataAsync(List<TweetRecordDto> testTweets);
+    Task<bool> ClearTestDataAsync();
+    Task<TestDataSummaryDto> GetTestDataSummaryAsync();
+    
+    // 任务触发测试
+    Task<PullTweetResultDto> TriggerPullTaskAsync(bool useTestTime = true);
+    Task<RewardCalculationResultDto> TriggerRewardTaskAsync(bool useTestTime = true);
+    
+    // 状态重置
+    Task<bool> ResetAllTaskStatesAsync();
+    Task<bool> ResetExecutionHistoryAsync();
+}
+
+public class TestDataSummaryDto
+{
+    public int TotalTestTweets { get; set; }
+    public int TestUsers { get; set; }
+    public Dictionary<string, int> TweetsByType { get; set; }
+    public Dictionary<string, int> TweetsByTimeRange { get; set; }
+    public int CurrentTestTimeOffset { get; set; }
+    public bool IsTestModeActive { get; set; }
+}
+```
+
+## 系统事件定义
+
+### 控制事件
+```csharp
+[GenerateSerializer]
+public class TwitterTaskControlGEvent : EventBase
+{
+    [Id(0)] public string TaskName { get; set; }
+    [Id(1)] public TaskControlAction Action { get; set; }
+    [Id(2)] public int TimeOffsetMinutes { get; set; }
+    [Id(3)] public int TimeWindowMinutes { get; set; }
+    [Id(4)] public string TargetPeriod { get; set; }
+    [Id(5)] public string TargetId { get; set; }
+}
+
+[GenerateSerializer]
+public class TwitterConfigUpdateGEvent : EventBase
+{
+    [Id(0)] public TwitterRewardConfigDto Config { get; set; }
+    [Id(1)] public string UpdatedBy { get; set; }
+    [Id(2)] public int UpdateTimestamp { get; set; }
+}
+```
+
+### 状态事件
+```csharp
+[GenerateSerializer]
+public class TweetPullCompletedSEvent : TwitterSEventBase
+{
+    [Id(0)] public PullTweetResultDto Result { get; set; }
+    [Id(1)] public int ExecutionTimestamp { get; set; }
+}
+
+[GenerateSerializer]
+public class RewardCalculationCompletedSEvent : TwitterSEventBase
+{
+    [Id(0)] public RewardCalculationResultDto Result { get; set; }
+    [Id(1)] public string ProcessingPeriod { get; set; }
+    [Id(2)] public int ExecutionTimestamp { get; set; }
+}
+
+[GenerateSerializer]
+public class TaskConfigUpdatedSEvent : TwitterSEventBase
+{
+    [Id(0)] public string TaskName { get; set; }
+    [Id(1)] public TwitterRewardConfigDto NewConfig { get; set; }
+    [Id(2)] public int UpdateTimestamp { get; set; }
+}
+```
+
 ## 风险评估
 
 1. **Twitter API 限制**: 需要考虑API调用频率限制和配额管理
