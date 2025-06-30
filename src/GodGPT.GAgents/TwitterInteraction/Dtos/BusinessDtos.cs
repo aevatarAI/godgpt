@@ -528,4 +528,336 @@ public class SystemMetricsDto
     [Id(9)] public double ApiSuccessRate { get; set; }
     [Id(10)] public Dictionary<string, int> TweetsByType { get; set; } = new();
     [Id(11)] public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
+}
+
+/// <summary>
+/// 缺失时间段DTO
+/// </summary>
+[GenerateSerializer]
+public class MissingPeriodDto
+{
+    [Id(0)] public DateTime StartTime { get; set; }
+    [Id(1)] public DateTime EndTime { get; set; }
+    [Id(2)] public long StartTimestamp { get; set; }
+    [Id(3)] public long EndTimestamp { get; set; }
+    [Id(4)] public string PeriodId { get; set; } = string.Empty;
+    [Id(5)] public string MissingType { get; set; } = string.Empty; // "TweetData", "RewardCalculation", "Both"
+    [Id(6)] public int ExpectedTweetCount { get; set; }
+    [Id(7)] public int ActualTweetCount { get; set; }
+    [Id(8)] public bool HasRewardRecord { get; set; }
+    [Id(9)] public string Description { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 系统故障检测结果DTO
+/// </summary>
+[GenerateSerializer]
+public class SystemOutageDto
+{
+    [Id(0)] public bool OutageDetected { get; set; }
+    [Id(1)] public DateTime OutageStartTime { get; set; }
+    [Id(2)] public DateTime OutageEndTime { get; set; }
+    [Id(3)] public long OutageStartTimestamp { get; set; }
+    [Id(4)] public long OutageEndTimestamp { get; set; }
+    [Id(5)] public int OutageDurationMinutes { get; set; }
+    [Id(6)] public List<MissingPeriodDto> AffectedPeriods { get; set; } = new();
+    [Id(7)] public string RecoveryPlan { get; set; } = string.Empty;
+    [Id(8)] public int TotalMissingPeriods { get; set; }
+    [Id(9)] public string OutageReason { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 数据恢复结果DTO
+/// </summary>
+[GenerateSerializer]
+public class RecoveryResultDto
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public int RecoveredTweets { get; set; }
+    [Id(2)] public int RecalculatedRewards { get; set; }
+    [Id(3)] public int AffectedUsers { get; set; }
+    [Id(4)] public List<string> ProcessedPeriods { get; set; } = new();
+    [Id(5)] public List<string> FailedPeriods { get; set; } = new();
+    [Id(6)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(7)] public DateTime RecoveryStartTime { get; set; }
+    [Id(8)] public DateTime RecoveryEndTime { get; set; }
+    [Id(9)] public long RecoveryTimestamp { get; set; }
+    [Id(10)] public TimeSpan RecoveryDuration { get; set; }
+    [Id(11)] public List<RecoveryStepDto> RecoverySteps { get; set; } = new();
+}
+
+/// <summary>
+/// 恢复步骤DTO
+/// </summary>
+[GenerateSerializer]
+public class RecoveryStepDto
+{
+    [Id(0)] public string StepName { get; set; } = string.Empty;
+    [Id(1)] public bool IsCompleted { get; set; }
+    [Id(2)] public DateTime StartTime { get; set; }
+    [Id(3)] public DateTime? EndTime { get; set; }
+    [Id(4)] public string Status { get; set; } = string.Empty;
+    [Id(5)] public string Details { get; set; } = string.Empty;
+    [Id(6)] public string ErrorMessage { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 数据完整性报告DTO
+/// </summary>
+[GenerateSerializer]
+public class DataIntegrityReportDto
+{
+    [Id(0)] public DateTime GeneratedAt { get; set; }
+    [Id(1)] public long GeneratedAtTimestamp { get; set; }
+    [Id(2)] public TimeRangeDto InspectedRange { get; set; } = new();
+    [Id(3)] public bool IsDataComplete { get; set; }
+    [Id(4)] public int TotalExpectedPeriods { get; set; }
+    [Id(5)] public int ValidPeriods { get; set; }
+    [Id(6)] public int MissingPeriods { get; set; }
+    [Id(7)] public List<MissingPeriodDto> MissingData { get; set; } = new();
+    [Id(8)] public List<DataInconsistencyDto> Inconsistencies { get; set; } = new();
+    [Id(9)] public string RecommendedActions { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 数据不一致DTO
+/// </summary>
+[GenerateSerializer]
+public class DataInconsistencyDto
+{
+    [Id(0)] public string InconsistencyType { get; set; } = string.Empty;
+    [Id(1)] public string Description { get; set; } = string.Empty;
+    [Id(2)] public DateTime DetectedAt { get; set; }
+    [Id(3)] public string AffectedPeriod { get; set; } = string.Empty;
+    [Id(4)] public string Severity { get; set; } = string.Empty; // "Low", "Medium", "High", "Critical"
+    [Id(5)] public string RecommendedAction { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 恢复操作请求DTO
+/// </summary>
+[GenerateSerializer]
+public class RecoveryRequestDto
+{
+    [Id(0)] public DateTime StartTime { get; set; }
+    [Id(1)] public DateTime EndTime { get; set; }
+    [Id(2)] public long StartTimestamp { get; set; }
+    [Id(3)] public long EndTimestamp { get; set; }
+    [Id(4)] public bool ForceReprocess { get; set; } = false;
+    [Id(5)] public List<string> TargetPeriods { get; set; } = new();
+    [Id(6)] public bool RecoverTweetData { get; set; } = true;
+    [Id(7)] public bool RecalculateRewards { get; set; } = true;
+    [Id(8)] public string RequestedBy { get; set; } = string.Empty;
+    [Id(9)] public string RecoveryReason { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 测试数据摘要DTO
+/// </summary>
+[GenerateSerializer]
+public class TestDataSummaryDto
+{
+    [Id(0)] public int TotalTestTweets { get; set; }
+    [Id(1)] public int TestUsers { get; set; }
+    [Id(2)] public Dictionary<string, int> TweetsByType { get; set; } = new();
+    [Id(3)] public Dictionary<string, int> TweetsByTimeRange { get; set; } = new();
+    [Id(4)] public int CurrentTestTimeOffset { get; set; }
+    [Id(5)] public bool IsTestModeActive { get; set; }
+    [Id(6)] public DateTime LastDataInjection { get; set; }
+    [Id(7)] public long LastDataInjectionTimestamp { get; set; }
+}
+
+/// <summary>
+/// 测试处理结果DTO
+/// </summary>
+[GenerateSerializer]
+public class TestProcessingResultDto
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public PullTweetResultDto? PullResult { get; set; }
+    [Id(2)] public RewardCalculationResultDto? RewardResult { get; set; }
+    [Id(3)] public TimeRangeDto ProcessedRange { get; set; } = new();
+    [Id(4)] public DateTime ProcessingStartTime { get; set; }
+    [Id(5)] public DateTime ProcessingEndTime { get; set; }
+    [Id(6)] public TimeSpan ProcessingDuration { get; set; }
+    [Id(7)] public string ErrorMessage { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 测试场景DTO
+/// </summary>
+[GenerateSerializer]
+public class TestScenarioDto
+{
+    [Id(0)] public string ScenarioName { get; set; } = string.Empty;
+    [Id(1)] public string Description { get; set; } = string.Empty;
+    [Id(2)] public List<TestStepDto> Steps { get; set; } = new();
+    [Id(3)] public TimeRangeDto TestTimeRange { get; set; } = new();
+    [Id(4)] public int ExpectedTweets { get; set; }
+    [Id(5)] public int ExpectedUsers { get; set; }
+    [Id(6)] public List<ValidationRuleDto> ValidationRules { get; set; } = new();
+    [Id(7)] public Dictionary<string, object> Parameters { get; set; } = new();
+}
+
+/// <summary>
+/// 测试步骤DTO
+/// </summary>
+[GenerateSerializer]
+public class TestStepDto
+{
+    [Id(0)] public string StepName { get; set; } = string.Empty;
+    [Id(1)] public string StepType { get; set; } = string.Empty; // "InjectData", "TriggerTask", "Validate", "Wait"
+    [Id(2)] public Dictionary<string, object> Parameters { get; set; } = new();
+    [Id(3)] public int DelaySeconds { get; set; } = 0;
+    [Id(4)] public bool IsOptional { get; set; } = false;
+}
+
+/// <summary>
+/// 测试场景结果DTO
+/// </summary>
+[GenerateSerializer]
+public class TestScenarioResultDto
+{
+    [Id(0)] public string ScenarioName { get; set; } = string.Empty;
+    [Id(1)] public bool Success { get; set; }
+    [Id(2)] public DateTime StartTime { get; set; }
+    [Id(3)] public DateTime EndTime { get; set; }
+    [Id(4)] public TimeSpan Duration { get; set; }
+    [Id(5)] public List<TestStepResultDto> StepResults { get; set; } = new();
+    [Id(6)] public List<ValidationResultDto> ValidationResults { get; set; } = new();
+    [Id(7)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(8)] public Dictionary<string, object> Metrics { get; set; } = new();
+}
+
+/// <summary>
+/// 测试步骤结果DTO
+/// </summary>
+[GenerateSerializer]
+public class TestStepResultDto
+{
+    [Id(0)] public string StepName { get; set; } = string.Empty;
+    [Id(1)] public bool Success { get; set; }
+    [Id(2)] public DateTime StartTime { get; set; }
+    [Id(3)] public DateTime EndTime { get; set; }
+    [Id(4)] public TimeSpan Duration { get; set; }
+    [Id(5)] public string Result { get; set; } = string.Empty;
+    [Id(6)] public string ErrorMessage { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 压力测试配置DTO
+/// </summary>
+[GenerateSerializer]
+public class StressTestConfigDto
+{
+    [Id(0)] public string TestName { get; set; } = string.Empty;
+    [Id(1)] public int ConcurrentUsers { get; set; } = 10;
+    [Id(2)] public int TotalTweets { get; set; } = 1000;
+    [Id(3)] public TimeSpan Duration { get; set; } = TimeSpan.FromMinutes(10);
+    [Id(4)] public int TweetsPerMinute { get; set; } = 100;
+    [Id(5)] public bool IncludeRewardCalculation { get; set; } = true;
+    [Id(6)] public Dictionary<string, object> Parameters { get; set; } = new();
+}
+
+/// <summary>
+/// 压力测试结果DTO
+/// </summary>
+[GenerateSerializer]
+public class StressTestResultDto
+{
+    [Id(0)] public string TestName { get; set; } = string.Empty;
+    [Id(1)] public bool Success { get; set; }
+    [Id(2)] public DateTime StartTime { get; set; }
+    [Id(3)] public DateTime EndTime { get; set; }
+    [Id(4)] public TimeSpan ActualDuration { get; set; }
+    [Id(5)] public int TotalTweetsProcessed { get; set; }
+    [Id(6)] public int TotalRewardsCalculated { get; set; }
+    [Id(7)] public double AverageProcessingTime { get; set; }
+    [Id(8)] public double MaxProcessingTime { get; set; }
+    [Id(9)] public double ThroughputPerSecond { get; set; }
+    [Id(10)] public int ErrorCount { get; set; }
+    [Id(11)] public List<string> Errors { get; set; } = new();
+    [Id(12)] public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
+}
+
+/// <summary>
+/// 验证规则DTO
+/// </summary>
+[GenerateSerializer]
+public class ValidationRuleDto
+{
+    [Id(0)] public string RuleName { get; set; } = string.Empty;
+    [Id(1)] public string RuleType { get; set; } = string.Empty; // "DataCount", "TimeRange", "DataIntegrity", "Performance"
+    [Id(2)] public Dictionary<string, object> Parameters { get; set; } = new();
+    [Id(3)] public object ExpectedValue { get; set; } = new();
+    [Id(4)] public string Operator { get; set; } = "equals"; // "equals", "greater", "less", "between"
+    [Id(5)] public string Description { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 验证结果DTO
+/// </summary>
+[GenerateSerializer]
+public class ValidationResultDto
+{
+    [Id(0)] public string RuleName { get; set; } = string.Empty;
+    [Id(1)] public bool Passed { get; set; }
+    [Id(2)] public object ActualValue { get; set; } = new();
+    [Id(3)] public object ExpectedValue { get; set; } = new();
+    [Id(4)] public string Message { get; set; } = string.Empty;
+    [Id(5)] public DateTime ValidatedAt { get; set; }
+    [Id(6)] public string Details { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 测试报告DTO
+/// </summary>
+[GenerateSerializer]
+public class TestReportDto
+{
+    [Id(0)] public DateTime GeneratedAt { get; set; }
+    [Id(1)] public long GeneratedAtTimestamp { get; set; }
+    [Id(2)] public TimeRangeDto ReportPeriod { get; set; } = new();
+    [Id(3)] public int TotalTestsExecuted { get; set; }
+    [Id(4)] public int SuccessfulTests { get; set; }
+    [Id(5)] public int FailedTests { get; set; }
+    [Id(6)] public double SuccessRate { get; set; }
+    [Id(7)] public List<TestScenarioResultDto> ScenarioResults { get; set; } = new();
+    [Id(8)] public List<StressTestResultDto> StressTestResults { get; set; } = new();
+    [Id(9)] public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
+    [Id(10)] public List<string> Recommendations { get; set; } = new();
+    [Id(11)] public string Summary { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 测试执行记录DTO
+/// </summary>
+[GenerateSerializer]
+public class TestExecutionRecordDto
+{
+    [Id(0)] public string TestId { get; set; } = string.Empty;
+    [Id(1)] public string TestType { get; set; } = string.Empty;
+    [Id(2)] public string TestName { get; set; } = string.Empty;
+    [Id(3)] public DateTime ExecutionTime { get; set; }
+    [Id(4)] public long ExecutionTimestamp { get; set; }
+    [Id(5)] public bool Success { get; set; }
+    [Id(6)] public TimeSpan Duration { get; set; }
+    [Id(7)] public string Result { get; set; } = string.Empty;
+    [Id(8)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(9)] public Dictionary<string, object> Metrics { get; set; } = new();
+}
+
+/// <summary>
+/// 测试数据导出DTO
+/// </summary>
+[GenerateSerializer]
+public class TestDataExportDto
+{
+    [Id(0)] public string Format { get; set; } = string.Empty;
+    [Id(1)] public DateTime ExportedAt { get; set; }
+    [Id(2)] public long ExportedAtTimestamp { get; set; }
+    [Id(3)] public string Data { get; set; } = string.Empty;
+    [Id(4)] public int RecordCount { get; set; }
+    [Id(5)] public string Metadata { get; set; } = string.Empty;
+    [Id(6)] public List<string> IncludedFields { get; set; } = new();
 } 
