@@ -51,7 +51,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
         public void Configure(ISiloBuilder hostBuilder)
         {
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("/opt/evn/godgpt.appsettings.json")
+                .AddJsonFile("appsettings.json")
+               // .AddJsonFile("/opt/evn/godgpt.appsettings.json")
                 // .AddJsonFile("appsettings.secrets.json")
                 .Build();
 
@@ -129,6 +130,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
+            // .Configure<SystemLLMConfigOptions>(configuration.GetSection("SystemLLMConfigs"));
         }
     }
 
