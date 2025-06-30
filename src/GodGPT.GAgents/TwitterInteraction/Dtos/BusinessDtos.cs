@@ -302,12 +302,13 @@ public class RewardCalculationResultDto
     [Id(4)] public int EligibleTweets { get; set; }
     [Id(5)] public int UsersRewarded { get; set; }
     [Id(6)] public int TotalCreditsDistributed { get; set; }
-    [Id(7)] public List<UserRewardRecordDto> UserRewards { get; set; } = new();
-    [Id(8)] public DateTime ProcessingStartTime { get; set; }
-    [Id(9)] public DateTime ProcessingEndTime { get; set; }
-    [Id(10)] public TimeSpan ProcessingDuration { get; set; }
-    [Id(11)] public string ErrorMessage { get; set; } = string.Empty;
-    [Id(12)] public bool IsSuccess { get; set; }
+    [Id(7)] public int TotalCreditsAwarded { get; set; }
+    [Id(8)] public List<UserRewardRecordDto> UserRewards { get; set; } = new();
+    [Id(9)] public DateTime ProcessingStartTime { get; set; }
+    [Id(10)] public DateTime ProcessingEndTime { get; set; }
+    [Id(11)] public TimeSpan ProcessingDuration { get; set; }
+    [Id(12)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(13)] public bool IsSuccess { get; set; }
 }
 
 /// <summary>
@@ -690,13 +691,15 @@ public class TestProcessingResultDto
 public class TestScenarioDto
 {
     [Id(0)] public string ScenarioName { get; set; } = string.Empty;
-    [Id(1)] public string Description { get; set; } = string.Empty;
-    [Id(2)] public List<TestStepDto> Steps { get; set; } = new();
-    [Id(3)] public TimeRangeDto TestTimeRange { get; set; } = new();
-    [Id(4)] public int ExpectedTweets { get; set; }
-    [Id(5)] public int ExpectedUsers { get; set; }
-    [Id(6)] public List<ValidationRuleDto> ValidationRules { get; set; } = new();
-    [Id(7)] public Dictionary<string, object> Parameters { get; set; } = new();
+    [Id(1)] public string ScenarioId { get; set; } = string.Empty;
+    [Id(2)] public string Description { get; set; } = string.Empty;
+    [Id(3)] public List<TestStepDto> Steps { get; set; } = new();
+    [Id(4)] public TimeRangeDto TestTimeRange { get; set; } = new();
+    [Id(5)] public int ExpectedTweets { get; set; }
+    [Id(6)] public int ExpectedUsers { get; set; }
+    [Id(7)] public List<ValidationRuleDto> ValidationRules { get; set; } = new();
+    [Id(8)] public Dictionary<string, object> Parameters { get; set; } = new();
+    [Id(9)] public bool StopOnFirstFailure { get; set; } = false;
 }
 
 /// <summary>
@@ -707,9 +710,10 @@ public class TestStepDto
 {
     [Id(0)] public string StepName { get; set; } = string.Empty;
     [Id(1)] public string StepType { get; set; } = string.Empty; // "InjectData", "TriggerTask", "Validate", "Wait"
-    [Id(2)] public Dictionary<string, object> Parameters { get; set; } = new();
-    [Id(3)] public int DelaySeconds { get; set; } = 0;
-    [Id(4)] public bool IsOptional { get; set; } = false;
+    [Id(2)] public string Action { get; set; } = string.Empty;
+    [Id(3)] public Dictionary<string, object> Parameters { get; set; } = new();
+    [Id(4)] public int DelaySeconds { get; set; } = 0;
+    [Id(5)] public bool IsOptional { get; set; } = false;
 }
 
 /// <summary>
@@ -719,14 +723,18 @@ public class TestStepDto
 public class TestScenarioResultDto
 {
     [Id(0)] public string ScenarioName { get; set; } = string.Empty;
-    [Id(1)] public bool Success { get; set; }
-    [Id(2)] public DateTime StartTime { get; set; }
-    [Id(3)] public DateTime EndTime { get; set; }
-    [Id(4)] public TimeSpan Duration { get; set; }
-    [Id(5)] public List<TestStepResultDto> StepResults { get; set; } = new();
-    [Id(6)] public List<ValidationResultDto> ValidationResults { get; set; } = new();
-    [Id(7)] public string ErrorMessage { get; set; } = string.Empty;
-    [Id(8)] public Dictionary<string, object> Metrics { get; set; } = new();
+    [Id(1)] public string ScenarioId { get; set; } = string.Empty;
+    [Id(2)] public bool Success { get; set; }
+    [Id(3)] public DateTime StartTime { get; set; }
+    [Id(4)] public DateTime EndTime { get; set; }
+    [Id(5)] public DateTime ExecutionStartTime { get; set; }
+    [Id(6)] public DateTime ExecutionEndTime { get; set; }
+    [Id(7)] public TimeSpan Duration { get; set; }
+    [Id(8)] public TimeSpan TotalDuration { get; set; }
+    [Id(9)] public List<TestStepResultDto> StepResults { get; set; } = new();
+    [Id(10)] public List<ValidationResultDto> ValidationResults { get; set; } = new();
+    [Id(11)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(12)] public Dictionary<string, object> Metrics { get; set; } = new();
 }
 
 /// <summary>
@@ -741,7 +749,8 @@ public class TestStepResultDto
     [Id(3)] public DateTime EndTime { get; set; }
     [Id(4)] public TimeSpan Duration { get; set; }
     [Id(5)] public string Result { get; set; } = string.Empty;
-    [Id(6)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(6)] public string Output { get; set; } = string.Empty;
+    [Id(7)] public string ErrorMessage { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -754,9 +763,11 @@ public class StressTestConfigDto
     [Id(1)] public int ConcurrentUsers { get; set; } = 10;
     [Id(2)] public int TotalTweets { get; set; } = 1000;
     [Id(3)] public TimeSpan Duration { get; set; } = TimeSpan.FromMinutes(10);
-    [Id(4)] public int TweetsPerMinute { get; set; } = 100;
-    [Id(5)] public bool IncludeRewardCalculation { get; set; } = true;
-    [Id(6)] public Dictionary<string, object> Parameters { get; set; } = new();
+    [Id(4)] public int TestDurationMinutes { get; set; } = 10;
+    [Id(5)] public int TweetsPerMinute { get; set; } = 100;
+    [Id(6)] public bool IncludeRewardCalculation { get; set; } = true;
+    [Id(7)] public List<string> TestOperations { get; set; } = new();
+    [Id(8)] public Dictionary<string, object> Parameters { get; set; } = new();
 }
 
 /// <summary>
@@ -767,17 +778,27 @@ public class StressTestResultDto
 {
     [Id(0)] public string TestName { get; set; } = string.Empty;
     [Id(1)] public bool Success { get; set; }
-    [Id(2)] public DateTime StartTime { get; set; }
-    [Id(3)] public DateTime EndTime { get; set; }
-    [Id(4)] public TimeSpan ActualDuration { get; set; }
-    [Id(5)] public int TotalTweetsProcessed { get; set; }
-    [Id(6)] public int TotalRewardsCalculated { get; set; }
-    [Id(7)] public double AverageProcessingTime { get; set; }
-    [Id(8)] public double MaxProcessingTime { get; set; }
-    [Id(9)] public double ThroughputPerSecond { get; set; }
-    [Id(10)] public int ErrorCount { get; set; }
-    [Id(11)] public List<string> Errors { get; set; } = new();
-    [Id(12)] public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
+    [Id(2)] public int ConcurrentUsers { get; set; }
+    [Id(3)] public int TestDurationMinutes { get; set; }
+    [Id(4)] public DateTime StartTime { get; set; }
+    [Id(5)] public DateTime EndTime { get; set; }
+    [Id(6)] public TimeSpan ActualDuration { get; set; }
+    [Id(7)] public int TotalTweetsProcessed { get; set; }
+    [Id(8)] public int TotalRewardsCalculated { get; set; }
+    [Id(9)] public int TotalRequests { get; set; }
+    [Id(10)] public int SuccessfulRequests { get; set; }
+    [Id(11)] public int FailedRequests { get; set; }
+    [Id(12)] public double AverageProcessingTime { get; set; }
+    [Id(13)] public double AverageResponseTime { get; set; }
+    [Id(14)] public double MaxProcessingTime { get; set; }
+    [Id(15)] public double MaxResponseTime { get; set; }
+    [Id(16)] public double MinResponseTime { get; set; }
+    [Id(17)] public double ThroughputPerSecond { get; set; }
+    [Id(18)] public int ErrorCount { get; set; }
+    [Id(19)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(20)] public List<string> Errors { get; set; } = new();
+    [Id(21)] public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
+    [Id(22)] public Dictionary<string, double> Metrics { get; set; } = new();
 }
 
 /// <summary>
@@ -792,6 +813,8 @@ public class ValidationRuleDto
     [Id(3)] public object ExpectedValue { get; set; } = new();
     [Id(4)] public string Operator { get; set; } = "equals"; // "equals", "greater", "less", "between"
     [Id(5)] public string Description { get; set; } = string.Empty;
+    [Id(6)] public bool IsValid { get; set; } = true;
+    [Id(7)] public string ErrorMessage { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -802,11 +825,19 @@ public class ValidationResultDto
 {
     [Id(0)] public string RuleName { get; set; } = string.Empty;
     [Id(1)] public bool Passed { get; set; }
-    [Id(2)] public object ActualValue { get; set; } = new();
-    [Id(3)] public object ExpectedValue { get; set; } = new();
-    [Id(4)] public string Message { get; set; } = string.Empty;
-    [Id(5)] public DateTime ValidatedAt { get; set; }
-    [Id(6)] public string Details { get; set; } = string.Empty;
+    [Id(2)] public bool Success { get; set; }
+    [Id(3)] public object ActualValue { get; set; } = new();
+    [Id(4)] public object ExpectedValue { get; set; } = new();
+    [Id(5)] public string Message { get; set; } = string.Empty;
+    [Id(6)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(7)] public DateTime ValidatedAt { get; set; }
+    [Id(8)] public DateTime ValidationStartTime { get; set; }
+    [Id(9)] public DateTime ValidationEndTime { get; set; }
+    [Id(10)] public TimeSpan ValidationDuration { get; set; }
+    [Id(11)] public string Details { get; set; } = string.Empty;
+    [Id(12)] public List<ValidationRuleDto> RuleResults { get; set; } = new();
+    [Id(13)] public int PassedRules { get; set; }
+    [Id(14)] public int FailedRules { get; set; }
 }
 
 /// <summary>
@@ -815,18 +846,26 @@ public class ValidationResultDto
 [GenerateSerializer]
 public class TestReportDto
 {
-    [Id(0)] public DateTime GeneratedAt { get; set; }
-    [Id(1)] public long GeneratedAtTimestamp { get; set; }
-    [Id(2)] public TimeRangeDto ReportPeriod { get; set; } = new();
-    [Id(3)] public int TotalTestsExecuted { get; set; }
-    [Id(4)] public int SuccessfulTests { get; set; }
-    [Id(5)] public int FailedTests { get; set; }
-    [Id(6)] public double SuccessRate { get; set; }
-    [Id(7)] public List<TestScenarioResultDto> ScenarioResults { get; set; } = new();
-    [Id(8)] public List<StressTestResultDto> StressTestResults { get; set; } = new();
-    [Id(9)] public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
-    [Id(10)] public List<string> Recommendations { get; set; } = new();
-    [Id(11)] public string Summary { get; set; } = string.Empty;
+    [Id(0)] public string ReportId { get; set; } = string.Empty;
+    [Id(1)] public string ReportType { get; set; } = string.Empty;
+    [Id(2)] public DateTime GeneratedAt { get; set; }
+    [Id(3)] public long GeneratedAtTimestamp { get; set; }
+    [Id(4)] public TimeRangeDto ReportPeriod { get; set; } = new();
+    [Id(5)] public int TotalTestsExecuted { get; set; }
+    [Id(6)] public int TotalExecutions { get; set; }
+    [Id(7)] public int SuccessfulTests { get; set; }
+    [Id(8)] public int SuccessfulExecutions { get; set; }
+    [Id(9)] public int FailedTests { get; set; }
+    [Id(10)] public int FailedExecutions { get; set; }
+    [Id(11)] public double SuccessRate { get; set; }
+    [Id(12)] public List<TestScenarioResultDto> ScenarioResults { get; set; } = new();
+    [Id(13)] public List<StressTestResultDto> StressTestResults { get; set; } = new();
+    [Id(14)] public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
+    [Id(15)] public Dictionary<string, double> TestMetrics { get; set; } = new();
+    [Id(16)] public Dictionary<string, int> ExecutionsByType { get; set; } = new();
+    [Id(17)] public string TestSummary { get; set; } = string.Empty;
+    [Id(18)] public List<string> Recommendations { get; set; } = new();
+    [Id(19)] public string Summary { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -853,11 +892,25 @@ public class TestExecutionRecordDto
 [GenerateSerializer]
 public class TestDataExportDto
 {
-    [Id(0)] public string Format { get; set; } = string.Empty;
-    [Id(1)] public DateTime ExportedAt { get; set; }
-    [Id(2)] public long ExportedAtTimestamp { get; set; }
-    [Id(3)] public string Data { get; set; } = string.Empty;
-    [Id(4)] public int RecordCount { get; set; }
-    [Id(5)] public string Metadata { get; set; } = string.Empty;
-    [Id(6)] public List<string> IncludedFields { get; set; } = new();
+    [Id(0)] public string ExportId { get; set; } = string.Empty;
+    [Id(1)] public string Format { get; set; } = string.Empty;
+    [Id(2)] public DateTime ExportTime { get; set; }
+    [Id(3)] public long ExportTimestamp { get; set; }
+    [Id(4)] public string ExportData { get; set; } = string.Empty;
+    [Id(5)] public TestDataSummaryDto TestDataSummary { get; set; } = new();
+    [Id(6)] public int DataSize { get; set; }
+}
+
+/// <summary>
+/// 规则验证结果
+/// </summary>
+[GenerateSerializer]
+public class RuleValidationResult
+{
+    [Id(0)] public string RuleName { get; set; } = string.Empty;
+    [Id(1)] public bool IsValid { get; set; }
+    [Id(2)] public DateTime ValidationTime { get; set; }
+    [Id(3)] public string ValidationMessage { get; set; } = string.Empty;
+    [Id(4)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(5)] public Dictionary<string, object> ValidationData { get; set; } = new();
 } 
