@@ -884,6 +884,11 @@ public class TestExecutionRecordDto
     [Id(7)] public string Result { get; set; } = string.Empty;
     [Id(8)] public string ErrorMessage { get; set; } = string.Empty;
     [Id(9)] public Dictionary<string, object> Metrics { get; set; } = new();
+    // Additional properties for testing
+    [Id(10)] public string ExecutionId { get; set; } = string.Empty;
+    [Id(11)] public string OperationType { get; set; } = string.Empty;
+    [Id(12)] public string Details { get; set; } = string.Empty;
+    [Id(13)] public double TestTimeOffset { get; set; }
 }
 
 /// <summary>

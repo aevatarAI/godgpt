@@ -336,7 +336,8 @@ public class TwitterTestingGrain : Grain, ITwitterTestingGrain
         result.ProcessingEndTime = DateTime.UtcNow;
         result.ProcessingDuration = result.ProcessingEndTime - result.ProcessingStartTime;
         
-        await RecordTestExecutionAsync("PullTask", result.Success, result.ProcessingDuration.TotalMilliseconds, result.ErrorMessage);
+                    await RecordTestExecutionAsync("PullTask", result.Success, 
+                $"Duration: {result.ProcessingDuration.TotalMilliseconds}ms, {result.ErrorMessage}");
         
         return result;
     }
@@ -389,7 +390,8 @@ public class TwitterTestingGrain : Grain, ITwitterTestingGrain
         result.ProcessingEndTime = DateTime.UtcNow;
         result.ProcessingDuration = result.ProcessingEndTime - result.ProcessingStartTime;
         
-        await RecordTestExecutionAsync("RewardTask", result.Success, result.ProcessingDuration.TotalMilliseconds, result.ErrorMessage);
+                    await RecordTestExecutionAsync("RewardTask", result.Success, 
+                $"Duration: {result.ProcessingDuration.TotalMilliseconds}ms, {result.ErrorMessage}");
         
         return result;
     }
@@ -493,7 +495,8 @@ public class TwitterTestingGrain : Grain, ITwitterTestingGrain
         result.ProcessingEndTime = DateTime.UtcNow;
         result.ProcessingDuration = result.ProcessingEndTime - result.ProcessingStartTime;
         
-        await RecordTestExecutionAsync("RangeProcessing", result.Success, result.ProcessingDuration.TotalMilliseconds, result.ErrorMessage);
+                    await RecordTestExecutionAsync("RangeProcessing", result.Success, 
+                $"Duration: {result.ProcessingDuration.TotalMilliseconds}ms, {result.ErrorMessage}");
         
         return result;
     }
@@ -663,7 +666,8 @@ public class TwitterTestingGrain : Grain, ITwitterTestingGrain
             _logger.LogError(ex, $"Failed to execute test scenario: {scenario.ScenarioName}");
         }
 
-        await RecordTestExecutionAsync($"Scenario_{scenario.ScenarioName}", result.Success, result.Duration.TotalMilliseconds, result.ErrorMessage);
+                    await RecordTestExecutionAsync($"Scenario_{scenario.ScenarioName}", result.Success, 
+                $"Duration: {result.Duration.TotalMilliseconds}ms, {result.ErrorMessage}");
         
         return result;
     }
@@ -751,7 +755,8 @@ public class TwitterTestingGrain : Grain, ITwitterTestingGrain
             result.Success = failCount == 0;
             result.Errors = errors.Take(10).ToList(); // 只记录前10个错误
 
-            await RecordTestExecutionAsync("StressTest", result.Success, result.ActualDuration, result.ErrorMessage);
+            await RecordTestExecutionAsync("StressTest", result.Success, 
+                $"Duration: {result.ActualDuration.TotalMilliseconds}ms, {result.ErrorMessage}");
 
         }
         catch (Exception ex)
@@ -761,21 +766,8 @@ public class TwitterTestingGrain : Grain, ITwitterTestingGrain
             result.EndTime = DateTime.UtcNow;
         }
 
-        // 转换为TestScenarioResultDto
-        return new TestScenarioResultDto
-        {
-            ScenarioName = config.TestName,
-            ScenarioId = Guid.NewGuid().ToString(),
-            Success = result.Success,
-            StartTime = result.StartTime,
-            EndTime = result.EndTime,
-            ExecutionStartTime = result.StartTime,
-            ExecutionEndTime = result.EndTime,
-            Duration = result.ActualDuration,
-            TotalDuration = result.ActualDuration,
-            ErrorMessage = result.ErrorMessage,
-            Metrics = result.Metrics
-        };
+        // 返回StressTestResultDto
+        return result;
     }
     
     public async Task<List<ValidationResultDto>> ValidateSystemBehaviorWithListAsync(List<ValidationRuleDto> rules)
@@ -1213,4 +1205,29 @@ public class TwitterTestingGrain : Grain, ITwitterTestingGrain
     }
     
     #endregion
+
+    /// <summary>
+    /// Record test execution for tracking and reporting
+    /// </summary>
+    private async Task RecordTestExecutionAsync(string operationType, bool success, string details = "")
+    {
+        var record = new TestExecutionRecordDto
+        {
+            ExecutionId = Guid.NewGuid().ToString(),
+            OperationType = operationType,
+            ExecutionTime = DateTime.UtcNow,
+            Success = success,
+            Details = details,
+            TestTimeOffset = _testTimeOffsetHours
+        };
+
+        _executionHistory.Add(record);
+        
+        // Keep only last 100 records to prevent memory issues
+        if (_executionHistory.Count > 100)
+        {
+            _executionHistory.RemoveAt(0);
+        }
+    }
+
 } 
