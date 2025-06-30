@@ -55,6 +55,12 @@ public class TwitterRewardOptions
         new() { MinViews = 5000, MinFollowers = 1000, RewardCredits = 80 },
         new() { MinViews = 10000, MinFollowers = 1000, RewardCredits = 120 }
     };
+
+    /// <summary>
+    /// 推文监控相关配置
+    /// </summary>
+    public int MonitoringIntervalMinutes { get; set; } = 30;
+    public int BatchFetchSize { get; set; } = 100;
 }
 
 [GenerateSerializer]
