@@ -418,18 +418,25 @@ public class TaskExecutionStatusDto
 
 #### 执行步骤泳道图
 
-```
-Timer -> TweetMonitorGrain: ReceiveReminder("PullTweets")
-TweetMonitorGrain -> TweetMonitorGrain: CheckTargetId & ExecutionWindow
-TweetMonitorGrain -> TweetMonitorGrain: CalculateTimeRange(currentTime, 10min)
-TweetMonitorGrain -> TwitterInteractionGrain: SearchTweetsAsync(timeRange)
-TwitterInteractionGrain -> Twitter API: Search @GodGPT_ tweets
-Twitter API -> TwitterInteractionGrain: Return tweet list
-TwitterInteractionGrain -> TweetMonitorGrain: TwitterApiResultDto
-TweetMonitorGrain -> TweetMonitorGrain: DeduplicateAndFilter(tweets)
-TweetMonitorGrain -> TweetMonitorGrain: SaveToLocalStorage(filteredTweets)
-TweetMonitorGrain -> TweetMonitorGrain: UpdateExecutionStatus()
-TweetMonitorGrain -> TweetMonitorGrain: ScheduleNextReminder()
+```mermaid
+sequenceDiagram
+    participant Timer as "定时器"
+    participant TMG as "TweetMonitorGrain"
+    participant TIG as "TwitterInteractionGrain"
+    participant API as "Twitter API"
+    participant Storage as "本地存储"
+
+    Timer->>TMG: ReceiveReminder("PullTweets")
+    TMG->>TMG: CheckTargetId & ExecutionWindow
+    TMG->>TMG: CalculateTimeRange(currentTime, 10min)
+    TMG->>TIG: SearchTweetsAsync(timeRange)
+    TIG->>API: Search @GodGPT_ tweets
+    API-->>TIG: Return tweet list
+    TIG-->>TMG: TwitterApiResultDto
+    TMG->>TMG: DeduplicateAndFilter(tweets)
+    TMG->>Storage: SaveToLocalStorage(filteredTweets)
+    TMG->>TMG: UpdateExecutionStatus()
+    TMG->>TMG: ScheduleNextReminder()
 ```
 
 ### 流程2: 积分奖励计算流程
@@ -519,29 +526,75 @@ public class TweetRewardDetailDto
 
 #### 执行步骤泳道图
 
-```
-Timer -> TwitterRewardGrain: ReceiveReminder("DailyReward")
-TwitterRewardGrain -> TwitterRewardGrain: CheckTargetId & DailyWindow
-TwitterRewardGrain -> TwitterRewardGrain: CalculateProcessingPeriod(N-M, N)
-TwitterRewardGrain -> TwitterRewardGrain: CheckIfPeriodProcessed(periodId)
-TwitterRewardGrain -> TweetMonitorGrain: GetTweetsByPeriodAsync(timeRange)
-TweetMonitorGrain -> TwitterRewardGrain: List<TweetRecordDto>
-TwitterRewardGrain -> TwitterInteractionGrain: GetTweetDetailsAsync(tweetId) [for each]
-TwitterInteractionGrain -> Twitter API: Get current metrics
-Twitter API -> TwitterInteractionGrain: Updated view/follower counts
-TwitterInteractionGrain -> TwitterRewardGrain: TweetDetailsDto
-TwitterRewardGrain -> TwitterRewardGrain: CalculateRewardTier(views, followers)
-TwitterRewardGrain -> TwitterRewardGrain: ApplyShareLinkMultiplier(if applicable)
-TwitterRewardGrain -> TwitterRewardGrain: ApplyDailyLimits(userRewards)
-TwitterRewardGrain -> TwitterRewardGrain: TODO: SendCreditsToUser(userRewards)
-TwitterRewardGrain -> TwitterRewardGrain: RecordRewardHistory(processedRewards)
-TwitterRewardGrain -> TwitterRewardGrain: UpdateExecutionStatus(periodId)
+```mermaid
+sequenceDiagram
+    participant Timer as "定时器"
+    participant TRG as "TwitterRewardGrain"
+    participant TMG as "TweetMonitorGrain"
+    participant TIG as "TwitterInteractionGrain"
+    participant API as "Twitter API"
+    participant UserAccount as "用户积分账户"
+
+    Timer->>TRG: ReceiveReminder("DailyReward")
+    TRG->>TRG: CheckTargetId & DailyWindow
+    TRG->>TRG: CalculateProcessingPeriod(N-M, N)
+    TRG->>TRG: CheckIfPeriodProcessed(periodId)
+    TRG->>TMG: GetTweetsByPeriodAsync(timeRange)
+    TMG-->>TRG: List<TweetRecordDto>
+    
+    loop 处理每条推文
+        TRG->>TIG: GetTweetDetailsAsync(tweetId)
+        TIG->>API: Get current metrics
+        API-->>TIG: Updated view/follower counts
+        TIG-->>TRG: TweetDetailsDto
+        TRG->>TRG: CalculateRewardTier(views, followers)
+        TRG->>TRG: ApplyShareLinkMultiplier(if applicable)
+    end
+    
+    TRG->>TRG: ApplyDailyLimits(userRewards)
+    TRG->>UserAccount: TODO: SendCreditsToUser(userRewards)
+    TRG->>TRG: RecordRewardHistory(processedRewards)
+    TRG->>TRG: UpdateExecutionStatus(periodId)
 ```
 
 ### 流程3: 系统管理控制流程
 
 #### 业务描述
 通过管理接口控制定时任务的开启、停止、配置修改等操作。
+
+#### 执行步骤泳道图
+
+```mermaid
+sequenceDiagram
+    participant Admin as "管理员"
+    participant TSM as "TwitterSystemManagerGrain"
+    participant TMG as "TweetMonitorGrain"
+    participant TRG as "TwitterRewardGrain"
+    participant Config as "配置存储"
+
+    Note over Admin,Config: 任务控制流程
+    Admin->>TSM: StartTaskAsync(taskName, targetId)
+    TSM->>TMG: StartPullTaskAsync(targetId)
+    TMG->>TMG: 注册定时提醒器
+    TMG-->>TSM: Success
+    TSM-->>Admin: Task Started
+    
+    Note over Admin,Config: 配置更新流程
+    Admin->>TSM: UpdateTimeConfigAsync(offsetMinutes, windowMinutes)
+    TSM->>Config: SaveConfig(newConfig)
+    TSM->>TMG: UpdateConfig(newConfig)
+    TSM->>TRG: UpdateConfig(newConfig)
+    TMG-->>TSM: Config Updated
+    TRG-->>TSM: Config Updated
+    TSM-->>Admin: Config Updated
+    
+    Note over Admin,Config: 手动执行流程
+    Admin->>TSM: ManualPullTweetsAsync(startTime, endTime)
+    TSM->>TMG: PullTweetsByPeriodAsync(timeRange)
+    TMG->>TMG: 执行数据拉取
+    TMG-->>TSM: PullTweetResultDto
+    TSM-->>Admin: 执行结果
+```
 
 #### 涉及类和接口
 
@@ -603,6 +656,41 @@ public class SystemHealthDto
 #### 业务描述
 系统故障后，检测丢失的时间区间，支持按区间重新拉取和处理数据。
 
+#### 执行步骤泳道图
+
+```mermaid
+sequenceDiagram
+    participant Admin as "管理员"
+    participant TRC as "TwitterRecoveryGrain"
+    participant TMG as "TweetMonitorGrain"
+    participant TRG as "TwitterRewardGrain"
+    participant Storage as "数据存储"
+
+    Note over Admin,Storage: 故障检测流程
+    Admin->>TRC: DetectSystemOutageAsync()
+    TRC->>Storage: 分析执行历史记录
+    TRC->>TRC: 计算丢失时间区间
+    TRC-->>Admin: SystemOutageDto(丢失区间列表)
+    
+    Note over Admin,Storage: 数据恢复流程
+    Admin->>TRC: RecoverPeriodAsync(startTime, endTime)
+    TRC->>TMG: PullTweetsByPeriodAsync(timeRange)
+    TMG->>TMG: 重新拉取推文数据
+    TMG-->>TRC: PullTweetResultDto
+    
+    TRC->>TRG: CalculateRewardsByPeriodAsync(timeRange)
+    TRG->>TRG: 重新计算奖励
+    TRG-->>TRC: RewardCalculationResultDto
+    
+    TRC->>Storage: 更新恢复状态记录
+    TRC-->>Admin: RecoveryResultDto(恢复结果)
+    
+    Note over Admin,Storage: 数据完整性验证
+    Admin->>TRC: ValidateDataIntegrityAsync(timeRange)
+    TRC->>Storage: 验证数据完整性
+    TRC-->>Admin: 验证结果
+```
+
 #### 涉及类和接口
 
 **恢复接口**:
@@ -660,6 +748,44 @@ public class RecoveryResultDto
 ```
 
 ## 独立测试接口设计
+
+### 测试流程泳道图
+
+```mermaid
+sequenceDiagram
+    participant Tester as "测试人员"
+    participant TTG as "TwitterTestingGrain"
+    participant TMG as "TweetMonitorGrain"
+    participant TRG as "TwitterRewardGrain"
+    participant TestData as "测试数据"
+
+    Note over Tester,TestData: 测试环境准备
+    Tester->>TTG: SetTestTimeOffsetAsync(offsetHours)
+    TTG->>TTG: 设置测试时间偏移
+    Tester->>TTG: InjectTestTweetDataAsync(testTweets)
+    TTG->>TestData: 注入测试推文数据
+    TTG-->>Tester: 测试环境就绪
+    
+    Note over Tester,TestData: 手动触发测试
+    Tester->>TTG: TriggerPullTaskAsync(useTestTime=true)
+    TTG->>TMG: 手动触发推文拉取
+    TMG->>TestData: 获取测试数据
+    TMG-->>TTG: PullTweetResultDto
+    TTG-->>Tester: 拉取结果
+    
+    Tester->>TTG: TriggerRewardTaskAsync(useTestTime=true)
+    TTG->>TRG: 手动触发奖励计算
+    TRG->>TestData: 计算测试奖励
+    TRG-->>TTG: RewardCalculationResultDto
+    TTG-->>Tester: 计算结果
+    
+    Note over Tester,TestData: 测试验证和清理
+    Tester->>TTG: GetTestDataSummaryAsync()
+    TTG-->>Tester: TestDataSummaryDto
+    Tester->>TTG: ClearTestDataAsync()
+    TTG->>TestData: 清理测试数据
+    TTG-->>Tester: 清理完成
+```
 
 ### 测试专用接口
 ```csharp
