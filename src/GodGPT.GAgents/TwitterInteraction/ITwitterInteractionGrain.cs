@@ -96,4 +96,21 @@ public interface ITwitterInteractionGrain : IGrainWithStringKey
     /// <returns>提取的分享链接列表</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<List<string>>> ExtractShareLinksAsync(string tweetText);
+
+    /// <summary>
+    /// 从推文文本中提取所有URL链接（辅助方法）
+    /// </summary>
+    /// <param name="tweetText">推文文本</param>
+    /// <returns>提取的URL列表</returns>
+    [ReadOnly]
+    Task<TwitterApiResultDto<List<string>>> ExtractUrlsFromTweetAsync(string tweetText);
+
+    /// <summary>
+    /// 批量处理推文（业务方法）
+    /// 包括分析推文类型、验证分享链接等
+    /// </summary>
+    /// <param name="request">批量处理请求</param>
+    /// <returns>批量处理结果</returns>
+    [ReadOnly]
+    Task<TwitterApiResultDto<BatchTweetProcessResponseDto>> BatchProcessTweetsAsync(BatchTweetProcessRequestDto request);
 } 
