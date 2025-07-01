@@ -1,5 +1,6 @@
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
+using Aevatar.Application.Grains.Agents.Anonymous.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
@@ -25,6 +26,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"));
         Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
         Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
+        Configure<AnonymousGodGPTOptions>(configuration.GetSection("AnonymousGodGPT"));
 
         context.Services.AddHttpClient();
     }
