@@ -429,12 +429,12 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 if (dataElement.TryGetProperty("id", out var idElement))
                     tweetDetails.TweetId = idElement.GetString() ?? "";
 
-                // 🛡️ 隐私保护：不存储推文文本内容，但临时获取用于分享链接检查
+                // Privacy protection: Do not store tweet text content, but temporarily get it for share link validation
                 string tweetText = "";
                 if (dataElement.TryGetProperty("text", out var textElement))
                 {
                     tweetText = textElement.GetString() ?? "";
-                    // Text字段保持为空字符串，不存储内容
+                    // Keep Text field as empty string, do not store content
                     tweetDetails.Text = string.Empty;
                 }
 
@@ -483,20 +483,20 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                     }
                 }
 
-                // 🎯 分享链接检查：在解析时完成，不存储链接内容
+                // Share link validation: Completed during parsing, no link content stored
                 if (!string.IsNullOrEmpty(tweetText))
                 {
                     var shareLinksResult = await ExtractShareLinksAsync(tweetText);
                     if (shareLinksResult.IsSuccess && shareLinksResult.Data.Any())
                     {
-                        // 验证第一个分享链接
+                        // Validate first share link
                         var firstShareLink = shareLinksResult.Data.First();
                         var validationResult = await ValidateShareLinkAsync(firstShareLink);
                         
                         if (validationResult.IsSuccess && validationResult.Data.IsValid)
                         {
                             tweetDetails.HasValidShareLink = true;
-                            // ShareLinkUrl字段保持为空字符串，不存储内容
+                            // Keep ShareLinkUrl field as empty string, do not store content
                             tweetDetails.ShareLinkUrl = string.Empty;
                         }
                         else
@@ -989,9 +989,9 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
     }
 
     /// <summary>
-    /// 批量验证推文中的分享链接
-    /// ⚠️ 注意：此方法依赖TweetDto.Text字段，仅用于处理从Twitter API直接获取的原始数据
-    /// 对于已存储的推文数据，应使用HasValidShareLink字段
+    /// Batch validate share links in tweets
+    /// Warning: This method relies on TweetDto.Text field, only for processing raw data from Twitter API
+    /// For stored tweet data, use HasValidShareLink field instead
     /// </summary>
     public async Task<TwitterApiResultDto<Dictionary<string, bool>>> BatchValidateShareLinksAsync(List<TweetDto> tweets)
     {
@@ -1003,8 +1003,8 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             
             foreach (var tweet in tweets)
             {
-                // ⚠️ 此处使用tweet.Text是因为TweetDto来自Twitter API的原始响应
-                // 对于存储的数据，Text字段为空，应使用HasValidShareLink字段
+                // Using tweet.Text here because TweetDto comes from Twitter API raw response
+                // For stored data, Text field is empty, use HasValidShareLink field instead
                 var linksResult = await ExtractShareLinksAsync(tweet.Text);
                 if (linksResult.IsSuccess)
                 {
@@ -1074,9 +1074,9 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             var userInfoResult = await GetUserInfoAsync(tweetDetails.AuthorId);
             var followerCount = userInfoResult.IsSuccess ? userInfoResult.Data.FollowersCount : 0;
 
-            // 3. 🎯 使用已解析的分享链接信息（无需重新分析文本）
+            // 3. Use pre-parsed share link info (no need to re-analyze text)
             var hasValidShareLink = tweetDetails.HasValidShareLink;
-            var shareLinkUrl = string.Empty; // 不存储链接内容，保持为空
+            var shareLinkUrl = string.Empty; // Do not store link content, keep empty
 
             // 4. 组装结果
             var result = new TweetProcessResultDto
@@ -1089,7 +1089,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 ViewCount = tweetDetails.ViewCount,
                 FollowerCount = followerCount,
                 HasValidShareLink = hasValidShareLink,
-                ShareLinkUrl = shareLinkUrl // 保持为空，不存储链接内容
+                ShareLinkUrl = shareLinkUrl // Keep empty, do not store link content
             };
 
             return new TwitterApiResultDto<TweetProcessResultDto>

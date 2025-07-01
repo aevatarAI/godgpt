@@ -616,12 +616,12 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                         AuthorName = tweetDetails.AuthorName,
                         CreatedAt = tweet.CreatedAt,
                         CreatedAtUtc = ((DateTimeOffset)tweet.CreatedAt).ToUnixTimeSeconds(),
-                        Text = string.Empty, // 🛡️ 隐私保护：不存储推文文本内容
+                        Text = string.Empty, // Privacy protection: Do not store tweet text content
                         Type = tweetDetails.Type,
                         ViewCount = tweetDetails.ViewCount,
                         FollowerCount = tweetDetails.FollowerCount,
                         HasValidShareLink = tweetDetails.HasValidShareLink,
-                        ShareLinkUrl = string.Empty, // 🛡️ 隐私保护：不存储分享链接URL
+                        ShareLinkUrl = string.Empty, // Privacy protection: Do not store share link URL
                         IsProcessed = false,
                         FetchedAt = fetchStartTime
                     };
