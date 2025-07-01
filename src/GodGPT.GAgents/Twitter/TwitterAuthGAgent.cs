@@ -31,6 +31,7 @@ public interface ITwitterAuthGAgent : IGAgent
     /// <summary>
     /// Get Twitter binding status
     /// </summary>
+    [Orleans.Concurrency.ReadOnly]
     Task<TwitterBindStatusDto> GetBindStatusAsync();
 
     /// <summary>

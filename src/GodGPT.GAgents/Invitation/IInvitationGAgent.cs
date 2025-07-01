@@ -76,6 +76,7 @@ public class InvitationStatsDto
     [Id(3)] public int TotalCreditsEarned { get; set; }
     [Id(4)] public string InviteCode { get; set; }
     [Id(5)] public int TotalCreditsFromX { get; set; }
+    [Id(6)] public bool IsBound { get; set; }
 }
 
 [GenerateSerializer]

@@ -4,6 +4,7 @@ using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Invitation.SEvents;
+using Aevatar.Application.Grains.Twitter;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -46,17 +47,21 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         return inviteCode;
     }
 
-    public Task<InvitationStatsDto> GetInvitationStatsAsync()
+    public async Task<InvitationStatsDto> GetInvitationStatsAsync()
     {
-        return Task.FromResult(new InvitationStatsDto
+        var twitterAuthGAgent = GrainFactory.GetGrain<ITwitterAuthGAgent>(this.GetPrimaryKey());
+        var twitterBindStatusDto = await twitterAuthGAgent.GetBindStatusAsync();
+
+        return new InvitationStatsDto
         {
             TotalInvites = State.TotalInvites,
             ValidInvites = State.ValidInvites,
             PendingInvites = State.Invitees.Count(x => !x.Value.IsValid),
             TotalCreditsEarned = State.TotalCreditsEarned,
             InviteCode = State.CurrentInviteCode,
-            TotalCreditsFromX = State.TotalCreditsFromX
-        });
+            TotalCreditsFromX = State.TotalCreditsFromX,
+            IsBound = twitterBindStatusDto?.IsBound ?? false
+        };
     }
 
     public Task<List<RewardTierDto>> GetRewardTiersAsync()
