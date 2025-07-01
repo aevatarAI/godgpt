@@ -162,8 +162,7 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
             await configuration.GetStreamingModeEnabled(),
             content, 
             chatId,
-            null  // promptSettings
-        );
+            null, isHttpRequest: true);
         stopwatch.Stop();
         Logger.LogDebug($"[AnonymousUserGAgent][GuestChatAsync] Chat execution: {stopwatch.ElapsedMilliseconds}ms");
 
