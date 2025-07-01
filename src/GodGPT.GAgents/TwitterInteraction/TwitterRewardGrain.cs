@@ -34,7 +34,7 @@ public class TwitterRewardState
 public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
 {
     private readonly ILogger<TwitterRewardGrain> _logger;
-    private readonly TwitterRewardOptions _options;
+    private readonly IOptionsMonitor<TwitterRewardOptions> _options;
     private readonly IPersistentState<TwitterRewardState> _state;
     private ITweetMonitorGrain? _tweetMonitorGrain;
     // Removed IChatManagerGAgent to comply with architecture constraint
@@ -43,11 +43,11 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
 
     public TwitterRewardGrain(
         ILogger<TwitterRewardGrain> logger,
-        IOptions<TwitterRewardOptions> options,
+        IOptionsMonitor<TwitterRewardOptions> options,
         [PersistentState("twitterRewardState", "DefaultGrainStorage")] IPersistentState<TwitterRewardState> state)
     {
         _logger = logger;
-        _options = options.Value;
+        _options = options;
         _state = state;
     }
 
@@ -70,7 +70,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 MaxDailyCreditsPerUser = 500,
                 EnableRewardCalculation = true,
                 ConfigVersion = 1,
-                RewardTiers = _options.RewardTiers.Select(t => new RewardTierDto
+                RewardTiers = _options.CurrentValue.RewardTiers.Select(t => new RewardTierDto
                 {
                     MinViews = t.MinViews,
                     MinFollowers = t.MinFollowers,

@@ -15,7 +15,7 @@ namespace Aevatar.Application.Grains.TwitterInteraction;
 public class TwitterSystemManagerGrain : Grain, ITwitterSystemManagerGrain
 {
     private readonly ILogger<TwitterSystemManagerGrain> _logger;
-    private readonly TwitterRewardOptions _options;
+    private readonly IOptionsMonitor<TwitterRewardOptions> _options;
     private readonly Dictionary<string, TaskInfo> _taskStates = new();
     private TwitterSystemConfigDto _currentConfig = new();
     
@@ -31,10 +31,10 @@ public class TwitterSystemManagerGrain : Grain, ITwitterSystemManagerGrain
 
     public TwitterSystemManagerGrain(
         ILogger<TwitterSystemManagerGrain> logger,
-        IOptions<TwitterRewardOptions> options)
+        IOptionsMonitor<TwitterRewardOptions> options)
     {
         _logger = logger;
-        _options = options.Value;
+        _options = options;
     }
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
@@ -43,8 +43,8 @@ public class TwitterSystemManagerGrain : Grain, ITwitterSystemManagerGrain
         _logger.LogInformation("TwitterSystemManagerGrain已激活");
         
         // Initialize component references
-        _tweetMonitorGrain = GrainFactory.GetGrain<ITweetMonitorGrain>(_options.PullTaskTargetId);
-        _twitterRewardGrain = GrainFactory.GetGrain<ITwitterRewardGrain>(_options.RewardTaskTargetId);
+        _tweetMonitorGrain = GrainFactory.GetGrain<ITweetMonitorGrain>(_options.CurrentValue.PullTaskTargetId);
+        _twitterRewardGrain = GrainFactory.GetGrain<ITwitterRewardGrain>(_options.CurrentValue.RewardTaskTargetId);
         _twitterInteractionGrain = GrainFactory.GetGrain<ITwitterInteractionGrain>("main");
         
         await base.OnActivateAsync(cancellationToken);
@@ -539,7 +539,7 @@ public class TwitterSystemManagerGrain : Grain, ITwitterSystemManagerGrain
 
     public async Task StartTweetMonitorAsync()
     {
-        var result = await StartTaskAsync("TweetMonitor", _options.PullTaskTargetId);
+        var result = await StartTaskAsync("TweetMonitor", _options.CurrentValue.PullTaskTargetId);
         if (!result.IsSuccess)
         {
             throw new Exception(result.ErrorMessage ?? "Failed to start tweet monitor");
@@ -557,7 +557,7 @@ public class TwitterSystemManagerGrain : Grain, ITwitterSystemManagerGrain
 
     public async Task StartRewardCalculationAsync()
     {
-        var result = await StartTaskAsync("RewardCalculation", _options.RewardTaskTargetId);
+        var result = await StartTaskAsync("RewardCalculation", _options.CurrentValue.RewardTaskTargetId);
         if (!result.IsSuccess)
         {
             throw new Exception(result.ErrorMessage ?? "Failed to start reward calculation");

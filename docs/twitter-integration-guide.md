@@ -2,9 +2,9 @@
 
 ## 📋 概述
 
-本文档说明如何对接 GodGPT.GAgents 中的 Twitter Credits Reward 系统，该系统可以自动监控指定Twitter账号的推文并发放积分奖励。
+本文档说明如何在第三方应用中集成 GodGPT.GAgents 的 Twitter Credits Reward 系统。该系统作为 NuGet 包提供，可以自动监控指定Twitter账号的推文并发放积分奖励。
 
-## 🔧 1. Silo 服务配置
+## 🔧 1. 第三方应用配置
 
 ### appsettings.json 配置添加
 
@@ -44,11 +44,44 @@
 
 ### 依赖注入注册
 
+**重要**：配置注册已在 `GodGPTGAgentModule.cs` 中完成，第三方应用无需额外注册。
+
 ```csharp
-// 在 Startup.cs 或 Program.cs 中添加
-services.Configure<TwitterRewardOptions>(
-    Configuration.GetSection("TwitterReward"));
+// 在 GodGPTGAgentModule.cs 中（已由系统提供）
+public override void ConfigureServices(ServiceConfigurationContext context)
+{
+    // ... 其他配置 ...
+    Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
+    // ...
+}
 ```
+
+**第三方应用只需要**：
+1. ✅ 在 `appsettings.json` 中添加 `TwitterReward` 配置段
+2. ✅ 确保引用了 `GodGPT.GAgents` NuGet包
+3. ✅ 无需额外的服务注册
+
+### 🏗️ 架构说明
+
+```
+第三方应用 Silo
+├── appsettings.json          ← 添加 TwitterReward 配置
+├── Program.cs                ← 引用 GodGPTGAgentModule
+└── 业务代码                  ← 调用 Twitter 相关 Grain
+
+GodGPT.GAgents (NuGet包)
+├── GodGPTGAgentModule.cs     ← 自动注册 TwitterRewardOptions
+├── TwitterSystemManagerGrain ← 提供管理接口
+├── TweetMonitorGrain         ← 推文监控
+├── TwitterRewardGrain        ← 奖励计算
+└── TwitterInteractionGrain   ← Twitter API 交互
+```
+
+**配置注册流程**：
+1. 第三方应用引用 `GodGPT.GAgents` NuGet包
+2. `GodGPTGAgentModule` 自动注册 `TwitterRewardOptions`
+3. 系统从第三方应用的 `appsettings.json` 读取配置
+4. 第三方应用通过 Grain 接口调用功能
 
 ### 💡 设计理念：为什么配置文件固定TargetId？
 

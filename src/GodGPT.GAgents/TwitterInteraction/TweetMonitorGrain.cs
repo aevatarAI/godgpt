@@ -31,7 +31,7 @@ public class TweetMonitorState
 public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 {
     private readonly ILogger<TweetMonitorGrain> _logger;
-    private readonly TwitterRewardOptions _options;
+    private readonly IOptionsMonitor<TwitterRewardOptions> _options;
     private readonly IPersistentState<TweetMonitorState> _state;
     private ITwitterInteractionGrain? _twitterGrain;
     
@@ -39,11 +39,11 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 
     public TweetMonitorGrain(
         ILogger<TweetMonitorGrain> logger,
-        IOptions<TwitterRewardOptions> options,
+        IOptionsMonitor<TwitterRewardOptions> options,
         [PersistentState("tweetMonitorState", "DefaultGrainStorage")] IPersistentState<TweetMonitorState> state)
     {
         _logger = logger;
-        _options = options.Value;
+        _options = options;
         _state = state;
     }
 
@@ -59,9 +59,9 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
         {
             _state.State.Config = new TweetMonitorConfigDto
             {
-                FetchIntervalMinutes = _options.MonitoringIntervalMinutes,
-                MaxTweetsPerFetch = _options.BatchFetchSize,
-                DataRetentionDays = _options.DataRetentionDays,
+                FetchIntervalMinutes = _options.CurrentValue.MonitoringIntervalMinutes,
+                MaxTweetsPerFetch = _options.CurrentValue.BatchFetchSize,
+                DataRetentionDays = _options.CurrentValue.DataRetentionDays,
                 SearchQuery = "@GodGPT_",
                 FilterOriginalOnly = true,
                 EnableAutoCleanup = true,

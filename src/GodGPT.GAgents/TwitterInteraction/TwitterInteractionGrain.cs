@@ -14,7 +14,7 @@ namespace Aevatar.Application.Grains.TwitterInteraction;
 public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
 {
     private readonly ILogger<TwitterInteractionGrain> _logger;
-    private readonly TwitterRewardOptions _options;
+    private readonly IOptionsMonitor<TwitterRewardOptions> _options;
     private readonly HttpClient _httpClient;
     
     // Twitter API endpoints
@@ -26,11 +26,11 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
     
     public TwitterInteractionGrain(
         ILogger<TwitterInteractionGrain> logger,
-        IOptions<TwitterRewardOptions> options,
+        IOptionsMonitor<TwitterRewardOptions> options,
         HttpClient httpClient)
     {
         _logger = logger;
-        _options = options.Value;
+        _options = options;
         _httpClient = httpClient;
     }
 
@@ -40,7 +40,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
         
         // 配置HttpClient
         _httpClient.DefaultRequestHeaders.Clear();
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_options.BearerToken}");
+        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_options.CurrentValue.BearerToken}");
         _httpClient.DefaultRequestHeaders.Add("User-Agent", "GodGPT-TwitterBot/1.0");
         
         return base.OnActivateAsync(cancellationToken);
@@ -269,7 +269,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             }
 
             // 检查是否是有效的分享链接域名
-            if (!url.StartsWith(_options.ShareLinkDomain, StringComparison.OrdinalIgnoreCase))
+            if (!url.StartsWith(_options.CurrentValue.ShareLinkDomain, StringComparison.OrdinalIgnoreCase))
             {
                 validation.ValidationMessage = "URL is not a valid share link domain";
                 return new TwitterApiResultDto<ShareLinkValidationDto>
@@ -924,7 +924,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             {
                 var url = match.Value;
                 // 只提取分享链接域名的URL
-                if (url.StartsWith(_options.ShareLinkDomain, StringComparison.OrdinalIgnoreCase))
+                if (url.StartsWith(_options.CurrentValue.ShareLinkDomain, StringComparison.OrdinalIgnoreCase))
                 {
                     shareLinks.Add(url);
                 }
