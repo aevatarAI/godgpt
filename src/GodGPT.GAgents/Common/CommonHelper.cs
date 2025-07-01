@@ -80,15 +80,19 @@ public class CommonHelper
             throw new FileNotFoundException($"File not found: {filePath}");  
         }  
   
-        try  
+        // Use a StringBuilder to efficiently concatenate strings  
+        StringBuilder fileContent = new StringBuilder();  
+        using (StreamReader reader = new StreamReader(filePath))
         {  
-            // Read and return the file content  
-            return File.ReadAllText(filePath);  
+            string? line;  
+            while ((line = reader.ReadLine()) != null)  
+            {  
+                fileContent.Append(line);  
+            }  
         }  
-        catch (Exception ex)  
-        {  
-            throw new InvalidOperationException($"Error reading file: {filePath}", ex);  
-        }  
+        
+        // Return the concatenated content, trimming the last '\n' if needed  
+        return fileContent.ToString().TrimEnd('\n');  
     }
     
     /// <summary>
