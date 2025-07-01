@@ -1153,6 +1153,213 @@ public class RecoveryResultDto
 }
 ```
 
+## 补充缺失的接口定义
+
+### ITwitterTestingGrain - 测试专用重置接口
+
+```csharp
+public interface ITwitterTestingGrain : IGrainWithStringKey
+{
+    // 用户状态重置（新增）
+    Task<ResetOperationResultDto> ResetUserDailyStatusAsync(string userId, int utcDateTimestamp, string resetReason);
+    Task<GrainResultDto<UserDailyRewardRecord>> GetUserDailyStatusAsync(string userId, int utcDateTimestamp);
+    
+    // 任务状态重置（新增）
+    Task<ResetOperationResultDto> ResetTaskExecutionStatusAsync(string taskName, int utcDateTimestamp, string resetReason);
+    Task<GrainResultDto<TaskDailyExecutionRecord>> GetTaskExecutionStatusAsync(string taskName, int utcDateTimestamp);
+    
+    // 批量重置操作（新增）
+    Task<List<ResetOperationResultDto>> BatchResetUserStatusAsync(List<UserResetRequestDto> requests);
+    Task<ResetOperationResultDto> ResetAllUserStatusForDateAsync(int utcDateTimestamp, string resetReason);
+    
+    // 安全检查（新增）
+    Task<bool> ValidateResetPermissionAsync(string operatorId, string userId);
+    Task<List<ResetOperationLogDto>> GetResetOperationHistoryAsync(int days = 7);
+    
+    // 现有测试接口
+    Task<bool> SetTestTimeOffsetAsync(int offsetHours);
+    Task<int> GetCurrentTestTimestampAsync();
+    Task<bool> SimulateTimePassageAsync(int minutes);
+    Task<bool> InjectTestTweetDataAsync(List<TweetRecordDto> testTweets);
+    Task<bool> ClearTestDataAsync();
+    Task<TestDataSummaryDto> GetTestDataSummaryAsync();
+    Task<PullTweetResultDto> TriggerPullTaskAsync(bool useTestTime = true);
+    Task<RewardCalculationResultDto> TriggerRewardTaskAsync(bool useTestTime = true);
+    Task<bool> ResetAllTaskStatesAsync();
+    Task<bool> ResetExecutionHistoryAsync();
+}
+```
+
+### ITwitterSystemManagerGrain - 补充简化接口
+
+```csharp
+public interface ITwitterSystemManagerGrain : IGrainWithStringKey
+{
+    // 补充缺失的简化API（配置驱动）
+    Task<bool> StartTweetMonitorAsync();
+    Task<bool> StartRewardCalculationAsync();
+    Task<bool> StopTweetMonitorAsync();
+    Task<bool> StopRewardCalculationAsync();
+    
+    // 补充手动触发的简化API
+    Task<PullTweetResultDto> ManualPullTweetsAsync();
+    Task<RewardCalculationResultDto> ManualCalculateRewardsAsync();
+    
+    // 补充配置管理接口
+    Task<GrainResultDto<TwitterRewardConfigDto>> GetCurrentConfigAsync();
+    Task<bool> SetConfigAsync(TwitterRewardConfigDto config);
+    
+    // 补充系统健康和历史接口
+    Task<GrainResultDto<SystemHealthDto>> GetSystemHealthAsync();
+    Task<List<string>> GetProcessingHistoryAsync(int days = 7);
+    Task<List<TaskExecutionStatusDto>> GetAllTaskStatusAsync();
+    
+    // 现有接口
+    Task<bool> StartTaskAsync(string taskName, string targetId);
+    Task<bool> StopTaskAsync(string taskName);
+    Task<bool> UpdateTimeConfigAsync(string taskName, int offsetMinutes, int windowMinutes);
+    Task<PullTweetResultDto> ManualPullTweetsAsync(int startTimestamp, int endTimestamp);
+    Task<RewardCalculationResultDto> ManualCalculateRewardsAsync(int startTimestamp, int endTimestamp);
+}
+```
+
+### 补充的DTO定义
+
+```csharp
+// 重置操作相关DTO
+[GenerateSerializer]
+public class ResetOperationResultDto
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string ErrorMessage { get; set; }
+    [Id(2)] public int ResetTimestamp { get; set; }
+    [Id(3)] public string OperatorId { get; set; }
+    [Id(4)] public string ResetReason { get; set; }
+    [Id(5)] public object BeforeStatus { get; set; }
+    [Id(6)] public object AfterStatus { get; set; }
+}
+
+[GenerateSerializer]
+public class UserResetRequestDto
+{
+    [Id(0)] public string UserId { get; set; }
+    [Id(1)] public int UtcDateTimestamp { get; set; }
+    [Id(2)] public string ResetReason { get; set; }
+}
+
+[GenerateSerializer]
+public class ResetOperationLogDto
+{
+    [Id(0)] public int OperationTimestamp { get; set; }
+    [Id(1)] public string OperationType { get; set; }  // "UserStatus", "TaskStatus"
+    [Id(2)] public string TargetId { get; set; }       // UserId or TaskName
+    [Id(3)] public int TargetDate { get; set; }        // UTC Date Timestamp
+    [Id(4)] public string OperatorId { get; set; }
+    [Id(5)] public string ResetReason { get; set; }
+    [Id(6)] public bool Success { get; set; }
+    [Id(7)] public string ErrorMessage { get; set; }
+}
+
+// 数据统计DTO
+[GenerateSerializer]
+public class DataStatisticsDto
+{
+    [Id(0)] public int TotalTweets { get; set; }
+    [Id(1)] public int TweetsLast24Hours { get; set; }
+    [Id(2)] public int TweetsLast7Days { get; set; }
+    [Id(3)] public Dictionary<TweetType, int> TweetsByType { get; set; }
+    [Id(4)] public Dictionary<string, int> TweetsByDate { get; set; }
+    [Id(5)] public int UniqueUsers { get; set; }
+    [Id(6)] public int DataRetentionDays { get; set; }
+    [Id(7)] public int NextCleanupTimestamp { get; set; }
+}
+
+[GenerateSerializer]
+public class RewardStatisticsDto
+{
+    [Id(0)] public int TotalRewardsDistributed { get; set; }
+    [Id(1)] public int TotalUsersRewarded { get; set; }
+    [Id(2)] public int RewardsLast24Hours { get; set; }
+    [Id(3)] public int RewardsLast7Days { get; set; }
+    [Id(4)] public Dictionary<string, int> RewardsByDate { get; set; }
+    [Id(5)] public Dictionary<string, int> RewardsByTier { get; set; }
+    [Id(6)] public decimal AverageRewardPerUser { get; set; }
+    [Id(7)] public decimal AverageRewardPerTweet { get; set; }
+}
+
+// 系统健康DTO  
+[GenerateSerializer]
+public class SystemHealthDto
+{
+    [Id(0)] public bool IsHealthy { get; set; }
+    [Id(1)] public DateTime LastUpdateTime { get; set; }
+    [Id(2)] public int ActiveTasks { get; set; }
+    [Id(3)] public int PendingTweets { get; set; }
+    [Id(4)] public int PendingRewards { get; set; }
+    [Id(5)] public List<string> Warnings { get; set; }
+    [Id(6)] public List<string> Errors { get; set; }
+    [Id(7)] public Dictionary<string, object> Metrics { get; set; }
+}
+
+// 配置DTO
+[GenerateSerializer]
+public class TwitterRewardConfigDto
+{
+    [Id(0)] public string MonitorHandle { get; set; }
+    [Id(1)] public string SelfAccountId { get; set; }
+    [Id(2)] public bool EnablePullTask { get; set; }
+    [Id(3)] public bool EnableRewardTask { get; set; }
+    [Id(4)] public int TimeOffsetMinutes { get; set; }
+    [Id(5)] public int TimeWindowMinutes { get; set; }
+    [Id(6)] public int DataRetentionDays { get; set; }
+    [Id(7)] public int MaxRetryAttempts { get; set; }
+    [Id(8)] public string PullTaskTargetId { get; set; }
+    [Id(9)] public string RewardTaskTargetId { get; set; }
+    [Id(10)] public int PullIntervalMinutes { get; set; }
+    [Id(11)] public int PullBatchSize { get; set; }
+}
+```
+
+### 补充的Grain接口
+
+#### ITweetMonitorGrain - 补充数据统计接口
+```csharp
+public interface ITweetMonitorGrain : IGrainWithStringKey
+{
+    // 补充缺失的数据统计接口
+    Task<GrainResultDto<DataStatisticsDto>> GetDataStatisticsAsync();
+    
+    // 现有接口保持不变
+    Task<bool> StartPullTaskAsync(string targetId);
+    Task<bool> StopPullTaskAsync();
+    Task<TaskExecutionStatusDto> GetTaskStatusAsync();
+    Task<PullTweetResultDto> PullTweetsAsync(PullTweetRequestDto request);
+    Task<PullTweetResultDto> PullTweetsByPeriodAsync(int startTimestamp, int endTimestamp);
+    Task<List<TweetRecordDto>> GetTweetsByPeriodAsync(int startTimestamp, int endTimestamp);
+    Task<List<TweetRecordDto>> GetUnprocessedTweetsAsync(int maxCount = 100);
+    Task<int> CleanupExpiredDataAsync();
+}
+```
+
+#### ITwitterRewardGrain - 补充统计接口
+```csharp
+public interface ITwitterRewardGrain : IGrainWithStringKey
+{
+    // 补充缺失的统计接口
+    Task<GrainResultDto<RewardStatisticsDto>> GetRewardStatisticsAsync(int startTimestamp, int endTimestamp);
+    
+    // 现有接口保持不变
+    Task<bool> StartRewardTaskAsync(string targetId);
+    Task<bool> StopRewardTaskAsync();
+    Task<TaskExecutionStatusDto> GetTaskStatusAsync();
+    Task<RewardCalculationResultDto> CalculateRewardsAsync(RewardCalculationRequestDto request);
+    Task<RewardCalculationResultDto> CalculateRewardsByPeriodAsync(int startTimestamp, int endTimestamp);
+    Task<List<RewardRecordDto>> GetRewardHistoryAsync(string userId, int days = 30);
+    Task<bool> UpdateTimeConfigAsync(int offsetMinutes, int windowMinutes);
+    Task<List<string>> GetProcessedPeriodsAsync(int days = 7);
+}
+```
+
 ## 独立测试接口设计
 
 ### 测试流程泳道图

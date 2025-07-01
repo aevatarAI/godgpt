@@ -4,7 +4,541 @@
 
 本文档说明如何在第三方应用中集成 GodGPT.GAgents 的 Twitter Credits Reward 系统。该系统作为 NuGet 包提供，可以自动监控指定Twitter账号的推文并发放积分奖励。
 
-## 🔧 1. 第三方应用配置
+## 🚀 1. 完整的Controller接口封装
+
+### TwitterRewardController 完整示例
+
+```csharp
+[ApiController]
+[Route("api/twitter-reward")]
+public class TwitterRewardController : ControllerBase
+{
+    private readonly IGrainFactory _grainFactory;
+    private readonly ILogger<TwitterRewardController> _logger;
+
+    public TwitterRewardController(IGrainFactory grainFactory, ILogger<TwitterRewardController> logger)
+    {
+        _grainFactory = grainFactory;
+        _logger = logger;
+    }
+
+    #region 1. 任务管理接口
+
+    /// <summary>
+    /// 启动推文监控任务
+    /// </summary>
+    [HttpPost("tasks/monitor/start")]
+    public async Task<IActionResult> StartMonitorTask()
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var result = await systemManager.StartTweetMonitorAsync();
+            
+            _logger.LogInformation($"推文监控任务启动: {(result ? "成功" : "失败")}");
+            return Ok(new { success = result, message = result ? "推文监控任务已启动" : "启动失败" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "启动推文监控任务失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 启动奖励计算任务
+    /// </summary>
+    [HttpPost("tasks/reward/start")]
+    public async Task<IActionResult> StartRewardTask()
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var result = await systemManager.StartRewardCalculationAsync();
+            
+            _logger.LogInformation($"奖励计算任务启动: {(result ? "成功" : "失败")}");
+            return Ok(new { success = result, message = result ? "奖励计算任务已启动" : "启动失败" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "启动奖励计算任务失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 停止推文监控任务
+    /// </summary>
+    [HttpPost("tasks/monitor/stop")]
+    public async Task<IActionResult> StopMonitorTask()
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var result = await systemManager.StopTweetMonitorAsync();
+            
+            _logger.LogInformation($"推文监控任务停止: {(result ? "成功" : "失败")}");
+            return Ok(new { success = result, message = result ? "推文监控任务已停止" : "停止失败" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "停止推文监控任务失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 停止奖励计算任务
+    /// </summary>
+    [HttpPost("tasks/reward/stop")]
+    public async Task<IActionResult> StopRewardTask()
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var result = await systemManager.StopRewardCalculationAsync();
+            
+            _logger.LogInformation($"奖励计算任务停止: {(result ? "成功" : "失败")}");
+            return Ok(new { success = result, message = result ? "奖励计算任务已停止" : "停止失败" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "停止奖励计算任务失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 获取所有任务状态
+    /// </summary>
+    [HttpGet("tasks/status")]
+    public async Task<IActionResult> GetTaskStatus()
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var status = await systemManager.GetAllTaskStatusAsync();
+            
+            return Ok(new { success = true, data = status });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "获取任务状态失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    #endregion
+
+    #region 2. 历史数据查询接口（前N天）
+
+    /// <summary>
+    /// 查询历史推文数据（前N天）
+    /// </summary>
+    [HttpGet("history/tweets")]
+    public async Task<IActionResult> GetHistoricalTweets([FromQuery] int days = 5)
+    {
+        try
+        {
+            var tweetMonitor = _grainFactory.GetGrain<ITweetMonitorGrain>("TweetMonitor");
+            
+            // 计算时间范围（前N天）
+            var endTimestamp = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var startTimestamp = endTimestamp - (days * 24 * 60 * 60);
+            
+            var tweets = await tweetMonitor.GetTweetsByPeriodAsync(startTimestamp, endTimestamp);
+            
+            _logger.LogInformation($"查询历史推文: {days}天，共{tweets.Data?.Count ?? 0}条");
+            return Ok(new { success = true, data = tweets.Data, period = $"过去{days}天" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"查询历史推文失败: days={days}");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 查询用户奖励历史（前N天）
+    /// </summary>
+    [HttpGet("history/rewards/{userId}")]
+    public async Task<IActionResult> GetUserRewardHistory(string userId, [FromQuery] int days = 5)
+    {
+        try
+        {
+            var rewardGrain = _grainFactory.GetGrain<ITwitterRewardGrain>("TwitterReward");
+            var rewards = await rewardGrain.GetRewardHistoryAsync(userId, days);
+            
+            _logger.LogInformation($"查询用户{userId}奖励历史: {days}天，共{rewards.Data?.Count ?? 0}条");
+            return Ok(new { success = true, data = rewards.Data, userId, period = $"过去{days}天" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"查询用户奖励历史失败: userId={userId}, days={days}");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 获取系统数据统计
+    /// </summary>
+    [HttpGet("statistics")]
+    public async Task<IActionResult> GetStatistics([FromQuery] int days = 7)
+    {
+        try
+        {
+            var endTimestamp = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var startTimestamp = endTimestamp - (days * 24 * 60 * 60);
+            
+            var tweetMonitor = _grainFactory.GetGrain<ITweetMonitorGrain>("TweetMonitor");
+            var rewardGrain = _grainFactory.GetGrain<ITwitterRewardGrain>("TwitterReward");
+            
+            var dataStats = await tweetMonitor.GetDataStatisticsAsync();
+            var rewardStats = await rewardGrain.GetRewardStatisticsAsync(startTimestamp, endTimestamp);
+            
+            return Ok(new 
+            { 
+                success = true, 
+                data = new { 
+                    tweetStats = dataStats.Data,
+                    rewardStats = rewardStats.Data,
+                    period = $"过去{days}天"
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"获取统计信息失败: days={days}");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    #endregion
+
+    #region 3. 手动触发接口（带详细日志）
+
+    /// <summary>
+    /// 手动拉取推文（带详细日志）
+    /// </summary>
+    [HttpPost("manual/pull-tweets")]
+    public async Task<IActionResult> ManualPullTweets([FromBody] ManualPullRequest request = null)
+    {
+        try
+        {
+            _logger.LogInformation("开始手动拉取推文...");
+            
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            
+            PullTweetResultDto result;
+            if (request?.StartTimestamp != null && request?.EndTimestamp != null)
+            {
+                _logger.LogInformation($"手动拉取指定时间段: {request.StartTimestamp} - {request.EndTimestamp}");
+                result = await systemManager.ManualPullTweetsAsync(request.StartTimestamp.Value, request.EndTimestamp.Value);
+            }
+            else
+            {
+                _logger.LogInformation("手动拉取最新推文");
+                result = await systemManager.ManualPullTweetsAsync();
+            }
+            
+            // 详细日志记录
+            _logger.LogInformation($"推文拉取完成: 总计{result.TotalFound}条, 新增{result.NewTweets}条, 重复跳过{result.DuplicateSkipped}条, 类型过滤{result.TypeFilteredOut}条");
+            
+            return Ok(new { success = result.Success, data = result, message = "手动拉取完成" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "手动拉取推文失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 手动计算奖励（带详细日志）
+    /// </summary>
+    [HttpPost("manual/calculate-rewards")]
+    public async Task<IActionResult> ManualCalculateRewards([FromBody] ManualRewardRequest request = null)
+    {
+        try
+        {
+            _logger.LogInformation("开始手动计算奖励...");
+            
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            
+            RewardCalculationResultDto result;
+            if (request?.StartTimestamp != null && request?.EndTimestamp != null)
+            {
+                _logger.LogInformation($"计算指定时间段奖励: {request.StartTimestamp} - {request.EndTimestamp}");
+                result = await systemManager.ManualCalculateRewardsAsync(request.StartTimestamp.Value, request.EndTimestamp.Value);
+            }
+            else
+            {
+                _logger.LogInformation("计算当前时间段奖励");
+                result = await systemManager.ManualCalculateRewardsAsync();
+            }
+            
+            // 详细日志记录
+            _logger.LogInformation($"奖励计算完成: 处理推文{result.ProcessedTweets}条, 影响用户{result.AffectedUsers}个, 发放积分{result.TotalCreditsAwarded}个");
+            
+            if (result.UserRewards?.Any() == true)
+            {
+                foreach (var userReward in result.UserRewards)
+                {
+                    _logger.LogInformation($"用户{userReward.UserId}奖励详情: 基础{userReward.BaseRewards}, 附加{userReward.BonusRewards}, 总计{userReward.TotalRewards}, 已发送:{userReward.RewardsSent}");
+                }
+            }
+            
+            return Ok(new { success = result.Success, data = result, message = "手动奖励计算完成" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "手动计算奖励失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    #endregion
+
+    #region 4. 测试专用重置接口
+
+    /// <summary>
+    /// 重置指定用户某天的领取状态（测试专用）
+    /// </summary>
+    [HttpPost("testing/reset-user-status")]
+    public async Task<IActionResult> ResetUserDailyStatus([FromBody] ResetUserStatusRequest request)
+    {
+        try
+        {
+            _logger.LogWarning($"[测试重置] 准备重置用户状态: UserId={request.UserId}, Date={request.UtcDateTimestamp}");
+            
+            var testingGrain = _grainFactory.GetGrain<ITwitterTestingGrain>("TwitterTesting");
+            
+            // 获取重置前状态
+            var beforeStatus = await testingGrain.GetUserDailyStatusAsync(request.UserId, request.UtcDateTimestamp);
+            _logger.LogWarning($"[测试重置] 重置前状态: {System.Text.Json.JsonSerializer.Serialize(beforeStatus)}");
+            
+            // 执行重置
+            var result = await testingGrain.ResetUserDailyStatusAsync(request.UserId, request.UtcDateTimestamp, request.ResetReason ?? "API测试重置");
+            
+            // 获取重置后状态
+            var afterStatus = await testingGrain.GetUserDailyStatusAsync(request.UserId, request.UtcDateTimestamp);
+            _logger.LogWarning($"[测试重置] 重置后状态: {System.Text.Json.JsonSerializer.Serialize(afterStatus)}");
+            
+            _logger.LogWarning($"[测试重置] 重置操作完成: UserId={request.UserId}, Success={result.Success}");
+            
+            return Ok(new 
+            { 
+                success = result.Success, 
+                data = new { 
+                    beforeStatus = beforeStatus.Data,
+                    afterStatus = afterStatus.Data,
+                    resetResult = result
+                },
+                message = result.Success ? "用户状态重置成功" : "重置失败"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"重置用户状态失败: UserId={request.UserId}");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 重置指定任务某天的执行状态（测试专用）
+    /// </summary>
+    [HttpPost("testing/reset-task-status")]
+    public async Task<IActionResult> ResetTaskExecutionStatus([FromBody] ResetTaskStatusRequest request)
+    {
+        try
+        {
+            _logger.LogWarning($"[测试重置] 准备重置任务状态: TaskName={request.TaskName}, Date={request.UtcDateTimestamp}");
+            
+            var testingGrain = _grainFactory.GetGrain<ITwitterTestingGrain>("TwitterTesting");
+            
+            // 获取重置前状态
+            var beforeStatus = await testingGrain.GetTaskExecutionStatusAsync(request.TaskName, request.UtcDateTimestamp);
+            _logger.LogWarning($"[测试重置] 任务重置前状态: {System.Text.Json.JsonSerializer.Serialize(beforeStatus)}");
+            
+            // 执行重置
+            var result = await testingGrain.ResetTaskExecutionStatusAsync(request.TaskName, request.UtcDateTimestamp, request.ResetReason ?? "API测试重置");
+            
+            // 获取重置后状态
+            var afterStatus = await testingGrain.GetTaskExecutionStatusAsync(request.TaskName, request.UtcDateTimestamp);
+            _logger.LogWarning($"[测试重置] 任务重置后状态: {System.Text.Json.JsonSerializer.Serialize(afterStatus)}");
+            
+            _logger.LogWarning($"[测试重置] 任务重置操作完成: TaskName={request.TaskName}, Success={result.Success}");
+            
+            return Ok(new 
+            { 
+                success = result.Success, 
+                data = new { 
+                    beforeStatus = beforeStatus.Data,
+                    afterStatus = afterStatus.Data,
+                    resetResult = result
+                },
+                message = result.Success ? "任务状态重置成功" : "重置失败"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"重置任务状态失败: TaskName={request.TaskName}");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 获取测试环境摘要信息
+    /// </summary>
+    [HttpGet("testing/summary")]
+    public async Task<IActionResult> GetTestingSummary()
+    {
+        try
+        {
+            var testingGrain = _grainFactory.GetGrain<ITwitterTestingGrain>("TwitterTesting");
+            var summary = await testingGrain.GetTestDataSummaryAsync();
+            
+            return Ok(new { success = true, data = summary });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "获取测试摘要失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    #endregion
+
+    #region 5. 配置管理接口
+
+    /// <summary>
+    /// 获取当前配置
+    /// </summary>
+    [HttpGet("config")]
+    public async Task<IActionResult> GetCurrentConfig()
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var config = await systemManager.GetCurrentConfigAsync();
+            
+            return Ok(new { success = true, data = config.Data });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "获取配置失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 更新时间配置（支持热更新）
+    /// </summary>
+    [HttpPut("config/time")]
+    public async Task<IActionResult> UpdateTimeConfig([FromBody] UpdateTimeConfigRequest request)
+    {
+        try
+        {
+            _logger.LogInformation($"更新时间配置: OffsetMinutes={request.TimeOffsetMinutes}, WindowMinutes={request.TimeWindowMinutes}");
+            
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var result = await systemManager.UpdateTimeConfigAsync("RewardCalculation", request.TimeOffsetMinutes, request.TimeWindowMinutes);
+            
+            _logger.LogInformation($"时间配置更新: {(result ? "成功" : "失败")} - 新配置将在下次任务执行时生效");
+            
+            return Ok(new { success = result, message = result ? "时间配置已更新，将在下次执行时生效" : "配置更新失败" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "更新时间配置失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    #endregion
+
+    #region 6. 系统健康检查
+
+    /// <summary>
+    /// 系统健康检查
+    /// </summary>
+    [HttpGet("health")]
+    public async Task<IActionResult> GetSystemHealth()
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var health = await systemManager.GetSystemHealthAsync();
+            
+            return Ok(new { success = true, data = health.Data });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "获取系统健康状态失败");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// 获取处理历史
+    /// </summary>
+    [HttpGet("history/processing")]
+    public async Task<IActionResult> GetProcessingHistory([FromQuery] int days = 7)
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            var history = await systemManager.GetProcessingHistoryAsync(days);
+            
+            return Ok(new { success = true, data = history, period = $"过去{days}天" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"获取处理历史失败: days={days}");
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
+
+    #endregion
+}
+
+#region 请求/响应DTO
+
+public class ManualPullRequest
+{
+    public int? StartTimestamp { get; set; }
+    public int? EndTimestamp { get; set; }
+}
+
+public class ManualRewardRequest
+{
+    public int? StartTimestamp { get; set; }
+    public int? EndTimestamp { get; set; }
+}
+
+public class ResetUserStatusRequest
+{
+    public string UserId { get; set; }
+    public int UtcDateTimestamp { get; set; }
+    public string ResetReason { get; set; }
+}
+
+public class ResetTaskStatusRequest
+{
+    public string TaskName { get; set; }
+    public int UtcDateTimestamp { get; set; }
+    public string ResetReason { get; set; }
+}
+
+public class UpdateTimeConfigRequest
+{
+    public int TimeOffsetMinutes { get; set; }
+    public int TimeWindowMinutes { get; set; }
+}
+
+#endregion
+
+## 🔧 2. 第三方应用配置
 
 ### appsettings.json 配置添加
 
@@ -492,3 +1026,385 @@ public class MyAppTwitterService
 ```
 
 ✨ **现在你的系统已经完全使用了最佳实践的配置管理模式！配置驱动，专注业务，零错误风险！**
+
+## 🚀 3. 部署配置指南
+
+### 生产环境部署步骤
+
+```bash
+# 1. 配置应用程序设置
+# 编辑 appsettings.Production.json
+{
+  "TwitterReward": {
+    "BearerToken": "your_production_bearer_token",
+    "ApiKey": "your_production_api_key",
+    "ApiSecret": "your_production_api_secret",
+    "MonitorHandle": "@your_production_account",
+    "PullTaskTargetId": "prod-twitter-monitor-v1",
+    "RewardTaskTargetId": "prod-twitter-reward-v1",
+    "EnablePullTask": true,
+    "EnableRewardTask": true
+  }
+}
+
+# 2. 验证配置文件
+dotnet run --environment=Production --verify-config
+
+# 3. 启动应用
+dotnet run --environment=Production
+
+# 4. 验证系统健康状态
+curl http://localhost:5000/api/twitter-reward/health
+```
+
+### 配置文件模板生成器
+
+```csharp
+public static class TwitterConfigGenerator
+{
+    public static string GenerateProductionConfig(string appName, string environment)
+    {
+        var config = new
+        {
+            TwitterReward = new
+            {
+                // 必填项
+                BearerToken = "REPLACE_WITH_YOUR_BEARER_TOKEN",
+                ApiKey = "REPLACE_WITH_YOUR_API_KEY", 
+                ApiSecret = "REPLACE_WITH_YOUR_API_SECRET",
+                MonitorHandle = "@REPLACE_WITH_MONITOR_HANDLE",
+                
+                // 自动生成唯一ID
+                PullTaskTargetId = $"{appName}-twitter-monitor-{environment}",
+                RewardTaskTargetId = $"{appName}-twitter-reward-{environment}",
+                
+                // 默认配置
+                ShareLinkDomain = "https://app.godgpt.fun",
+                PullIntervalMinutes = 30,
+                EnablePullTask = true,
+                EnableRewardTask = true,
+                TimeOffsetMinutes = 2880,
+                TimeWindowMinutes = 1440,
+                DataRetentionDays = 5
+            }
+        };
+        
+        return JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
+    }
+}
+
+// 使用示例
+var prodConfig = TwitterConfigGenerator.GenerateProductionConfig("myapp", "prod");
+File.WriteAllText("appsettings.Production.json", prodConfig);
+```
+
+## ⚡ 4. 配置热更新机制详解
+
+### 🔥 支持热更新的配置项
+
+| 配置项 | 热更新支持 | 生效时机 | 说明 |
+|--------|------------|----------|------|
+| `PullIntervalMinutes` | ✅ 完全支持 | 下次定时执行 | 拉取间隔动态调整 |
+| `PullBatchSize` | ✅ 完全支持 | 立即生效 | 批量大小即时更新 |
+| `TimeOffsetMinutes` | ✅ 完全支持 | 下次奖励计算 | 时间偏移参数更新 |
+| `TimeWindowMinutes` | ✅ 完全支持 | 下次奖励计算 | 时间窗口参数更新 |
+| `DataRetentionDays` | ✅ 完全支持 | 下次清理任务 | 数据保留策略更新 |
+| `EnablePullTask` | ✅ 完全支持 | 立即生效 | 任务开关即时控制 |
+| `EnableRewardTask` | ✅ 完全支持 | 立即生效 | 任务开关即时控制 |
+| **不建议热更新** | ⚠️ | | |
+| `PullTaskTargetId` | ❌ 不建议 | - | 会导致重复任务实例 |
+| `RewardTaskTargetId` | ❌ 不建议 | - | 会导致重复任务实例 |
+| `BearerToken` | ⚠️ 建议重启 | - | API认证敏感信息 |
+
+### 🔄 配置热更新验证
+
+```csharp
+[HttpGet("config/validate-hotreload")]
+public async Task<IActionResult> ValidateHotReload()
+{
+    var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+    
+    // 1. 记录当前配置
+    var beforeConfig = await systemManager.GetCurrentConfigAsync();
+    var beforeTime = DateTime.UtcNow;
+    
+    // 2. 等待配置文件更新（用户手动修改appsettings.json）
+    await Task.Delay(2000);
+    
+    // 3. 验证新配置已生效
+    var afterConfig = await systemManager.GetCurrentConfigAsync();
+    var afterTime = DateTime.UtcNow;
+    
+    var configChanged = !beforeConfig.Equals(afterConfig);
+    
+    return Ok(new 
+    { 
+        success = true,
+        hotReloadWorking = configChanged,
+        beforeConfig = beforeConfig.Data,
+        afterConfig = afterConfig.Data,
+        checkTime = afterTime,
+        message = configChanged ? "✅ 配置热更新正常工作" : "⚠️ 配置未发生变化"
+    });
+}
+```
+
+### 📝 配置更新最佳实践
+
+```bash
+# 1. 备份当前配置
+cp appsettings.json appsettings.json.backup
+
+# 2. 修改配置文件（示例：调整拉取间隔）
+{
+  "TwitterReward": {
+    "PullIntervalMinutes": 15,  // 从30分钟改为15分钟
+    "TimeOffsetMinutes": 1440   // 从48小时改为24小时
+  }
+}
+
+# 3. 验证配置更新是否生效（无需重启应用）
+curl http://localhost:5000/api/twitter-reward/config
+
+# 4. 查看任务状态确认新配置已应用
+curl http://localhost:5000/api/twitter-reward/tasks/status
+```
+
+## 📊 5. 实际对接操作清单
+
+### ✅ 对接操作检查清单
+
+| 序号 | 操作 | API接口 | 状态检查 |
+|------|------|---------|----------|
+| 1 | 封装对接接口 | `TwitterRewardController` | ✅ 已提供完整示例 |
+| 2 | 写Controller | 上述完整Controller | ✅ 包含6大功能模块 |
+| 3 | 部署配置 | `appsettings.json` | ✅ 提供配置模板生成器 |
+| 4 | 追溯历史信息（前5天） | `GET /history/tweets?days=5` | ✅ 支持自定义天数 |
+| 5 | 手动拉取+日志查看 | `POST /manual/pull-tweets` | ✅ 详细日志记录 |
+| 6 | 指定时间段奖励发放 | `POST /manual/calculate-rewards` | ✅ 支持时间段指定 |
+| 7 | 启动定时任务 | `POST /tasks/*/start` | ✅ 配置驱动，零错误 |
+| 8 | 停止定时任务 | `POST /tasks/*/stop` | ✅ 安全停止机制 |
+| 9 | 修改任务参数热更新 | `PUT /config/time` | ✅ 无需重启，即时生效 |
+| 10 | 测试重置功能 | `POST /testing/reset-*-status` | ✅ 安全的状态重置 |
+
+### 🔧 测试场景专用接口
+
+#### 重置用户某天领取状态
+```bash
+# 重置用户123在2024-01-15的领取状态
+curl -X POST http://localhost:5000/api/twitter-reward/testing/reset-user-status \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "123456789",
+    "utcDateTimestamp": 1705276800,
+    "resetReason": "测试重复领取功能"
+  }'
+```
+
+#### 重置任务执行状态
+```bash
+# 重置奖励计算任务在2024-01-15的执行状态
+curl -X POST http://localhost:5000/api/twitter-reward/testing/reset-task-status \
+  -H "Content-Type: application/json" \
+  -d '{
+    "taskName": "RewardCalculation",
+    "utcDateTimestamp": 1705276800,
+    "resetReason": "测试任务重复执行"
+  }'
+```
+
+## 📋 6. 详细日志记录规范
+
+### 用户奖励处理日志格式
+
+```csharp
+// 奖励处理前状态
+_logger.LogInformation($"[TwitterReward] User {userId} reward processing started:");
+_logger.LogInformation($"  - Before: BaseTweets={userRecord.BaseTweetCount}, BonusReceived={userRecord.HasReceivedBonusReward}, TotalRewards={userRecord.BaseTotalRewards + userRecord.BonusTotalRewards}");
+_logger.LogInformation($"  - Processing Period: {startTime:yyyy-MM-dd HH:mm:ss UTC} - {endTime:yyyy-MM-dd HH:mm:ss UTC}");
+
+// 奖励计算过程
+foreach (var tweet in userTweets)
+{
+    _logger.LogInformation($"  - Tweet {tweet.TweetId}: Views={tweet.ViewCount}, Followers={tweet.FollowerCount}, BaseReward={baseReward}, BonusReward={bonusReward}, ShareLink={tweet.HasValidShareLink}");
+}
+
+// 奖励处理后状态
+_logger.LogInformation($"  - After: BaseTweets={newUserRecord.BaseTweetCount}, BonusReceived={newUserRecord.HasReceivedBonusReward}, TotalRewards={newUserRecord.BaseTotalRewards + newUserRecord.BonusTotalRewards}");
+_logger.LogInformation($"  - Credits Sent: {totalCreditsAwarded}, Success: {creditsSentSuccessfully}");
+```
+
+### 重置操作安全日志
+
+```csharp
+// 重置前记录
+_logger.LogWarning($"[RESET_OPERATION] User Status Reset Initiated:");
+_logger.LogWarning($"  - UserId: {userId}");
+_logger.LogWarning($"  - UTC Date: {utcDateTimestamp} ({DateTimeOffset.FromUnixTimeSeconds(utcDateTimestamp):yyyy-MM-dd})");
+_logger.LogWarning($"  - Operator: {operatorContext}");
+_logger.LogWarning($"  - Reason: {resetReason}");
+_logger.LogWarning($"  - Before Reset: {JsonSerializer.Serialize(beforeStatus)}");
+
+// 重置操作执行
+_logger.LogWarning($"[RESET_OPERATION] Executing reset for User {userId}...");
+
+// 重置后记录
+_logger.LogWarning($"[RESET_OPERATION] User Status Reset Completed:");
+_logger.LogWarning($"  - After Reset: {JsonSerializer.Serialize(afterStatus)}");
+_logger.LogWarning($"  - Success: {resetResult.Success}");
+_logger.LogWarning($"  - Timestamp: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm:ss UTC}");
+```
+
+## 🎯 7. 使用示例总结
+
+### 完整的第三方集成示例
+
+```csharp
+public class TwitterRewardService
+{
+    private readonly IGrainFactory _grainFactory;
+    private readonly ILogger<TwitterRewardService> _logger;
+    
+    public TwitterRewardService(IGrainFactory grainFactory, ILogger<TwitterRewardService> logger)
+    {
+        _grainFactory = grainFactory;
+        _logger = logger;
+    }
+    
+    /// <summary>
+    /// 完整的系统启动流程
+    /// </summary>
+    public async Task<bool> StartSystemAsync()
+    {
+        try
+        {
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            
+            // 1. 检查系统健康状态
+            var health = await systemManager.GetSystemHealthAsync();
+            if (health.Data?.IsHealthy != true)
+            {
+                _logger.LogError("系统健康检查失败，无法启动");
+                return false;
+            }
+            
+            // 2. 启动任务（配置驱动，无需管理ID）
+            var monitorResult = await systemManager.StartTweetMonitorAsync();
+            var rewardResult = await systemManager.StartRewardCalculationAsync();
+            
+            if (monitorResult && rewardResult)
+            {
+                _logger.LogInformation("✅ Twitter奖励系统启动成功");
+                
+                // 3. 验证任务状态
+                var taskStatus = await systemManager.GetAllTaskStatusAsync();
+                _logger.LogInformation($"当前运行任务数: {taskStatus.Count(t => t.IsRunning)}");
+                
+                return true;
+            }
+            else
+            {
+                _logger.LogError($"任务启动失败: Monitor={monitorResult}, Reward={rewardResult}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "启动Twitter奖励系统失败");
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// 查询用户最近5天的数据
+    /// </summary>
+    public async Task<object> GetUserRecentDataAsync(string userId)
+    {
+        try
+        {
+            // 1. 查询用户奖励历史
+            var rewardGrain = _grainFactory.GetGrain<ITwitterRewardGrain>("TwitterReward");
+            var rewards = await rewardGrain.GetRewardHistoryAsync(userId, days: 5);
+            
+            // 2. 查询相关推文数据
+            var tweetMonitor = _grainFactory.GetGrain<ITweetMonitorGrain>("TweetMonitor");
+            var endTimestamp = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var startTimestamp = endTimestamp - (5 * 24 * 60 * 60);
+            var tweets = await tweetMonitor.GetTweetsByPeriodAsync(startTimestamp, endTimestamp);
+            
+            // 3. 过滤用户相关推文
+            var userTweets = tweets.Data?.Where(t => t.AuthorId == userId).ToList() ?? new List<TweetRecordDto>();
+            
+            _logger.LogInformation($"用户{userId}最近5天数据: 奖励{rewards.Data?.Count ?? 0}条, 推文{userTweets.Count}条");
+            
+            return new
+            {
+                userId,
+                period = "过去5天",
+                rewards = rewards.Data,
+                tweets = userTweets,
+                summary = new
+                {
+                    totalRewards = rewards.Data?.Sum(r => r.TotalRewards) ?? 0,
+                    totalTweets = userTweets.Count,
+                    avgRewardPerTweet = userTweets.Count > 0 ? (rewards.Data?.Sum(r => r.TotalRewards) ?? 0) / userTweets.Count : 0
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"查询用户数据失败: userId={userId}");
+            throw;
+        }
+    }
+    
+    /// <summary>
+    /// 测试专用：重置用户状态并重新计算奖励
+    /// </summary>
+    public async Task<object> TestResetAndRecalculateAsync(string userId, int utcDateTimestamp)
+    {
+        try
+        {
+            var testingGrain = _grainFactory.GetGrain<ITwitterTestingGrain>("TwitterTesting");
+            var systemManager = _grainFactory.GetGrain<ITwitterSystemManagerGrain>("TwitterSystemManager");
+            
+            _logger.LogWarning($"[测试流程] 开始重置用户{userId}在{utcDateTimestamp}的状态");
+            
+            // 1. 重置用户状态
+            var resetResult = await testingGrain.ResetUserDailyStatusAsync(userId, utcDateTimestamp, "API测试重置");
+            if (!resetResult.Success)
+            {
+                throw new Exception($"重置用户状态失败: {resetResult.ErrorMessage}");
+            }
+            
+            // 2. 重置任务执行状态
+            var taskResetResult = await testingGrain.ResetTaskExecutionStatusAsync("RewardCalculation", utcDateTimestamp, "API测试重置");
+            if (!taskResetResult.Success)
+            {
+                throw new Exception($"重置任务状态失败: {taskResetResult.ErrorMessage}");
+            }
+            
+            // 3. 手动触发奖励重新计算
+            var startOfDay = utcDateTimestamp;
+            var endOfDay = startOfDay + (24 * 60 * 60) - 1;
+            var recalcResult = await systemManager.ManualCalculateRewardsAsync(startOfDay, endOfDay);
+            
+            _logger.LogWarning($"[测试流程] 重置和重计算完成: Success={recalcResult.Success}");
+            
+            return new
+            {
+                success = true,
+                resetResult,
+                taskResetResult,
+                recalcResult,
+                message = "测试重置和重计算完成"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"测试重置失败: userId={userId}");
+            throw;
+        }
+    }
+}
+```
