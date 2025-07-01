@@ -429,8 +429,14 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 if (dataElement.TryGetProperty("id", out var idElement))
                     tweetDetails.TweetId = idElement.GetString() ?? "";
 
+                // 🛡️ 隐私保护：不存储推文文本内容，但临时获取用于分享链接检查
+                string tweetText = "";
                 if (dataElement.TryGetProperty("text", out var textElement))
-                    tweetDetails.Text = textElement.GetString() ?? "";
+                {
+                    tweetText = textElement.GetString() ?? "";
+                    // Text字段保持为空字符串，不存储内容
+                    tweetDetails.Text = string.Empty;
+                }
 
                 if (dataElement.TryGetProperty("author_id", out var authorIdElement))
                     tweetDetails.AuthorId = authorIdElement.GetString() ?? "";
@@ -475,6 +481,40 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                             _ => TweetType.Original
                         };
                     }
+                }
+
+                // 🎯 分享链接检查：在解析时完成，不存储链接内容
+                if (!string.IsNullOrEmpty(tweetText))
+                {
+                    var shareLinksResult = await ExtractShareLinksAsync(tweetText);
+                    if (shareLinksResult.IsSuccess && shareLinksResult.Data.Any())
+                    {
+                        // 验证第一个分享链接
+                        var firstShareLink = shareLinksResult.Data.First();
+                        var validationResult = await ValidateShareLinkAsync(firstShareLink);
+                        
+                        if (validationResult.IsSuccess && validationResult.Data.IsValid)
+                        {
+                            tweetDetails.HasValidShareLink = true;
+                            // ShareLinkUrl字段保持为空字符串，不存储内容
+                            tweetDetails.ShareLinkUrl = string.Empty;
+                        }
+                        else
+                        {
+                            tweetDetails.HasValidShareLink = false;
+                            tweetDetails.ShareLinkUrl = string.Empty;
+                        }
+                    }
+                    else
+                    {
+                        tweetDetails.HasValidShareLink = false;
+                        tweetDetails.ShareLinkUrl = string.Empty;
+                    }
+                }
+                else
+                {
+                    tweetDetails.HasValidShareLink = false;
+                    tweetDetails.ShareLinkUrl = string.Empty;
                 }
             }
 
@@ -950,6 +990,8 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
 
     /// <summary>
     /// 批量验证推文中的分享链接
+    /// ⚠️ 注意：此方法依赖TweetDto.Text字段，仅用于处理从Twitter API直接获取的原始数据
+    /// 对于已存储的推文数据，应使用HasValidShareLink字段
     /// </summary>
     public async Task<TwitterApiResultDto<Dictionary<string, bool>>> BatchValidateShareLinksAsync(List<TweetDto> tweets)
     {
@@ -961,6 +1003,8 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             
             foreach (var tweet in tweets)
             {
+                // ⚠️ 此处使用tweet.Text是因为TweetDto来自Twitter API的原始响应
+                // 对于存储的数据，Text字段为空，应使用HasValidShareLink字段
                 var linksResult = await ExtractShareLinksAsync(tweet.Text);
                 if (linksResult.IsSuccess)
                 {
@@ -1030,23 +1074,9 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             var userInfoResult = await GetUserInfoAsync(tweetDetails.AuthorId);
             var followerCount = userInfoResult.IsSuccess ? userInfoResult.Data.FollowersCount : 0;
 
-            // 3. 分析分享链接
-            var shareLinksResult = await ExtractShareLinksAsync(tweetDetails.Text);
-            var hasValidShareLink = false;
-            var shareLinkUrl = string.Empty;
-
-            if (shareLinksResult.IsSuccess && shareLinksResult.Data.Any())
-            {
-                // 验证第一个分享链接
-                var firstShareLink = shareLinksResult.Data.First();
-                var validationResult = await ValidateShareLinkAsync(firstShareLink);
-                
-                if (validationResult.IsSuccess && validationResult.Data.IsValid)
-                {
-                    hasValidShareLink = true;
-                    shareLinkUrl = firstShareLink;
-                }
-            }
+            // 3. 🎯 使用已解析的分享链接信息（无需重新分析文本）
+            var hasValidShareLink = tweetDetails.HasValidShareLink;
+            var shareLinkUrl = string.Empty; // 不存储链接内容，保持为空
 
             // 4. 组装结果
             var result = new TweetProcessResultDto
@@ -1059,7 +1089,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 ViewCount = tweetDetails.ViewCount,
                 FollowerCount = followerCount,
                 HasValidShareLink = hasValidShareLink,
-                ShareLinkUrl = shareLinkUrl
+                ShareLinkUrl = shareLinkUrl // 保持为空，不存储链接内容
             };
 
             return new TwitterApiResultDto<TweetProcessResultDto>

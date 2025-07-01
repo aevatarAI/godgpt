@@ -616,12 +616,12 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                         AuthorName = tweetDetails.AuthorName,
                         CreatedAt = tweet.CreatedAt,
                         CreatedAtUtc = ((DateTimeOffset)tweet.CreatedAt).ToUnixTimeSeconds(),
-                        Text = tweet.Text,
+                        Text = string.Empty, // 🛡️ 隐私保护：不存储推文文本内容
                         Type = tweetDetails.Type,
                         ViewCount = tweetDetails.ViewCount,
                         FollowerCount = tweetDetails.FollowerCount,
                         HasValidShareLink = tweetDetails.HasValidShareLink,
-                        ShareLinkUrl = tweetDetails.ShareLinkUrl,
+                        ShareLinkUrl = string.Empty, // 🛡️ 隐私保护：不存储分享链接URL
                         IsProcessed = false,
                         FetchedAt = fetchStartTime
                     };
@@ -687,8 +687,8 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 
             _state.State.FetchHistory.Add(historyRecord);
 
-            // Keep only recent history (last 30 days)
-            var cutoffTime = DateTime.UtcNow.AddDays(-30);
+            // Keep only recent history (last 5 days)
+            var cutoffTime = DateTime.UtcNow.AddDays(-5);
             var cutoffUtc = ((DateTimeOffset)cutoffTime).ToUnixTimeSeconds();
             
             _state.State.FetchHistory = _state.State.FetchHistory
