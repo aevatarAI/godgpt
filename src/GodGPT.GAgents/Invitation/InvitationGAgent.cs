@@ -54,7 +54,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             ValidInvites = State.ValidInvites,
             PendingInvites = State.Invitees.Count(x => !x.Value.IsValid),
             TotalCreditsEarned = State.TotalCreditsEarned,
-            InviteCode = State.CurrentInviteCode
+            InviteCode = State.CurrentInviteCode,
+            TotalCreditsFromX = State.TotalCreditsFromX
         });
     }
 
@@ -116,6 +117,47 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             ScheduledDate = r.ScheduledDate,
             InvoiceId = r.InvoiceId
         }).ToList());
+    }
+
+    public Task<PagedResultDto<RewardHistoryDto>> GetRewardHistoryAsync(GetRewardHistoryRequestDto request)
+    {
+        var query = State.RewardHistory.AsQueryable();
+        
+        // Filter out scheduled rewards
+        query = query.Where(r => !r.IsScheduled);
+        
+        // Apply filter
+        if (request.RewardType.HasValue)
+        {
+            query = query.Where(r => r.RewardType == request.RewardType.Value);
+        }
+
+        // Get total count
+        var totalCount = query.Count();
+
+        // Apply pagination
+        var items = query
+            .Skip((request.PageNo - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(r => new RewardHistoryDto
+            {
+                InviteeId = r.InviteeId,
+                Credits = r.Credits,
+                RewardType = r.RewardType.ToString(),
+                IssuedAt = r.IssuedAt,
+                IsScheduled = r.IsScheduled,
+                ScheduledDate = r.ScheduledDate,
+                InvoiceId = r.InvoiceId,
+                TweetId = r.TweetId
+            })
+            .ToList();
+
+        return Task.FromResult(new PagedResultDto<RewardHistoryDto>(
+            items,
+            totalCount,
+            request.PageNo,
+            request.PageSize
+        ));
     }
 
     public async Task<bool> ProcessInviteeRegistrationAsync(string inviteeId)
@@ -334,11 +376,19 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                     IssuedAt = DateTime.UtcNow,
                     IsScheduled = addReward.IsScheduled,
                     ScheduledDate = addReward.ScheduledDate,
-                    InvoiceId = addReward.InvoiceId
+                    InvoiceId = addReward.InvoiceId,
+                    TweetId = addReward.TweetId
                 });
                 if (!addReward.IsScheduled)
                 {
-                    State.TotalCreditsEarned += addReward.Credits;
+                    if (addReward.RewardType == RewardTypeEnum.TwitterReward)
+                    {
+                        State.TotalCreditsFromX += addReward.Credits;
+                    }
+                    else
+                    {
+                        State.TotalCreditsEarned += addReward.Credits;
+                    }
                 }
                 break;
 
@@ -377,5 +427,31 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             });
             await ConfirmEvents();
         }
+    }
+
+    public async Task<bool> ProcessTwitterRewardAsync(string tweetId, int credits)
+    {
+        // Check if the tweet has already been rewarded
+        if (State.RewardHistory.Any(r => r.TweetId == tweetId && r.RewardType == RewardTypeEnum.TwitterReward))
+        {
+            return false;
+        }
+
+        // Issue the reward
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        await userQuotaGrain.AddCreditsAsync(credits);
+
+        // Record the reward
+        RaiseEvent(new AddRewardLogEvent
+        {
+            InviteeId = this.GetPrimaryKey().ToString(), // Use the current user's ID
+            Credits = credits,
+            RewardType = RewardTypeEnum.TwitterReward,
+            IsScheduled = false,
+            TweetId = tweetId
+        });
+        await ConfirmEvents();
+
+        return true;
     }
 } 

@@ -14,6 +14,7 @@ public class InvitationState : StateBase
     [Id(5)] public int TotalCreditsEarned { get; set; }
     [Id(6)] public List<RewardRecord> RewardHistory { get; set; } = new();
     [Id(7)] public DateTime LastRewardTierUpdate { get; set; }
+    [Id(8)] public int TotalCreditsFromX { get; set; }
 }
 
 [GenerateSerializer]
@@ -39,4 +40,5 @@ public class RewardRecord
     [Id(4)] public bool IsScheduled { get; set; }
     [Id(5)] public DateTime? ScheduledDate { get; set; }
     [Id(6)] public string InvoiceId { get; set; }
+    [Id(7)] public string TweetId { get; set; }
 } 

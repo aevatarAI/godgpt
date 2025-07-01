@@ -128,7 +128,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .AddLogStorageBasedLogConsistencyProvider("LogStorage")
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
-                .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
+                .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
+                .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"));
         }
     }
 
