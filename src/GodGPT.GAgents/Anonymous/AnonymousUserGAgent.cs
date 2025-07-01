@@ -57,6 +57,11 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         return Math.Max(0, maxCount - State.ChatCount);
     }
 
+    public async Task<int> GetMaxChatCountAsync()
+    {
+        return GetMaxChatCount();
+    }
+
     public async Task<Guid> CreateGuestSessionAsync(string? guider = null)
     {
         await EnsureInitializedAsync();

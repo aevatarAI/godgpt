@@ -27,6 +27,12 @@ public interface IAnonymousUserGAgent : IGAgent
     Task<int> GetRemainingChatsAsync();
     
     /// <summary>
+    /// Get maximum chat count from configuration
+    /// </summary>
+    [ReadOnly]
+    Task<int> GetMaxChatCountAsync();
+    
+    /// <summary>
     /// Create or reset guest session for this IP
     /// </summary>
     Task<Guid> CreateGuestSessionAsync(string? guider = null);
