@@ -7,7 +7,7 @@ namespace Aevatar.Application.Grains.Agents.Anonymous;
 /// <summary>
 /// Interface for Anonymous User GAgent - manages IP-based guest chat sessions
 /// </summary>
-public interface IAnonymousUserGAgent : IGrainWithStringKey
+public interface IAnonymousUserGAgent : IGAgent
 {
     /// <summary>
     /// Get current chat count for this IP
