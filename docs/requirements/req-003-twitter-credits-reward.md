@@ -99,82 +99,82 @@
 
 ```mermaid
 sequenceDiagram
-    participant TM as TweetMonitorGrain<br/>(数据拉取与存储)
-    participant TI as TwitterInteractionGrain<br/>(API交互服务)
-    participant TR as TwitterRewardGrain<br/>(奖励计算与发放)
+    participant TM as TweetMonitorGrain<br/>(Data Pull & Storage)
+    participant TI as TwitterInteractionGrain<br/>(API Interaction Service)
+    participant TR as TwitterRewardGrain<br/>(Reward Calculation & Distribution)
     participant TA as Twitter API
-    participant CM as ChatManagerGAgent<br/>(积分发放)
+    participant CM as ChatManagerGAgent<br/>(Credit Distribution)
     
-    Note over TM,TR: 系统启动 - 三个Agent各司其职
+    Note over TM,TR: System Startup - Three Agents with Distinct Responsibilities
     
     rect rgb(230, 240, 255)
-        Note over TM,TI: 🔄 定时任务1: 推文数据拉取 (付费API优化，默认30分钟)
+        Note over TM,TI: 🔄 Scheduled Task 1: Tweet Data Pull (Paid API Optimization, Default 30min)
         
-        TM->>TM: 定时器触发(降低频率，增加批量)
-        TM->>TI: 调用搜索推文API(批量100条)
-        TI->>TA: 搜索 @GodGPT_ 推文(最近30分钟，100条)
-        TA-->>TI: 返回推文列表
+        TM->>TM: Timer Triggered(Lower Frequency, Increase Batch Size)
+        TM->>TI: Call Search Tweet API(Batch 100 items)
+        TI->>TA: Search @GodGPT_ Tweets(Last 30min, 100 items)
+        TA-->>TI: Return Tweet List
         
-        TI->>TI: 推文类型识别
-        TI->>TI: 过滤非Original类型
-        TI->>TI: 提取分享链接信息
-        TI-->>TM: 返回处理后的推文数据
+        TI->>TI: Tweet Type Recognition
+        TI->>TI: Filter Non-Original Types
+        TI->>TI: Extract Share Link Information
+        TI-->>TM: Return Processed Tweet Data
         
-        TM->>TM: 本地去重存储
-        TM->>TM: 推文类型分类存储
-        TM->>TM: 保存分享链接验证结果(boolean)
-        TM->>TM: 设置数据过期标记(可配置天数)
+        TM->>TM: Local Deduplication Storage
+        TM->>TM: Tweet Type Classification Storage
+        TM->>TM: Save Share Link Validation Result(boolean)
+        TM->>TM: Set Data Expiration Mark(Configurable Days)
     end
     
     rect rgb(255, 240, 230)
-        Note over TR,CM: 🎯 定时任务2: 积分奖励计算 (每日00:00 UTC)
+        Note over TR,CM: 🎯 Scheduled Task 2: Credit Reward Calculation (Daily 00:00 UTC)
         
-        TR->>TR: UTC 00:00定时器触发
-        TR->>TR: 检查TaskDailyExecutionRecord防重复
-        TR->>TM: 查询指定时间区间推文
-        Note right of TM: 倒数第三天24小时<br/>仅返回Original类型
-        TM-->>TR: 返回符合条件的推文
+        TR->>TR: UTC 00:00 Timer Triggered
+        TR->>TR: Check TaskDailyExecutionRecord for Duplication Prevention
+        TR->>TM: Query Tweets in Specified Time Range
+        Note right of TM: Third Day Back 24 Hours<br/>Return Original Type Only
+        TM-->>TR: Return Qualified Tweets
         
-        TR->>TI: 获取推文详细信息
-        TI->>TA: 批量获取推文数据
-        TA-->>TI: 返回浏览量、粉丝数等
-        TI-->>TR: 返回完整推文信息
+        TR->>TI: Get Tweet Detailed Information
+        TI->>TA: Batch Get Tweet Data
+        TA-->>TI: Return View Count, Follower Count etc
+        TI-->>TR: Return Complete Tweet Information
         
-        loop 每个用户
-            TR->>TR: 检查UserDailyRewardRecord
-            TR->>TR: 计算基础奖励(2 Credits/条，检查上限)
-            TR->>TR: 计算附加奖励(8档阶梯)
-            TR->>TR: 检查分享链接加成(HasValidShareLink)
-            TR->>TR: 应用分享链接加成(×1.1倍，向下取整)
-            TR->>TR: 检查每日上限(500 Credits)
+        loop For Each User
+            TR->>TR: Check UserDailyRewardRecord
+            TR->>TR: Calculate Base Reward(2 Credits/tweet, Check Limit)
+            TR->>TR: Calculate Bonus Reward(8 Tier System)
+            TR->>TR: Check Share Link Bonus(HasValidShareLink)
+            TR->>TR: Apply Share Link Bonus(×1.1, Round Down)
+            TR->>TR: Check Daily Limit(500 Credits)
             
-            TR->>CM: 发放积分到用户账户
-            CM-->>TR: 确认积分发放成功
-            TR->>TR: 更新UserDailyRewardRecord
+            TR->>CM: Distribute Credits to User Account
+            CM-->>TR: Confirm Credit Distribution Success
+            TR->>TR: Update UserDailyRewardRecord
         end
         
-        TR->>TR: 记录TaskDailyExecutionRecord
-        TR->>TR: 更新UTC日期标识为下一天
+        TR->>TR: Record TaskDailyExecutionRecord
+        TR->>TR: Update UTC Date Identifier to Next Day
     end
     
     rect rgb(240, 255, 240)
-        Note over TM,TR: 🔧 系统管理与恢复机制
+        Note over TM,TR: 🔧 System Management & Recovery Mechanism
         
-        TR->>TM: 检测系统瘫痪状态
-        alt 发现数据缺失
-            TR->>TM: 触发指定区间数据补偿
-            TM->>TI: 重新拉取缺失时间段数据
-            TI->>TA: 历史推文搜索
-            TA-->>TI: 返回历史数据
-            TI-->>TM: 补充存储历史推文
-            TM-->>TR: 确认数据补偿完成
+        TR->>TM: Detect System Outage Status
+        alt Data Loss Detected
+            TR->>TM: Trigger Specified Range Data Compensation
+            TM->>TI: Re-pull Missing Time Period Data
+            TI->>TA: Historical Tweet Search
+            TA-->>TI: Return Historical Data
+            TI-->>TM: Supplement Store Historical Tweets
+            TM-->>TR: Confirm Data Compensation Complete
         end
         
-        TR->>TR: 更新执行时间戳
-        TR->>TR: 重置防重复标志
+        TR->>TR: Update Execution Timestamp
+        TR->>TR: Reset Duplication Prevention Flag
     end
     
-    Note over TM,TR: 📊 持续运行 - 数据驱动的积分奖励生态
+    Note over TM,TR: 📊 Continuous Operation - Data-Driven Credit Reward Ecosystem
 ```
 
 ### Agent 分工详解
@@ -476,22 +476,22 @@ public class TweetRecord
     public string AuthorId { get; set; }
     public string AuthorHandle { get; set; }
     public DateTime CreatedAt { get; set; }
-    public int CreatedAtTimestamp { get; set; }  // UTC时间戳(秒)
-    public TweetType Type { get; set; }          // 推文类型 - 关键字段，支持未来扩展
+    public int CreatedAtTimestamp { get; set; }  // UTC timestamp (seconds)
+    public TweetType Type { get; set; }          // Tweet type - key field for future extension
     public int ViewCount { get; set; }
     public int FollowerCount { get; set; }
-    public bool HasValidShareLink { get; set; }  // 是否包含有效分享链接(boolean，优化存储)
-    public bool IsProcessed { get; set; }        // 是否已处理
-    public int ProcessedTimestamp { get; set; }  // 处理时间戳
-    public int DataRetentionExpiry { get; set; } // 数据过期时间戳(可配置天数后)
+    public bool HasValidShareLink { get; set; }  // Whether contains valid share link (boolean, storage optimization)
+    public bool IsProcessed { get; set; }        // Whether already processed
+    public int ProcessedTimestamp { get; set; }  // Processing timestamp
+    public int DataRetentionExpiry { get; set; } // Data expiration timestamp (after configurable days)
 }
 
 public enum TweetType
 {
-    Original = 0,    // 原创推文
-    Reply = 1,       // 回复推文
-    Retweet = 2,     // 转推
-    Quote = 3        // 引用推文
+    Original = 0,    // Original tweet
+    Reply = 1,       // Reply tweet
+    Retweet = 2,     // Retweet
+    Quote = 3        // Quote tweet
 }
 ```
 
@@ -501,14 +501,14 @@ public class RewardRecord
 {
     public string UserId { get; set; }
     public DateTime RewardDate { get; set; }
-    public int RewardDateTimestamp { get; set; }     // UTC时间戳(秒)
+    public int RewardDateTimestamp { get; set; }     // UTC timestamp (seconds)
     public int BaseRewards { get; set; }
     public int BonusRewards { get; set; }
     public int TotalRewards { get; set; }
     public List<string> ProcessedTweetIds { get; set; }
-    public bool IsSent { get; set; }                 // 是否已发送
-    public int SentTimestamp { get; set; }           // 发送时间戳
-    public string ProcessingPeriod { get; set; }     // 处理区间标识
+    public bool IsSent { get; set; }                 // Whether already sent
+    public int SentTimestamp { get; set; }           // Sent timestamp
+    public string ProcessingPeriod { get; set; }     // Processing period identifier
 }
 ```
 
@@ -517,12 +517,12 @@ public class RewardRecord
 public class TaskExecutionRecord
 {
     public string TaskName { get; set; }
-    public int LastExecutionTimestamp { get; set; }  // 上次执行时间戳
-    public int LastSuccessTimestamp { get; set; }    // 上次成功时间戳
-    public string LastProcessedPeriod { get; set; }  // 上次处理的时间区间
-    public bool IsEnabled { get; set; }              // 任务是否启用
-    public int RetryCount { get; set; }              // 重试次数
-    public string LastError { get; set; }            // 最后一次错误信息
+    public int LastExecutionTimestamp { get; set; }  // Last execution timestamp
+    public int LastSuccessTimestamp { get; set; }    // Last success timestamp
+    public string LastProcessedPeriod { get; set; }  // Last processed time period
+    public bool IsEnabled { get; set; }              // Whether task is enabled
+    public int RetryCount { get; set; }              // Retry count
+    public string LastError { get; set; }            // Last error message
 }
 ```
 
@@ -531,14 +531,14 @@ public class TaskExecutionRecord
 public class UserDailyRewardRecord
 {
     public string UserId { get; set; }
-    public int UtcDateTimestamp { get; set; }        // UTC 0点时间戳作为日期标识
-    public int BaseTweetCount { get; set; }          // 当天已领取基础奖励的推文数
-    public int BaseTotalRewards { get; set; }        // 当天基础奖励总计
-    public bool HasReceivedBonusReward { get; set; } // 是否已领取当天附加奖励
-    public int BonusTotalRewards { get; set; }       // 当天附加奖励总计
-    public List<string> ProcessedTweetIds { get; set; } // 已处理的推文ID列表
-    public int CreatedTimestamp { get; set; }        // 记录创建时间戳
-    public int UpdatedTimestamp { get; set; }        // 记录更新时间戳
+    public int UtcDateTimestamp { get; set; }        // UTC 0 o'clock timestamp as date identifier
+    public int BaseTweetCount { get; set; }          // Number of tweets that received base rewards today
+    public int BaseTotalRewards { get; set; }        // Total base rewards today
+    public bool HasReceivedBonusReward { get; set; } // Whether received bonus reward today
+    public int BonusTotalRewards { get; set; }       // Total bonus rewards today
+    public List<string> ProcessedTweetIds { get; set; } // List of processed tweet IDs
+    public int CreatedTimestamp { get; set; }        // Record creation timestamp
+    public int UpdatedTimestamp { get; set; }        // Record update timestamp
 }
 ```
 
@@ -546,15 +546,15 @@ public class UserDailyRewardRecord
 ```csharp
 public class TaskDailyExecutionRecord
 {
-    public string TaskName { get; set; }             // 任务名称（如"RewardCalculation"）
-    public int UtcDateTimestamp { get; set; }        // UTC 0点时间戳作为日期标识
-    public bool IsExecuted { get; set; }             // 当天是否已执行
-    public int ExecutionTimestamp { get; set; }      // 执行时间戳
-    public bool IsSuccessful { get; set; }           // 是否执行成功
-    public int ProcessedUserCount { get; set; }      // 处理的用户数量
-    public int TotalRewardsSent { get; set; }        // 发送的总奖励数
-    public string ProcessingPeriod { get; set; }     // 处理的时间区间标识
-    public string ErrorMessage { get; set; }         // 错误信息（如有）
+    public string TaskName { get; set; }             // Task name (e.g. "RewardCalculation")
+    public int UtcDateTimestamp { get; set; }        // UTC 0 o'clock timestamp as date identifier
+    public bool IsExecuted { get; set; }             // Whether executed today
+    public int ExecutionTimestamp { get; set; }      // Execution timestamp
+    public bool IsSuccessful { get; set; }           // Whether execution was successful
+    public int ProcessedUserCount { get; set; }      // Number of users processed
+    public int TotalRewardsSent { get; set; }        // Total rewards sent
+    public string ProcessingPeriod { get; set; }     // Processing time period identifier
+    public string ErrorMessage { get; set; }         // Error message (if any)
 }
 ```
 
@@ -562,11 +562,11 @@ public class TaskDailyExecutionRecord
 ```csharp
 public class TimeRange
 {
-    public int StartTimestamp { get; set; }    // 开始时间戳
-    public int EndTimestamp { get; set; }      // 结束时间戳
-    public string PeriodId { get; set; }       // 区间唯一标识
+    public int StartTimestamp { get; set; }    // Start timestamp
+    public int EndTimestamp { get; set; }      // End timestamp
+    public string PeriodId { get; set; }       // Unique period identifier
     
-    // 根据当前时间和配置计算时间区间
+    // Calculate time range based on current time and configuration
     public static TimeRange CalculateRange(int currentTimestamp, int offsetMinutes, int windowMinutes)
     {
         var endTimestamp = currentTimestamp - (offsetMinutes * 60);
@@ -587,7 +587,7 @@ public class TimeRange
 public static class UtcDateHelper
 {
     /// <summary>
-    /// 获取当前UTC日期的0点时间戳
+    /// Get current UTC date 0 o'clock timestamp
     /// </summary>
     public static int GetCurrentUtcDateTimestamp()
     {
@@ -597,15 +597,15 @@ public static class UtcDateHelper
     }
     
     /// <summary>
-    /// 获取下一个UTC日期的0点时间戳
+    /// Get next UTC date 0 o'clock timestamp
     /// </summary>
     public static int GetNextUtcDateTimestamp(int currentUtcDateTimestamp)
     {
-        return currentUtcDateTimestamp + (24 * 60 * 60); // 加24小时
+        return currentUtcDateTimestamp + (24 * 60 * 60); // Add 24 hours
     }
     
     /// <summary>
-    /// 检查时间戳是否为今天UTC日期
+    /// Check if timestamp is today's UTC date
     /// </summary>
     public static bool IsToday(int utcDateTimestamp)
     {
@@ -613,7 +613,7 @@ public static class UtcDateHelper
     }
     
     /// <summary>
-    /// 从UTC时间戳转换为可读日期字符串
+    /// Convert UTC timestamp to readable date string
     /// </summary>
     public static string ToDateString(int utcDateTimestamp)
     {
@@ -714,23 +714,23 @@ public static class UtcDateHelper
 
 ### 管理接口设计
 ```csharp
-// 系统管理事件
+// System management event
 public class TwitterTaskControlGEvent : EventBase
 {
-    public string TaskName { get; set; }        // 任务名称
-    public TaskControlAction Action { get; set; } // 控制动作
-    public int TimeOffsetMinutes { get; set; }   // 时间偏移
-    public int TimeWindowMinutes { get; set; }   // 时间窗口
-    public string TargetPeriod { get; set; }     // 目标处理区间
+    public string TaskName { get; set; }        // Task name
+    public TaskControlAction Action { get; set; } // Control action
+    public int TimeOffsetMinutes { get; set; }   // Time offset
+    public int TimeWindowMinutes { get; set; }   // Time window
+    public string TargetPeriod { get; set; }     // Target processing period
 }
 
 public enum TaskControlAction
 {
-    Start,           // 启动任务
-    Stop,            // 停止任务
-    UpdateConfig,    // 更新配置
-    ManualTrigger,   // 手动触发
-    RecoverPeriod    // 恢复指定区间
+    Start,           // Start task
+    Stop,            // Stop task
+    UpdateConfig,    // Update config
+    ManualTrigger,   // Manual trigger
+    RecoverPeriod    // Recover specified period
 }
 ```
 
@@ -751,33 +751,33 @@ public enum TaskControlAction
 ```csharp
 public interface ITweetMonitorGrain : IGrainWithStringKey
 {
-    // 定时任务控制
+    // Scheduled task control
     Task<bool> StartPullTaskAsync(string targetId);
     Task<bool> StopPullTaskAsync();
     Task<TaskExecutionStatusDto> GetTaskStatusAsync();
     
-    // 数据拉取
+    // Data pulling
     Task<PullTweetResultDto> PullTweetsAsync(PullTweetRequestDto request);
     Task<PullTweetResultDto> PullTweetsByPeriodAsync(int startTimestamp, int endTimestamp);
     
-    // 数据查询（仅返回Original类型推文）
+    // Data query (return Original type tweets only)
     Task<List<TweetRecordDto>> GetTweetsByPeriodAsync(int startTimestamp, int endTimestamp);
     Task<List<TweetRecordDto>> GetUnprocessedTweetsAsync(int maxCount = 100);
     
-    // 数据管理
+    // Data management
     Task<int> CleanupExpiredDataAsync();
     Task<DataStatisticsDto> GetDataStatisticsAsync();
 }
 
 public interface ITwitterInteractionGrain : IGrainWithStringKey
 {
-    // Twitter API 交互
+    // Twitter API interaction
     Task<TwitterApiResultDto> SearchTweetsAsync(SearchTweetsRequestDto request);
     Task<TweetDetailsDto> GetTweetDetailsAsync(string tweetId);
     Task<UserInfoDto> GetUserInfoAsync(string userId);
     Task<bool> ValidateShareLinkAsync(string url);
     
-    // 推文类型识别和过滤
+    // Tweet type recognition and filtering
     Task<TweetType> DetermineTweetTypeAsync(string tweetId);
     Task<bool> IsOriginalTweetAsync(string tweetId);
 }
@@ -791,7 +791,7 @@ public class PullTweetRequestDto
     public int EndTimestamp { get; set; }
     public int MaxResults { get; set; } = 100;
     public bool ForceRefresh { get; set; } = false;
-    public List<TweetType> AllowedTypes { get; set; } = new List<TweetType> { TweetType.Original }; // 默认仅原创推文
+    public List<TweetType> AllowedTypes { get; set; } = new List<TweetType> { TweetType.Original }; // Default to original tweets only
 }
 
 public class PullTweetResultDto
@@ -801,8 +801,8 @@ public class PullTweetResultDto
     public int NewTweets { get; set; }
     public int DuplicateSkipped { get; set; }
     public int FilteredOut { get; set; }
-    public int TypeFilteredOut { get; set; }        // 因推文类型被过滤的数量
-    public Dictionary<TweetType, int> TypeStatistics { get; set; } // 各类型推文统计
+    public int TypeFilteredOut { get; set; }        // Number filtered out due to tweet type
+    public Dictionary<TweetType, int> TypeStatistics { get; set; } // Statistics by tweet type
     public List<string> ProcessedTweetIds { get; set; }
     public string ErrorMessage { get; set; }
     public int ProcessingTimestamp { get; set; }
@@ -861,20 +861,20 @@ sequenceDiagram
 ```csharp
 public interface ITwitterRewardGrain : IGrainWithStringKey
 {
-    // 定时任务控制
+    // Scheduled task control
     Task<bool> StartRewardTaskAsync(string targetId);
     Task<bool> StopRewardTaskAsync();
     Task<TaskExecutionStatusDto> GetTaskStatusAsync();
     
-    // 奖励计算
+    // Reward calculation
     Task<RewardCalculationResultDto> CalculateRewardsAsync(RewardCalculationRequestDto request);
     Task<RewardCalculationResultDto> CalculateRewardsByPeriodAsync(int startTimestamp, int endTimestamp);
     
-    // 奖励查询
+    // Reward query
     Task<List<RewardRecordDto>> GetRewardHistoryAsync(string userId, int days = 30);
     Task<RewardStatisticsDto> GetRewardStatisticsAsync(int startTimestamp, int endTimestamp);
     
-    // 系统管理
+    // System management
     Task<bool> UpdateTimeConfigAsync(int offsetMinutes, int windowMinutes);
     Task<List<string>> GetProcessedPeriodsAsync(int days = 7);
 }
@@ -887,7 +887,7 @@ public class RewardCalculationRequestDto
     public int StartTimestamp { get; set; }
     public int EndTimestamp { get; set; }
     public bool ForceRecalculate { get; set; } = false;
-    public List<string> TargetUserIds { get; set; } // 可选，指定用户
+    public List<string> TargetUserIds { get; set; } // Optional, specific users
 }
 
 public class RewardCalculationResultDto
@@ -997,9 +997,9 @@ sequenceDiagram
     Note over Admin,Config: 手动执行流程
     Admin->>TSM: ManualPullTweetsAsync(startTime, endTime)
     TSM->>TMG: PullTweetsByPeriodAsync(timeRange)
-    TMG->>TMG: 执行数据拉取
+    TMG->>TMG: Execute data pulling
     TMG-->>TSM: PullTweetResultDto
-    TSM-->>Admin: 执行结果
+    TSM-->>Admin: Execution result
 ```
 
 #### 涉及类和接口
@@ -1008,21 +1008,21 @@ sequenceDiagram
 ```csharp
 public interface ITwitterSystemManagerGrain : IGrainWithStringKey
 {
-    // 任务控制
+    // Task control
     Task<bool> StartTaskAsync(string taskName, string targetId);
     Task<bool> StopTaskAsync(string taskName);
     Task<List<TaskExecutionStatusDto>> GetAllTaskStatusAsync();
     
-    // 配置管理
+    // Configuration management
     Task<bool> UpdateTimeConfigAsync(string taskName, int offsetMinutes, int windowMinutes);
     Task<TwitterRewardConfigDto> GetCurrentConfigAsync();
     Task<bool> SetConfigAsync(TwitterRewardConfigDto config);
     
-    // 手动执行
+    // Manual execution
     Task<PullTweetResultDto> ManualPullTweetsAsync(int startTimestamp, int endTimestamp);
     Task<RewardCalculationResultDto> ManualCalculateRewardsAsync(int startTimestamp, int endTimestamp);
     
-    // 系统状态
+    // System status
     Task<SystemHealthDto> GetSystemHealthAsync();
     Task<List<string>> GetProcessingHistoryAsync(int days = 7);
 }
@@ -1066,35 +1066,35 @@ public class SystemHealthDto
 
 ```mermaid
 sequenceDiagram
-    participant Admin as "管理员"
+    participant Admin as "Administrator"
     participant TRC as "TwitterRecoveryGrain"
     participant TMG as "TweetMonitorGrain"
     participant TRG as "TwitterRewardGrain"
-    participant Storage as "数据存储"
+    participant Storage as "Data Storage"
 
-    Note over Admin,Storage: 故障检测流程
+    Note over Admin,Storage: Outage Detection Process
     Admin->>TRC: DetectSystemOutageAsync()
-    TRC->>Storage: 分析执行历史记录
-    TRC->>TRC: 计算丢失时间区间
-    TRC-->>Admin: SystemOutageDto(丢失区间列表)
+    TRC->>Storage: Analyze execution history
+    TRC->>TRC: Calculate missing time periods
+    TRC-->>Admin: SystemOutageDto(missing periods list)
     
-    Note over Admin,Storage: 数据恢复流程
+    Note over Admin,Storage: Data Recovery Process
     Admin->>TRC: RecoverPeriodAsync(startTime, endTime)
     TRC->>TMG: PullTweetsByPeriodAsync(timeRange)
-    TMG->>TMG: 重新拉取推文数据
+    TMG->>TMG: Re-pull tweet data
     TMG-->>TRC: PullTweetResultDto
     
     TRC->>TRG: CalculateRewardsByPeriodAsync(timeRange)
-    TRG->>TRG: 重新计算奖励
+    TRG->>TRG: Recalculate rewards
     TRG-->>TRC: RewardCalculationResultDto
     
-    TRC->>Storage: 更新恢复状态记录
-    TRC-->>Admin: RecoveryResultDto(恢复结果)
+    TRC->>Storage: Update recovery status record
+    TRC-->>Admin: RecoveryResultDto(recovery result)
     
-    Note over Admin,Storage: 数据完整性验证
+    Note over Admin,Storage: Data Integrity Validation
     Admin->>TRC: ValidateDataIntegrityAsync(timeRange)
-    TRC->>Storage: 验证数据完整性
-    TRC-->>Admin: 验证结果
+    TRC->>Storage: Validate data integrity
+    TRC-->>Admin: Validation result
 ```
 
 #### 涉及类和接口
@@ -1103,15 +1103,15 @@ sequenceDiagram
 ```csharp
 public interface ITwitterRecoveryGrain : IGrainWithStringKey
 {
-    // 故障检测
+    // Outage detection
     Task<List<MissingPeriodDto>> DetectMissingPeriodsAsync(int startTimestamp, int endTimestamp);
     Task<SystemOutageDto> DetectSystemOutageAsync();
     
-    // 数据恢复
+    // Data recovery
     Task<RecoveryResultDto> RecoverPeriodAsync(int startTimestamp, int endTimestamp);
     Task<RecoveryResultDto> RecoverMultiplePeriodsAsync(List<TimeRange> periods);
     
-    // 状态验证
+    // Status validation
     Task<bool> ValidateDataIntegrityAsync(int startTimestamp, int endTimestamp);
     Task<DataIntegrityReportDto> GenerateIntegrityReportAsync(int days = 7);
 }
@@ -1160,23 +1160,23 @@ public class RecoveryResultDto
 ```csharp
 public interface ITwitterTestingGrain : IGrainWithStringKey
 {
-    // 用户状态重置（新增）
+    // User status reset (new)
     Task<ResetOperationResultDto> ResetUserDailyStatusAsync(string userId, int utcDateTimestamp, string resetReason);
     Task<GrainResultDto<UserDailyRewardRecord>> GetUserDailyStatusAsync(string userId, int utcDateTimestamp);
     
-    // 任务状态重置（新增）
+    // Task status reset (new)
     Task<ResetOperationResultDto> ResetTaskExecutionStatusAsync(string taskName, int utcDateTimestamp, string resetReason);
     Task<GrainResultDto<TaskDailyExecutionRecord>> GetTaskExecutionStatusAsync(string taskName, int utcDateTimestamp);
     
-    // 批量重置操作（新增）
+    // Batch reset operations (new)
     Task<List<ResetOperationResultDto>> BatchResetUserStatusAsync(List<UserResetRequestDto> requests);
     Task<ResetOperationResultDto> ResetAllUserStatusForDateAsync(int utcDateTimestamp, string resetReason);
     
-    // 安全检查（新增）
+    // Security check (new)
     Task<bool> ValidateResetPermissionAsync(string operatorId, string userId);
     Task<List<ResetOperationLogDto>> GetResetOperationHistoryAsync(int days = 7);
     
-    // 现有测试接口
+    // Existing test interfaces
     Task<bool> SetTestTimeOffsetAsync(int offsetHours);
     Task<int> GetCurrentTestTimestampAsync();
     Task<bool> SimulateTimePassageAsync(int minutes);
@@ -1195,26 +1195,26 @@ public interface ITwitterTestingGrain : IGrainWithStringKey
 ```csharp
 public interface ITwitterSystemManagerGrain : IGrainWithStringKey
 {
-    // 补充缺失的简化API（配置驱动）
+    // Simplified APIs (configuration-driven)
     Task<bool> StartTweetMonitorAsync();
     Task<bool> StartRewardCalculationAsync();
     Task<bool> StopTweetMonitorAsync();
     Task<bool> StopRewardCalculationAsync();
     
-    // 补充手动触发的简化API
+    // Simplified manual trigger APIs
     Task<PullTweetResultDto> ManualPullTweetsAsync();
     Task<RewardCalculationResultDto> ManualCalculateRewardsAsync();
     
-    // 补充配置管理接口
+    // Configuration management interfaces
     Task<GrainResultDto<TwitterRewardConfigDto>> GetCurrentConfigAsync();
     Task<bool> SetConfigAsync(TwitterRewardConfigDto config);
     
-    // 补充系统健康和历史接口
+    // System health and history interfaces
     Task<GrainResultDto<SystemHealthDto>> GetSystemHealthAsync();
     Task<List<string>> GetProcessingHistoryAsync(int days = 7);
     Task<List<TaskExecutionStatusDto>> GetAllTaskStatusAsync();
     
-    // 现有接口
+    // Existing interfaces
     Task<bool> StartTaskAsync(string taskName, string targetId);
     Task<bool> StopTaskAsync(string taskName);
     Task<bool> UpdateTimeConfigAsync(string taskName, int offsetMinutes, int windowMinutes);
@@ -1260,7 +1260,7 @@ public class ResetOperationLogDto
     [Id(7)] public string ErrorMessage { get; set; }
 }
 
-// 数据统计DTO
+// Data statistics DTO
 [GenerateSerializer]
 public class DataStatisticsDto
 {
@@ -1287,7 +1287,7 @@ public class RewardStatisticsDto
     [Id(7)] public decimal AverageRewardPerTweet { get; set; }
 }
 
-// 系统健康DTO  
+// System health DTO  
 [GenerateSerializer]
 public class SystemHealthDto
 {
@@ -1301,7 +1301,7 @@ public class SystemHealthDto
     [Id(7)] public Dictionary<string, object> Metrics { get; set; }
 }
 
-// 配置DTO
+// Configuration DTO
 [GenerateSerializer]
 public class TwitterRewardConfigDto
 {
@@ -1326,10 +1326,10 @@ public class TwitterRewardConfigDto
 ```csharp
 public interface ITweetMonitorGrain : IGrainWithStringKey
 {
-    // 补充缺失的数据统计接口
+    // Missing data statistics interface
     Task<GrainResultDto<DataStatisticsDto>> GetDataStatisticsAsync();
     
-    // 现有接口保持不变
+    // Existing interfaces remain unchanged
     Task<bool> StartPullTaskAsync(string targetId);
     Task<bool> StopPullTaskAsync();
     Task<TaskExecutionStatusDto> GetTaskStatusAsync();
@@ -1345,10 +1345,10 @@ public interface ITweetMonitorGrain : IGrainWithStringKey
 ```csharp
 public interface ITwitterRewardGrain : IGrainWithStringKey
 {
-    // 补充缺失的统计接口
+    // Missing statistics interface
     Task<GrainResultDto<RewardStatisticsDto>> GetRewardStatisticsAsync(int startTimestamp, int endTimestamp);
     
-    // 现有接口保持不变
+    // Existing interfaces remain unchanged
     Task<bool> StartRewardTaskAsync(string targetId);
     Task<bool> StopRewardTaskAsync();
     Task<TaskExecutionStatusDto> GetTaskStatusAsync();
@@ -1366,59 +1366,59 @@ public interface ITwitterRewardGrain : IGrainWithStringKey
 
 ```mermaid
 sequenceDiagram
-    participant Tester as "测试人员"
+    participant Tester as "Tester"
     participant TTG as "TwitterTestingGrain"
     participant TMG as "TweetMonitorGrain"
     participant TRG as "TwitterRewardGrain"
-    participant TestData as "测试数据"
+    participant TestData as "Test Data"
 
-    Note over Tester,TestData: 测试环境准备
+    Note over Tester,TestData: Test Environment Setup
     Tester->>TTG: SetTestTimeOffsetAsync(offsetHours)
-    TTG->>TTG: 设置测试时间偏移
+    TTG->>TTG: Set test time offset
     Tester->>TTG: InjectTestTweetDataAsync(testTweets)
-    TTG->>TestData: 注入测试推文数据
-    TTG-->>Tester: 测试环境就绪
+    TTG->>TestData: Inject test tweet data
+    TTG-->>Tester: Test environment ready
     
-    Note over Tester,TestData: 手动触发测试
+    Note over Tester,TestData: Manual Trigger Testing
     Tester->>TTG: TriggerPullTaskAsync(useTestTime=true)
-    TTG->>TMG: 手动触发推文拉取
-    TMG->>TestData: 获取测试数据
+    TTG->>TMG: Manually trigger tweet pulling
+    TMG->>TestData: Get test data
     TMG-->>TTG: PullTweetResultDto
-    TTG-->>Tester: 拉取结果
+    TTG-->>Tester: Pull result
     
     Tester->>TTG: TriggerRewardTaskAsync(useTestTime=true)
-    TTG->>TRG: 手动触发奖励计算
-    TRG->>TestData: 计算测试奖励
+    TTG->>TRG: Manually trigger reward calculation
+    TRG->>TestData: Calculate test rewards
     TRG-->>TTG: RewardCalculationResultDto
-    TTG-->>Tester: 计算结果
+    TTG-->>Tester: Calculation result
     
-    Note over Tester,TestData: 测试验证和清理
+    Note over Tester,TestData: Test Verification and Cleanup
     Tester->>TTG: GetTestDataSummaryAsync()
     TTG-->>Tester: TestDataSummaryDto
     Tester->>TTG: ClearTestDataAsync()
-    TTG->>TestData: 清理测试数据
-    TTG-->>Tester: 清理完成
+    TTG->>TestData: Clean test data
+    TTG-->>Tester: Cleanup complete
 ```
 
 ### 测试专用接口
 ```csharp
 public interface ITwitterTestingGrain : IGrainWithStringKey
 {
-    // 时间控制测试
+    // Time control testing
     Task<bool> SetTestTimeOffsetAsync(int offsetHours);
     Task<int> GetCurrentTestTimestampAsync();
     Task<bool> SimulateTimePassageAsync(int minutes);
     
-    // 数据模拟
+    // Data simulation
     Task<bool> InjectTestTweetDataAsync(List<TweetRecordDto> testTweets);
     Task<bool> ClearTestDataAsync();
     Task<TestDataSummaryDto> GetTestDataSummaryAsync();
     
-    // 任务触发测试
+    // Task trigger testing
     Task<PullTweetResultDto> TriggerPullTaskAsync(bool useTestTime = true);
     Task<RewardCalculationResultDto> TriggerRewardTaskAsync(bool useTestTime = true);
     
-    // 状态重置
+    // State reset
     Task<bool> ResetAllTaskStatesAsync();
     Task<bool> ResetExecutionHistoryAsync();
 }
@@ -1436,7 +1436,7 @@ public class TestDataSummaryDto
 
 ## 系统事件定义
 
-### 控制事件
+### Control Events
 ```csharp
 [GenerateSerializer]
 public class TwitterTaskControlGEvent : EventBase
@@ -1458,7 +1458,7 @@ public class TwitterConfigUpdateGEvent : EventBase
 }
 ```
 
-### 状态事件
+### Status Events
 ```csharp
 [GenerateSerializer]
 public class TweetPullCompletedSEvent : TwitterSEventBase
