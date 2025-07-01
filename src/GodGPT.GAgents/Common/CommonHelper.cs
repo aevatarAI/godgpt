@@ -5,6 +5,9 @@ namespace Aevatar.Application.Grains.Agents.ChatManager.Common;
 
 public class CommonHelper
 {
+    // Salt for IP hashing - should be stored securely in production
+    private static readonly string IP_HASH_SALT = "AnonymousGodGPT_2025_Salt_Key";
+    
     public static Guid StringToGuid(string input)
     {
         using (MD5 md5 = MD5.Create())
@@ -35,6 +38,36 @@ public class CommonHelper
     }
     
     /// <summary>
+    /// Generate consistent Grain ID for Anonymous User GAgent based on IP address hash
+    /// Uses SHA256 with salt to protect user privacy while maintaining consistency
+    /// </summary>
+    /// <param name="ipAddress">Client IP address</param>
+    /// <returns>Deterministic hashed identifier for the AnonymousUserGAgent</returns>
+    public static string GetAnonymousUserGAgentId(string ipAddress)
+    {
+        // Hash IP address with salt for privacy protection
+        var hashedIp = HashIpAddress(ipAddress);
+        return $"AnonymousUser_{hashedIp}";
+    }
+    
+    /// <summary>
+    /// Hash IP address with salt using SHA256 for privacy protection
+    /// </summary>
+    /// <param name="ipAddress">Original IP address</param>
+    /// <returns>SHA256 hash (first 16 characters for shorter identifiers)</returns>
+    private static string HashIpAddress(string ipAddress)
+    {
+        using (var sha256 = SHA256.Create())
+        {
+            var saltedInput = $"{ipAddress}_{IP_HASH_SALT}";
+            var hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(saltedInput));
+            var hashString = Convert.ToHexString(hashBytes);
+            // Use first 16 characters for shorter, more manageable identifiers
+            return hashString[..16].ToLowerInvariant();
+        }
+    }
+    
+    /// <summary>
     /// A method to load the content of a file.
     /// </summary>
     /// <param name="filePath">Path to the file</param>
@@ -49,7 +82,7 @@ public class CommonHelper
   
         // Use a StringBuilder to efficiently concatenate strings  
         StringBuilder fileContent = new StringBuilder();  
-        using (StreamReader reader = new StreamReader(filePath))  
+        using (StreamReader reader = new StreamReader(filePath))
         {  
             string? line;  
             while ((line = reader.ReadLine()) != null)  
@@ -57,7 +90,7 @@ public class CommonHelper
                 fileContent.Append(line);  
             }  
         }  
-  
+        
         // Return the concatenated content, trimming the last '\n' if needed  
         return fileContent.ToString().TrimEnd('\n');  
     }
@@ -75,6 +108,4 @@ public class CommonHelper
 
         return LoadFileContent(fullPath);
     }
-
-  
 }
