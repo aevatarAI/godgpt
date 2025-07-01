@@ -257,9 +257,8 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
     {
         if (string.IsNullOrEmpty(State.UserHashId))
         {
-            // Extract hashed ID from grain key (format: "AnonymousUser_{hashedId}")
-            var grainKey = this.GetPrimaryKeyString();
-            var userHashId = grainKey.Replace("AnonymousUser_", "");
+            var grainId = this.GetPrimaryKey();
+            var userHashId = grainId.ToString("N")[..16]; // Use first 16 chars as hash ID
             
             RaiseEvent(new InitializeAnonymousUserEventLog()
             {
