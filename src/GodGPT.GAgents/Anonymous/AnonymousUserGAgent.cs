@@ -156,7 +156,7 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
 
         // Execute streaming chat (exact copy from ChatManagerGAgent.StreamChatWithSessionAsync)
         var stopwatch = Stopwatch.StartNew();
-        godChat.GodStreamChatAsync(
+        await godChat.GodStreamChatAsync(
             State.CurrentSessionId.Value,
             await configuration.GetSystemLLM(), 
             await configuration.GetStreamingModeEnabled(),
