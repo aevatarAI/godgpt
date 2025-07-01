@@ -1,4 +1,5 @@
 using Aevatar.Core.Abstractions;
+using Orleans;
 using Orleans.Concurrency;
 
 namespace Aevatar.Application.Grains.Agents.Anonymous;
@@ -6,7 +7,7 @@ namespace Aevatar.Application.Grains.Agents.Anonymous;
 /// <summary>
 /// Interface for Anonymous User GAgent - manages IP-based guest chat sessions
 /// </summary>
-public interface IAnonymousUserGAgent : IGAgent
+public interface IAnonymousUserGAgent : IGrainWithStringKey
 {
     /// <summary>
     /// Get current chat count for this IP
