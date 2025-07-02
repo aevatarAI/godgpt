@@ -11,4 +11,5 @@ public class GuestSessionInfo
     [Id(2)] public DateTime CreatedAt { get; set; }
     [Id(3)] public int ChatCount { get; set; }
     [Id(4)] public int RemainingChats { get; set; }
+    [Id(5)] public bool SessionUsed { get; set; }
 } 
