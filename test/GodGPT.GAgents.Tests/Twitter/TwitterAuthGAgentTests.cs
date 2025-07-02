@@ -24,7 +24,7 @@ public class TwitterAuthGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTestsM
         var twitterAuthGAgent = Cluster.GrainFactory.GetGrain<ITwitterAuthGAgent>(userId);
         await twitterAuthGAgent.GeneratePkcePlainAsync();
         // Act
-        var result = await twitterAuthGAgent.VerifyAuthCodeAsync("web", code);
+        var result = await twitterAuthGAgent.VerifyAuthCodeAsync("web", code, "");
         result.ShouldNotBeNull();
         result.Success.ShouldBeTrue();
 

@@ -196,7 +196,6 @@ public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEven
         {
             ClientId = _authOptions.CurrentValue.ClientId,
             GrantType = "authorization_code",
-            RedirectUri = _authOptions.CurrentValue.RedirectUri,
             CodeChallenge = codeChallenge,
             CodeChallengeMethod = "plain", // Using plain method as per current implementation
             ResponseType = "code",
