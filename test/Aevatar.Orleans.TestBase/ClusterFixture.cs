@@ -130,6 +130,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
+                .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"))
                 .Configure<TwitterRewardOptions>(options =>
                 {
                     options.BearerToken = "test-bearer-token";

@@ -387,4 +387,30 @@ public class UserInvitationsTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoud
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
     }
+
+    [Fact]
+    public async Task ProcessTwitterRewardAsyncTest()
+    {
+        var inviterId = Guid.NewGuid();
+        var invitationGAgent = Cluster.GrainFactory.GetGrain<IInvitationGAgent>(inviterId);
+        var chatManagerGAgent = Cluster.GrainFactory.GetGrain<IChatManagerGAgent>(inviterId);
+            
+        var inviteCode = await chatManagerGAgent.GenerateInviteCodeAsync();
+        inviteCode.ShouldNotBeEmpty();
+
+        var twitterUserId = Guid.NewGuid().ToString();
+        await invitationGAgent.ProcessTwitterRewardAsync(twitterUserId, 100);
+
+        var invitationStatsDto = await invitationGAgent.GetInvitationStatsAsync();
+        invitationStatsDto.TotalCreditsFromX.ShouldBe(100);
+        invitationStatsDto.TotalCreditsEarned.ShouldBe(0);
+
+        var pagedResultDto = await invitationGAgent.GetRewardHistoryAsync(new GetRewardHistoryRequestDto
+        {
+            PageNo = 1,
+            PageSize = 10,
+            RewardType = null
+        });
+        pagedResultDto.TotalCount.ShouldBe(1);
+    }
 }
