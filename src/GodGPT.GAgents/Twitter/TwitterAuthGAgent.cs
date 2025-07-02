@@ -26,7 +26,7 @@ public interface ITwitterAuthGAgent : IGAgent
     /// <summary>
     /// Verify OAuth2 authorization code and bind Twitter account
     /// </summary>
-    Task<TwitterAuthResultDto> VerifyAuthCodeAsync(string platform, string code);
+    Task<TwitterAuthResultDto> VerifyAuthCodeAsync(string platform, string code, string redirectUri);
 
     /// <summary>
     /// Get Twitter binding status
@@ -108,7 +108,7 @@ public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEven
     /// <summary>
     /// Verify OAuth2 authorization code and bind Twitter account
     /// </summary>
-    public async Task<TwitterAuthResultDto> VerifyAuthCodeAsync(string platform, string code)
+    public async Task<TwitterAuthResultDto> VerifyAuthCodeAsync(string platform, string code, string redirectUri)
     {
         try
         {
@@ -116,7 +116,7 @@ public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEven
                 code?.Length ?? 0, State.CodeVerifier?.Length ?? 0);
             _logger.LogInformation("Current timestamp: {Timestamp}", DateTime.UtcNow);
             // Exchange authorization code for access token
-            var tokenResult = await ExchangeAuthCodeAsync(code);
+            var tokenResult = await ExchangeAuthCodeAsync(code, redirectUri);
             if (!tokenResult.Success)
             {
                 _logger.LogError("Failed to exchange auth code for token: {Error}", tokenResult.Error);
@@ -205,7 +205,7 @@ public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEven
         };
     }
 
-    private async Task<TokenResultDto> ExchangeAuthCodeAsync(string code)
+    private async Task<TokenResultDto> ExchangeAuthCodeAsync(string code, string redirectUri)
     {
         try
         {
@@ -221,7 +221,7 @@ public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEven
             {
                 { "code", code },
                 { "grant_type", "authorization_code" },
-                { "redirect_uri", _authOptions.CurrentValue.RedirectUri },
+                { "redirect_uri", redirectUri },
                 // Use the same value as code_challenge since method=plain
                 { "code_verifier", "challenge" }
             };
