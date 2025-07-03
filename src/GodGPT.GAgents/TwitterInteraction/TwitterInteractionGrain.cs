@@ -727,8 +727,8 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                      "?user.fields=id,username,name,public_metrics,verified,created_at";
 
             var bearerToken = _options.CurrentValue.BearerToken;
-            _logger.LogError($"GetUserInfoAsync url--->{url}");
-            _logger.LogError($"GetUserInfoAsync bearerToken--->{bearerToken}");
+            _logger.LogInformation($"GetUserInfoAsync url--->{url}");
+            //_logger.LogInformation($"GetUserInfoAsync bearerToken--->{bearerToken}");
             
             _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
             
@@ -773,40 +773,41 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
     {
         try
         {
-                    if (tweetIds?.Any() != true)
-        {
-            return new TwitterApiResultDto<List<TweetDetailsDto>>
+            if (tweetIds?.Any() != true)
             {
-                IsSuccess = true,
-                ErrorMessage = "Empty tweet IDs list provided",
-                Data = new List<TweetDetailsDto>()
-            };
-        }
+                return new TwitterApiResultDto<List<TweetDetailsDto>>
+                {
+                    IsSuccess = true,
+                    ErrorMessage = "Empty tweet IDs list provided",
+                    Data = new List<TweetDetailsDto>()
+                };
+            }
 
             _logger.LogDebug("Getting batch tweet details for {Count} tweets", tweetIds.Count);
 
             // Twitter API limits maximum 100 IDs per request
             var batchSize = Math.Min(100, tweetIds.Count);
             var tweetIdsString = string.Join(",", tweetIds.Take(batchSize));
-            
+
             var url = $"{TWITTER_API_BASE}{GET_TWEETS_ENDPOINT}" +
-                     $"?ids={tweetIdsString}" +
-                     "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
-                     "&expansions=author_id" +
-                     "&user.fields=id,username,name,public_metrics";
+                      $"?ids={tweetIdsString}" +
+                      "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
+                      "&expansions=author_id" +
+                      "&user.fields=id,username,name,public_metrics";
 
             var bearerToken = _options.CurrentValue.BearerToken;
             _logger.LogError($"GetBatchTweetDetailsAsync url--->{url}");
             _logger.LogError($"GetBatchTweetDetailsAsync bearerToken--->{bearerToken}");
-            
-            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
-            
+
+            _httpClient.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
+
             var response = await _httpClient.GetAsync(url);
             var content = await response.Content.ReadAsStringAsync();
 
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("Failed to get batch tweet details: {StatusCode} - {Content}", 
+                _logger.LogError("Failed to get batch tweet details: {StatusCode} - {Content}",
                     response.StatusCode, content);
                 return new TwitterApiResultDto<List<TweetDetailsDto>>
                 {
@@ -818,7 +819,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             }
 
             var tweetDetailsList = await ParseBatchTweetDetailsFromApiResponse(content);
-            
+
             return new TwitterApiResultDto<List<TweetDetailsDto>>
             {
                 IsSuccess = true,
