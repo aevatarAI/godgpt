@@ -48,14 +48,14 @@ var targetDateUtcSeconds = ((DateTimeOffset)targetDate).ToUnixTimeSeconds();
 var result = await rewardGrain.TriggerRewardCalculationAsync(targetDateUtcSeconds);
 
 
-## 5、强制重新计算奖励（用于数据恢复）
+## 5、清空领奖记录（用于测试）
 
 var rewardGrain = ClusterClient.GetGrain<ITwitterRewardGrain>("reward-calculator");
 
-// 强制重新计算指定日期的奖励
+// 清空指定日期的奖励记录
 var targetDate = DateTime.UtcNow.Date.AddDays(-1); // 昨天
 var targetDateUtcSeconds = ((DateTimeOffset)targetDate).ToUnixTimeSeconds();
-var result = await rewardGrain.RecalculateRewardsForDateAsync(targetDateUtcSeconds, forceRecalculate: true);
+var result = await rewardGrain.ClearRewardByDayUtcSecondAsync(targetDateUtcSeconds);
 
 ## 6、奖励定时任务启动和状态查询
 

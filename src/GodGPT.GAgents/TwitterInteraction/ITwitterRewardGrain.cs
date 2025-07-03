@@ -4,67 +4,67 @@ using Aevatar.Application.Grains.TwitterInteraction.Dtos;
 namespace Aevatar.Application.Grains.TwitterInteraction;
 
 /// <summary>
-/// 推特奖励计算Grain接口 - 负责每日00:00 UTC执行奖励计算
+/// Twitter reward calculation Grain interface - responsible for daily reward calculation at 00:00 UTC
 /// </summary>
 public interface ITwitterRewardGrain : IGrainWithStringKey
 {
     /// <summary>
-    /// 启动每日奖励计算定时任务
+    /// Start daily reward calculation scheduled task
     /// </summary>
     Task<TwitterApiResultDto<bool>> StartRewardCalculationAsync();
 
     /// <summary>
-    /// 停止每日奖励计算定时任务
+    /// Stop daily reward calculation scheduled task
     /// </summary>
     Task<TwitterApiResultDto<bool>> StopRewardCalculationAsync();
 
     /// <summary>
-    /// 获取奖励计算状态
+    /// Get reward calculation status
     /// </summary>
     Task<TwitterApiResultDto<RewardCalculationStatusDto>> GetRewardCalculationStatusAsync();
 
     /// <summary>
-    /// 手动触发奖励计算（指定日期）
+    /// Manually trigger reward calculation for specified date
     /// </summary>
     Task<TwitterApiResultDto<RewardCalculationResultDto>> TriggerRewardCalculationAsync(DateTime targetDate);
 
     /// <summary>
-    /// 获取奖励计算历史
+    /// Get reward calculation history
     /// </summary>
     Task<TwitterApiResultDto<List<RewardCalculationHistoryDto>>> GetRewardCalculationHistoryAsync(int days = 30);
 
     /// <summary>
-    /// 查询用户奖励记录
+    /// Query user reward records
     /// </summary>
     Task<TwitterApiResultDto<List<UserRewardRecordDto>>> GetUserRewardRecordsAsync(string userId, int days = 30);
 
     /// <summary>
-    /// 获取每日奖励统计
+    /// Get daily reward statistics
     /// </summary>
     Task<TwitterApiResultDto<DailyRewardStatisticsDto>> GetDailyRewardStatisticsAsync(DateTime targetDate);
 
     /// <summary>
-    /// 更新奖励配置
+    /// Update reward configuration
     /// </summary>
     Task<TwitterApiResultDto<bool>> UpdateRewardConfigAsync(RewardConfigDto config);
 
     /// <summary>
-    /// 获取当前奖励配置
+    /// Get current reward configuration
     /// </summary>
     Task<TwitterApiResultDto<RewardConfigDto>> GetRewardConfigAsync();
 
     /// <summary>
-    /// 重新计算指定日期的奖励（用于数据恢复）
+    /// Clear reward records for specified date (for testing purposes)
     /// </summary>
-    Task<TwitterApiResultDto<RewardCalculationResultDto>> RecalculateRewardsForDateAsync(DateTime targetDate, bool forceRecalculate = false);
+    Task<TwitterApiResultDto<bool>> ClearRewardByDayUtcSecondAsync(long utcSeconds);
 
     /// <summary>
-    /// 检查用户是否已获得当日奖励
+    /// Check if user has received daily reward
     /// </summary>
     Task<TwitterApiResultDto<bool>> HasUserReceivedDailyRewardAsync(string userId, DateTime targetDate);
 
     /// <summary>
-    /// 获取系统时间状态（用于时间精确控制）
+    /// Get system time status for precise time control
     /// </summary>
     Task<TwitterApiResultDto<TimeControlStatusDto>> GetTimeControlStatusAsync();
 } 

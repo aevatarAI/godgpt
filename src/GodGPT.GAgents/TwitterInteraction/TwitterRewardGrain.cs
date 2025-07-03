@@ -469,34 +469,36 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
     }
 
-    public async Task<TwitterApiResultDto<RewardCalculationResultDto>> RecalculateRewardsForDateAsync(DateTime targetDate, bool forceRecalculate = false)
+    public async Task<TwitterApiResultDto<bool>> ClearRewardByDayUtcSecondAsync(long utcSeconds)
     {
         try
         {
+            // Convert UTC seconds to DateTime
+            var targetDate = DateTimeOffset.FromUnixTimeSeconds(utcSeconds).DateTime;
             var dateKey = targetDate.ToString("yyyy-MM-dd");
             
-            // Check if already calculated and not forcing recalculation
-            if (!forceRecalculate && _state.State.UserRewards.ContainsKey(dateKey))
+            _logger.LogInformation("Clearing reward records for UTC seconds {UtcSeconds}, converted to date {TargetDate}", utcSeconds, dateKey);
+            
+            _state.State.UserRewards[dateKey] = new List<UserRewardRecordDto>();
+            await _state.WriteStateAsync();
+            
+            _logger.LogInformation("Successfully cleared reward records for date {TargetDate} (UTC seconds: {UtcSeconds})", dateKey, utcSeconds);
+            
+            return new TwitterApiResultDto<bool>
             {
-                return new TwitterApiResultDto<RewardCalculationResultDto>
-                {
-                    IsSuccess = false,
-                    ErrorMessage = "Rewards already calculated for this date. Use forceRecalculate=true to override.",
-                    Data = new RewardCalculationResultDto()
-                };
-            }
-
-            _logger.LogInformation("Recalculating rewards for date {TargetDate}, force={Force}", targetDate.ToString("yyyy-MM-dd"), forceRecalculate);
-            return await ExecuteRewardCalculationAsync(targetDate);
+                IsSuccess = true,
+                Data = true,
+                ErrorMessage = $"Reward records cleared for date {dateKey}"
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error recalculating rewards for date {Date}", targetDate.ToString("yyyy-MM-dd"));
-            return new TwitterApiResultDto<RewardCalculationResultDto>
+            _logger.LogError(ex, "Error clearing reward records for UTC seconds {UtcSeconds}", utcSeconds);
+            return new TwitterApiResultDto<bool>
             {
                 IsSuccess = false,
-                ErrorMessage = ex.Message,
-                Data = new RewardCalculationResultDto()
+                Data = false,
+                ErrorMessage = ex.Message
             };
         }
     }
@@ -923,12 +925,10 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
 
             _state.State.CalculationHistory.Add(historyRecord);
 
-            // Keep only recent history (last 90 days)
-            var cutoffTime = DateTime.UtcNow.AddDays(-90);
-            var cutoffUtc = ((DateTimeOffset)cutoffTime).ToUnixTimeSeconds();
-            
+            // Keep only recent history (last 7 records, sorted by time)
             _state.State.CalculationHistory = _state.State.CalculationHistory
-                .Where(h => h.CalculationDateUtc >= cutoffUtc)
+                .OrderByDescending(h => h.CalculationDateUtc)
+                .Take(7)
                 .ToList();
 
             await _state.WriteStateAsync();
