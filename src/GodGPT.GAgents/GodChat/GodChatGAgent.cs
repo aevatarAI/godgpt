@@ -188,7 +188,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (State.Title.IsNullOrEmpty())
         {
             var sw = Stopwatch.StartNew();
+            // Take first 4 words and limit total length to 100 characters
             title = string.Join(" ", content.Split(" ").Take(4));
+            if (title.Length > 100)
+            {
+                title = title.Substring(0, 100);
+            }
 
             RaiseEvent(new RenameChatTitleEventLog()
             {
@@ -638,8 +643,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // title = titleList is { Count: > 0 }
             //     ? titleList[0].Content!
             //     : string.Join(" ", content.Split(" ").Take(4));
-
+            // Take first 4 words and limit total length to 100 characters
             title = string.Join(" ", content.Split(" ").Take(4));
+            if (title.Length > 100)
+            {
+                title = title.Substring(0, 100);
+            }
 
             RaiseEvent(new RenameChatTitleEventLog()
             {

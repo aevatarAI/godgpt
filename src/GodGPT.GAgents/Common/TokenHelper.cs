@@ -7,7 +7,11 @@ public static class TokenHelper
 {
     private const int DEFAULT_GPT4_MAX_TOKENS = 128000;
     private const double TOKEN_RESERVE_RATIO = 0.2; // Reserve 20% tokens for model response
-    private const int AVERAGE_CHARS_PER_TOKEN = 4; // Average 4 characters per token in GPT models
+    
+    // Token estimation factors for different content types
+    private const double ENGLISH_CHARS_PER_TOKEN = 3.5; // Average for English text
+    private const double CHINESE_CHARS_PER_TOKEN = 1.5; // Average for Chinese characters
+    private const double SPECIAL_CHARS_FACTOR = 0.5;    // Additional factor for special characters
 
     public static int EstimateTokenCount(string text)
     {
@@ -17,8 +21,19 @@ public static class TokenHelper
         // Remove extra whitespace characters
         text = Regex.Replace(text, @"\s+", " ").Trim();
         
-        // Estimate token count based on character length
-        return (int)Math.Ceiling(text.Length / (double)AVERAGE_CHARS_PER_TOKEN);
+        // Count different types of characters
+        int englishCount = Regex.Matches(text, @"[a-zA-Z0-9\s.,!?]").Count;
+        int chineseCount = Regex.Matches(text, @"[\u4e00-\u9fff]").Count;
+        int specialCount = text.Length - englishCount - chineseCount;
+        
+        // Calculate token estimate based on character types
+        double tokenEstimate = 
+            (englishCount / ENGLISH_CHARS_PER_TOKEN) +
+            (chineseCount / CHINESE_CHARS_PER_TOKEN) +
+            (specialCount / ENGLISH_CHARS_PER_TOKEN * SPECIAL_CHARS_FACTOR) +
+            2; // Add base overhead for each text chunk
+            
+        return (int)Math.Ceiling(tokenEstimate);
     }
 
     public static int EstimateTokenCount(IEnumerable<ChatMessage> messages)
@@ -26,7 +41,9 @@ public static class TokenHelper
         if (messages == null)
             return 0;
 
-        return messages.Sum(msg => EstimateTokenCount(msg.Content ?? string.Empty));
+        // Add overhead for message structure
+        const int MESSAGE_STRUCTURE_TOKENS = 3; // Tokens for role and message structure
+        return messages.Sum(msg => EstimateTokenCount(msg.Content ?? string.Empty) + MESSAGE_STRUCTURE_TOKENS);
     }
 
     /// <summary>
