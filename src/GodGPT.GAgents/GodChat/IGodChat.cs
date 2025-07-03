@@ -27,4 +27,12 @@ public interface IGodChat : IGAgent
     Task ChatMessageCallbackAsync(AIChatContextDto aiChatContextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage,
         AIStreamChatContent? aiStreamChatContent);
+
+    Task<bool> InterruptSessionAsync(Guid sessionId, string? chatId = null);
+    [ReadOnly]
+    Task<bool> IsSessionInterruptedAsync(string chatId);
+    [ReadOnly]
+    Task<(Guid? sessionId, string? chatId)> GetActiveSessionAsync();
+    Task<bool> ClearInterruptedSessionAsync(string chatId);
+    Task<int> ClearAllInterruptedSessionsAsync();
 }

@@ -117,6 +117,26 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
     {
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start.");
+        
+        if (State.CurrentActiveChatId != null && State.CurrentActiveChatId != chatId)
+        {
+            Logger.LogWarning($"[GodChatGAgent][StreamChatWithSession] Found existing active session {State.CurrentActiveChatId}, clearing before starting new session {chatId}");
+            
+            RaiseEvent(new SetActiveSessionEventLog
+            {
+                ChatId = null,
+                SessionId = null
+            });
+            await ConfirmEvents();
+        }
+        
+        RaiseEvent(new SetActiveSessionEventLog
+        {
+            ChatId = chatId,
+            SessionId = sessionId
+        });
+        await ConfirmEvents();
+        
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(State.ChatManagerGuid));
         var actionResultDto =
             await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
@@ -165,6 +185,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             {
                 await PublishAsync(chatMessage);
             }
+            
+            RaiseEvent(new SetActiveSessionEventLog
+            {
+                ChatId = null,
+                SessionId = null
+            });
+            await ConfirmEvents();
             return;
         }
 
@@ -446,6 +473,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     public async Task ChatMessageCallbackAsync(AIChatContextDto contextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage, AIStreamChatContent? chatContent)
     {
+        var isInterrupted = State.InterruptedChatIds?.Contains(contextDto.ChatId) ?? false;
+        
+        if (isInterrupted)
+        {
+            Logger.LogDebug(
+                $"[GodChatGAgent][ChatMessageCallbackAsync] Session interrupted, will skip message sending. sessionId {contextDto.RequestId.ToString()}, chatId {contextDto.ChatId}");
+        }
+        
         if (aiExceptionEnum == AIExceptionEnum.RequestLimitError && !contextDto.MessageId.IsNullOrWhiteSpace())
         {
             Logger.LogError(
@@ -466,6 +501,22 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             Logger.LogError(
                 $"[GodChatGAgent][ChatMessageCallbackAsync] stream error. sessionId {contextDto?.RequestId.ToString()}, chatId {contextDto?.ChatId}, error {aiExceptionEnum}");
+            
+            if (State.CurrentActiveChatId == contextDto.ChatId)
+            {
+                RaiseEvent(new SetActiveSessionEventLog
+                {
+                    ChatId = null,
+                    SessionId = null
+                });
+                await ConfirmEvents();
+            }
+            
+            if (isInterrupted)
+            {
+                return;
+            }
+            
             var chatMessage = new ResponseStreamGodChat()
             {
                 Response =
@@ -488,26 +539,61 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             Logger.LogError(
                 $"[GodChatGAgent][ChatMessageCallbackAsync] return null. sessionId {contextDto.RequestId.ToString()},chatId {contextDto.ChatId},aiExceptionEnum:{aiExceptionEnum}, errorMessage:{errorMessage}");
+            
+            if (State.CurrentActiveChatId == contextDto.ChatId)
+            {
+                RaiseEvent(new SetActiveSessionEventLog
+                {
+                    ChatId = null,
+                    SessionId = null
+                });
+                await ConfirmEvents();
+            }
             return;
         }
 
         Logger.LogDebug(
             $"[GodChatGAgent][ChatMessageCallbackAsync] sessionId {contextDto.RequestId.ToString()}, chatId {contextDto.ChatId}, messageId {contextDto.MessageId}, {JsonConvert.SerializeObject(chatContent)}");
+        
         if (chatContent.IsAggregationMsg)
         {
-            RaiseEvent(new AddChatHistoryLogEvent
+            if (!isInterrupted)
             {
-                ChatList = new List<ChatMessage>()
+                RaiseEvent(new AddChatHistoryLogEvent
                 {
-                    new ChatMessage
+                    ChatList = new List<ChatMessage>()
                     {
-                        ChatRole = ChatRole.Assistant,
-                        Content = chatContent?.AggregationMsg
+                        new ChatMessage
+                        {
+                            ChatRole = ChatRole.Assistant,
+                            Content = chatContent?.AggregationMsg
+                        }
                     }
-                }
-            });
+                });
 
-            await ConfirmEvents();
+                await ConfirmEvents();
+            }
+            
+            if (State.CurrentActiveChatId == contextDto.ChatId)
+            {
+                RaiseEvent(new SetActiveSessionEventLog
+                {
+                    ChatId = null,
+                    SessionId = null
+                });
+                await ConfirmEvents();
+            }
+            
+            if (isInterrupted && State.InterruptedChatIds?.Contains(contextDto.ChatId) == true)
+            {
+                RaiseEvent(new ClearInterruptedSessionEventLog
+                {
+                    ChatId = contextDto.ChatId
+                });
+                await ConfirmEvents();
+                Logger.LogDebug(
+                    $"[GodChatGAgent][ChatMessageCallbackAsync] Auto-cleared interrupted session record. chatId {contextDto.ChatId}");
+            }
 
             var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
             var inviterId = await chatManagerGAgent.GetInviterAsync();
@@ -516,6 +602,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
                 await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
             }
+        }
+
+        if (isInterrupted)
+        {
+            Logger.LogDebug(
+                $"[GodChatGAgent][ChatMessageCallbackAsync] Session interrupted, not sending message to client. sessionId {contextDto.RequestId.ToString()}, chatId {contextDto.ChatId}");
+            return;
         }
 
         var partialMessage = new ResponseStreamGodChat()
@@ -592,6 +685,29 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     State.RegionProxies[regionProxy.Key] = regionProxy.Value;
                 }
                 break;
+            case SetActiveSessionEventLog setActiveSessionEventLog:
+                State.CurrentActiveChatId = setActiveSessionEventLog.ChatId;
+                State.CurrentActiveSessionId = setActiveSessionEventLog.SessionId;
+                break;
+            case InterruptSessionEventLog interruptSessionEventLog:
+                if (State.InterruptedChatIds == null)
+                {
+                    State.InterruptedChatIds = new HashSet<string>();
+                }
+                State.InterruptedChatIds.Add(interruptSessionEventLog.ChatId);
+                
+                if (State.CurrentActiveChatId == interruptSessionEventLog.ChatId)
+                {
+                    State.CurrentActiveChatId = null;
+                    State.CurrentActiveSessionId = null;
+                }
+                break;
+            case ClearInterruptedSessionEventLog clearInterruptedSessionEventLog:
+                if (State.InterruptedChatIds != null)
+                {
+                    State.InterruptedChatIds.Remove(clearInterruptedSessionEventLog.ChatId);
+                }
+                break;
         }
     }
 
@@ -632,5 +748,139 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var configuration = GetConfiguration();
         var response = await GodChatAsync(await configuration.GetSystemLLM(), content, promptSettings);
         return new Tuple<string, string>(response, title);
+    }
+    
+    public async Task<bool> InterruptSessionAsync(Guid sessionId, string? chatId = null)
+    {
+        Logger.LogDebug($"[GodChatGAgent][InterruptSessionAsync] Attempting to interrupt session {sessionId}, chatId {chatId}");
+        
+        try
+        {
+            var targetChatId = chatId;
+            if (string.IsNullOrWhiteSpace(targetChatId))
+            {
+                // 如果没有指定chatId，使用当前活跃的chatId
+                if (State.CurrentActiveSessionId == sessionId && !string.IsNullOrWhiteSpace(State.CurrentActiveChatId))
+                {
+                    targetChatId = State.CurrentActiveChatId;
+                }
+                else
+                {
+                    Logger.LogWarning($"[GodChatGAgent][InterruptSessionAsync] No active session found for sessionId {sessionId}. Current active: {State.CurrentActiveSessionId}");
+                    return false;
+                }
+            }
+
+            var canInterrupt = false;
+            if (State.CurrentActiveSessionId == sessionId)
+            {
+                canInterrupt = true;
+            }
+            else if (!string.IsNullOrWhiteSpace(chatId))
+            {
+                canInterrupt = true;
+                Logger.LogWarning($"[GodChatGAgent][InterruptSessionAsync] Forcing interrupt for chatId {chatId} even though session doesn't match. Current: {State.CurrentActiveSessionId}, Requested: {sessionId}");
+            }
+
+            if (canInterrupt)
+            {
+                if (State.InterruptedChatIds?.Contains(targetChatId) == true)
+                {
+                    Logger.LogDebug($"[GodChatGAgent][InterruptSessionAsync] Session {targetChatId} is already interrupted.");
+                    return true;
+                }
+
+                RaiseEvent(new InterruptSessionEventLog
+                {
+                    ChatId = targetChatId,
+                    SessionId = sessionId,
+                    InterruptTime = DateTime.UtcNow
+                });
+                await ConfirmEvents();
+
+                Logger.LogInformation($"[GodChatGAgent][InterruptSessionAsync] Successfully interrupted session {sessionId}, chatId {targetChatId}");
+                return true;
+            }
+            else
+            {
+                Logger.LogWarning($"[GodChatGAgent][InterruptSessionAsync] Cannot interrupt session. Current: {State.CurrentActiveSessionId}, Requested: {sessionId}, ChatId: {targetChatId}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"[GodChatGAgent][InterruptSessionAsync] Error interrupting session {sessionId}, chatId {chatId}");
+            return false;
+        }
+    }
+
+    public Task<bool> IsSessionInterruptedAsync(string chatId)
+    {
+        return Task.FromResult(State.InterruptedChatIds.Contains(chatId));
+    }
+
+    public Task<(Guid? sessionId, string? chatId)> GetActiveSessionAsync()
+    {
+        return Task.FromResult((State.CurrentActiveSessionId, State.CurrentActiveChatId));
+    }
+    
+    public async Task<bool> ClearInterruptedSessionAsync(string chatId)
+    {
+        if (string.IsNullOrWhiteSpace(chatId))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (State.InterruptedChatIds != null && State.InterruptedChatIds.Contains(chatId))
+            {
+                RaiseEvent(new ClearInterruptedSessionEventLog
+                {
+                    ChatId = chatId
+                });
+                await ConfirmEvents();
+
+                Logger.LogDebug($"[GodChatGAgent][ClearInterruptedSessionAsync] Successfully cleared interrupted session {chatId}");
+                return true;
+            }
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"[GodChatGAgent][ClearInterruptedSessionAsync] Error clearing interrupted session {chatId}");
+            return false;
+        }
+    }
+
+
+    public async Task<int> ClearAllInterruptedSessionsAsync()
+    {
+        try
+        {
+            if (State.InterruptedChatIds == null || State.InterruptedChatIds.Count == 0)
+            {
+                return 0;
+            }
+
+            var chatIds = State.InterruptedChatIds.ToList();
+            foreach (var chatId in chatIds)
+            {
+                RaiseEvent(new ClearInterruptedSessionEventLog
+                {
+                    ChatId = chatId
+                });
+            }
+            await ConfirmEvents();
+
+            Logger.LogDebug($"[GodChatGAgent][ClearAllInterruptedSessionsAsync] Successfully cleared {chatIds.Count} interrupted sessions");
+            return chatIds.Count;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"[GodChatGAgent][ClearAllInterruptedSessionsAsync] Error clearing all interrupted sessions");
+            return 0;
+        }
     }
 }

@@ -40,3 +40,27 @@ public class UpdateRegionProxiesLogEvent : GodChatEventLog
 {
     [Id(0)] public Dictionary<string, List<Guid>> RegionProxies;
 }
+
+
+[GenerateSerializer]
+public class SetActiveSessionEventLog : GodChatEventLog
+{
+    [Id(0)] public string? ChatId { get; set; }
+    [Id(1)] public Guid? SessionId { get; set; }
+}
+
+
+[GenerateSerializer]
+public class InterruptSessionEventLog : GodChatEventLog
+{
+    [Id(0)] public string ChatId { get; set; }
+    [Id(1)] public Guid SessionId { get; set; }
+    [Id(2)] public DateTime InterruptTime { get; set; }
+}
+
+
+[GenerateSerializer]
+public class ClearInterruptedSessionEventLog : GodChatEventLog
+{
+    [Id(0)] public string ChatId { get; set; }
+}

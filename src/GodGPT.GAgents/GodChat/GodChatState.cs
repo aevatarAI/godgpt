@@ -11,6 +11,9 @@ public class GodChatState:ChatGAgentState
     [Obsolete("This class is deprecated and no longer in use.")]
     [Id(3)] public List<Guid> AIAgentIds { get; set; } = new List<Guid>();
     [Id(4)] public Dictionary<string, List<Guid>> RegionProxies = new ();
+    [Id(5)] public string? CurrentActiveChatId { get; set; }
+    [Id(6)] public HashSet<string> InterruptedChatIds { get; set; } = new HashSet<string>();
+    [Id(7)] public Guid? CurrentActiveSessionId { get; set; }
 }
 
 [GenerateSerializer]
