@@ -31,7 +31,7 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
     /// Test manual reward calculation trigger - based on guide section 4
     /// Manually trigger reward calculation (uses same logic as scheduled tasks)
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task TriggerRewardCalculationAsync_ShouldWork_WithYesterdayDate()
     {
         // Arrange - validate configuration
@@ -45,7 +45,7 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
         /***/
         // Get TargetId from configuration
         var pullTaskTargetId = _configuration["TwitterReward:PullTaskTargetId"] ?? "tweet-monitor";
-        var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>(pullTaskTargetId);
+        var tweetMonitor = ClusterClient.GetGrain<ITwitterMonitorGrain>(pullTaskTargetId);
 
         // Define time range for last 24 hours using simplified TimeRangeDto
         var timeRange = new TimeRangeDto
@@ -60,8 +60,16 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
 
         var resultPre = await tweetMonitor.RefetchTweetsByTimeRangeAsync(timeRange);
 
-        // Assert
+        // Assert - verify task started successfully
         resultPre.ShouldNotBeNull();
+        if (resultPre.IsSuccess && resultPre.Data)
+        {
+            _logger.LogInformation("✅ Refetch task started successfully: {Message}", resultPre.ErrorMessage);
+        }
+        else
+        {
+            _logger.LogWarning("⚠️ Refetch task failed to start: {Message}", resultPre.ErrorMessage);
+        }
         /***/
 
         // Get reward calculator instance using configuration
@@ -75,19 +83,25 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
         _logger.LogInformation("Manual triggering reward calculation for date: {TargetDate}", targetDate);
         var result = await rewardGrain.TriggerRewardCalculationAsync(targetDate);
 
-        // Assert - verify results
+        // Assert - verify trigger result
         result.ShouldNotBeNull();
         _logger.LogInformation(
-            "Manual trigger reward calculation result: IsSuccess={IsSuccess}, UsersRewarded={UsersRewarded}, CreditsDistributed={CreditsDistributed}",
-            result.IsSuccess, result.Data?.UsersRewarded ?? 0, result.Data?.TotalCreditsDistributed ?? 0);
+            "Manual trigger reward calculation result: IsSuccess={IsSuccess}, TaskStarted={TaskStarted}, Message={Message}",
+            result.IsSuccess, result.Data, result.ErrorMessage);
 
         if (result.IsSuccess)
         {
-            result.Data.ShouldNotBeNull();
-            result.Data.CalculationDate.Date.ShouldBe(targetDate.Date);
-            result.Data.UsersRewarded.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.TotalCreditsDistributed.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.IsSuccess.ShouldBe(true);
+            result.Data.ShouldBe(true); // Task should have started successfully
+            _logger.LogInformation("✅ Manual trigger reward calculation task started successfully");
+            
+            // Wait a bit for background task to complete
+            await Task.Delay(5000);
+            
+            // Get actual calculation status to verify results
+            var statusResult = await rewardGrain.GetRewardCalculationStatusAsync();
+            statusResult.ShouldNotBeNull();
+            statusResult.IsSuccess.ShouldBe(true);
+            
             _logger.LogInformation("✅ Manual trigger reward calculation test passed");
         }
         else
@@ -101,7 +115,7 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
     /// Test clear reward records and re-trigger reward calculation
     /// Tests the ClearRewardByDayUtcSecondAsync functionality for testing purposes
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task ClearRewardAndRetrigger_ShouldWork_WithYesterdayDate()
     {
         // Arrange - validate configuration
@@ -115,7 +129,7 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
         /***/
         // Get TargetId from configuration
         var pullTaskTargetId = _configuration["TwitterReward:PullTaskTargetId"] ?? "tweet-monitor";
-        var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>(pullTaskTargetId);
+        var tweetMonitor = ClusterClient.GetGrain<ITwitterMonitorGrain>(pullTaskTargetId);
 
         // Define time range for last 24 hours using simplified TimeRangeDto
         var timeRange = new TimeRangeDto
@@ -130,8 +144,16 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
 
         var resultPre = await tweetMonitor.RefetchTweetsByTimeRangeAsync(timeRange);
 
-        // Assert
+        // Assert - verify task started successfully
         resultPre.ShouldNotBeNull();
+        if (resultPre.IsSuccess && resultPre.Data)
+        {
+            _logger.LogInformation("✅ Refetch task started successfully: {Message}", resultPre.ErrorMessage);
+        }
+        else
+        {
+            _logger.LogWarning("⚠️ Refetch task failed to start: {Message}", resultPre.ErrorMessage);
+        }
         /***/
 
         // Get reward calculator instance using configuration
@@ -145,20 +167,19 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
         _logger.LogInformation("Manual triggering reward calculation for date: {TargetDate}", targetDate);
         var result = await rewardGrain.TriggerRewardCalculationAsync(targetDate);
 
-        // Assert - verify results
+        // Assert - verify trigger result
         result.ShouldNotBeNull();
         _logger.LogInformation(
-            "Manual trigger reward calculation result: IsSuccess={IsSuccess}, UsersRewarded={UsersRewarded}, CreditsDistributed={CreditsDistributed}",
-            result.IsSuccess, result.Data?.UsersRewarded ?? 0, result.Data?.TotalCreditsDistributed ?? 0);
+            "Manual trigger reward calculation result: IsSuccess={IsSuccess}, TaskStarted={TaskStarted}, Message={Message}",
+            result.IsSuccess, result.Data, result.ErrorMessage);
 
         if (result.IsSuccess)
         {
-            result.Data.ShouldNotBeNull();
-            result.Data.CalculationDate.Date.ShouldBe(targetDate.Date);
-            result.Data.UsersRewarded.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.TotalCreditsDistributed.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.IsSuccess.ShouldBe(true);
-            _logger.LogInformation("✅ Manual trigger reward calculation test passed");
+            result.Data.ShouldBe(true); // Task should have started successfully
+            _logger.LogInformation("✅ Manual trigger reward calculation task started successfully");
+            
+            // Wait a bit for background task to complete
+            await Task.Delay(5000);
         }
         else
         {
@@ -185,17 +206,16 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
         // Assert re-trigger succeeded
         retriggerResult.ShouldNotBeNull();
         _logger.LogInformation(
-            "Re-trigger reward calculation result: IsSuccess={IsSuccess}, UsersRewarded={UsersRewarded}, CreditsDistributed={CreditsDistributed}",
-            retriggerResult.IsSuccess, retriggerResult.Data?.UsersRewarded ?? 0, retriggerResult.Data?.TotalCreditsDistributed ?? 0);
+            "Re-trigger reward calculation result: IsSuccess={IsSuccess}, TaskStarted={TaskStarted}, Message={Message}",
+            retriggerResult.IsSuccess, retriggerResult.Data, retriggerResult.ErrorMessage);
 
         if (retriggerResult.IsSuccess)
         {
-            retriggerResult.Data.ShouldNotBeNull();
-            retriggerResult.Data.CalculationDate.Date.ShouldBe(targetDate.Date);
-            retriggerResult.Data.UsersRewarded.ShouldBeGreaterThanOrEqualTo(0);
-            retriggerResult.Data.TotalCreditsDistributed.ShouldBeGreaterThanOrEqualTo(0);
-            retriggerResult.Data.IsSuccess.ShouldBe(true);
-            _logger.LogInformation("✅ Re-trigger reward calculation test passed - users can receive rewards again after clearing");
+            retriggerResult.Data.ShouldBe(true); // Task should have started successfully
+            _logger.LogInformation("✅ Re-trigger reward calculation test passed - task started successfully after clearing");
+            
+            // Wait a bit for background task to complete
+            await Task.Delay(5000);
         }
         else
         {
@@ -206,17 +226,13 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
         result = await rewardGrain.TriggerRewardCalculationAsync(targetDate);
         if (result.IsSuccess)
         {
-            result.Data.ShouldNotBeNull();
-            result.Data.CalculationDate.Date.ShouldBe(targetDate.Date);
-            result.Data.UsersRewarded.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.TotalCreditsDistributed.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.IsSuccess.ShouldBe(true);
-            _logger.LogInformation("✅ Manual trigger reward calculation test passed");
+            result.Data.ShouldBe(true); // Task should have started successfully
+            _logger.LogInformation("✅ Final trigger reward calculation task started successfully");
         }
         else
         {
-            _logger.LogWarning("⚠️ Manual trigger reward calculation failed: {ErrorMessage}", result.ErrorMessage);
-            Assert.True(true, $"Manual trigger reward calculation failed (possibly normal): {result.ErrorMessage}");
+            _logger.LogWarning("⚠️ Final trigger reward calculation failed: {ErrorMessage}", result.ErrorMessage);
+            Assert.True(true, $"Final trigger reward calculation failed (possibly normal): {result.ErrorMessage}");
         }
     }
     
@@ -224,7 +240,7 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
     /// Test clear reward records and re-trigger reward calculation
     /// Tests the ClearRewardByDayUtcSecondAsync functionality for testing purposes
     /// </summary>
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task ClearReward_ShouldWork_WithYesterdayDate()
     {
         // Arrange - validate configuration
@@ -255,6 +271,47 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
         _logger.LogInformation("✅ Clear reward records result: IsSuccess={IsSuccess}, Message={Message}", clearResult.IsSuccess, clearResult.ErrorMessage);
     }
     
-    
-    
+    /// <summary>
+    /// Test reward scheduled task startup and status query - based on guide section 6
+    /// Test starting reward scheduled task and querying status
+    /// </summary>
+    [Fact(Skip = "Integration test")]
+    public async Task StartRewardCalculationAndGetStatus_ShouldWork()
+    {
+        // Arrange - validate configuration
+        var configValid = await _testHelper.ValidateTwitterConfigurationAsync();
+        if (!configValid)
+        {
+            Assert.True(true, "Twitter configuration is invalid, skipping test");
+            return;
+        }
+
+        // Get reward calculator instance using configuration
+        var rewardTaskTargetId = _configuration["TwitterReward:RewardTaskTargetId"] ?? "reward-calculator";
+        var rewardGrain = ClusterClient.GetGrain<ITwitterRewardGrain>(rewardTaskTargetId);
+
+        // Act - start reward scheduled task
+        _logger.LogInformation("Starting reward scheduled task...");
+        //var startResult1 = await rewardGrain.StopRewardCalculationAsync();
+        //startResult1.ShouldNotBeNull();
+        var startResult = await rewardGrain.StartRewardCalculationAsync();
+
+        // Assert - verify start operation
+        startResult.ShouldNotBeNull();
+        _logger.LogInformation("Start result: IsSuccess={IsSuccess}, Message={Message}", startResult.IsSuccess, startResult.ErrorMessage);
+
+        // Act - query reward scheduled task status
+        _logger.LogInformation("Querying reward scheduled task status...");
+        var statusResult = await rewardGrain.GetRewardCalculationStatusAsync();
+
+        // Assert - verify status query
+        statusResult.ShouldNotBeNull();
+        statusResult.IsSuccess.ShouldBe(true);
+        statusResult.Data.ShouldNotBeNull();
+        
+        _logger.LogInformation("Status result: IsRunning={IsRunning}, NextCalculation={NextTime}", 
+            statusResult.Data.IsRunning, statusResult.Data.NextScheduledCalculation);
+            
+        _logger.LogInformation("✅ Reward scheduled task startup and status query test completed");
+    }
 } 

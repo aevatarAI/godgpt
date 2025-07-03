@@ -1,5 +1,3 @@
-using Orleans;
-using Orleans.Runtime;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Aevatar.Application.Grains.TwitterInteraction.Dtos;
@@ -11,7 +9,7 @@ namespace Aevatar.Application.Grains.TwitterInteraction;
 /// Tweet monitoring state
 /// </summary>
 [GenerateSerializer]
-public class TweetMonitorState
+public class TwitterMonitorState
 {
     [Id(0)] public bool IsRunning { get; set; }
     [Id(1)] public DateTime? LastFetchTime { get; set; }
@@ -28,19 +26,19 @@ public class TweetMonitorState
 /// <summary>
 /// Tweet monitoring Grain - responsible for scheduled tweet data fetching
 /// </summary>
-public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
+public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 {
-    private readonly ILogger<TweetMonitorGrain> _logger;
+    private readonly ILogger<TwitterMonitorGrain> _logger;
     private readonly IOptionsMonitor<TwitterRewardOptions> _options;
-    private readonly IPersistentState<TweetMonitorState> _state;
+    private readonly IPersistentState<TwitterMonitorState> _state;
     private ITwitterInteractionGrain? _twitterGrain;
     
     private const string REMINDER_NAME = "TweetFetchReminder";
 
-    public TweetMonitorGrain(
-        ILogger<TweetMonitorGrain> logger,
+    public TwitterMonitorGrain(
+        ILogger<TwitterMonitorGrain> logger,
         IOptionsMonitor<TwitterRewardOptions> options,
-        [PersistentState("tweetMonitorState", "DefaultGrainStorage")] IPersistentState<TweetMonitorState> state)
+        [PersistentState("tweetMonitorState", "DefaultGrainStorage")] IPersistentState<TwitterMonitorState> state)
     {
         _logger = logger;
         _options = options;
@@ -77,13 +75,12 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                            _state.State.Config.DataRetentionDays != currentConfig.DataRetentionDays ||
                            _state.State.Config.SearchQuery != currentConfig.SearchQuery;
 
+        _state.State.Config = currentConfig;
+        await _state.WriteStateAsync();
         if (configChanged)
         {
             _logger.LogInformation("TweetMonitorGrain Configuration changed, updating from appsettings.json. New interval: {IntervalMinutes} minutes", 
                 currentConfig.FetchIntervalMinutes);
-            
-            _state.State.Config = currentConfig;
-            await _state.WriteStateAsync();
             
             // Clean up any existing reminder first (to avoid conflicts with new configuration)
             try
@@ -462,7 +459,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
         }
     }
 
-    public async Task<TwitterApiResultDto<TweetFetchResultDto>> RefetchTweetsByTimeRangeAsync(TimeRangeDto timeRange)
+    public async Task<TwitterApiResultDto<bool>> RefetchTweetsByTimeRangeAsync(TimeRangeDto timeRange)
     {
         try
         {
@@ -480,15 +477,15 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
             {
                 _logger.LogWarning("Invalid time range: StartTime {Start} >= EndTime {End}", 
                     timeRange.StartTime, actualEndTime);
-                return new TwitterApiResultDto<TweetFetchResultDto>
+                return new TwitterApiResultDto<bool>
                 {
                     IsSuccess = false,
-                    ErrorMessage = "Invalid time range: StartTime must be before EndTime",
-                    Data = new TweetFetchResultDto()
+                    Data = false,
+                    ErrorMessage = "Invalid time range: StartTime must be before EndTime"
                 };
             }
 
-            // Use Orleans Timer instead of Task.Run for background processing
+            // Use Orleans Timer (Orleans best practice) for background processing
             RegisterTimer(
                 callback: async (state) => await ProcessTimeRangeInBackground(timeRange, actualEndTime),
                 state: null,
@@ -496,34 +493,24 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                 period: TimeSpan.FromMilliseconds(-1)      // Execute only once
             );
 
-            _logger.LogInformation("Background refetch task started using Orleans Timer");
+            _logger.LogInformation("Background refetch task started successfully using Orleans Timer");
 
-            // Return immediately with task started status
-            return new TwitterApiResultDto<TweetFetchResultDto>
+            // Return task started status
+            return new TwitterApiResultDto<bool>
             {
                 IsSuccess = true,
-                Data = new TweetFetchResultDto
-                {
-                    FetchStartTime = DateTime.UtcNow,
-                    FetchStartTimeUtc = ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds(),
-                    NewTweetIds = new List<string>(),
-                    TotalFetched = 0,
-                    NewTweets = 0,
-                    DuplicateSkipped = 0,
-                    FilteredOut = 0,
-                    ErrorMessage = "Background processing started using Orleans Timer"
-                },
-                ErrorMessage = "Background processing started successfully using Orleans Timer"
+                Data = true, // Task started successfully
+                ErrorMessage = $"Background refetch task started successfully for time range {timeRange.StartTime:yyyy-MM-dd HH:mm:ss} to {actualEndTime:yyyy-MM-dd HH:mm:ss} UTC. Check monitoring status for progress."
             };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error starting background refetch");
-            return new TwitterApiResultDto<TweetFetchResultDto>
+            return new TwitterApiResultDto<bool>
             {
                 IsSuccess = false,
-                ErrorMessage = ex.Message,
-                Data = new TweetFetchResultDto()
+                Data = false,
+                ErrorMessage = ex.Message
             };
         }
     }
@@ -965,12 +952,10 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 
             _state.State.FetchHistory.Add(historyRecord);
 
-            // Keep only recent history (last days)
-            var cutoffTime = DateTime.UtcNow;
-            var cutoffUtc = ((DateTimeOffset)cutoffTime).ToUnixTimeSeconds();
-            
+            // Keep only the latest 7 records
             _state.State.FetchHistory = _state.State.FetchHistory
-                .Where(h => h.FetchTimeUtc >= cutoffUtc)
+                .OrderByDescending(h => h.FetchTimeUtc)
+                .Take(7)
                 .ToList();
 
             await _state.WriteStateAsync();

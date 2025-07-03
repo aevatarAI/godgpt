@@ -25,7 +25,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
     }
 
     //ok
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task FetchTweetsManuallyAsync_ShouldWork_WithValidConfiguration()
     {
         // Arrange - validate configuration
@@ -38,7 +38,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
 
         // Get TargetId from configuration
         var pullTaskTargetId = _configuration["TwitterReward:PullTaskTargetId"] ?? "tweet-monitor";
-        var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>($"{pullTaskTargetId}");
+        var tweetMonitor = ClusterClient.GetGrain<ITwitterMonitorGrain>($"{pullTaskTargetId}");
 
         // Act - manually trigger tweet fetching
         _logger.LogInformation("Starting manual tweet fetch test...");
@@ -67,7 +67,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
     
     
     //ok
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task RefetchTweetsByTimeRangeAsync_ShouldWork_WithValidTimeRange()
     {
         // Arrange - validate configuration
@@ -80,7 +80,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
 
         // Get TargetId from configuration for first refetch test
         var pullTaskTargetId = _configuration["TwitterReward:PullTaskTargetId"] ?? "tweet-monitor";
-        var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>($"{pullTaskTargetId}");
+        var tweetMonitor = ClusterClient.GetGrain<ITwitterMonitorGrain>($"{pullTaskTargetId}");
 
         // Define time range for last 24 hours using simplified TimeRangeDto
         var timeRange = TimeRangeDto.LastHours(5); // Use reasonable time range
@@ -94,19 +94,14 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         // Assert
         result.ShouldNotBeNull();
         _logger.LogInformation(
-            "Refetch result: IsSuccess={IsSuccess}, Total={Total}, New={New}, Duplicates={Duplicates}",
-            result.IsSuccess, result.Data?.TotalFetched ?? 0, result.Data?.NewTweets ?? 0,
-            result.Data?.DuplicateSkipped ?? 0);
+            "Refetch result: IsSuccess={IsSuccess}, TaskStarted={TaskStarted}, Message={Message}",
+            result.IsSuccess, result.Data, result.ErrorMessage);
 
         if (result.IsSuccess)
         {
-            result.Data.ShouldNotBeNull();
+            result.Data.ShouldBe(true); // Task should have started successfully
             
-            // Since the method now returns immediately and processes in background using Orleans Timer,
-            // we only verify that the task was started successfully
-            // The actual processing will be handled asynchronously by Orleans Timer
-
-            _logger.LogInformation("✅ Refetch by time range test passed - background task started successfully using Orleans Timer");
+            _logger.LogInformation("✅ Refetch by time range test passed - background task started successfully");
         }
         else
         {
@@ -119,7 +114,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
     }
 
     //ok
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task RefetchTweetsByTimeRangeAsync_ShouldWork_WithValidTimeRange2()
     {
         // Arrange - validate configuration
@@ -132,7 +127,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
 
         // Get TargetId from configuration for second refetch test
         var pullTaskTargetId = _configuration["TwitterReward:PullTaskTargetId"] ?? "tweet-monitor";
-        var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>($"{pullTaskTargetId}");
+        var tweetMonitor = ClusterClient.GetGrain<ITwitterMonitorGrain>($"{pullTaskTargetId}");
 
         // Define time range for last 24 hours using simplified TimeRangeDto
         var timeRange = new TimeRangeDto
@@ -150,18 +145,13 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         // Assert
         result.ShouldNotBeNull();
         _logger.LogInformation(
-            "Refetch result: IsSuccess={IsSuccess}, Total={Total}, New={New}, Duplicates={Duplicates}",
-            result.IsSuccess, result.Data?.TotalFetched ?? 0, result.Data?.NewTweets ?? 0,
-            result.Data?.DuplicateSkipped ?? 0);
+            "Refetch result: IsSuccess={IsSuccess}, TaskStarted={TaskStarted}, Message={Message}",
+            result.IsSuccess, result.Data, result.ErrorMessage);
 
         if (result.IsSuccess)
         {
-            result.Data.ShouldNotBeNull();
+            result.Data.ShouldBe(true); // Task should have started successfully
             
-            // Since the method now returns immediately and processes in background,
-            // we only verify that the task was started successfully
-            // We cannot verify the actual processing results since they will be processed asynchronously
-
             _logger.LogInformation("✅ Refetch by time range test passed - background task started successfully");
         }
         else
@@ -172,7 +162,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
     }
 
     //ok
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task StartMonitoringAndCheckStatus_ShouldWork()
     {
         // Arrange - validate configuration
@@ -185,7 +175,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
 
         // Get TargetId from configuration for start monitoring test
         var pullTaskTargetId = _configuration["TwitterReward:PullTaskTargetId"] ?? "tweet-monitor";
-        var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>($"{pullTaskTargetId}");
+        var tweetMonitor = ClusterClient.GetGrain<ITwitterMonitorGrain>($"{pullTaskTargetId}");
 
         // Act - start monitoring
         _logger.LogInformation("Starting monitoring task test...");
@@ -224,7 +214,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task StartMonitoringAndCheckStatus_ShouldStop()
     {
         // Arrange - validate configuration
@@ -237,7 +227,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
 
         // Get TargetId from configuration for stop monitoring test  
         var pullTaskTargetId = _configuration["TwitterReward:PullTaskTargetId"] ?? "tweet-monitor";
-        var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>($"{pullTaskTargetId}");
+        var tweetMonitor = ClusterClient.GetGrain<ITwitterMonitorGrain>($"{pullTaskTargetId}");
 
         // Act 2 - check status after start
         var statusAfterStart = await tweetMonitor.GetMonitoringStatusAsync();
@@ -287,7 +277,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         }
     }
 
-    [Fact]
+    [Fact(Skip = "Integration test")]
     public async Task StartStopMonitoringAndCheckStatus_ShouldWork()
     {
         // Arrange - validate configuration
@@ -300,7 +290,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
 
         // Get TargetId from configuration for start-stop monitoring test
         var pullTaskTargetId = _configuration["TwitterReward:PullTaskTargetId"] ?? "tweet-monitor";
-        var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>($"{pullTaskTargetId}");
+        var tweetMonitor = ClusterClient.GetGrain<ITwitterMonitorGrain>($"{pullTaskTargetId}");
 
         // Act 1 - start monitoring
         _logger.LogInformation("Starting monitoring task for start-stop test...");

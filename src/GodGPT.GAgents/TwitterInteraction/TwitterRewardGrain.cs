@@ -36,7 +36,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     private readonly ILogger<TwitterRewardGrain> _logger;
     private readonly IOptionsMonitor<TwitterRewardOptions> _options;
     private readonly IPersistentState<TwitterRewardState> _state;
-    private ITweetMonitorGrain? _tweetMonitorGrain;
+    private ITwitterMonitorGrain? _tweetMonitorGrain;
     private ITwitterInteractionGrain? _twitterInteractionGrain;
     // Removed IChatManagerGAgent to comply with architecture constraint
     
@@ -60,8 +60,13 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         {
             throw new SystemException("Init ITweetMonitorGrain, _options.CurrentValue.PullTaskTargetId is null");
         }
-        _tweetMonitorGrain = GrainFactory.GetGrain<ITweetMonitorGrain>(_options.CurrentValue.PullTaskTargetId);
-        _twitterInteractionGrain = GrainFactory.GetGrain<ITwitterInteractionGrain>(_options.CurrentValue.PullTaskTargetId);
+        if (string.IsNullOrEmpty(_options.CurrentValue.RewardTaskTargetId))
+        {
+            throw new SystemException("Init ITwitterInteractionGrain, _options.CurrentValue.RewardTaskTargetId is null");
+        }
+        _tweetMonitorGrain = GrainFactory.GetGrain<ITwitterMonitorGrain>(_options.CurrentValue.PullTaskTargetId);
+        
+        _twitterInteractionGrain = GrainFactory.GetGrain<ITwitterInteractionGrain>(_options.CurrentValue.RewardTaskTargetId);
         // ChatManagerGAgent reference removed to comply with architecture constraint
         
         // Initialize or update configuration from appsettings.json
@@ -92,16 +97,15 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                            _state.State.Config.MinViewsForReward != currentConfig.MinViewsForReward ||
                            _state.State.Config.RewardTiers.Count != currentConfig.RewardTiers.Count;
 
+        _state.State.Config = currentConfig;
+        await _state.WriteStateAsync();
         if (configChanged)
         {
             _logger.LogInformation("TwitterRewardGrain Configuration changed, updating from appsettings.json. " +
                 "TimeRange: {StartHours}-{EndHours}h, MaxDailyCredits: {MaxCredits}, ShareMultiplier: {Multiplier}, MinViews: {MinViews}, RewardTiers: {TierCount}", 
                 currentConfig.TimeRangeStartHours, currentConfig.TimeRangeEndHours, 
                 currentConfig.MaxDailyCreditsPerUser, currentConfig.ShareLinkMultiplier, currentConfig.MinViewsForReward, currentConfig.RewardTiers.Count);
-            
-            _state.State.Config = currentConfig;
-            await _state.WriteStateAsync();
-            
+
             // Clean up any existing reminder first (to avoid conflicts with new configuration)
             try
             {
@@ -281,21 +285,40 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
     }
 
-    public async Task<TwitterApiResultDto<RewardCalculationResultDto>> TriggerRewardCalculationAsync(DateTime targetDate)
+    public async Task<TwitterApiResultDto<bool>> TriggerRewardCalculationAsync(DateTime targetDate)
     {
         try
         {
             _logger.LogInformation("Manual reward calculation triggered for date {TargetDate}", targetDate.ToString("yyyy-MM-dd"));
-            return await ExecuteRewardCalculationAsync(targetDate);
+            
+            // Update state to indicate manual calculation is starting
+            _state.State.LastError = "Manual calculation in progress...";
+            await _state.WriteStateAsync();
+            
+            // Use Orleans Timer (Orleans best practice) for background processing
+            RegisterTimer(
+                callback: async (state) => await ExecuteRewardCalculationAsync(targetDate),
+                state: null,
+                dueTime: TimeSpan.Zero,                    // Execute immediately
+                period: TimeSpan.FromMilliseconds(-1)      // Execute only once
+            );
+            
+            // Return task started status
+            return new TwitterApiResultDto<bool>
+            {
+                IsSuccess = true,
+                Data = true, // Task started successfully
+                ErrorMessage = $"Manual reward calculation task started successfully for date {targetDate:yyyy-MM-dd}. Check status using GetRewardCalculationStatusAsync()."
+            };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in manual reward calculation");
-            return new TwitterApiResultDto<RewardCalculationResultDto>
+            _logger.LogError(ex, "Error starting manual reward calculation");
+            return new TwitterApiResultDto<bool>
             {
                 IsSuccess = false,
-                ErrorMessage = ex.Message,
-                Data = new RewardCalculationResultDto()
+                Data = false, // Task failed to start
+                ErrorMessage = ex.Message
             };
         }
     }
@@ -576,30 +599,23 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             try
             {
                 _logger.LogInformation("Daily reward calculation reminder triggered at {CurrentTime} UTC", DateTime.UtcNow);
-                
-                // Calculate for the previous day (reward calculation runs at 00:00 UTC for the previous day)
-                var targetDate = DateTime.UtcNow.Date.AddDays(-1);
-                
-                // Update next scheduled calculation
-                var nextMidnightUtc = GetNextMidnightUtc();
-                _state.State.NextScheduledCalculation = nextMidnightUtc;
-                _state.State.NextScheduledCalculationUtc = ((DateTimeOffset)nextMidnightUtc).ToUnixTimeSeconds();
-                
-                var result = await ExecuteRewardCalculationAsync(targetDate);
-                
-                if (!result.IsSuccess)
+                //Use Task.Run to avoid blocking the reminder and potential timeout
+                _ = Task.Run(async () =>
                 {
-                    _logger.LogWarning("Scheduled reward calculation failed: {Error}", result.ErrorMessage);
-                    _state.State.LastError = result.ErrorMessage;
-                }
-                else
-                {
-                    _state.State.LastError = string.Empty;
-                    _state.State.LastCalculationTime = DateTime.UtcNow;
-                    _state.State.LastCalculationTimeUtc = ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds();
-                }
+                    try
+                    {
+                        await ProcessReceiveReminderInBackground();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error in background reminder processing");
+                        _state.State.LastError = ex.Message;
+                        await _state.WriteStateAsync();
+                    }
+                });
 
-                await _state.WriteStateAsync();
+                _logger.LogDebug("Background tweet fetch task started");
+                
             }
             catch (Exception ex)
             {
@@ -609,7 +625,35 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             }
         }
     }
+    
 
+    private async Task ProcessReceiveReminderInBackground()
+    {
+        // Calculate for the previous day (reward calculation runs at 00:00 UTC for the previous day)
+        var targetDate = DateTime.UtcNow.Date.AddDays(0);
+                
+        // Update next scheduled calculation
+        var nextMidnightUtc = GetNextMidnightUtc();
+        _state.State.NextScheduledCalculation = nextMidnightUtc;
+        _state.State.NextScheduledCalculationUtc = ((DateTimeOffset)nextMidnightUtc).ToUnixTimeSeconds();
+                
+        var result = await ExecuteRewardCalculationAsync(targetDate);
+                
+        if (!result.IsSuccess)
+        {
+            _logger.LogWarning("Scheduled reward calculation failed: {Error}", result.ErrorMessage);
+            _state.State.LastError = result.ErrorMessage;
+        }
+        else
+        {
+            _state.State.LastError = string.Empty;
+            _state.State.LastCalculationTime = DateTime.UtcNow;
+            _state.State.LastCalculationTimeUtc = ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds();
+        }
+
+        await _state.WriteStateAsync();
+    }
+    
     private async Task<TwitterApiResultDto<RewardCalculationResultDto>> ExecuteRewardCalculationAsync(DateTime targetDate)
     {
         var processingStartTime = DateTime.UtcNow;
@@ -636,9 +680,10 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 };
             }
 
-            // Calculate time range: 72-48 hours before target date
+            // Calculate time range: N-M hours before target date
             var startTime = targetDate.AddHours(-_state.State.Config.TimeRangeStartHours);
-            var endTime = targetDate.AddHours(-_state.State.Config.TimeRangeEndHours);
+            var endTime =
+                targetDate.AddHours(-_state.State.Config.TimeRangeStartHours + _state.State.Config.TimeRangeEndHours);
             var timeRange = TimeRangeDto.FromDateTime(startTime, endTime);
 
             result.ProcessedTimeRange = timeRange;
@@ -647,11 +692,25 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 targetDate.ToString("yyyy-MM-dd"), timeRange.StartTime, timeRange.EndTime);
 
             // Query TweetMonitorGrain for tweets in the time range
-            var tweetsResult = await _tweetMonitorGrain!.QueryTweetsByTimeRangeAsync(timeRange);
+            var bonusCreditsTweetsResult = await _tweetMonitorGrain!.QueryTweetsByTimeRangeAsync(timeRange);
             
-            if (!tweetsResult.IsSuccess)
+            var regularCreditsTweetsResult = await _tweetMonitorGrain!.QueryTweetsByTimeRangeAsync(TimeRangeDto.FromDateTime(targetDate, targetDate.AddDays(-1)));
+            
+            if (!bonusCreditsTweetsResult.IsSuccess)
             {
-                result.ErrorMessage = $"Failed to query tweets: {tweetsResult.ErrorMessage}";
+                result.ErrorMessage = $"Failed to query tweets: {bonusCreditsTweetsResult.ErrorMessage}";
+                await RecordCalculationHistory(result, false);
+                return new TwitterApiResultDto<RewardCalculationResultDto>
+                {
+                    IsSuccess = false,
+                    ErrorMessage = result.ErrorMessage,
+                    Data = result
+                };
+            }
+            
+            if (!regularCreditsTweetsResult.IsSuccess)
+            {
+                result.ErrorMessage = $"Failed to query tweets: {regularCreditsTweetsResult.ErrorMessage}";
                 await RecordCalculationHistory(result, false);
                 return new TwitterApiResultDto<RewardCalculationResultDto>
                 {
@@ -661,17 +720,25 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 };
             }
 
-            var tweets = tweetsResult.Data;
-            result.TotalTweetsProcessed = tweets.Count;
+            var bonusCreditsTweets = bonusCreditsTweetsResult.Data;
+            var regularCreditsTweets = regularCreditsTweetsResult.Data;
+            result.TotalTweetsProcessed = bonusCreditsTweets.Count + regularCreditsTweets.Count;
 
             // Filter tweets for reward eligibility
-            var eligibleTweets = FilterEligibleTweets(tweets);
-            result.EligibleTweets = eligibleTweets.Count;
+            var bonusCreditsEligibleTweets = FilterEligibleTweets(bonusCreditsTweets);
+            var regularCreditsEligibleTweets = FilterEligibleTweets(regularCreditsTweets);
+            result.EligibleTweets = bonusCreditsEligibleTweets.Count + regularCreditsEligibleTweets.Count;
 
-            _logger.LogInformation("Found {Total} tweets, {Eligible} eligible for reward evaluation (original tweets, min {MinViews} views, non-excluded users, unprocessed)", tweets.Count, eligibleTweets.Count, _state.State.Config.MinViewsForReward);
+            _logger.LogInformation(
+                "CreditsTweets Found {Total} bonusTweets, {Eligible} bonusEligible for bonusreward evaluation (original tweets, min {MinViews} views, non-excluded users, unprocessed)" +
+                " Found {Total} regularTweets, {Eligible} regularEligible for regularreward ", bonusCreditsTweets.Count,
+                bonusCreditsEligibleTweets.Count, _state.State.Config.MinViewsForReward, regularCreditsTweets.Count,
+                regularCreditsEligibleTweets.Count);
+            
 
             // Group tweets by user and calculate rewards
-            var userRewards = await CalculateUserRewardsAsync(eligibleTweets, targetDate);
+            var userRewards =
+                await CalculateUserRewardsAsync(bonusCreditsEligibleTweets, regularCreditsEligibleTweets, targetDate);
             result.UserRewards = userRewards;
             result.UsersRewarded = userRewards.Count;
             result.TotalCreditsDistributed = userRewards.Sum(r => r.FinalCredits);
@@ -740,10 +807,10 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         ).ToList();
     }
 
-    private async Task<List<UserRewardRecordDto>> CalculateUserRewardsAsync(List<TweetRecord> eligibleTweets, DateTime rewardDate)
+    private async Task<List<UserRewardRecordDto>> CalculateUserRewardsAsync(
+        List<TweetRecord> bonusCreditsEligibleTweets, List<TweetRecord> regularCreditsEligibleTweets,
+        DateTime rewardDate)
     {
-        var userRewards = new List<UserRewardRecordDto>();
-        
         // Get existing reward records for today to prevent duplicate rewards
         var dateKey = rewardDate.ToString("yyyy-MM-dd");
         var existingRewards = _state.State.UserRewards.ContainsKey(dateKey) 
@@ -752,24 +819,82 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         
         // Create set of already rewarded users for fast lookup
         var alreadyRewardedUsers = existingRewards.Select(r => r.UserId).ToHashSet();
-        
-        _logger.LogInformation("Found {ExistingCount} existing user rewards for date {Date}, processing {EligibleCount} eligible tweets", 
-            existingRewards.Count, dateKey, eligibleTweets.Count);
+
+        _logger.LogInformation(
+            "Found {ExistingCount} existing user rewards for date {Date}, processing bonusCreditsType {EligibleCount} regularCreditsType {regularEligibleCount} eligible tweets",
+            existingRewards.Count, dateKey, bonusCreditsEligibleTweets.Count, regularCreditsEligibleTweets.Count);
 
         // Group tweets by user for calculating both regular and bonus credits
-        var tweetsByUser = eligibleTweets
+        var bonusCreditsTweetsByUser = bonusCreditsEligibleTweets
+            .Where(tweet => !alreadyRewardedUsers.Contains(tweet.AuthorId))
+            .GroupBy(tweet => tweet.AuthorId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+        var regularCreditsTweetsByUser = regularCreditsEligibleTweets
             .Where(tweet => !alreadyRewardedUsers.Contains(tweet.AuthorId))
             .GroupBy(tweet => tweet.AuthorId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
         var processedUsers = 0;
-        var skippedAlreadyRewarded = eligibleTweets.Count(tweet => alreadyRewardedUsers.Contains(tweet.AuthorId));
+        var skippedAlreadyRewarded = bonusCreditsEligibleTweets.Count(tweet => alreadyRewardedUsers.Contains(tweet.AuthorId)) +
+                                     regularCreditsEligibleTweets.Count(tweet => alreadyRewardedUsers.Contains(tweet.AuthorId));
 
-        // Get latest user and tweet information for all users
-        _logger.LogInformation("Fetching latest information for {UserCount} users to ensure accurate reward calculation", tweetsByUser.Count);
-        var latestUserAndTweetInfo = await GetLatestUserAndTweetInfoAsync(tweetsByUser);
+        // Create user reward dictionary to collect all rewards
+        var userRewardDict = new Dictionary<string, UserRewardRecordDto>();
 
-        foreach (var userTweets in tweetsByUser)
+        // Get latest user and tweet information only for bonus credits users (regular credits don't need latest data)
+        _logger.LogInformation("Fetching latest information for {UserCount} bonus credit users to ensure accurate reward calculation", bonusCreditsTweetsByUser.Count);
+        var latestUserAndTweetInfo = await GetLatestUserAndTweetInfoAsync(bonusCreditsTweetsByUser);
+
+        // Step 1: Process regular credits (昨天的推特) - No need to fetch latest data, no view count restrictions
+        foreach (var userTweets in regularCreditsTweetsByUser)
+        {
+            try
+            {
+                var userId = userTweets.Key;
+                var tweets = userTweets.Value;
+                
+                // Calculate regular credits: 2 credits per tweet, max 10 tweets (20 credits)
+                var regularTweetCount = tweets.Count;
+                var regularCredits = Math.Min(regularTweetCount * 2, 20); // Max 10 tweets * 2 credits = 20 credits
+                
+                // Use first tweet for record keeping (no need to find best for regular credits)
+                var recordTweet = tweets.First();
+
+                var rewardRecord = new UserRewardRecordDto
+                {
+                    UserId = userId,
+                    UserHandle = recordTweet.AuthorHandle, // Use stored username
+                    TweetId = recordTweet.TweetId, // Use first tweet for reference
+                    RewardDate = rewardDate,
+                    RewardDateUtc = ((DateTimeOffset)rewardDate).ToUnixTimeSeconds(),
+                    BaseCredits = 0, // No base credits for regular rewards
+                    ShareLinkMultiplier = 1.0, // No multiplier for regular rewards
+                    FinalCredits = regularCredits,
+                    HasValidShareLink = recordTweet.HasValidShareLink,
+                    IsRewardSent = false,
+                    
+                    // New separated credit fields
+                    RegularCredits = regularCredits,
+                    BonusCredits = 0, // Will be updated in step 2 if user has bonus credits
+                    TweetCount = regularTweetCount,
+                    BonusCreditsBeforeMultiplier = 0
+                };
+
+                userRewardDict[userId] = rewardRecord;
+                processedUsers++;
+
+                _logger.LogInformation("Calculated regular rewards for user {UserId} (@{UserHandle}): {RegularCredits} regular credits " +
+                    "({TweetCount} tweets, reference tweet: {TweetId}) [USING STORED DATA]", 
+                    userId, recordTweet.AuthorHandle, regularCredits, regularTweetCount, recordTweet.TweetId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating regular reward for user {UserId}", userTweets.Key);
+            }
+        }
+
+        // Step 2: Process bonus credits (some days before)
+        foreach (var userTweets in bonusCreditsTweetsByUser)
         {
             try
             {
@@ -784,10 +909,6 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 }
                 
                 var (latestUserInfo, latestTweetInfo) = latestUserAndTweetInfo[userId];
-                
-                // Calculate regular credits: 2 credits per tweet, max 10 tweets (20 credits)
-                var tweetCount = tweets.Count;
-                var regularCredits = Math.Min(tweetCount * 2, 20); // Max 10 tweets * 2 credits = 20 credits
                 
                 // Calculate bonus credits based on 8-tier system using LATEST data
                 var totalBonusCredits = 0;
@@ -845,37 +966,55 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 // Apply bonus credits daily limit (500 credits max)
                 totalBonusCredits = Math.Min(totalBonusCredits, _state.State.Config.MaxDailyCreditsPerUser);
                 
-                // Calculate final credits: regular + bonus
-                var finalCredits = regularCredits + totalBonusCredits;
-
-                var rewardRecord = new UserRewardRecordDto
+                                 // Check if user already has a reward record from regular credits
+                 if (userRewardDict.ContainsKey(userId))
+                 {
+                     // Update existing record with bonus credits
+                     var existingRecord = userRewardDict[userId];
+                     existingRecord.BonusCredits = totalBonusCredits;
+                     existingRecord.BonusCreditsBeforeMultiplier = totalBonusCreditsBeforeMultiplier;
+                     existingRecord.FinalCredits = existingRecord.RegularCredits + totalBonusCredits;
+                     existingRecord.BaseCredits = totalBonusCreditsBeforeMultiplier; // Keep for backward compatibility
+                     existingRecord.ShareLinkMultiplier = (bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink) ? _state.State.Config.ShareLinkMultiplier : 1.0;
+                     existingRecord.HasValidShareLink = bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink;
+                     existingRecord.TweetCount += tweets.Count; // Add bonus tweet count
+                     
+                     // Keep the existing best tweet ID for reference (regular credits already set the best tweet)
+                     
+                     _logger.LogInformation("Updated user {UserId} (@{UserHandle}) with bonus credits: {RegularCredits} regular + {BonusCredits} bonus = {FinalCredits} total credits",
+                         userId, latestUserInfo.Username, existingRecord.RegularCredits, totalBonusCredits, existingRecord.FinalCredits);
+                 }
+                else
                 {
-                    UserId = userId,
-                    UserHandle = latestUserInfo.Username,
-                    TweetId = bestTweet.TweetId, // Use best tweet for reference
-                    RewardDate = rewardDate,
-                    RewardDateUtc = ((DateTimeOffset)rewardDate).ToUnixTimeSeconds(),
-                    BaseCredits = totalBonusCreditsBeforeMultiplier, // Keep for backward compatibility
-                    ShareLinkMultiplier = (bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink) ? _state.State.Config.ShareLinkMultiplier : 1.0,
-                    FinalCredits = finalCredits,
-                    HasValidShareLink = bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink,
-                    IsRewardSent = false,
-                    
-                    // New separated credit fields
-                    RegularCredits = regularCredits,
-                    BonusCredits = totalBonusCredits,
-                    TweetCount = tweetCount,
-                    BonusCreditsBeforeMultiplier = totalBonusCreditsBeforeMultiplier
-                };
+                    // Create new record for bonus credits only (user has no regular credits)
+                    var rewardRecord = new UserRewardRecordDto
+                    {
+                        UserId = userId,
+                        UserHandle = latestUserInfo.Username,
+                        TweetId = bestTweet.TweetId, // Use best tweet for reference
+                        RewardDate = rewardDate,
+                        RewardDateUtc = ((DateTimeOffset)rewardDate).ToUnixTimeSeconds(),
+                        BaseCredits = totalBonusCreditsBeforeMultiplier, // Keep for backward compatibility
+                        ShareLinkMultiplier = (bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink) ? _state.State.Config.ShareLinkMultiplier : 1.0,
+                        FinalCredits = totalBonusCredits,
+                        HasValidShareLink = bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink,
+                        IsRewardSent = false,
+                        
+                        // New separated credit fields
+                        RegularCredits = 0, // No regular credits for this user
+                        BonusCredits = totalBonusCredits,
+                        TweetCount = tweets.Count,
+                        BonusCreditsBeforeMultiplier = totalBonusCreditsBeforeMultiplier
+                    };
 
-                userRewards.Add(rewardRecord);
-                alreadyRewardedUsers.Add(userId);
-                processedUsers++;
+                    userRewardDict[userId] = rewardRecord;
+                    processedUsers++;
 
-                _logger.LogInformation("Calculated rewards for user {UserId} (@{UserHandle}): {RegularCredits} regular + {BonusCredits} bonus = {FinalCredits} total credits " +
-                    "({TweetCount} tweets, best tweet: {TweetId} with {Views} views, latest follower count: {FollowerCount}) [USING LATEST DATA]", 
-                    userId, latestUserInfo.Username, regularCredits, totalBonusCredits, finalCredits, 
-                    tweetCount, bestTweet.TweetId, bestLatestTweet?.ViewCount ?? bestTweet.ViewCount, latestUserInfo.FollowersCount);
+                    _logger.LogInformation("Calculated bonus-only rewards for user {UserId} (@{UserHandle}): {BonusCredits} bonus credits " +
+                        "({TweetCount} tweets, best tweet: {TweetId} with {Views} views)", 
+                        userId, latestUserInfo.Username, totalBonusCredits, tweets.Count, bestTweet.TweetId, 
+                        bestLatestTweet?.ViewCount ?? bestTweet.ViewCount);
+                }
 
                 // Mark all tweets as processed
                 foreach (var tweet in tweets)
@@ -885,7 +1024,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calculating reward for user {UserId}", userTweets.Key);
+                _logger.LogError(ex, "Error calculating bonus reward for user {UserId}", userTweets.Key);
             }
         }
 
@@ -895,7 +1034,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         // Combine new rewards with existing rewards for return
         var allRewards = new List<UserRewardRecordDto>();
         allRewards.AddRange(existingRewards);
-        allRewards.AddRange(userRewards);
+        allRewards.AddRange(userRewardDict.Values);
         
         return allRewards;
     }
@@ -1026,6 +1165,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         var now = DateTime.UtcNow;
         return now.Date.AddDays(1); // Next day at 00:00 UTC
+
     }
 
     private bool ShouldExecuteRewardCalculation(DateTime currentTime)

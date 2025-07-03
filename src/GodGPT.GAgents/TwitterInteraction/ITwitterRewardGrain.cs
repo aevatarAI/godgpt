@@ -26,7 +26,7 @@ public interface ITwitterRewardGrain : IGrainWithStringKey
     /// <summary>
     /// Manually trigger reward calculation for specified date
     /// </summary>
-    Task<TwitterApiResultDto<RewardCalculationResultDto>> TriggerRewardCalculationAsync(DateTime targetDate);
+    Task<TwitterApiResultDto<bool>>  TriggerRewardCalculationAsync(DateTime targetDate);
 
     /// <summary>
     /// Get reward calculation history

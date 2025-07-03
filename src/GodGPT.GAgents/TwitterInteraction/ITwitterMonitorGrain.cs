@@ -6,7 +6,7 @@ namespace Aevatar.Application.Grains.TwitterInteraction;
 /// <summary>
 /// Tweet monitoring Grain interface - responsible for scheduled tweet data fetching
 /// </summary>
-public interface ITweetMonitorGrain : IGrainWithStringKey
+public interface ITwitterMonitorGrain : IGrainWithStringKey
 {
     /// <summary>
     /// Start tweet monitoring scheduled task
@@ -51,9 +51,9 @@ public interface ITweetMonitorGrain : IGrainWithStringKey
     Task<TwitterApiResultDto<TweetMonitorConfigDto>> GetMonitoringConfigAsync();
 
     /// <summary>
-    /// Re-fetch tweet data for specified time range (for data recovery)
+    /// Manual refetch tweets by time range (background processing)
     /// </summary>
-    Task<TwitterApiResultDto<TweetFetchResultDto>> RefetchTweetsByTimeRangeAsync(TimeRangeDto timeRange);
+    Task<TwitterApiResultDto<bool>> RefetchTweetsByTimeRangeAsync(TimeRangeDto timeRange);
 
     /// <summary>
     /// Get tweet statistics for specified time range
