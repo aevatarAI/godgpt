@@ -81,7 +81,6 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             string url = $"{TWITTER_API_BASE}{SEARCH_TWEETS_ENDPOINT}?query={encodedQuery}&max_results={request.MaxResults}" +
                         "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
                         "&expansions=author_id&user.fields=id,username,name,public_metrics";
-
             // Add optional parameters
             if (request.StartTime.HasValue)
             {
@@ -91,7 +90,6 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             {
                 url += $"&end_time={request.EndTime.Value:yyyy-MM-ddTHH:mm:ss.fffZ}";
             }
-
             var bearerToken = _options.CurrentValue.BearerToken;
             
             // Log for debugging

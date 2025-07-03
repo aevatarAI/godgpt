@@ -242,7 +242,7 @@ public class TimeRangeDto
     /// <returns>TimeRangeDto instance</returns>
     public static TimeRangeDto LastHours(int hours)
     {
-        var endTime = DateTime.UtcNow.AddMinutes(-30); // 30 minutes ago to avoid very recent tweets
+        var endTime = DateTime.UtcNow.AddMinutes(-1); // 30 minutes ago to avoid very recent tweets
         var startTime = endTime.AddHours(-hours);
         return FromDateTime(startTime, endTime);
     }

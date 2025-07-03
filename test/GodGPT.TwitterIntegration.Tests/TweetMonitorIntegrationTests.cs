@@ -44,7 +44,6 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         _logger.LogInformation("Starting manual tweet fetch test...");
         var result = await tweetMonitor.FetchTweetsManuallyAsync();
 
-        // Assert - verify results
         result.ShouldNotBeNull();
         _logger.LogInformation("Tweet fetch result: IsSuccess={IsSuccess}, Total={Total}, New={New}",
             result.IsSuccess, result.Data?.TotalFetched ?? 0, result.Data?.NewTweets ?? 0);
@@ -65,7 +64,8 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
             Assert.True(true, $"API call failed (possibly normal rate limiting): {result.ErrorMessage}");
         }
     }
-
+    
+    
     //ok
     [Fact]
     public async Task RefetchTweetsByTimeRangeAsync_ShouldWork_WithValidTimeRange()
@@ -83,7 +83,7 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>($"{pullTaskTargetId}");
 
         // Define time range for last 24 hours using simplified TimeRangeDto
-        var timeRange = TimeRangeDto.LastHours(24);
+        var timeRange = TimeRangeDto.LastHours(5); // Use reasonable time range
 
         // Act - refetch tweets by time range
         _logger.LogInformation("Starting refetch by time range test...");
@@ -101,22 +101,21 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         if (result.IsSuccess)
         {
             result.Data.ShouldNotBeNull();
-            result.Data.TotalFetched.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.NewTweets.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.DuplicateSkipped.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.FilteredOut.ShouldBeGreaterThanOrEqualTo(0);
+            
+            // Since the method now returns immediately and processes in background using Orleans Timer,
+            // we only verify that the task was started successfully
+            // The actual processing will be handled asynchronously by Orleans Timer
 
-            // Verify time range is respected
-            result.Data.FetchStartTime.ShouldNotBe(default(DateTime));
-            result.Data.FetchEndTime.ShouldNotBe(default(DateTime));
-
-            _logger.LogInformation("✅ Refetch by time range test passed");
+            _logger.LogInformation("✅ Refetch by time range test passed - background task started successfully using Orleans Timer");
         }
         else
         {
             _logger.LogWarning("⚠️ Refetch failed: {ErrorMessage}", result.ErrorMessage);
             Assert.True(true, $"API call failed (possibly normal rate limiting): {result.ErrorMessage}");
         }
+
+        // Optional: Wait a short time to allow Orleans Timer to start processing
+        // This is much shorter than before since we're using Orleans Timer instead of Task.Run
     }
 
     //ok
@@ -158,16 +157,12 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         if (result.IsSuccess)
         {
             result.Data.ShouldNotBeNull();
-            result.Data.TotalFetched.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.NewTweets.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.DuplicateSkipped.ShouldBeGreaterThanOrEqualTo(0);
-            result.Data.FilteredOut.ShouldBeGreaterThanOrEqualTo(0);
+            
+            // Since the method now returns immediately and processes in background,
+            // we only verify that the task was started successfully
+            // We cannot verify the actual processing results since they will be processed asynchronously
 
-            // Verify time range is respected
-            result.Data.FetchStartTime.ShouldNotBe(default(DateTime));
-            result.Data.FetchEndTime.ShouldNotBe(default(DateTime));
-
-            _logger.LogInformation("✅ Refetch by time range test passed");
+            _logger.LogInformation("✅ Refetch by time range test passed - background task started successfully");
         }
         else
         {

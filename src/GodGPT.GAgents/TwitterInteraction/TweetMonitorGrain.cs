@@ -466,7 +466,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
     {
         try
         {
-            _logger.LogInformation("Refetching tweets for time range {Start} to {End}", 
+            _logger.LogInformation("Starting background refetch for time range {Start} to {End}", 
                 timeRange.StartTime, timeRange.EndTime);
 
             var maxEndTime = DateTime.UtcNow;
@@ -488,6 +488,53 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                 };
             }
 
+            // Use Orleans Timer instead of Task.Run for background processing
+            RegisterTimer(
+                callback: async (state) => await ProcessTimeRangeInBackground(timeRange, actualEndTime),
+                state: null,
+                dueTime: TimeSpan.Zero,                    // Execute immediately
+                period: TimeSpan.FromMilliseconds(-1)      // Execute only once
+            );
+
+            _logger.LogInformation("Background refetch task started using Orleans Timer");
+
+            // Return immediately with task started status
+            return new TwitterApiResultDto<TweetFetchResultDto>
+            {
+                IsSuccess = true,
+                Data = new TweetFetchResultDto
+                {
+                    FetchStartTime = DateTime.UtcNow,
+                    FetchStartTimeUtc = ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds(),
+                    NewTweetIds = new List<string>(),
+                    TotalFetched = 0,
+                    NewTweets = 0,
+                    DuplicateSkipped = 0,
+                    FilteredOut = 0,
+                    ErrorMessage = "Background processing started using Orleans Timer"
+                },
+                ErrorMessage = "Background processing started successfully using Orleans Timer"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error starting background refetch");
+            return new TwitterApiResultDto<TweetFetchResultDto>
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message,
+                Data = new TweetFetchResultDto()
+            };
+        }
+    }
+
+    private async Task ProcessTimeRangeInBackground(TimeRangeDto timeRange, DateTime actualEndTime)
+    {
+        try
+        {
+            _logger.LogInformation("Background processing started for time range {Start} to {End}", 
+                timeRange.StartTime, actualEndTime);
+
             var overallResult = new TweetFetchResultDto
             {
                 FetchStartTime = DateTime.UtcNow,
@@ -508,7 +555,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 
             while (currentStart < actualEndTime)
             {
-                var currentEnd = currentStart.AddHours(1);
+                var currentEnd = currentStart.AddMinutes(30);
                 if (currentEnd > actualEndTime)
                     currentEnd = actualEndTime;
 
@@ -548,6 +595,15 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                 }
 
                 currentStart = currentEnd;
+
+                // Add delay to avoid Twitter API rate limiting (429 Too Many Requests)
+                // Twitter Search API allows 300 requests per 15-minute window
+                // Adding 3-5 second delay between requests to stay within limits
+                if (currentStart < actualEndTime) // Don't delay after the last iteration
+                {
+                    _logger.LogInformation("Waiting 5 seconds to avoid API rate limiting...");
+                    await Task.Delay(TimeSpan.FromSeconds(5));
+                }
             }
 
             overallResult.FetchEndTime = DateTime.UtcNow;
@@ -560,27 +616,14 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 
             var isOverallSuccess = errorMessages.Count == 0;
             
-            _logger.LogInformation("Hourly refetch completed: {Intervals} intervals processed, " +
+            _logger.LogInformation("Background processing completed: {Intervals} intervals processed, " +
                                   "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}", 
                                   hourlyIntervals, overallResult.TotalFetched, overallResult.NewTweets, 
                                   overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess);
-
-            return new TwitterApiResultDto<TweetFetchResultDto>
-            {
-                IsSuccess = isOverallSuccess,
-                Data = overallResult,
-                ErrorMessage = overallResult.ErrorMessage
-            };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error refetching tweets by time range");
-            return new TwitterApiResultDto<TweetFetchResultDto>
-            {
-                IsSuccess = false,
-                ErrorMessage = ex.Message,
-                Data = new TweetFetchResultDto()
-            };
+            _logger.LogError(ex, "Error in background processing of time range");
         }
     }
 
@@ -641,37 +684,55 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
             {
                 _logger.LogDebug("Reminder triggered for tweet fetch");
                 
-                // Update next scheduled fetch time
-                _state.State.NextScheduledFetch = DateTime.UtcNow.AddMinutes(_state.State.Config.FetchIntervalMinutes);
-                _state.State.NextScheduledFetchUtc = ((DateTimeOffset)_state.State.NextScheduledFetch).ToUnixTimeSeconds();
+                // Use Task.Run to avoid blocking the reminder and potential timeout
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await ProcessReceiveReminderInBackground();
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error in background reminder processing");
+                        _state.State.LastError = ex.Message;
+                        await _state.WriteStateAsync();
+                    }
+                });
                 
-                var result = await FetchTweetsInternalAsync();
-                
-                if (!result.IsSuccess)
-                {
-                    _logger.LogWarning("Scheduled tweet fetch failed: {Error}", result.ErrorMessage);
-                    _state.State.LastError = result.ErrorMessage;
-                }
-                else
-                {
-                    _state.State.LastError = string.Empty;
-                }
-
-                // Auto cleanup if enabled
-                if (_state.State.Config.EnableAutoCleanup)
-                {
-                    await CleanupExpiredTweetsAsync();
-                }
-
-                await _state.WriteStateAsync();
+                _logger.LogDebug("Background tweet fetch task started");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in reminder execution");
-                _state.State.LastError = ex.Message;
-                await _state.WriteStateAsync();
+                _logger.LogError(ex, "Error starting reminder execution");
             }
         }
+    }
+
+    private async Task ProcessReceiveReminderInBackground()
+    {
+        // Update next scheduled fetch time
+        _state.State.NextScheduledFetch = DateTime.UtcNow.AddMinutes(_state.State.Config.FetchIntervalMinutes);
+        _state.State.NextScheduledFetchUtc = ((DateTimeOffset)_state.State.NextScheduledFetch).ToUnixTimeSeconds();
+
+        var result = await FetchTweetsInternalAsync();
+
+        if (!result.IsSuccess)
+        {
+            _logger.LogWarning("Scheduled tweet fetch failed: {Error}", result.ErrorMessage);
+            _state.State.LastError = result.ErrorMessage;
+        }
+        else
+        {
+            _state.State.LastError = string.Empty;
+        }
+
+        // Auto cleanup if enabled
+        if (_state.State.Config.EnableAutoCleanup)
+        {
+            await CleanupExpiredTweetsAsync();
+        }
+
+        await _state.WriteStateAsync();
     }
 
     private async Task<TwitterApiResultDto<TweetFetchResultDto>> FetchTweetsInternalAsync()
@@ -694,7 +755,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                 StartTime = _state.State.LastFetchTime ?? DateTime.UtcNow.AddHours(-1),
                 EndTime = DateTime.UtcNow
             };
-
+            
             _logger.LogInformation("📅 Fetch time range: {StartTime:yyyy-MM-dd HH:mm:ss} UTC to {EndTime:yyyy-MM-dd HH:mm:ss} UTC", 
                 searchRequest.StartTime, searchRequest.EndTime);
 
@@ -728,7 +789,6 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
             // Search for tweets using TwitterInteractionGrain
             _logger.LogInformation("🔍 Calling Twitter API to search tweets...");
             var searchResult = await _twitterGrain!.SearchTweetsAsync(searchRequest);
-            
             if (!searchResult.IsSuccess)
             {
                 _logger.LogError("❌ Twitter API search failed: {ErrorMessage}", searchResult.ErrorMessage);
@@ -753,7 +813,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                 try
                 {
                     _logger.LogDebug("📝 Processing tweet {TweetId} (author: {AuthorId})", tweet.Id, tweet.AuthorId);
-                    
+
                     if (_state.State.StoredTweets.ContainsKey(tweet.Id))
                     {
                         _logger.LogDebug("⚠️ Skipping duplicate tweet {TweetId}", tweet.Id);
@@ -783,7 +843,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                         fetchResult.FilteredOut++;
                         continue;
                     }
-
+                    
                     // Filter excluded accounts (blacklist)
                     var excludedAccountIds = _options.CurrentValue.GetExcludedAccountIds();
                     if (excludedAccountIds.Contains(tweetDetails.AuthorId))
@@ -864,7 +924,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                 _logger.LogInformation("📋 New tweet IDs: [{TweetIds}]", string.Join(", ", fetchResult.NewTweetIds));
             }
 
-            return new TwitterApiResultDto<TweetFetchResultDto>
+                        return new TwitterApiResultDto<TweetFetchResultDto>
             {
                 IsSuccess = true,
                 Data = fetchResult
