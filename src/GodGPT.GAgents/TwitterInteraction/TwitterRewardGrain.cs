@@ -54,32 +54,83 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("TwitterRewardGrain {GrainId} activating", this.GetPrimaryKeyString());
-        
-        // Initialize grain references
-        _tweetMonitorGrain = GrainFactory.GetGrain<ITweetMonitorGrain>("tweet-monitor");
+
+        if (string.IsNullOrEmpty(_options.CurrentValue.PullTaskTargetId))
+        {
+            throw new SystemException("Init ITweetMonitorGrain, _options.CurrentValue.PullTaskTargetId is null");
+        }
+        _tweetMonitorGrain = GrainFactory.GetGrain<ITweetMonitorGrain>(_options.CurrentValue.PullTaskTargetId);
         // ChatManagerGAgent reference removed to comply with architecture constraint
         
-        // Initialize state if needed
-        if (_state.State.Config.RewardTiers.Count == 0)
+        // Initialize or update configuration from appsettings.json
+        var currentConfig = new RewardConfigDto
         {
-            _state.State.Config = new RewardConfigDto
+            TimeRangeStartHours = _options.CurrentValue.TimeOffsetMinutes / 60, // Convert minutes to hours
+            TimeRangeEndHours = _options.CurrentValue.TimeWindowMinutes / 60,  // Convert minutes to hours
+            ShareLinkMultiplier = _options.CurrentValue.ShareLinkMultiplier,
+            MaxDailyCreditsPerUser = _options.CurrentValue.DailyRewardLimit,
+            EnableRewardCalculation = true,
+            ConfigVersion = 1,
+            MinViewsForReward = _options.CurrentValue.MinViewsForReward > 0 ? _options.CurrentValue.MinViewsForReward : 20, // Default minimum views for reward eligibility
+            RewardTiers = _options.CurrentValue.RewardTiers.Select(t => new RewardTierDto
             {
-                TimeRangeStartHours = 72,
-                TimeRangeEndHours = 48,
-                ShareLinkMultiplier = 1.1,
-                MaxDailyCreditsPerUser = 500,
-                EnableRewardCalculation = true,
-                ConfigVersion = 1,
-                RewardTiers = _options.CurrentValue.RewardTiers.Select(t => new RewardTierDto
-                {
-                    MinViews = t.MinViews,
-                    MinFollowers = t.MinFollowers,
-                    RewardCredits = t.RewardCredits,
-                    TierName = $"Tier-{t.MinViews}v-{t.MinFollowers}f"
-                }).ToList()
-            };
+                MinViews = t.MinViews,
+                MinFollowers = t.MinFollowers,
+                RewardCredits = t.RewardCredits,
+                TierName = $"Tier-{t.MinViews}v-{t.MinFollowers}f"
+            }).ToList()
+        };
+
+        // Always update configuration on activation to reflect appsettings.json changes
+        bool configChanged = _state.State.Config.RewardTiers.Count == 0 ||
+                           _state.State.Config.TimeRangeStartHours != currentConfig.TimeRangeStartHours ||
+                           _state.State.Config.TimeRangeEndHours != currentConfig.TimeRangeEndHours ||
+                           _state.State.Config.ShareLinkMultiplier != currentConfig.ShareLinkMultiplier ||
+                           _state.State.Config.MaxDailyCreditsPerUser != currentConfig.MaxDailyCreditsPerUser ||
+                           _state.State.Config.MinViewsForReward != currentConfig.MinViewsForReward ||
+                           _state.State.Config.RewardTiers.Count != currentConfig.RewardTiers.Count;
+
+        if (configChanged)
+        {
+            _logger.LogInformation("TwitterRewardGrain Configuration changed, updating from appsettings.json. " +
+                "TimeRange: {StartHours}-{EndHours}h, MaxDailyCredits: {MaxCredits}, ShareMultiplier: {Multiplier}, MinViews: {MinViews}, RewardTiers: {TierCount}", 
+                currentConfig.TimeRangeStartHours, currentConfig.TimeRangeEndHours, 
+                currentConfig.MaxDailyCreditsPerUser, currentConfig.ShareLinkMultiplier, currentConfig.MinViewsForReward, currentConfig.RewardTiers.Count);
+            
+            _state.State.Config = currentConfig;
             await _state.WriteStateAsync();
+            
+            // Clean up any existing reminder first (to avoid conflicts with new configuration)
+            try
+            {
+                var existingReminder = await this.GetReminder(REMINDER_NAME);
+                if (existingReminder != null)
+                {
+                    _logger.LogInformation("TwitterRewardGrain Cleaning up existing reminder due to configuration change");
+                    await this.UnregisterReminder(existingReminder);
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, "TwitterRewardGrain Reminder doesn't exist");
+                // Reminder doesn't exist, which is fine
+            }
+            
+            // If reward calculation is running, register reminder with new configuration
+            if (_state.State.IsRunning)
+            {
+                _logger.LogInformation("TwitterRewardGrain Restarting reward calculation with new configuration");
+                var nextMidnightUtc = GetNextMidnightUtc();
+                var timeUntilMidnight = nextMidnightUtc - DateTime.UtcNow;
+                await this.RegisterOrUpdateReminder(
+                    REMINDER_NAME,
+                    timeUntilMidnight,
+                    TimeSpan.FromDays(1));
+            }
         }
+
+        // Update reminder target ID based on configuration version
+        _state.State.ReminderTargetId = _options.CurrentValue.ReminderTargetIdVersion;
 
         await base.OnActivateAsync(cancellationToken);
     }
@@ -582,13 +633,9 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             }
 
             // Calculate time range: 72-48 hours before target date
-            var timeRange = new TimeRangeDto
-            {
-                StartTime = targetDate.AddHours(-_state.State.Config.TimeRangeStartHours),
-                EndTime = targetDate.AddHours(-_state.State.Config.TimeRangeEndHours)
-            };
-            timeRange.StartTimeUtc = ((DateTimeOffset)timeRange.StartTime).ToUnixTimeSeconds();
-            timeRange.EndTimeUtc = ((DateTimeOffset)timeRange.EndTime).ToUnixTimeSeconds();
+            var startTime = targetDate.AddHours(-_state.State.Config.TimeRangeStartHours);
+            var endTime = targetDate.AddHours(-_state.State.Config.TimeRangeEndHours);
+            var timeRange = TimeRangeDto.FromDateTime(startTime, endTime);
 
             result.ProcessedTimeRange = timeRange;
 
@@ -617,7 +664,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             var eligibleTweets = FilterEligibleTweets(tweets);
             result.EligibleTweets = eligibleTweets.Count;
 
-            _logger.LogInformation("Found {Total} tweets, {Eligible} eligible for rewards", tweets.Count, eligibleTweets.Count);
+            _logger.LogInformation("Found {Total} tweets, {Eligible} eligible for reward evaluation (original tweets, min {MinViews} views, non-excluded users, unprocessed)", tweets.Count, eligibleTweets.Count, _state.State.Config.MinViewsForReward);
 
             // Group tweets by user and calculate rewards
             var userRewards = await CalculateUserRewardsAsync(eligibleTweets, targetDate);
@@ -631,10 +678,21 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             // Store user rewards
             _state.State.UserRewards[dateKey] = userRewards;
             
+            // Clean up old reward records to control data size - only keep today's records
+            var today = DateTime.UtcNow.Date.ToString("yyyy-MM-dd");
+            var keysToRemove = _state.State.UserRewards.Keys.Where(key => key != today && key != dateKey).ToList();
+            foreach (var keyToRemove in keysToRemove)
+            {
+                _state.State.UserRewards.Remove(keyToRemove);
+            }
+            
+            if (keysToRemove.Count > 0)
+            {
+                _logger.LogInformation("Cleaned up {Count} old reward record dates to control data size. Keeping only: {KeptDates}", 
+                    keysToRemove.Count, string.Join(", ", _state.State.UserRewards.Keys));
+            }
+            
             // Update totals
-            _state.State.TotalUsersRewarded += result.UsersRewarded;
-            _state.State.TotalCreditsDistributed += result.TotalCreditsDistributed;
-
             result.ProcessingEndTime = DateTime.UtcNow;
             result.ProcessingDuration = result.ProcessingEndTime - result.ProcessingStartTime;
             result.IsSuccess = true;
@@ -673,7 +731,6 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         return tweets.Where(tweet => 
             tweet.Type == TweetType.Original && // Only original tweets
-            tweet.ViewCount >= 20 && // Minimum 20 views
             !_state.State.Config.ExcludedUserIds.Contains(tweet.AuthorId) && // Not system accounts
             !tweet.IsProcessed // Not already processed
         ).ToList();
@@ -682,71 +739,133 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     private async Task<List<UserRewardRecordDto>> CalculateUserRewardsAsync(List<TweetRecord> eligibleTweets, DateTime rewardDate)
     {
         var userRewards = new List<UserRewardRecordDto>();
-        var userDailyCredits = new Dictionary<string, int>(); // Track daily limits
+        
+        // Get existing reward records for today to prevent duplicate rewards
+        var dateKey = rewardDate.ToString("yyyy-MM-dd");
+        var existingRewards = _state.State.UserRewards.ContainsKey(dateKey) 
+            ? _state.State.UserRewards[dateKey] 
+            : new List<UserRewardRecordDto>();
+        
+        // Create set of already rewarded users for fast lookup
+        var alreadyRewardedUsers = existingRewards.Select(r => r.UserId).ToHashSet();
+        
+        _logger.LogInformation("Found {ExistingCount} existing user rewards for date {Date}, processing {EligibleCount} eligible tweets", 
+            existingRewards.Count, dateKey, eligibleTweets.Count);
 
-        foreach (var tweet in eligibleTweets)
+        // Group tweets by user for calculating both regular and bonus credits
+        var tweetsByUser = eligibleTweets
+            .Where(tweet => !alreadyRewardedUsers.Contains(tweet.AuthorId))
+            .GroupBy(tweet => tweet.AuthorId)
+            .ToList();
+
+        var processedUsers = 0;
+        var skippedAlreadyRewarded = eligibleTweets.Count(tweet => alreadyRewardedUsers.Contains(tweet.AuthorId));
+
+        foreach (var userTweets in tweetsByUser)
         {
             try
             {
-                // Check daily limit
-                if (userDailyCredits.ContainsKey(tweet.AuthorId) && 
-                    userDailyCredits[tweet.AuthorId] >= _state.State.Config.MaxDailyCreditsPerUser)
+                var userId = userTweets.Key;
+                var tweets = userTweets.ToList();
+                
+                // Calculate regular credits: 2 credits per tweet, max 10 tweets (20 credits)
+                var tweetCount = tweets.Count;
+                var regularCredits = Math.Min(tweetCount * 2, 20); // Max 10 tweets * 2 credits = 20 credits
+                
+                // Calculate bonus credits based on 8-tier system
+                var totalBonusCredits = 0;
+                var totalBonusCreditsBeforeMultiplier = 0;
+                var bestTweet = tweets.First(); // Use first tweet for record keeping
+                
+                foreach (var tweet in tweets)
                 {
-                    continue; // User has reached daily limit
+                    // Check minimum views requirement for bonus credits
+                    if (tweet.ViewCount < _state.State.Config.MinViewsForReward)
+                    {
+                        continue;
+                    }
+                    
+                    // Find matching reward tier for bonus credits
+                    var tier = FindRewardTier(tweet.ViewCount, tweet.FollowerCount);
+                    if (tier == null)
+                    {
+                        continue;
+                    }
+
+                    var bonusCreditsForTweet = tier.RewardCredits;
+                    totalBonusCreditsBeforeMultiplier += bonusCreditsForTweet;
+                    
+                    // Apply share link multiplier only to bonus credits
+                    if (tweet.HasValidShareLink)
+                    {
+                        bonusCreditsForTweet = (int)Math.Floor(bonusCreditsForTweet * _state.State.Config.ShareLinkMultiplier);
+                    }
+                    
+                    totalBonusCredits += bonusCreditsForTweet;
+                    
+                    // Update best tweet for record keeping (highest view count)
+                    if (tweet.ViewCount > bestTweet.ViewCount)
+                    {
+                        bestTweet = tweet;
+                    }
                 }
 
-                // Find matching reward tier
-                var tier = FindRewardTier(tweet.ViewCount, tweet.FollowerCount);
-                if (tier == null)
-                {
-                    continue; // No matching tier
-                }
-
-                var baseCredits = tier.RewardCredits;
-                var multiplier = tweet.HasValidShareLink ? _state.State.Config.ShareLinkMultiplier : 1.0;
-                var finalCredits = (int)Math.Floor(baseCredits * multiplier);
-
-                // Check if adding this reward would exceed daily limit
-                var currentUserCredits = userDailyCredits.GetValueOrDefault(tweet.AuthorId, 0);
-                if (currentUserCredits + finalCredits > _state.State.Config.MaxDailyCreditsPerUser)
-                {
-                    finalCredits = _state.State.Config.MaxDailyCreditsPerUser - currentUserCredits;
-                }
-
-                if (finalCredits <= 0)
-                {
-                    continue; // No credits to award
-                }
+                // Apply bonus credits daily limit (500 credits max)
+                totalBonusCredits = Math.Min(totalBonusCredits, _state.State.Config.MaxDailyCreditsPerUser);
+                
+                // Calculate final credits: regular + bonus
+                var finalCredits = regularCredits + totalBonusCredits;
 
                 var rewardRecord = new UserRewardRecordDto
                 {
-                    UserId = tweet.AuthorId,
-                    UserHandle = tweet.AuthorHandle,
-                    TweetId = tweet.TweetId,
+                    UserId = userId,
+                    UserHandle = bestTweet.AuthorHandle,
+                    TweetId = bestTweet.TweetId, // Use best tweet for reference
                     RewardDate = rewardDate,
                     RewardDateUtc = ((DateTimeOffset)rewardDate).ToUnixTimeSeconds(),
-                    BaseCredits = baseCredits,
-                    ShareLinkMultiplier = multiplier,
+                    BaseCredits = totalBonusCreditsBeforeMultiplier, // Keep for backward compatibility
+                    ShareLinkMultiplier = bestTweet.HasValidShareLink ? _state.State.Config.ShareLinkMultiplier : 1.0,
                     FinalCredits = finalCredits,
-                    ViewCount = tweet.ViewCount,
-                    FollowerCount = tweet.FollowerCount,
-                    HasValidShareLink = tweet.HasValidShareLink,
-                    IsRewardSent = false
+                    HasValidShareLink = bestTweet.HasValidShareLink,
+                    IsRewardSent = false,
+                    
+                    // New separated credit fields
+                    RegularCredits = regularCredits,
+                    BonusCredits = totalBonusCredits,
+                    TweetCount = tweetCount,
+                    BonusCreditsBeforeMultiplier = totalBonusCreditsBeforeMultiplier
                 };
 
                 userRewards.Add(rewardRecord);
-                userDailyCredits[tweet.AuthorId] = currentUserCredits + finalCredits;
+                alreadyRewardedUsers.Add(userId);
+                processedUsers++;
 
-                // Mark tweet as processed
-                tweet.IsProcessed = true;
+                _logger.LogInformation("Calculated rewards for user {UserId} (@{UserHandle}): {RegularCredits} regular + {BonusCredits} bonus = {FinalCredits} total credits " +
+                    "({TweetCount} tweets, best tweet: {TweetId} with {Views} views)", 
+                    userId, bestTweet.AuthorHandle, regularCredits, totalBonusCredits, finalCredits, 
+                    tweetCount, bestTweet.TweetId, bestTweet.ViewCount);
+
+                // Mark all tweets as processed
+                foreach (var tweet in tweets)
+                {
+                    tweet.IsProcessed = true;
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calculating reward for tweet {TweetId}", tweet.TweetId);
+                _logger.LogError(ex, "Error calculating reward for user {UserId}", userTweets.Key);
             }
         }
 
-        return userRewards;
+        _logger.LogInformation("Reward calculation summary: {ProcessedUsers} users processed with rewards, {SkippedAlreadyRewarded} tweets skipped (already rewarded)", 
+            processedUsers, skippedAlreadyRewarded);
+
+        // Combine new rewards with existing rewards for return
+        var allRewards = new List<UserRewardRecordDto>();
+        allRewards.AddRange(existingRewards);
+        allRewards.AddRange(userRewards);
+        
+        return allRewards;
     }
 
     private RewardTierDto? FindRewardTier(int viewCount, int followerCount)
@@ -764,6 +883,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         {
             try
             {
+                if (reward.IsRewardSent) continue;
                 // TODO: Implement actual credit distribution using IGrainWithStringKey structure
                 // This follows the architecture constraint: not using IChatManagerGAgent : IGAgent
                 // Focus on calculation and recording reward amounts, actual sending will be implemented later
@@ -772,8 +892,8 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                     reward.FinalCredits, reward.UserId, reward.TweetId);
 
                 // Mark as processed for calculation purposes, actual sending pending
-                reward.IsRewardSent = false; // Set to false as per development phase requirements
-                reward.RewardSentTime = null; // No actual sending yet
+                reward.IsRewardSent = true; // Set to false as per development phase requirements
+                reward.RewardSentTime = DateTime.UtcNow; // No actual sending yet
                 reward.RewardTransactionId = $"PENDING_{Guid.NewGuid()}"; // Mark as pending
             }
             catch (Exception ex)
@@ -829,5 +949,33 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         // Execute at 00:00 UTC daily
         return currentTime.Hour == 0 && currentTime.Minute < 5; // 5-minute window
+    }
+}
+
+/// <summary>
+/// Comparer for RewardTierDto to support configuration comparison
+/// </summary>
+public class RewardTierDtoComparer : IEqualityComparer<RewardTierDto>
+{
+    public bool Equals(RewardTierDto? x, RewardTierDto? y)
+    {
+        if (x == null && y == null) return true;
+        if (x == null || y == null) return false;
+        
+        return x.MinViews == y.MinViews &&
+               x.MinFollowers == y.MinFollowers &&
+               x.RewardCredits == y.RewardCredits &&
+               x.TierName == y.TierName;
+    }
+
+    public int GetHashCode(RewardTierDto obj)
+    {
+        if (obj == null) return 0;
+        
+        return HashCode.Combine(
+            obj.MinViews,
+            obj.MinFollowers,
+            obj.RewardCredits,
+            obj.TierName);
     }
 } 

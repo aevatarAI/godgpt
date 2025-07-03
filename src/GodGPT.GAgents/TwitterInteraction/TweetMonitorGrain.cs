@@ -8,7 +8,7 @@ using Aevatar.Application.Grains.Common.Options;
 namespace Aevatar.Application.Grains.TwitterInteraction;
 
 /// <summary>
-/// 推文监控状态
+/// Tweet monitoring state
 /// </summary>
 [GenerateSerializer]
 public class TweetMonitorState
@@ -26,7 +26,7 @@ public class TweetMonitorState
 }
 
 /// <summary>
-/// 推文监控Grain - 负责定时拉取推文数据
+/// Tweet monitoring Grain - responsible for scheduled tweet data fetching
 /// </summary>
 public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 {
@@ -52,25 +52,125 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
         _logger.LogInformation("TweetMonitorGrain {GrainId} activating", this.GetPrimaryKeyString());
         
         // Initialize TwitterInteractionGrain reference
-        _twitterGrain = GrainFactory.GetGrain<ITwitterInteractionGrain>("twitter-api");
-        
-        // Initialize state if needed
-        if (_state.State.Config.SearchQuery == string.Empty)
+        if (string.IsNullOrEmpty(_options.CurrentValue.PullTaskTargetId))
         {
-            _state.State.Config = new TweetMonitorConfigDto
-            {
-                FetchIntervalMinutes = _options.CurrentValue.MonitoringIntervalMinutes,
-                MaxTweetsPerFetch = _options.CurrentValue.BatchFetchSize,
-                DataRetentionDays = _options.CurrentValue.DataRetentionDays,
-                SearchQuery = "@GodGPT_",
-                FilterOriginalOnly = true,
-                EnableAutoCleanup = true,
-                ConfigVersion = 1
-            };
+            throw new SystemException("Init ITwitterInteractionGrain, _options.CurrentValue.PullTaskTargetId is null");
+        }
+        _twitterGrain = GrainFactory.GetGrain<ITwitterInteractionGrain>(_options.CurrentValue.PullTaskTargetId);
+        
+        // Initialize or update configuration from appsettings.json
+        var currentConfig = new TweetMonitorConfigDto
+        {
+            FetchIntervalMinutes = _options.CurrentValue.PullIntervalMinutes,
+            MaxTweetsPerFetch = _options.CurrentValue.BatchFetchSize,
+            DataRetentionDays = _options.CurrentValue.DataRetentionDays,
+            SearchQuery = _options.CurrentValue.MonitorHandle,
+            FilterOriginalOnly = true,
+            EnableAutoCleanup = true,
+            ConfigVersion = 1
+        };
+
+        // Always update configuration on activation to reflect appsettings.json changes
+        bool configChanged = _state.State.Config.SearchQuery == string.Empty ||
+                           _state.State.Config.FetchIntervalMinutes != currentConfig.FetchIntervalMinutes ||
+                           _state.State.Config.MaxTweetsPerFetch != currentConfig.MaxTweetsPerFetch ||
+                           _state.State.Config.DataRetentionDays != currentConfig.DataRetentionDays ||
+                           _state.State.Config.SearchQuery != currentConfig.SearchQuery;
+
+        if (configChanged)
+        {
+            _logger.LogInformation("TweetMonitorGrain Configuration changed, updating from appsettings.json. New interval: {IntervalMinutes} minutes", 
+                currentConfig.FetchIntervalMinutes);
+            
+            _state.State.Config = currentConfig;
             await _state.WriteStateAsync();
+            
+            // Clean up any existing reminder first (to avoid conflicts with new configuration)
+            try
+            {
+                var existingReminder = await this.GetReminder(REMINDER_NAME);
+                if (existingReminder != null)
+                {
+                    _logger.LogInformation("TweetMonitorGrain Cleaning up existing reminder due to configuration change");
+                    await this.UnregisterReminder(existingReminder);
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e,"TweetMonitorGrain Reminder doesn't exist");
+                // Reminder doesn't exist, which is fine
+            }
+            
+            // If monitoring is running, register reminder with new configuration
+            if (_state.State.IsRunning)
+            {
+                _logger.LogInformation("TweetMonitorGrain Restarting monitoring with new configuration");
+                await this.RegisterOrUpdateReminder(
+                    REMINDER_NAME,
+                    TimeSpan.FromMinutes(_state.State.Config.FetchIntervalMinutes),
+                    TimeSpan.FromMinutes(_state.State.Config.FetchIntervalMinutes));
+            }
         }
 
+        // Ensure state consistency: check if reminder registration matches IsRunning state
+        await EnsureStateConsistencyAsync();
+
         await base.OnActivateAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Ensure reminder registration state matches the IsRunning state
+    /// This handles cases where service interruption caused state inconsistency
+    /// </summary>
+    private async Task EnsureStateConsistencyAsync()
+    {
+        try
+        {
+            var hasReminder = false;
+            try
+            {
+                var reminder = await this.GetReminder(REMINDER_NAME);
+                hasReminder = reminder != null;
+            }
+            catch (Exception)
+            {
+                hasReminder = false;
+            }
+
+            _logger.LogInformation("TweetMonitorGrain State consistency check - IsRunning: {IsRunning}, HasReminder: {HasReminder}", 
+                _state.State.IsRunning, hasReminder);
+
+            // Case 1: Should be running but no reminder - register it
+            if (_state.State.IsRunning && !hasReminder)
+            {
+                _logger.LogWarning("TweetMonitorGrain ⚠️ Inconsistent state detected: IsRunning=true but no reminder found. Registering reminder...");
+                await this.RegisterOrUpdateReminder(
+                    REMINDER_NAME,
+                    TimeSpan.FromMinutes(_state.State.Config.FetchIntervalMinutes),
+                    TimeSpan.FromMinutes(_state.State.Config.FetchIntervalMinutes));
+                _logger.LogInformation("TweetMonitorGrain ✅ Reminder registered to match IsRunning=true state");
+            }
+            // Case 2: Should not be running but has reminder - unregister it
+            else if (!_state.State.IsRunning && hasReminder)
+            {
+                _logger.LogWarning("TweetMonitorGrain ⚠️ Inconsistent state detected: IsRunning=false but reminder exists. Cleaning up reminder...");
+                var reminder = await this.GetReminder(REMINDER_NAME);
+                if (reminder != null)
+                {
+                    await this.UnregisterReminder(reminder);
+                }
+                _logger.LogInformation("TweetMonitorGrain ✅ Reminder cleaned up to match IsRunning=false state");
+            }
+            // Case 3: States are consistent
+            else
+            {
+                _logger.LogInformation("TweetMonitorGrain ✅ State consistency verified - no action needed");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "TweetMonitorGrain ❌ Error during state consistency check");
+        }
     }
 
     public async Task<TwitterApiResultDto<bool>> StartMonitoringAsync()
@@ -89,8 +189,8 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                 };
             }
 
-            // Update reminder target ID to ensure single instance
-            _state.State.ReminderTargetId++;
+            // Update reminder target ID based on configuration version
+            _state.State.ReminderTargetId = _options.CurrentValue.ReminderTargetIdVersion;
             _state.State.IsRunning = true;
             _state.State.NextScheduledFetch = DateTime.UtcNow.AddMinutes(_state.State.Config.FetchIntervalMinutes);
             _state.State.NextScheduledFetchUtc = ((DateTimeOffset)_state.State.NextScheduledFetch).ToUnixTimeSeconds();
@@ -237,11 +337,11 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
     {
         try
         {
-            var startUtc = timeRange.StartTimeUtc;
-            var endUtc = timeRange.EndTimeUtc;
+            var startUtc = timeRange.StartTimeUtcSecond;
+            var endUtc = timeRange.EndTimeUtcSecond;
 
             var filteredTweets = _state.State.StoredTweets.Values
-                .Where(tweet => tweet.CreatedAtUtc >= startUtc && tweet.CreatedAtUtc <= endUtc)
+                .Where(tweet => tweet.CreatedAtUtc <= startUtc && tweet.CreatedAtUtc >= endUtc)
                 .OrderBy(tweet => tweet.CreatedAtUtc)
                 .ToList();
 
@@ -338,43 +438,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
         }
     }
 
-    public async Task<TwitterApiResultDto<bool>> UpdateMonitoringConfigAsync(TweetMonitorConfigDto config)
-    {
-        try
-        {
-            var oldConfig = _state.State.Config;
-            _state.State.Config = config;
-            _state.State.Config.ConfigVersion++;
-
-            await _state.WriteStateAsync();
-
-            // If interval changed and monitoring is running, restart the reminder
-            if (_state.State.IsRunning && oldConfig.FetchIntervalMinutes != config.FetchIntervalMinutes)
-            {
-                await StopMonitoringAsync();
-                await StartMonitoringAsync();
-            }
-
-            _logger.LogInformation("Monitoring configuration updated");
-
-            return new TwitterApiResultDto<bool>
-            {
-                IsSuccess = true,
-                Data = true,
-                ErrorMessage = "Configuration updated successfully"
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error updating monitoring config");
-            return new TwitterApiResultDto<bool>
-            {
-                IsSuccess = false,
-                Data = false,
-                ErrorMessage = ex.Message
-            };
-        }
-    }
+    // UpdateMonitoringConfigAsync method removed - all configuration now managed through appsettings.json
 
     public async Task<TwitterApiResultDto<TweetMonitorConfigDto>> GetMonitoringConfigAsync()
     {
@@ -405,15 +469,108 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
             _logger.LogInformation("Refetching tweets for time range {Start} to {End}", 
                 timeRange.StartTime, timeRange.EndTime);
 
-            var searchRequest = new SearchTweetsRequestDto
+            var maxEndTime = DateTime.UtcNow;
+            var actualEndTime = timeRange.EndTime > maxEndTime ? maxEndTime : timeRange.EndTime;
+            
+            _logger.LogInformation("Adjusted end time from {OriginalEnd} to {ActualEnd}", 
+                timeRange.EndTime, actualEndTime);
+
+            // Handle edge case: StartTime equals or after EndTime
+            if (timeRange.StartTime >= actualEndTime)
             {
-                Query = _state.State.Config.SearchQuery,
-                MaxResults = _state.State.Config.MaxTweetsPerFetch,
-                StartTime = timeRange.StartTime,
-                EndTime = timeRange.EndTime
+                _logger.LogWarning("Invalid time range: StartTime {Start} >= EndTime {End}", 
+                    timeRange.StartTime, actualEndTime);
+                return new TwitterApiResultDto<TweetFetchResultDto>
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Invalid time range: StartTime must be before EndTime",
+                    Data = new TweetFetchResultDto()
+                };
+            }
+
+            var overallResult = new TweetFetchResultDto
+            {
+                FetchStartTime = DateTime.UtcNow,
+                FetchStartTimeUtc = ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds(),
+                NewTweetIds = new List<string>(),
+                TotalFetched = 0,
+                NewTweets = 0,
+                DuplicateSkipped = 0,
+                FilteredOut = 0
             };
 
-            return await FetchTweetsWithRequestAsync(searchRequest);
+            var errorMessages = new List<string>();
+            var currentStart = timeRange.StartTime;
+            var hourlyIntervals = 0;
+
+            _logger.LogInformation("Starting hourly fetch process from {Start} to {End}", 
+                currentStart, actualEndTime);
+
+            while (currentStart < actualEndTime)
+            {
+                var currentEnd = currentStart.AddHours(1);
+                if (currentEnd > actualEndTime)
+                    currentEnd = actualEndTime;
+
+                hourlyIntervals++;
+                
+                _logger.LogInformation("Processing hour interval {Interval}: {Start} to {End}", 
+                    hourlyIntervals, currentStart, currentEnd);
+
+                var searchRequest = new SearchTweetsRequestDto
+                {
+                    Query = _options.CurrentValue.MonitorHandle,
+                    MaxResults = _state.State.Config.MaxTweetsPerFetch,
+                    StartTime = currentStart,
+                    EndTime = currentEnd
+                };
+
+                var result = await FetchTweetsWithRequestAsync(searchRequest);
+                
+                if (result.IsSuccess)
+                {
+                    // Accumulate results
+                    overallResult.TotalFetched += result.Data.TotalFetched;
+                    overallResult.NewTweets += result.Data.NewTweets;
+                    overallResult.DuplicateSkipped += result.Data.DuplicateSkipped;
+                    overallResult.FilteredOut += result.Data.FilteredOut;
+                    overallResult.NewTweetIds.AddRange(result.Data.NewTweetIds);
+                    
+                    _logger.LogInformation("Hour interval {Interval} completed: Fetched={Fetched}, New={New}, Duplicates={Duplicates}, Filtered={Filtered}", 
+                        hourlyIntervals, result.Data.TotalFetched, result.Data.NewTweets, 
+                        result.Data.DuplicateSkipped, result.Data.FilteredOut);
+                }
+                else
+                {
+                    var errorMsg = $"Hour {currentStart:HH:mm}-{currentEnd:HH:mm}: {result.ErrorMessage}";
+                    errorMessages.Add(errorMsg);
+                    _logger.LogError("Hour interval {Interval} failed: {Error}", hourlyIntervals, result.ErrorMessage);
+                }
+
+                currentStart = currentEnd;
+            }
+
+            overallResult.FetchEndTime = DateTime.UtcNow;
+            overallResult.FetchEndTimeUtc = ((DateTimeOffset)DateTime.UtcNow).ToUnixTimeSeconds();
+            
+            if (errorMessages.Count > 0)
+            {
+                overallResult.ErrorMessage = string.Join("; ", errorMessages);
+            }
+
+            var isOverallSuccess = errorMessages.Count == 0;
+            
+            _logger.LogInformation("Hourly refetch completed: {Intervals} intervals processed, " +
+                                  "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}", 
+                                  hourlyIntervals, overallResult.TotalFetched, overallResult.NewTweets, 
+                                  overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess);
+
+            return new TwitterApiResultDto<TweetFetchResultDto>
+            {
+                IsSuccess = isOverallSuccess,
+                Data = overallResult,
+                ErrorMessage = overallResult.ErrorMessage
+            };
         }
         catch (Exception ex)
         {
@@ -432,8 +589,8 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
         try
         {
             var tweets = _state.State.StoredTweets.Values
-                .Where(tweet => tweet.CreatedAtUtc >= timeRange.StartTimeUtc && 
-                               tweet.CreatedAtUtc <= timeRange.EndTimeUtc)
+                .Where(tweet => tweet.CreatedAtUtc >= timeRange.StartTimeUtcSecond && 
+                               tweet.CreatedAtUtc <= timeRange.EndTimeUtcSecond)
                 .ToList();
 
             var statistics = new TweetStatisticsDto
@@ -524,13 +681,22 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 
         try
         {
+            // Build query with filter conditions to exclude retweets and replies
+            var queryWithFilters = $"{_state.State.Config.SearchQuery}";
+            
+            _logger.LogInformation("🚀 Starting tweet fetch - Query: '{Query}', Max results: {MaxResults}", 
+                queryWithFilters, _state.State.Config.MaxTweetsPerFetch);
+            
             var searchRequest = new SearchTweetsRequestDto
             {
-                Query = _state.State.Config.SearchQuery,
+                Query = queryWithFilters,
                 MaxResults = _state.State.Config.MaxTweetsPerFetch,
                 StartTime = _state.State.LastFetchTime ?? DateTime.UtcNow.AddHours(-1),
                 EndTime = DateTime.UtcNow
             };
+
+            _logger.LogInformation("📅 Fetch time range: {StartTime:yyyy-MM-dd HH:mm:ss} UTC to {EndTime:yyyy-MM-dd HH:mm:ss} UTC", 
+                searchRequest.StartTime, searchRequest.EndTime);
 
             var result = await FetchTweetsWithRequestAsync(searchRequest);
             
@@ -541,7 +707,7 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error in internal tweet fetch");
+            _logger.LogError(ex, "❌ Internal tweet fetch failed");
             throw;
         }
     }
@@ -560,10 +726,12 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
         try
         {
             // Search for tweets using TwitterInteractionGrain
+            _logger.LogInformation("🔍 Calling Twitter API to search tweets...");
             var searchResult = await _twitterGrain!.SearchTweetsAsync(searchRequest);
             
             if (!searchResult.IsSuccess)
             {
+                _logger.LogError("❌ Twitter API search failed: {ErrorMessage}", searchResult.ErrorMessage);
                 fetchResult.ErrorMessage = searchResult.ErrorMessage;
                 await RecordFetchHistory(fetchResult, false, searchResult.ErrorMessage);
                 
@@ -576,33 +744,75 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
             }
 
             fetchResult.TotalFetched = searchResult.Data.Data.Count;
+            _logger.LogInformation("📊 Twitter API returned {Count} tweets", fetchResult.TotalFetched);
 
             // Process each tweet
+            _logger.LogInformation("🔄 Starting tweet processing and filtering...");
             foreach (var tweet in searchResult.Data.Data)
             {
                 try
                 {
+                    _logger.LogDebug("📝 Processing tweet {TweetId} (author: {AuthorId})", tweet.Id, tweet.AuthorId);
+                    
                     if (_state.State.StoredTweets.ContainsKey(tweet.Id))
                     {
+                        _logger.LogDebug("⚠️ Skipping duplicate tweet {TweetId}", tweet.Id);
                         fetchResult.DuplicateSkipped++;
                         continue;
                     }
 
                     // Get detailed tweet analysis
+                    _logger.LogDebug("🔍 Analyzing tweet details {TweetId}...", tweet.Id);
                     var analysisResult = await _twitterGrain.AnalyzeTweetAsync(tweet.Id);
                     
                     if (!analysisResult.IsSuccess)
                     {
-                        _logger.LogWarning("Failed to analyze tweet {TweetId}: {Error}", tweet.Id, analysisResult.ErrorMessage);
+                        _logger.LogWarning("❌ Tweet analysis failed {TweetId}: {Error}", tweet.Id, analysisResult.ErrorMessage);
                         fetchResult.FilteredOut++;
                         continue;
                     }
 
                     var tweetDetails = analysisResult.Data;
+                    _logger.LogDebug("✅ Tweet analysis completed {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}, Followers: {FollowerCount}", 
+                        tweet.Id, tweetDetails.AuthorHandle, tweetDetails.AuthorId, tweetDetails.Type, tweetDetails.FollowerCount);
 
                     // Filter if only original tweets required
                     if (_state.State.Config.FilterOriginalOnly && tweetDetails.Type != TweetType.Original)
                     {
+                        _logger.LogDebug("🚫 Filtering non-original tweet {TweetId} - Type: {Type}", tweet.Id, tweetDetails.Type);
+                        fetchResult.FilteredOut++;
+                        continue;
+                    }
+
+                    // Filter excluded accounts (blacklist)
+                    var excludedAccountIds = _options.CurrentValue.GetExcludedAccountIds();
+                    if (excludedAccountIds.Contains(tweetDetails.AuthorId))
+                    {
+                        _logger.LogInformation("🚫 Filtering excluded account tweet {TweetId} - Author ID: {AuthorId} (@{AuthorHandle})", 
+                            tweet.Id, tweetDetails.AuthorId, tweetDetails.AuthorHandle);
+                        fetchResult.FilteredOut++;
+                        continue;
+                    }
+
+                    // Check user daily tweet limit for the day when the tweet was created (using UTC date)
+                    var tweetDateUtc = tweetDetails.CreatedAt.Date;  // Use UTC date from tweetDetails which is already correctly parsed
+                    var tweetDateStartUtc = new DateTimeOffset(DateTime.SpecifyKind(tweetDateUtc, DateTimeKind.Utc)).ToUnixTimeSeconds();
+                    var tweetDateEndUtc = new DateTimeOffset(DateTime.SpecifyKind(tweetDateUtc.AddDays(1), DateTimeKind.Utc)).ToUnixTimeSeconds();
+                    
+
+                    
+                    var userTweetCountOnThatDay = _state.State.StoredTweets.Values
+                        .Where(t => t.AuthorId == tweetDetails.AuthorId && 
+                                   t.CreatedAtUtc >= tweetDateStartUtc && 
+                                   t.CreatedAtUtc < tweetDateEndUtc)
+                        .Count();
+
+                    if (userTweetCountOnThatDay >= _options.CurrentValue.MaxTweetsPerUser)
+                    {
+                        _logger.LogInformation("🚫 User daily limit reached - Tweet {TweetId}, Author: @{AuthorHandle} ({AuthorId}), " +
+                                              "Tweets on {TweetDateUtc} UTC: {Count}/{Limit}", 
+                                              tweet.Id, tweetDetails.AuthorHandle, tweetDetails.AuthorId, 
+                                              tweetDateUtc.ToString("yyyy-MM-dd"), userTweetCountOnThatDay, _options.CurrentValue.MaxTweetsPerUser);
                         fetchResult.FilteredOut++;
                         continue;
                     }
@@ -614,8 +824,8 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                         AuthorId = tweetDetails.AuthorId,
                         AuthorHandle = tweetDetails.AuthorHandle,
                         AuthorName = tweetDetails.AuthorName,
-                        CreatedAt = tweet.CreatedAt,
-                        CreatedAtUtc = ((DateTimeOffset)tweet.CreatedAt).ToUnixTimeSeconds(),
+                        CreatedAt = tweetDetails.CreatedAt, // Use UTC time from tweetDetails which is already correctly parsed
+                        CreatedAtUtc = new DateTimeOffset(tweetDetails.CreatedAt).ToUnixTimeSeconds(),
                         Text = string.Empty, // Privacy protection: Do not store tweet text content
                         Type = tweetDetails.Type,
                         ViewCount = tweetDetails.ViewCount,
@@ -629,10 +839,13 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
                     _state.State.StoredTweets[tweet.Id] = tweetRecord;
                     fetchResult.NewTweetIds.Add(tweet.Id);
                     fetchResult.NewTweets++;
+                    
+                    _logger.LogInformation("✅ Saved valid tweet {TweetId} - Author: @{AuthorHandle}, Followers: {FollowerCount}, Share link: {HasShareLink}", 
+                        tweet.Id, tweetDetails.AuthorHandle, tweetDetails.FollowerCount, tweetDetails.HasValidShareLink);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing tweet {TweetId}", tweet.Id);
+                    _logger.LogError(ex, "❌ Tweet processing exception {TweetId}", tweet.Id);
                     fetchResult.FilteredOut++;
                 }
             }
@@ -643,8 +856,13 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
             await _state.WriteStateAsync();
             await RecordFetchHistory(fetchResult, true, string.Empty);
 
-            _logger.LogInformation("Fetch completed: {Total} total, {New} new, {Duplicates} duplicates, {Filtered} filtered", 
+            _logger.LogInformation("🎉 Fetch completed - Total: {Total}, New: {New}, Duplicates: {Duplicates}, Filtered: {Filtered}", 
                 fetchResult.TotalFetched, fetchResult.NewTweets, fetchResult.DuplicateSkipped, fetchResult.FilteredOut);
+            
+            if (fetchResult.NewTweets > 0)
+            {
+                _logger.LogInformation("📋 New tweet IDs: [{TweetIds}]", string.Join(", ", fetchResult.NewTweetIds));
+            }
 
             return new TwitterApiResultDto<TweetFetchResultDto>
             {
@@ -687,8 +905,8 @@ public class TweetMonitorGrain : Grain, ITweetMonitorGrain, IRemindable
 
             _state.State.FetchHistory.Add(historyRecord);
 
-            // Keep only recent history (last 5 days)
-            var cutoffTime = DateTime.UtcNow.AddDays(-5);
+            // Keep only recent history (last days)
+            var cutoffTime = DateTime.UtcNow;
             var cutoffUtc = ((DateTimeOffset)cutoffTime).ToUnixTimeSeconds();
             
             _state.State.FetchHistory = _state.State.FetchHistory

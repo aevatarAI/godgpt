@@ -124,30 +124,13 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .AddMemoryStreams("Aevatar")
                 .AddMemoryGrainStorage("PubSubStore")
                 .AddMemoryGrainStorageAsDefault()
+                .AddMemoryGrainStorage("DefaultGrainStorage")
                 .UseAevatar()
                 .AddLogStorageBasedLogConsistencyProvider("LogStorage")
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
-                .Configure<TwitterRewardOptions>(options =>
-                {
-                    options.BearerToken = "test-bearer-token";
-                    options.ApiKey = "test-api-key";
-                    options.ApiSecret = "test-api-secret";
-                    options.MonitorHandle = "@GodGPT_";
-                    options.ShareLinkDomain = "https://app.godgpt.fun";
-                    options.SelfAccountId = "test-self-account";
-                    options.PullIntervalMinutes = 30;
-                    options.PullBatchSize = 100;
-                    options.TimeRangeStartOffsetMinutes = 2880;
-                    options.TimeRangeEndOffsetMinutes = 1440;
-                    options.DataRetentionDays = 5;
-                    options.DailyRewardLimit = 500;
-                    options.OriginalTweetReward = 2;
-                    options.MaxTweetsPerUser = 10;
-                    options.MaxUserReward = 20;
-                    options.ShareLinkMultiplier = 1.1;
-                });
+                .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
         }
     }
 
