@@ -31,7 +31,7 @@ public class SpeechService : ISpeechService
             using var audioConfig = AudioConfig.FromWavFileInput(tempFilePath);
             using var recognizer = new SpeechRecognizer(_speechConfig, audioConfig);
 
-            // Add event handlers for better debugging
+            /*// Add event handlers for better debugging
             recognizer.Recognizing += (s, e) => {
                 Console.WriteLine($"RECOGNIZING: Text={e.Result.Text}");
             };
@@ -56,7 +56,7 @@ public class SpeechService : ISpeechService
                     Console.WriteLine($"CANCELED: ErrorCode={e.ErrorCode}");
                     Console.WriteLine($"CANCELED: ErrorDetails={e.ErrorDetails}");
                 }
-            };
+            };*/
 
             var result = await recognizer.RecognizeOnceAsync();
             if (result.Reason == ResultReason.Canceled)
