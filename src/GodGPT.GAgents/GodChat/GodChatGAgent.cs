@@ -358,9 +358,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region}, LLM not config");
             return new List<Guid>();
         }
-        
-        //TODO test
-        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Prompt: {State.PromptTemplate}");
 
         var proxies = new List<Guid>();
         foreach (var llm in llmsForRegion)
