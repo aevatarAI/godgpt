@@ -6,6 +6,7 @@ using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
+using ActionType = Aevatar.Application.Grains.Common.Constants.ActionType;
 
 namespace Aevatar.Application.Grains.ChatManager.UserQuota;
 
@@ -23,7 +24,9 @@ public interface IUserQuotaGrain : IGrainWithStringKey
     Task CancelSubscriptionAsync();
 
     Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
-        string actionType = "conversation");
+        ActionType actionType = ActionType.Conversation);
+
+    Task<ExecuteActionResultDto> ExecuteVoiceActionAsync(string sessionId, string chatManagerGuid);
 
     Task ResetRateLimitsAsync(string actionType = "conversation");
 
@@ -283,17 +286,26 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
     #region Rate Limiting with Ultimate Support
 
     public async Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
-        string actionType = "conversation")
+        ActionType actionType = ActionType.Conversation)
     {
         // Apply standard execution logic with rate limiting and credits
         return await ExecuteStandardActionAsync(sessionId, chatManagerGuid, actionType);
     }
 
+    public async Task<ExecuteActionResultDto> ExecuteVoiceActionAsync(string sessionId, string chatManagerGuid)
+    {
+        // Apply voice-specific execution logic with voice rate limiting and credits
+        return await ExecuteStandardActionAsync(sessionId, chatManagerGuid, ActionType.VoiceConversation);
+    }
+
     private async Task<ExecuteActionResultDto> ExecuteStandardActionAsync(string sessionId, string chatManagerGuid,
-        string actionType)
+        ActionType actionTypeEnum)
     {
         var now = DateTime.UtcNow;
+        var isVoiceMessage = actionTypeEnum == ActionType.VoiceConversation;
+        var actionType = actionTypeEnum.ToString().ToLowerInvariant();
 
+        // Ultimate users have unlimited access
         if (await IsSubscribedAsync(true))
         {
             return new ExecuteActionResultDto
@@ -303,16 +315,18 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         }
 
         var isSubscribed = await IsSubscribedAsync(false);
+        
+        // Select rate limit configuration based on message type
         var maxTokens = isSubscribed
-            ? _rateLimiterOptions.CurrentValue.SubscribedUserMaxRequests
-            : _rateLimiterOptions.CurrentValue.UserMaxRequests;
+            ? (isVoiceMessage ? _rateLimiterOptions.CurrentValue.VoiceSubscribedUserMaxRequests : _rateLimiterOptions.CurrentValue.SubscribedUserMaxRequests)
+            : (isVoiceMessage ? _rateLimiterOptions.CurrentValue.VoiceUserMaxRequests : _rateLimiterOptions.CurrentValue.UserMaxRequests);
         var timeWindow = isSubscribed
-            ? _rateLimiterOptions.CurrentValue.SubscribedUserTimeWindowSeconds
-            : _rateLimiterOptions.CurrentValue.UserTimeWindowSeconds;
+            ? (isVoiceMessage ? _rateLimiterOptions.CurrentValue.VoiceSubscribedUserTimeWindowSeconds : _rateLimiterOptions.CurrentValue.SubscribedUserTimeWindowSeconds)
+            : (isVoiceMessage ? _rateLimiterOptions.CurrentValue.VoiceUserTimeWindowSeconds : _rateLimiterOptions.CurrentValue.UserTimeWindowSeconds);
 
         _logger.LogDebug(
-            "[UserQuotaGrain][ExecuteStandardActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, isSubscribed={IsSubscribed}, now(UTC)={Now}",
-            sessionId, chatManagerGuid, maxTokens, timeWindow, isSubscribed, now);
+            "[UserQuotaGrain][ExecuteActionInternalAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} config: maxTokens={MaxTokens}, timeWindow={TimeWindow}, isSubscribed={IsSubscribed}, now(UTC)={Now}",
+            actionType, sessionId, chatManagerGuid, maxTokens, timeWindow, isSubscribed, now);
 
         // Initialize or update rate limit info
         if (!State.RateLimits.TryGetValue(actionType, out var rateLimitInfo))
@@ -320,8 +334,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             rateLimitInfo = new RateLimitInfo { Count = maxTokens, LastTime = now };
             State.RateLimits[actionType] = rateLimitInfo;
             _logger.LogDebug(
-                "[UserQuotaGrain][ExecuteStandardActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} INIT RateLimitInfo: count={Count}, lastTime(UTC)={LastTime}",
-                sessionId, chatManagerGuid, rateLimitInfo.Count, rateLimitInfo.LastTime);
+                "[UserQuotaGrain][ExecuteActionInternalAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} INIT RateLimitInfo: count={Count}, lastTime(UTC)={LastTime}",
+                actionType, sessionId, chatManagerGuid, rateLimitInfo.Count, rateLimitInfo.LastTime);
         }
         else
         {
@@ -335,8 +349,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
                 rateLimitInfo.Count = Math.Min(maxTokens, rateLimitInfo.Count + tokensToAdd);
                 rateLimitInfo.LastTime = now;
                 _logger.LogDebug(
-                    "[UserQuotaGrain][ExecuteStandardActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} REFILL: tokensToAdd={TokensToAdd}, newCount={Count}, now(UTC)={Now}",
-                    sessionId, chatManagerGuid, tokensToAdd, rateLimitInfo.Count, now);
+                    "[UserQuotaGrain][ExecuteActionInternalAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} REFILL: tokensToAdd={TokensToAdd}, newCount={Count}, now(UTC)={Now}",
+                    actionType, sessionId, chatManagerGuid, tokensToAdd, rateLimitInfo.Count, now);
             }
         }
 
@@ -348,8 +362,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
             var isAllowed = credits >= requiredCredits;
 
             _logger.LogDebug(
-                "[UserQuotaGrain][ExecuteStandardActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} CREDITS: allowed={IsAllowed}, credits={Credits}, required={RequiredCredits}, now(UTC)={Now}",
-                sessionId, chatManagerGuid, isAllowed, credits, requiredCredits, now);
+                "[UserQuotaGrain][ExecuteActionInternalAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} CREDITS: allowed={IsAllowed}, credits={Credits}, required={RequiredCredits}, now(UTC)={Now}",
+                actionType, sessionId, chatManagerGuid, isAllowed, credits, requiredCredits, now);
 
             if (!isAllowed)
             {
@@ -366,12 +380,12 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         if (oldValue <= 0)
         {
             _logger.LogWarning(
-                "[UserQuotaGrain][ExecuteStandardActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED (oldValue): count={Count}, now(UTC)={Now}",
-                sessionId, chatManagerGuid, oldValue, now);
+                "[UserQuotaGrain][ExecuteActionInternalAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED: count={Count}, now(UTC)={Now}",
+                actionType, sessionId, chatManagerGuid, oldValue, now);
             return new ExecuteActionResultDto
             {
                 Code = ExecuteActionStatus.RateLimitExceeded,
-                Message = "Message limit reached. Please try again later."
+                Message = isVoiceMessage ? "Voice message limit reached. Please try again later." : "Message limit reached. Please try again later."
             };
         }
 
@@ -385,8 +399,8 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         await WriteStateAsync();
 
         _logger.LogDebug(
-            "[UserQuotaGrain][ExecuteStandardActionAsync] sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER decrement: count={Count}, now(UTC)={Now}",
-            sessionId, chatManagerGuid, State.RateLimits[actionType].Count, now);
+            "[UserQuotaGrain][ExecuteActionInternalAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER decrement: count={Count}, now(UTC)={Now}",
+            actionType, sessionId, chatManagerGuid, State.RateLimits[actionType].Count, now);
 
         return new ExecuteActionResultDto { Success = true };
     }
