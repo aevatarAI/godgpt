@@ -105,7 +105,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 response.EnsureSuccessStatusCode();
                 var content = await response.Content.ReadAsStringAsync();
                 
-                _logger.LogInformation("SearchTweetsAsync Response: {resp}", content);
+                _logger.LogDebug("SearchTweetsAsync Response: {resp}", content);
 
                 // Parse response
                 var searchResponse = await ParseSearchResponseFromApiResponse(content);

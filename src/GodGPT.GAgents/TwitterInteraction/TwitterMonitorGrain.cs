@@ -588,8 +588,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 // Adding 3-5 second delay between requests to stay within limits
                 if (currentStart < actualEndTime) // Don't delay after the last iteration
                 {
-                    _logger.LogInformation("Waiting 5 seconds to avoid API rate limiting...");
-                    await Task.Delay(TimeSpan.FromSeconds(10));
+                    _logger.LogInformation("Waiting 30 seconds to avoid API rate limiting...");
+                    await Task.Delay(TimeSpan.FromSeconds(30));
                 }
             }
 
