@@ -124,12 +124,14 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .AddMemoryStreams("Aevatar")
                 .AddMemoryGrainStorage("PubSubStore")
                 .AddMemoryGrainStorageAsDefault()
+                .AddMemoryGrainStorage("DefaultGrainStorage")
                 .UseAevatar()
                 .AddLogStorageBasedLogConsistencyProvider("LogStorage")
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
-                .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"));
+                .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"))
+                .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
         }
     }
 

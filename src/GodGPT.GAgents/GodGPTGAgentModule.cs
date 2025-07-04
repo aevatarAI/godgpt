@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
 
+
 namespace Aevatar.Application.Grains;
 
 [DependsOn(
@@ -22,6 +23,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"));
         Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
         Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"));
+        Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
 
         context.Services.AddHttpClient();
     }
