@@ -12,36 +12,12 @@ public class SpeechService : ISpeechService
     private readonly SpeechConfig _speechConfig;
     private readonly SpeechSynthesizer _synthesizer;
 
-    public SpeechService(IOptionsMonitor<SpeechOptions> speechOptions)
+    public SpeechService(IOptions<SpeechOptions> speechOptions)
     {
-        var options = speechOptions.CurrentValue;
-        if (options == null)
-        {
-            throw new InvalidOperationException("SpeechOptions configuration is null. Please check your appsettings.json configuration.");
-        }
-        
-        if (string.IsNullOrEmpty(options.SubscriptionKey))
-        {
-            throw new InvalidOperationException("SpeechOptions.SubscriptionKey is null or empty. Please check your appsettings.json configuration.");
-        }
-        
-        if (string.IsNullOrEmpty(options.Region) && string.IsNullOrEmpty(options.Endpoint))
-        {
-            throw new InvalidOperationException("Both SpeechOptions.Region and SpeechOptions.Endpoint are null or empty. Please provide at least one.");
-        }
-        if (!string.IsNullOrEmpty(options.Endpoint))
-        {
-            var endpointUri = new Uri(options.Endpoint);
-            _speechConfig = SpeechConfig.FromEndpoint(endpointUri, options.SubscriptionKey);
-        }
-        else
-        {
-            _speechConfig = SpeechConfig.FromSubscription(options.SubscriptionKey, options.Region);
-        }
-        
-        _speechConfig.SpeechRecognitionLanguage = options.RecognitionLanguage;
-        _speechConfig.SpeechSynthesisLanguage = options.SynthesisLanguage;
-        _speechConfig.SpeechSynthesisVoiceName = options.SynthesisVoiceName;
+        _speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
+        _speechConfig.SpeechRecognitionLanguage = "zh-CN";
+        _speechConfig.SpeechSynthesisLanguage = "zh-CN";
+        _speechConfig.SpeechSynthesisVoiceName = "zh-CN-XiaoxiaoNeural";
         _synthesizer = new SpeechSynthesizer(_speechConfig);
     }
 
@@ -55,7 +31,45 @@ public class SpeechService : ISpeechService
             using var audioConfig = AudioConfig.FromWavFileInput(tempFilePath);
             using var recognizer = new SpeechRecognizer(_speechConfig, audioConfig);
 
+            // Add event handlers for better debugging
+            recognizer.Recognizing += (s, e) => {
+                Console.WriteLine($"RECOGNIZING: Text={e.Result.Text}");
+            };
+
+            recognizer.Recognized += (s, e) => {
+                Console.WriteLine($"RECOGNIZED: Text={e.Result.Text}");
+                Console.WriteLine($"RECOGNIZED: Reason={e.Result.Reason}");
+                if (e.Result.Reason == ResultReason.RecognizedSpeech)
+                {
+                    Console.WriteLine($"RECOGNIZED: Final result: {e.Result.Text}");
+                }
+                else if (e.Result.Reason == ResultReason.NoMatch)
+                {
+                    Console.WriteLine($"NOMATCH: Speech could not be recognized.");
+                }
+            };
+
+            recognizer.Canceled += (s, e) => {
+                Console.WriteLine($"CANCELED: Reason={e.Reason}");
+                if (e.Reason == CancellationReason.Error)
+                {
+                    Console.WriteLine($"CANCELED: ErrorCode={e.ErrorCode}");
+                    Console.WriteLine($"CANCELED: ErrorDetails={e.ErrorDetails}");
+                }
+            };
+
             var result = await recognizer.RecognizeOnceAsync();
+            if (result.Reason == ResultReason.Canceled)
+            {
+                var cancellation = CancellationDetails.FromResult(result);
+                Console.WriteLine($"  Cancellation Reason: {cancellation.Reason}");
+                if (cancellation.Reason == CancellationReason.Error)
+                {
+                    Console.WriteLine($"  Error Code: {cancellation.ErrorCode}");
+                    Console.WriteLine($"  Error Details: {cancellation.ErrorDetails}");
+                }
+            }
+            
             return result.Text;
         }
         finally
