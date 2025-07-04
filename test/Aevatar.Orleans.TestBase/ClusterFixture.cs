@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Aevatar;
 using Aevatar.Application.Grains;
+using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
@@ -52,7 +53,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
         {
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")
-               // .AddJsonFile("/opt/evn/godgpt.appsettings.json")
+                //.AddJsonFile("/opt/evn/godgpt.appsettings.json")
                 // .AddJsonFile("appsettings.secrets.json")
                 .Build();
 
@@ -130,6 +131,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
+                .Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"))
                 .Configure<TwitterRewardOptions>(options =>
                 {
                     options.BearerToken = "test-bearer-token";

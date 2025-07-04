@@ -361,7 +361,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         //TODO test
         Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Prompt: {State.PromptTemplate}");
-        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Prompt: {await GetConfiguration().GetPrompt()}");
 
         var proxies = new List<Guid>();
         foreach (var llm in llmsForRegion)
@@ -369,7 +368,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
             await proxy.ConfigAsync(new AIAgentStatusProxyConfig
             {
-                Instructions = await GetConfiguration().GetPrompt(),
+                Instructions = State.PromptTemplate, //await GetConfiguration().GetPrompt(),
                 LLMConfig = new LLMConfigDto { SystemLLM = llm },
                 StreamingModeEnabled = true,
                 StreamingConfig = new StreamingConfig { BufferingSize = 32 },
