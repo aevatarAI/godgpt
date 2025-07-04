@@ -1,116 +1,117 @@
+using Orleans;
 using Aevatar.Application.Grains.TwitterInteraction.Dtos;
 using Orleans.Concurrency;
 
 namespace Aevatar.Application.Grains.TwitterInteraction;
 
 /// <summary>
-/// Twitter API交互服务接口
-/// 负责与Twitter API的直接交互，包括推文搜索、详情获取、用户信息获取等
+/// Twitter API interaction service interface
+/// Responsible for direct interaction with Twitter API, including tweet search, detail retrieval, user information retrieval, etc.
 /// </summary>
 public interface ITwitterInteractionGrain : IGrainWithStringKey
 {
     /// <summary>
-    /// 搜索包含指定内容的推文
+    /// Search tweets containing specified content
     /// </summary>
-    /// <param name="request">搜索请求参数</param>
-    /// <returns>搜索结果</returns>
+    /// <param name="request">Search request parameters</param>
+    /// <returns>Search results</returns>
     Task<TwitterApiResultDto<SearchTweetsResponseDto>> SearchTweetsAsync(SearchTweetsRequestDto request);
 
     /// <summary>
-    /// 综合分析推文信息（推荐使用）
-    /// 一次性获取推文类型、用户信息、分享链接等所有必要信息
+    /// Comprehensive tweet analysis (recommended)
+    /// Get tweet type, user information, share links and all necessary information in one call
     /// </summary>
-    /// <param name="tweetId">推文ID</param>
-    /// <returns>推文完整分析结果</returns>
+    /// <param name="tweetId">Tweet ID</param>
+    /// <returns>Complete tweet analysis result</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<TweetProcessResultDto>> AnalyzeTweetAsync(string tweetId);
 
     /// <summary>
-    /// 批量分析推文信息
-    /// 一次性分析多条推文，提高效率
+    /// Batch tweet analysis
+    /// Analyze multiple tweets at once to improve efficiency
     /// </summary>
-    /// <param name="tweetIds">推文ID列表</param>
-    /// <returns>批量分析结果</returns>
+    /// <param name="tweetIds">List of tweet IDs</param>
+    /// <returns>Batch analysis results</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<List<TweetProcessResultDto>>> BatchAnalyzeTweetsAsync(List<string> tweetIds);
 
     /// <summary>
-    /// 获取推文详细信息（底层方法）
+    /// Get tweet details (low-level method)
     /// </summary>
-    /// <param name="tweetId">推文ID</param>
-    /// <returns>推文详情</returns>
+    /// <param name="tweetId">Tweet ID</param>
+    /// <returns>Tweet details</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<TweetDetailsDto>> GetTweetDetailsAsync(string tweetId);
 
     /// <summary>
-    /// 获取用户信息
+    /// Get user information
     /// </summary>
-    /// <param name="userId">用户ID</param>
-    /// <returns>用户信息</returns>
+    /// <param name="userId">User ID</param>
+    /// <returns>User information</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<UserInfoDto>> GetUserInfoAsync(string userId);
 
     /// <summary>
-    /// 批量获取推文详细信息（底层方法）
+    /// Batch get tweet details (low-level method)
     /// </summary>
-    /// <param name="tweetIds">推文ID列表</param>
-    /// <returns>推文详情列表</returns>
+    /// <param name="tweetIds">List of tweet IDs</param>
+    /// <returns>List of tweet details</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<List<TweetDetailsDto>>> GetBatchTweetDetailsAsync(List<string> tweetIds);
 
     /// <summary>
-    /// 测试Twitter API连接状态
+    /// Test Twitter API connection status
     /// </summary>
-    /// <returns>连接测试结果</returns>
+    /// <returns>Connection test result</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<bool>> TestApiConnectionAsync();
 
     /// <summary>
-    /// 获取API配额信息
+    /// Get API quota information
     /// </summary>
-    /// <returns>配额信息</returns>
+    /// <returns>Quota information</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<TwitterApiQuotaDto>> GetApiQuotaInfoAsync();
 
     /// <summary>
-    /// 获取服务状态信息
+    /// Get service status information
     /// </summary>
-    /// <returns>服务状态</returns>
+    /// <returns>Service status</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<string>> GetServiceStatusAsync();
 
-    // 辅助方法（内部使用，可选暴露）
+    // Helper methods (internal use, optional exposure)
     
     /// <summary>
-    /// 验证分享链接是否有效（辅助方法）
+    /// Validate share link (helper method)
     /// </summary>
-    /// <param name="url">待验证的URL</param>
-    /// <returns>验证结果</returns>
+    /// <param name="url">URL to be validated</param>
+    /// <returns>Validation result</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<ShareLinkValidationDto>> ValidateShareLinkAsync(string url);
 
     /// <summary>
-    /// 从推文文本中提取分享链接（辅助方法）
+    /// Extract share links from tweet text (helper method)
     /// </summary>
-    /// <param name="tweetText">推文文本</param>
-    /// <returns>提取的分享链接列表</returns>
+    /// <param name="tweetText">Tweet text</param>
+    /// <returns>List of extracted share links</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<List<string>>> ExtractShareLinksAsync(string tweetText);
 
     /// <summary>
-    /// 从推文文本中提取所有URL链接（辅助方法）
+    /// Extract all URL links from tweet text (helper method)
     /// </summary>
-    /// <param name="tweetText">推文文本</param>
-    /// <returns>提取的URL列表</returns>
+    /// <param name="tweetText">Tweet text</param>
+    /// <returns>List of extracted URLs</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<List<string>>> ExtractUrlsFromTweetAsync(string tweetText);
 
     /// <summary>
-    /// 批量处理推文（业务方法）
-    /// 包括分析推文类型、验证分享链接等
+    /// Batch process tweets (business method)
+    /// Includes analyzing tweet type, validating share links, etc.
     /// </summary>
-    /// <param name="request">批量处理请求</param>
-    /// <returns>批量处理结果</returns>
+    /// <param name="request">Batch processing request</param>
+    /// <returns>Batch processing result</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<BatchTweetProcessResponseDto>> BatchProcessTweetsAsync(BatchTweetProcessRequestDto request);
 } 

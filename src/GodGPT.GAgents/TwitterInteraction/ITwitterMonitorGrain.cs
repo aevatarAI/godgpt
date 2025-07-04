@@ -4,62 +4,59 @@ using Aevatar.Application.Grains.TwitterInteraction.Dtos;
 namespace Aevatar.Application.Grains.TwitterInteraction;
 
 /// <summary>
-/// 推文监控Grain接口 - 负责定时拉取推文数据
+/// Tweet monitoring Grain interface - responsible for scheduled tweet data fetching
 /// </summary>
-public interface ITweetMonitorGrain : IGrainWithStringKey
+public interface ITwitterMonitorGrain : IGrainWithStringKey
 {
     /// <summary>
-    /// 启动推文监控定时任务
+    /// Start tweet monitoring scheduled task
     /// </summary>
     Task<TwitterApiResultDto<bool>> StartMonitoringAsync();
 
     /// <summary>
-    /// 停止推文监控定时任务
+    /// Stop tweet monitoring scheduled task
     /// </summary>
     Task<TwitterApiResultDto<bool>> StopMonitoringAsync();
 
     /// <summary>
-    /// 获取监控状态
+    /// Get monitoring status
     /// </summary>
     Task<TwitterApiResultDto<TweetMonitorStatusDto>> GetMonitoringStatusAsync();
 
     /// <summary>
-    /// 手动触发推文数据拉取
+    /// Manually trigger tweet data fetching
     /// </summary>
     Task<TwitterApiResultDto<TweetFetchResultDto>> FetchTweetsManuallyAsync();
 
     /// <summary>
-    /// 查询指定时间区间内的推文数据
+    /// Query tweet data within specified time range
     /// </summary>
     Task<TwitterApiResultDto<List<TweetRecord>>> QueryTweetsByTimeRangeAsync(TimeRangeDto timeRange);
 
     /// <summary>
-    /// 获取推文拉取历史记录
+    /// Get tweet fetch history records
     /// </summary>
     Task<TwitterApiResultDto<List<TweetFetchHistoryDto>>> GetFetchHistoryAsync(int days = 7);
 
     /// <summary>
-    /// 清理过期推文数据
+    /// Clean up expired tweet data
     /// </summary>
     Task<TwitterApiResultDto<bool>> CleanupExpiredTweetsAsync();
 
-    /// <summary>
-    /// 更新监控配置
-    /// </summary>
-    Task<TwitterApiResultDto<bool>> UpdateMonitoringConfigAsync(TweetMonitorConfigDto config);
+    // Configuration update method removed - all configuration now managed through appsettings.json
 
     /// <summary>
-    /// 获取当前监控配置
+    /// Get current monitoring configuration
     /// </summary>
     Task<TwitterApiResultDto<TweetMonitorConfigDto>> GetMonitoringConfigAsync();
 
     /// <summary>
-    /// 重新拉取指定时间区间的推文数据（用于数据恢复）
+    /// Manual refetch tweets by time range (background processing)
     /// </summary>
-    Task<TwitterApiResultDto<TweetFetchResultDto>> RefetchTweetsByTimeRangeAsync(TimeRangeDto timeRange);
+    Task<TwitterApiResultDto<bool>> RefetchTweetsByTimeRangeAsync(TimeRangeDto timeRange);
 
     /// <summary>
-    /// 获取推文统计信息
+    /// Get tweet statistics for specified time range
     /// </summary>
     Task<TwitterApiResultDto<TweetStatisticsDto>> GetTweetStatisticsAsync(TimeRangeDto timeRange);
 } 
