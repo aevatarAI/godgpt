@@ -48,4 +48,8 @@
         </None>
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\Aevatar.GAgents.Speech\Aevatar.GAgents.Speech.csproj" />
+    </ItemGroup>
+
 </Project>

@@ -13,12 +13,12 @@ using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.GAgent;
+using Aevatar.GAgents.Speech;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
-using Orleans.Providers;
-using Volo.Abp;
+
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -35,7 +35,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     };
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
-
+    private readonly ISpeechService _speechService;
+    public GodChatGAgent(ISpeechService speechService)
+    {
+        _speechService = speechService;
+    }
+    
     protected override async Task ChatPerformConfigAsync(ChatConfigDto configuration)
     {
         if (RegionToLLMsMap.IsNullOrEmpty())
@@ -213,10 +218,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // Convert MP3 data to byte array (already byte[] but log for confirmation)
         var voiceDataBytes = mp3Data;
         Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Processed MP3 data: {voiceDataBytes.Length} bytes");
-        
-        
-        // TODO:  add voiceDataBytes method
-        var voiceContent = $"[Voice message processing: {fileName}, {voiceDataBytes.Length} bytes]";
+
+        var voiceContent = await _speechService.SpeechToTextAsync(voiceDataBytes);
         
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(State.ChatManagerGuid));
         var actionResultDto =

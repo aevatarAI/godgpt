@@ -14,12 +14,13 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CognitiveServices.Speech" />
+        <PackageReference Include="Volo.Abp.Core" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Volo.Abp.AutoMapper"/>
-        <PackageReference Include="Aevatar.Core"/>
-        <PackageReference Include="Aevatar.Core.Abstractions"/>
+        <PackageReference Include="Volo.Abp.AutoMapper" />
+        <PackageReference Include="Aevatar.Core" />
+        <PackageReference Include="Aevatar.Core.Abstractions" />
     </ItemGroup>
 
 </Project>
