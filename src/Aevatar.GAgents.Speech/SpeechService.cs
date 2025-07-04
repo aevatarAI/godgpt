@@ -23,13 +23,15 @@ public class SpeechService : ISpeechService
 
     public async Task<string> SpeechToTextAsync(byte[] audioData)
     {
-        var tempFilePath = Path.GetTempFileName();
         try
         {
-            await File.WriteAllBytesAsync(tempFilePath, audioData);
-
-            using var audioConfig = AudioConfig.FromWavFileInput(tempFilePath);
+            //support mav、mp3、aac、ogg、flac、opus
+            using var pushStream = AudioInputStream.CreatePushStream();
+            using var audioConfig = AudioConfig.FromStreamInput(pushStream);
             using var recognizer = new SpeechRecognizer(_speechConfig, audioConfig);
+            
+            pushStream.Write(audioData);
+            pushStream.Close();
 
             /*// Add event handlers for better debugging
             recognizer.Recognizing += (s, e) => {
@@ -72,12 +74,10 @@ public class SpeechService : ISpeechService
             
             return result.Text;
         }
-        finally
+        catch (Exception ex)
         {
-            if (File.Exists(tempFilePath))
-            {
-                File.Delete(tempFilePath);
-            }
+            Console.WriteLine($"Speech recognition error: {ex.Message}");
+            throw;
         }
     }
 
