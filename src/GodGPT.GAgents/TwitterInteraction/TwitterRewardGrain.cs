@@ -5,6 +5,8 @@ using Microsoft.Extensions.Options;
 using Aevatar.Application.Grains.TwitterInteraction.Dtos;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Agents.ChatManager;
+using Aevatar.Application.Grains.Invitation;
+using RewardTierDto = Aevatar.Application.Grains.TwitterInteraction.Dtos.RewardTierDto;
 
 namespace Aevatar.Application.Grains.TwitterInteraction;
 
@@ -38,6 +40,8 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     private readonly IPersistentState<TwitterRewardState> _state;
     private ITwitterMonitorGrain? _tweetMonitorGrain;
     private ITwitterInteractionGrain? _twitterInteractionGrain;
+    private IInvitationGAgent _invitationAgent;
+    
     // Removed IChatManagerGAgent to comply with architecture constraint
     
     private const string REMINDER_NAME = "DailyRewardCalculationReminder";
@@ -67,6 +71,8 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         _tweetMonitorGrain = GrainFactory.GetGrain<ITwitterMonitorGrain>(_options.CurrentValue.PullTaskTargetId);
         
         _twitterInteractionGrain = GrainFactory.GetGrain<ITwitterInteractionGrain>(_options.CurrentValue.RewardTaskTargetId);
+        
+        _invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
         // ChatManagerGAgent reference removed to comply with architecture constraint
         
         // Initialize or update configuration from appsettings.json
@@ -1108,13 +1114,10 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             try
             {
                 if (reward.IsRewardSent) continue;
-                // TODO: Implement actual credit distribution using IGrainWithStringKey structure
-                // This follows the architecture constraint: not using IChatManagerGAgent : IGAgent
-                // Focus on calculation and recording reward amounts, actual sending will be implemented later
-                
-                _logger.LogInformation("TODO: Send {Credits} credits to user {UserId} for tweet {TweetId} (calculation complete)", 
+                _logger.LogInformation("SendRewardsToUsersAsync  Send {Credits} credits to user {UserId} for tweet {TweetId} (calculation complete)", 
                     reward.FinalCredits, reward.UserId, reward.TweetId);
 
+                await _invitationAgent.ProcessTwitterRewardAsync(reward.TweetId, reward.FinalCredits);
                 // Mark as processed for calculation purposes, actual sending pending
                 reward.IsRewardSent = true; // Set to false as per development phase requirements
                 reward.RewardSentTime = DateTime.UtcNow; // No actual sending yet
