@@ -42,6 +42,7 @@ public class AddRewardLogEvent : InvitationLogEvent
     [Id(3)] public bool IsScheduled { get; set; }
     [Id(4)] public DateTime? ScheduledDate { get; set; }
     [Id(5)] public string InvoiceId { get; set; }
+    [Id(6)] public string TweetId { get; set; }
 }
 
 [GenerateSerializer]
