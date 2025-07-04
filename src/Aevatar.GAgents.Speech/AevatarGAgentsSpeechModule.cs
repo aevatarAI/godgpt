@@ -8,6 +8,9 @@ public class AevatarGAgentsSpeechModule : AbpModule
     public override void ConfigureServices(ServiceConfigurationContext context)
     {
         var configuration = context.Services.GetConfiguration();
-        Configure<SpeechOptions>(configuration.GetSection("Speech")); 
+        Configure<SpeechOptions>(configuration.GetSection("Speech"));
+        
+        // Register speech services
+        context.Services.AddSingleton<ISpeechService, SpeechService>();
     }
 }

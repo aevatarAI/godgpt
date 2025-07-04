@@ -1,6 +1,7 @@
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.Anonymous.Options;
+using Aevatar.GAgents.Speech;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
@@ -11,7 +12,8 @@ using Microsoft.Extensions.Configuration;
 namespace Aevatar.Application.Grains;
 
 [DependsOn(
-    typeof(AbpAutoMapperModule)
+    typeof(AbpAutoMapperModule),
+    typeof(AevatarGAgentsSpeechModule)
 )]
 public class GodGPTGAgentModule : AbpModule
 {
