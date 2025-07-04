@@ -94,7 +94,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             
             // Log for debugging
             _logger.LogDebug($"SearchTweetsAsync url--->{url}");
-            _logger.LogDebug($"SearchTweetsAsync bearerToken--->{bearerToken}");
+            //_logger.LogDebug($"SearchTweetsAsync bearerToken--->{bearerToken}");
             
             // Set authorization header using the reference code approach
             _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
