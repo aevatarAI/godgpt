@@ -22,7 +22,7 @@ public interface IGodChat : IGAgent
     Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
     
-    Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
+    Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, byte[] mp3Data, string fileName, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
     
     Task SetUserProfileAsync(UserProfileDto? userProfileDto);

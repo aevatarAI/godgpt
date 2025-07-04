@@ -181,28 +181,57 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
-    public async Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
+    public async Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, byte[] mp3Data, string fileName, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
     {
-        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} start.");
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} start with MP3 file: {fileName}, size: {mp3Data?.Length ?? 0} bytes");
+        
+        // Validate MP3 data
+        if (mp3Data == null || mp3Data.Length == 0)
+        {
+            Logger.LogError($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Invalid MP3 data");
+            var errorMessage = new ResponseStreamGodChat()
+            {
+                Response = "Invalid voice message. Please try again.",
+                ChatId = chatId,
+                IsLastChunk = true,
+                SerialNumber = -99,
+                SessionId = sessionId
+            };
+
+            if (isHttpRequest)
+            {
+                await PushMessageToClientAsync(errorMessage);
+            }
+            else
+            {
+                await PublishAsync(errorMessage);
+            }
+            return;
+        }
+
+        // Convert MP3 data to byte array (already byte[] but log for confirmation)
+        var voiceDataBytes = mp3Data;
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Processed MP3 data: {voiceDataBytes.Length} bytes");
+        
+        
+        // TODO:  add voiceDataBytes method
+        var voiceContent = $"[Voice message processing: {fileName}, {voiceDataBytes.Length} bytes]";
+        
         var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(State.ChatManagerGuid));
         var actionResultDto =
             await userQuotaGrain.ExecuteVoiceActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
         if (!actionResultDto.Success)
         {
             Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Access restricted");
-            //1、throw Exception
-            // var invalidOperationException = new InvalidOperationException(actionResultDto.Message);
-            // invalidOperationException.Data["Code"] = actionResultDto.Code.ToString();
-            // throw invalidOperationException;
-            
+
             //save conversation data
-            await SetSessionTitleAsync(sessionId, content);
+            await SetSessionTitleAsync(sessionId, voiceContent);
             var chatMessages = new List<ChatMessage>();
             chatMessages.Add(new ChatMessage
             {
                 ChatRole = ChatRole.User,
-                Content = content
+                Content = voiceContent
             });
             chatMessages.Add(new ChatMessage
             {
@@ -237,14 +266,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         }
 
         Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} - Validation passed");
-        await SetSessionTitleAsync(sessionId, content);
+        await SetSessionTitleAsync(sessionId, voiceContent);
 
         var sw = new Stopwatch();
         sw.Start();
         var configuration = GetConfiguration();
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
-            content, chatId, promptSettings, isHttpRequest, region);
+            voiceContent, chatId, promptSettings, isHttpRequest, region);
         sw.Stop();
         Logger.LogDebug($"StreamVoiceChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
     }
