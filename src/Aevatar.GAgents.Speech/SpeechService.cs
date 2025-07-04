@@ -12,12 +12,36 @@ public class SpeechService : ISpeechService
     private readonly SpeechConfig _speechConfig;
     private readonly SpeechSynthesizer _synthesizer;
 
-    public SpeechService(IOptionsSnapshot<SpeechOptions> speechOptions)
+    public SpeechService(IOptionsMonitor<SpeechOptions> speechOptions)
     {
-        _speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
-        _speechConfig.SpeechRecognitionLanguage = "zh-CN";
-        _speechConfig.SpeechSynthesisLanguage = "zh-CN";
-        _speechConfig.SpeechSynthesisVoiceName = "zh-CN-XiaoxiaoNeural";
+        var options = speechOptions.CurrentValue;
+        if (options == null)
+        {
+            throw new InvalidOperationException("SpeechOptions configuration is null. Please check your appsettings.json configuration.");
+        }
+        
+        if (string.IsNullOrEmpty(options.SubscriptionKey))
+        {
+            throw new InvalidOperationException("SpeechOptions.SubscriptionKey is null or empty. Please check your appsettings.json configuration.");
+        }
+        
+        if (string.IsNullOrEmpty(options.Region) && string.IsNullOrEmpty(options.Endpoint))
+        {
+            throw new InvalidOperationException("Both SpeechOptions.Region and SpeechOptions.Endpoint are null or empty. Please provide at least one.");
+        }
+        if (!string.IsNullOrEmpty(options.Endpoint))
+        {
+            var endpointUri = new Uri(options.Endpoint);
+            _speechConfig = SpeechConfig.FromEndpoint(endpointUri, options.SubscriptionKey);
+        }
+        else
+        {
+            _speechConfig = SpeechConfig.FromSubscription(options.SubscriptionKey, options.Region);
+        }
+        
+        _speechConfig.SpeechRecognitionLanguage = options.RecognitionLanguage;
+        _speechConfig.SpeechSynthesisLanguage = options.SynthesisLanguage;
+        _speechConfig.SpeechSynthesisVoiceName = options.SynthesisVoiceName;
         _synthesizer = new SpeechSynthesizer(_speechConfig);
     }
 

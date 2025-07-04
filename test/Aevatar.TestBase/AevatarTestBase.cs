@@ -22,7 +22,7 @@ public abstract class AevatarTestBase<TStartupModule> : AbpIntegratedTest<TStart
     protected override void BeforeAddApplication(IServiceCollection services)
     {
         var builder = new ConfigurationBuilder();
-        builder.AddJsonFile("/opt/evn/godgpt.appsettings.json", false);
+        builder.AddJsonFile("appsettings.json", false);
         builder.AddJsonFile("appsettings.secrets.json", true);
         services.ReplaceConfiguration(builder.Build());
     }
