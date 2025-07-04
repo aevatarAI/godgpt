@@ -29,12 +29,12 @@ public class SpeechServiceTests : AevatarGodGPTTestsBase
     {
         var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
         // Convert base64 string to byte array
-        var wavData = ConvertBase64ToByteArray(TEST_MP3_BASE64);
+        var wavData = ConvertBase64ToByteArray(SpeechConstants.WAW_BASE64);
             
         // Act
         var result = await speechService.SpeechToTextAsync(wavData);
         Assert.NotNull(result);
-        result.ShouldContain("你好");
+        result.ShouldContain("123456");
     }
 
  
