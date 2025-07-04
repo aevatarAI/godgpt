@@ -542,7 +542,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
             while (currentStart < actualEndTime)
             {
-                var currentEnd = currentStart.AddMinutes(30);
+                var currentEnd = currentStart.AddHours(6);
                 if (currentEnd > actualEndTime)
                     currentEnd = actualEndTime;
 
@@ -588,8 +588,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 // Adding 3-5 second delay between requests to stay within limits
                 if (currentStart < actualEndTime) // Don't delay after the last iteration
                 {
-                    _logger.LogInformation("Waiting 30 seconds to avoid API rate limiting...");
-                    await Task.Delay(TimeSpan.FromSeconds(30));
+                    _logger.LogInformation("Waiting 300 seconds to avoid API rate limiting...");
+                    await Task.Delay(TimeSpan.FromSeconds(300));
                 }
             }
 

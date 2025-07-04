@@ -105,7 +105,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 response.EnsureSuccessStatusCode();
                 var content = await response.Content.ReadAsStringAsync();
                 
-                _logger.LogDebug("SearchTweetsAsync Response: {resp}", content);
+                //_logger.LogDebug("SearchTweetsAsync Response: {resp}", content);
 
                 // Parse response
                 var searchResponse = await ParseSearchResponseFromApiResponse(content);
@@ -162,8 +162,8 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                      "&user.fields=id,username,name,public_metrics";
 
             var bearerToken = _options.CurrentValue.BearerToken;
-            _logger.LogError($"GetTweetDetailsAsync url--->{url}");
-            _logger.LogError($"GetTweetDetailsAsync bearerToken--->{bearerToken}");
+            _logger.LogInformation($"GetTweetDetailsAsync url--->{url}");
+            //_logger.LogError($"GetTweetDetailsAsync bearerToken--->{bearerToken}");
             
             _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", bearerToken);
             
