@@ -77,6 +77,25 @@ public class TwitterRewardOptions
     /// </summary>
     [Id(30)] public int ApiCallDelayMs { get; set; } = 1000;
     
+    // Time Window Management Configuration
+    /// <summary>
+    /// Default time window in hours for background tweet fetching
+    /// Default: 1 hour - reduces API calls per window to prevent rate limiting
+    /// </summary>
+    [Id(31)] public int TimeWindowHours { get; set; } = 1;
+    
+    /// <summary>
+    /// Maximum tweets to process per time window
+    /// Default: 25 - ensures we stay within Twitter API limits
+    /// </summary>
+    [Id(32)] public int MaxTweetsPerWindow { get; set; } = 25;
+    
+    /// <summary>
+    /// Minimum time window in minutes for dynamic adjustment
+    /// Default: 15 minutes - prevents window from becoming too small
+    /// </summary>
+    [Id(33)] public int MinTimeWindowMinutes { get; set; } = 15;
+    
     /// <summary>
     /// Get all account IDs that need to be excluded (including compatibility handling)
     /// </summary>

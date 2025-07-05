@@ -537,24 +537,24 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             var currentStart = timeRange.StartTime;
             var hourlyIntervals = 0;
 
-            _logger.LogInformation("Starting hourly fetch process from {Start} to {End}", 
-                currentStart, actualEndTime);
+            _logger.LogInformation("Starting time window fetch process from {Start} to {End} (Window size: {WindowHours}h, Max tweets per window: {MaxTweets})", 
+                currentStart, actualEndTime, _options.CurrentValue.TimeWindowHours, _options.CurrentValue.MaxTweetsPerWindow);
 
             while (currentStart < actualEndTime)
             {
-                var currentEnd = currentStart.AddHours(6);
+                var currentEnd = currentStart.AddHours(_options.CurrentValue.TimeWindowHours);
                 if (currentEnd > actualEndTime)
                     currentEnd = actualEndTime;
 
                 hourlyIntervals++;
                 
-                _logger.LogInformation("Processing hour interval {Interval}: {Start} to {End}", 
-                    hourlyIntervals, currentStart, currentEnd);
+                _logger.LogInformation("Processing time interval {Interval}: {Start} to {End} (Window: {WindowHours}h)", 
+                    hourlyIntervals, currentStart, currentEnd, _options.CurrentValue.TimeWindowHours);
 
                 var searchRequest = new SearchTweetsRequestDto
                 {
                     Query = _options.CurrentValue.MonitorHandle,
-                    MaxResults = _state.State.Config.MaxTweetsPerFetch,
+                    MaxResults = _options.CurrentValue.MaxTweetsPerWindow,
                     StartTime = currentStart,
                     EndTime = currentEnd
                 };
@@ -563,6 +563,14 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 
                 if (result.IsSuccess)
                 {
+                    // Check if we need to adjust window size for high tweet density
+                    if (result.Data.TotalFetched >= _options.CurrentValue.MaxTweetsPerWindow)
+                    {
+                        _logger.LogWarning("High tweet density detected ({TweetCount} tweets in {Hours}h window). " +
+                                           "Consider reducing time window for better API rate control.", 
+                                           result.Data.TotalFetched, _options.CurrentValue.TimeWindowHours);
+                    }
+                    
                     // Accumulate results
                     overallResult.TotalFetched += result.Data.TotalFetched;
                     overallResult.NewTweets += result.Data.NewTweets;
@@ -570,26 +578,48 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     overallResult.FilteredOut += result.Data.FilteredOut;
                     overallResult.NewTweetIds.AddRange(result.Data.NewTweetIds);
                     
-                    _logger.LogInformation("Hour interval {Interval} completed: Fetched={Fetched}, New={New}, Duplicates={Duplicates}, Filtered={Filtered}", 
+                    _logger.LogInformation("Time interval {Interval} completed: Fetched={Fetched}, New={New}, Duplicates={Duplicates}, Filtered={Filtered}", 
                         hourlyIntervals, result.Data.TotalFetched, result.Data.NewTweets, 
                         result.Data.DuplicateSkipped, result.Data.FilteredOut);
                 }
                 else
                 {
-                    var errorMsg = $"Hour {currentStart:HH:mm}-{currentEnd:HH:mm}: {result.ErrorMessage}";
+                    var errorMsg = $"Time window {currentStart:HH:mm}-{currentEnd:HH:mm}: {result.ErrorMessage}";
                     errorMessages.Add(errorMsg);
-                    _logger.LogError("Hour interval {Interval} failed: {Error}", hourlyIntervals, result.ErrorMessage);
+                    _logger.LogError("Time interval {Interval} failed: {Error}", hourlyIntervals, result.ErrorMessage);
+                    
+                    // Check if it's a rate limit error
+                    if (result.ErrorMessage.Contains("TooManyRequests") || result.ErrorMessage.Contains("429"))
+                    {
+                        _logger.LogWarning("Rate limit detected. Consider reducing TimeWindowHours or MaxTweetsPerWindow in configuration.");
+                    }
                 }
 
                 currentStart = currentEnd;
 
-                // Add delay to avoid Twitter API rate limiting (429 Too Many Requests)
-                // Twitter Search API allows 300 requests per 15-minute window
-                // Adding 3-5 second delay between requests to stay within limits
+                // Intelligent delay based on result: Prioritize API safety for errors
                 if (currentStart < actualEndTime) // Don't delay after the last iteration
                 {
-                    _logger.LogInformation("Waiting 30 minutes to avoid API rate limiting...");
-                    await Task.Delay(TimeSpan.FromMinutes(30));
+                    // Priority 1: Always delay when there's an error (API safety)
+                    if (!result.IsSuccess)
+                    {
+                        _logger.LogWarning("⚠️ Error occurred, applying mandatory {Delay}min delay for API safety: {Error}", 
+                            _options.CurrentValue.MinTimeWindowMinutes, result.ErrorMessage);
+                        await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
+                    }
+                    // Priority 2: Skip delay only when successful with no tweets found
+                    else if (result.Data.TotalFetched == 0)
+                    {
+                        _logger.LogInformation("⚡ No tweets found in time window, proceeding immediately to next window (skipping {Delay}min delay)...", 
+                            _options.CurrentValue.MinTimeWindowMinutes);
+                    }
+                    // Priority 3: Normal delay when tweets were found
+                    else
+                    {
+                        _logger.LogInformation("⏳ Waiting {Delay} minutes to avoid API rate limiting (found {TweetCount} tweets)...", 
+                            _options.CurrentValue.MinTimeWindowMinutes, result.Data.TotalFetched);
+                        await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
+                    }
                 }
             }
 
@@ -603,9 +633,9 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
             var isOverallSuccess = errorMessages.Count == 0;
             
-            _logger.LogInformation("Background processing completed: {Intervals} intervals processed, " +
+            _logger.LogInformation("Background processing completed: {Intervals} time windows processed ({WindowSize}h each), " +
                                   "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}", 
-                                  hourlyIntervals, overallResult.TotalFetched, overallResult.NewTweets, 
+                                  hourlyIntervals, _options.CurrentValue.TimeWindowHours, overallResult.TotalFetched, overallResult.NewTweets, 
                                   overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess);
         }
         catch (Exception ex)
