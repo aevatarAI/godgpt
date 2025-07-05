@@ -819,7 +819,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
                     // Get detailed tweet analysis
                     _logger.LogDebug("🔍 Analyzing tweet details {TweetId}...", tweet.Id);
-                    var analysisResult = await _twitterGrain.AnalyzeTweetAsync(tweet.Id);
+                    var analysisResult = await _twitterGrain.AnalyzeTweetLightweightAsync(tweet.Id);
                     
                     if (!analysisResult.IsSuccess)
                     {
@@ -829,8 +829,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     }
 
                     var tweetDetails = analysisResult.Data;
-                    _logger.LogDebug("✅ Tweet analysis completed {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}, Followers: {FollowerCount}", 
-                        tweet.Id, tweetDetails.AuthorHandle, tweetDetails.AuthorId, tweetDetails.Type, tweetDetails.FollowerCount);
+                    _logger.LogDebug("✅ Tweet analysis completed {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}", 
+                        tweet.Id, tweetDetails.AuthorHandle, tweetDetails.AuthorId, tweetDetails.Type);
 
                     // Filter if only original tweets required
                     if (_state.State.Config.FilterOriginalOnly && tweetDetails.Type != TweetType.Original)
@@ -885,7 +885,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                         Text = string.Empty, // Privacy protection: Do not store tweet text content
                         Type = tweetDetails.Type,
                         ViewCount = tweetDetails.ViewCount,
-                        FollowerCount = tweetDetails.FollowerCount,
+                        FollowerCount = 0, // Not fetched in lightweight mode - will be populated during reward processing
                         HasValidShareLink = tweetDetails.HasValidShareLink,
                         ShareLinkUrl = string.Empty, // Privacy protection: Do not store share link URL
                         IsProcessed = false,
@@ -896,8 +896,15 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     fetchResult.NewTweetIds.Add(tweet.Id);
                     fetchResult.NewTweets++;
                     
-                    _logger.LogInformation("✅ Saved valid tweet {TweetId} - Author: @{AuthorHandle}, Followers: {FollowerCount}, Share link: {HasShareLink}", 
-                        tweet.Id, tweetDetails.AuthorHandle, tweetDetails.FollowerCount, tweetDetails.HasValidShareLink);
+                    _logger.LogInformation("✅ Saved valid tweet {TweetId} - Author: @{AuthorHandle}, Share link: {HasShareLink}", 
+                        tweet.Id, tweetDetails.AuthorHandle, tweetDetails.HasValidShareLink);
+                    
+                    // Add delay between processing tweets to avoid API rate limiting
+                    if (_options.CurrentValue.TweetProcessingDelayMs > 0)
+                    {
+                        _logger.LogDebug("⏳ Waiting {DelayMs}ms before processing next tweet...", _options.CurrentValue.TweetProcessingDelayMs);
+                        await Task.Delay(_options.CurrentValue.TweetProcessingDelayMs);
+                    }
                 }
                 catch (Exception ex)
                 {

@@ -839,7 +839,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
         }
     }
 
-    public async Task<TwitterApiResultDto<BatchTweetProcessResponseDto>> BatchProcessTweetsAsync(BatchTweetProcessRequestDto request)
+    public async Task<TwitterApiResultDto<BatchTweetProcessResponseDto>> ProcessBatchTweetsAsync(BatchTweetProcessRequestDto request)
     {
         try
         {
@@ -1252,6 +1252,12 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             _logger.LogDebug("✅ Tweet details retrieved successfully {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}", 
                 tweetId, tweetDetails.AuthorHandle, tweetDetails.AuthorId, tweetDetails.Type);
             
+            // Add delay between API calls if configured
+            if (_options.CurrentValue.ApiCallDelayMs > 0)
+            {
+                await Task.Delay(_options.CurrentValue.ApiCallDelayMs);
+            }
+            
             // 2. Get user information (to get follower count etc.)
             _logger.LogDebug("👤 Getting user info: {AuthorId}", tweetDetails.AuthorId);
             var userInfoResult = await GetUserInfoAsync(tweetDetails.AuthorId);
@@ -1267,23 +1273,23 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 _logger.LogWarning("⚠️ Failed to get user info {AuthorId}: {Error}", tweetDetails.AuthorId, userInfoResult.ErrorMessage);
             }
 
-            // 3. Use pre-parsed share link info (no need to re-analyze text)
-            var hasValidShareLink = tweetDetails.HasValidShareLink;
-            var shareLinkUrl = string.Empty; // Do not store link content, keep empty
-
-            // 4. Assemble result
+            // 3. Create comprehensive result
             var result = new TweetProcessResultDto
             {
-                TweetId = tweetDetails.TweetId,
+                TweetId = tweetId,
                 AuthorId = tweetDetails.AuthorId,
                 AuthorHandle = tweetDetails.AuthorHandle,
+                AuthorName = tweetDetails.AuthorName,
                 CreatedAt = tweetDetails.CreatedAt,
                 Type = tweetDetails.Type,
                 ViewCount = tweetDetails.ViewCount,
                 FollowerCount = followerCount,
-                HasValidShareLink = hasValidShareLink,
-                ShareLinkUrl = shareLinkUrl // Keep empty, do not store link content
+                HasValidShareLink = tweetDetails.HasValidShareLink,
+                ShareLinkUrl = tweetDetails.ShareLinkUrl
             };
+
+            _logger.LogDebug("✅ Tweet analysis completed {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}, Followers: {FollowerCount}", 
+                tweetId, result.AuthorHandle, result.AuthorId, result.Type, result.FollowerCount);
 
             return new TwitterApiResultDto<TweetProcessResultDto>
             {
@@ -1293,7 +1299,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error analyzing tweet: {TweetId}", tweetId);
+            _logger.LogError(ex, "Error in comprehensive tweet analysis for {TweetId}", tweetId);
             return new TwitterApiResultDto<TweetProcessResultDto>
             {
                 IsSuccess = false,
@@ -1304,34 +1310,98 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
     }
 
     /// <summary>
-    /// Batch analyze tweet information
+    /// Lightweight tweet analysis for fetching phase (without user info)
+    /// Only gets tweet details to reduce API calls during bulk fetching operations
+    /// </summary>
+    public async Task<TwitterApiResultDto<TweetProcessResultDto>> AnalyzeTweetLightweightAsync(string tweetId)
+    {
+        try
+        {
+            _logger.LogDebug("🔍 Starting lightweight tweet analysis: {TweetId}", tweetId);
+
+            // Only get detailed tweet information (no user info to reduce API calls)
+            _logger.LogDebug("📄 Getting tweet details: {TweetId}", tweetId);
+            var tweetDetailsResult = await GetTweetDetailsAsync(tweetId);
+            if (!tweetDetailsResult.IsSuccess)
+            {
+                _logger.LogWarning("❌ Failed to get tweet details {TweetId}: {Error}", tweetId, tweetDetailsResult.ErrorMessage);
+                return new TwitterApiResultDto<TweetProcessResultDto>
+                {
+                    IsSuccess = false,
+                    ErrorMessage = tweetDetailsResult.ErrorMessage,
+                    Data = new TweetProcessResultDto { TweetId = tweetId }
+                };
+            }
+
+            var tweetDetails = tweetDetailsResult.Data;
+            _logger.LogDebug("✅ Tweet details retrieved successfully {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}", 
+                tweetId, tweetDetails.AuthorHandle, tweetDetails.AuthorId, tweetDetails.Type);
+
+            // Create lightweight result (no follower count - will be populated later if needed)
+            var result = new TweetProcessResultDto
+            {
+                TweetId = tweetId,
+                AuthorId = tweetDetails.AuthorId,
+                AuthorHandle = tweetDetails.AuthorHandle,
+                AuthorName = tweetDetails.AuthorName,
+                CreatedAt = tweetDetails.CreatedAt,
+                Type = tweetDetails.Type,
+                ViewCount = tweetDetails.ViewCount,
+                FollowerCount = 0, // Not fetched in lightweight mode to reduce API calls
+                HasValidShareLink = tweetDetails.HasValidShareLink,
+                ShareLinkUrl = tweetDetails.ShareLinkUrl
+            };
+
+            _logger.LogDebug("✅ Lightweight tweet analysis completed {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}", 
+                tweetId, result.AuthorHandle, result.AuthorId, result.Type);
+
+            return new TwitterApiResultDto<TweetProcessResultDto>
+            {
+                IsSuccess = true,
+                Data = result
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in lightweight tweet analysis for {TweetId}", tweetId);
+            return new TwitterApiResultDto<TweetProcessResultDto>
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message,
+                Data = new TweetProcessResultDto { TweetId = tweetId }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Batch analyze tweets with comprehensive information
     /// </summary>
     public async Task<TwitterApiResultDto<List<TweetProcessResultDto>>> BatchAnalyzeTweetsAsync(List<string> tweetIds)
     {
         try
         {
-            _logger.LogDebug("Batch analyzing {Count} tweets", tweetIds.Count);
-
+            _logger.LogInformation("📊 Starting batch tweet analysis for {Count} tweets", tweetIds.Count);
+            
             var results = new List<TweetProcessResultDto>();
-            var tasks = tweetIds.Select(AnalyzeTweetAsync).ToArray();
-            var taskResults = await Task.WhenAll(tasks);
-
-            foreach (var taskResult in taskResults)
+            
+            foreach (var tweetId in tweetIds)
             {
-                if (taskResult.IsSuccess)
+                var analysisResult = await AnalyzeTweetAsync(tweetId);
+                if (analysisResult.IsSuccess)
                 {
-                    results.Add(taskResult.Data);
+                    results.Add(analysisResult.Data);
                 }
                 else
                 {
-                    // Even if single tweet analysis fails, add a failure record
-                    results.Add(new TweetProcessResultDto 
-                    { 
-                        TweetId = taskResult.Data.TweetId
-                    });
+                    _logger.LogWarning("❌ Failed to analyze tweet {TweetId}: {Error}", tweetId, analysisResult.ErrorMessage);
+                    // Add empty result to maintain index alignment
+                    results.Add(new TweetProcessResultDto { TweetId = tweetId });
                 }
             }
-
+            
+            _logger.LogInformation("✅ Batch analysis completed: {SuccessCount}/{TotalCount} tweets", 
+                results.Count(r => !string.IsNullOrEmpty(r.AuthorId)), tweetIds.Count);
+            
             return new TwitterApiResultDto<List<TweetProcessResultDto>>
             {
                 IsSuccess = true,
@@ -1340,7 +1410,62 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error batch analyzing tweets");
+            _logger.LogError(ex, "❌ Error in batch tweet analysis");
+            return new TwitterApiResultDto<List<TweetProcessResultDto>>
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message,
+                Data = new List<TweetProcessResultDto>()
+            };
+        }
+    }
+
+    /// <summary>
+    /// Batch analyze tweets with lightweight approach (without user info)
+    /// Reduces API calls by not fetching user information for each tweet
+    /// </summary>
+    public async Task<TwitterApiResultDto<List<TweetProcessResultDto>>> BatchAnalyzeTweetsLightweightAsync(List<string> tweetIds)
+    {
+        try
+        {
+            _logger.LogInformation("📊 Starting lightweight batch tweet analysis for {Count} tweets", tweetIds.Count);
+            
+            var results = new List<TweetProcessResultDto>();
+            var options = _options.CurrentValue;
+            
+            foreach (var tweetId in tweetIds)
+            {
+                var analysisResult = await AnalyzeTweetLightweightAsync(tweetId);
+                if (analysisResult.IsSuccess)
+                {
+                    results.Add(analysisResult.Data);
+                }
+                else
+                {
+                    _logger.LogWarning("❌ Failed to analyze tweet {TweetId}: {Error}", tweetId, analysisResult.ErrorMessage);
+                    // Add empty result to maintain index alignment
+                    results.Add(new TweetProcessResultDto { TweetId = tweetId });
+                }
+                
+                // Add delay between API calls to avoid rate limiting
+                if (options.ApiCallDelayMs > 0)
+                {
+                    await Task.Delay(options.ApiCallDelayMs);
+                }
+            }
+            
+            _logger.LogInformation("✅ Lightweight batch analysis completed: {SuccessCount}/{TotalCount} tweets", 
+                results.Count(r => !string.IsNullOrEmpty(r.AuthorId)), tweetIds.Count);
+            
+            return new TwitterApiResultDto<List<TweetProcessResultDto>>
+            {
+                IsSuccess = true,
+                Data = results
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Error in lightweight batch tweet analysis");
             return new TwitterApiResultDto<List<TweetProcessResultDto>>
             {
                 IsSuccess = false,

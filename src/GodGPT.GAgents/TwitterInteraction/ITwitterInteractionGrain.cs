@@ -27,13 +27,30 @@ public interface ITwitterInteractionGrain : IGrainWithStringKey
     Task<TwitterApiResultDto<TweetProcessResultDto>> AnalyzeTweetAsync(string tweetId);
 
     /// <summary>
-    /// Batch tweet analysis
-    /// Analyze multiple tweets at once to improve efficiency
+    /// Lightweight tweet analysis for fetching phase (without user info)
+    /// Only gets tweet details to reduce API calls during bulk fetching operations
     /// </summary>
-    /// <param name="tweetIds">List of tweet IDs</param>
-    /// <returns>Batch analysis results</returns>
+    /// <param name="tweetId">Tweet ID</param>
+    /// <returns>Tweet analysis result without user info</returns>
+    [ReadOnly]
+    Task<TwitterApiResultDto<TweetProcessResultDto>> AnalyzeTweetLightweightAsync(string tweetId);
+
+    /// <summary>
+    /// Batch analyze tweets with comprehensive information
+    /// </summary>
+    /// <param name="tweetIds">List of tweet IDs to analyze</param>
+    /// <returns>List of tweet analysis results</returns>
     [ReadOnly]
     Task<TwitterApiResultDto<List<TweetProcessResultDto>>> BatchAnalyzeTweetsAsync(List<string> tweetIds);
+
+    /// <summary>
+    /// Batch analyze tweets with lightweight approach (without user info)
+    /// Reduces API calls by not fetching user information for each tweet
+    /// </summary>
+    /// <param name="tweetIds">List of tweet IDs to analyze</param>
+    /// <returns>List of lightweight tweet analysis results</returns>
+    [ReadOnly]
+    Task<TwitterApiResultDto<List<TweetProcessResultDto>>> BatchAnalyzeTweetsLightweightAsync(List<string> tweetIds);
 
     /// <summary>
     /// Get tweet details (low-level method)
@@ -107,11 +124,10 @@ public interface ITwitterInteractionGrain : IGrainWithStringKey
     Task<TwitterApiResultDto<List<string>>> ExtractUrlsFromTweetAsync(string tweetText);
 
     /// <summary>
-    /// Batch process tweets (business method)
-    /// Includes analyzing tweet type, validating share links, etc.
+    /// Process batch tweets with options
     /// </summary>
     /// <param name="request">Batch processing request</param>
-    /// <returns>Batch processing result</returns>
+    /// <returns>Batch processing response</returns>
     [ReadOnly]
-    Task<TwitterApiResultDto<BatchTweetProcessResponseDto>> BatchProcessTweetsAsync(BatchTweetProcessRequestDto request);
+    Task<TwitterApiResultDto<BatchTweetProcessResponseDto>> ProcessBatchTweetsAsync(BatchTweetProcessRequestDto request);
 } 

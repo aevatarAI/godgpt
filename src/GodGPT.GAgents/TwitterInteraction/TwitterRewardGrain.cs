@@ -1054,6 +1054,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         Dictionary<string, List<TweetRecord>> userTweets)
     {
         var result = new Dictionary<string, (UserInfoDto UserInfo, List<TweetProcessResultDto> UpdatedTweets)>();
+        var options = _options.CurrentValue;
         
         foreach (var kvp in userTweets)
         {
@@ -1064,7 +1065,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             {
                 _logger.LogInformation("Fetching latest information for user {UserId} with {TweetCount} tweets", userId, tweets.Count);
                 
-                // Get latest user information (follower count, etc.)
+                // 1. Get latest user information (follower count, etc.) - ONE API call per user
                 var userInfoResult = await _twitterInteractionGrain!.GetUserInfoAsync(userId);
                 if (!userInfoResult.IsSuccess)
                 {
@@ -1072,13 +1073,26 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                     continue;
                 }
                 
-                // Get latest tweet information (view count, etc.) - limit to 10 tweets per user
+                // Add delay after user info API call
+                if (options.ApiCallDelayMs > 0)
+                {
+                    await Task.Delay(options.ApiCallDelayMs);
+                }
+                
+                // 2. Get latest tweet information (view count, etc.) using LIGHTWEIGHT method
+                // This avoids duplicate GetUserInfoAsync calls - limit to 10 tweets per user
                 var tweetIds = tweets.Take(10).Select(t => t.TweetId).ToList();
-                var tweetInfoResult = await _twitterInteractionGrain!.BatchAnalyzeTweetsAsync(tweetIds);
+                var tweetInfoResult = await _twitterInteractionGrain!.BatchAnalyzeTweetsLightweightAsync(tweetIds);
                 if (!tweetInfoResult.IsSuccess)
                 {
                     _logger.LogWarning("Failed to get tweet info for user {UserId}: {Error}", userId, tweetInfoResult.ErrorMessage);
                     continue;
+                }
+                
+                // 3. Update tweet results with user follower count (from step 1)
+                foreach (var tweet in tweetInfoResult.Data)
+                {
+                    tweet.FollowerCount = userInfoResult.Data.FollowersCount;
                 }
                 
                 result[userId] = (userInfoResult.Data, tweetInfoResult.Data);
@@ -1086,8 +1100,11 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 _logger.LogInformation("Successfully fetched latest info for user {UserId} (@{Handle}): {FollowerCount} followers, {TweetCount} tweets analyzed", 
                     userId, userInfoResult.Data.Username, userInfoResult.Data.FollowersCount, tweetInfoResult.Data.Count);
                 
-                // Add a small delay to avoid hitting API rate limits
-                await Task.Delay(100);
+                // Add delay between processing different users to avoid hitting API rate limits
+                if (options.TweetProcessingDelayMs > 0)
+                {
+                    await Task.Delay(options.TweetProcessingDelayMs);
+                }
             }
             catch (Exception ex)
             {
