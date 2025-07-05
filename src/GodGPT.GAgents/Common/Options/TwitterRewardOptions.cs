@@ -64,6 +64,19 @@ public class TwitterRewardOptions
     [Id(27)]
     public int BatchFetchSize { get; set; } = 100;
     
+    // Twitter API Rate Limiting Configuration
+    /// <summary>
+    /// Delay in milliseconds between processing each tweet to avoid API rate limiting
+    /// Default: 5000ms (5 seconds) - ensures ~12 tweets per minute, well within Twitter's 300/15min limit
+    /// </summary>
+    [Id(29)] public int TweetProcessingDelayMs { get; set; } = 5000;
+    
+    /// <summary>
+    /// Delay in milliseconds between individual API calls within the same tweet analysis
+    /// Default: 1000ms (1 second) - adds small delay between GetTweetDetails and GetUserInfo calls
+    /// </summary>
+    [Id(30)] public int ApiCallDelayMs { get; set; } = 1000;
+    
     /// <summary>
     /// Get all account IDs that need to be excluded (including compatibility handling)
     /// </summary>
