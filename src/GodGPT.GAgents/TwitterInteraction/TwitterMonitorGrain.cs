@@ -597,13 +597,29 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
                 currentStart = currentEnd;
 
-                // Add delay to avoid Twitter API rate limiting (429 Too Many Requests)
-                // Twitter Search API allows 300 requests per 15-minute window
-                // Adding 30-minute delay between time windows to stay within limits
+                // Intelligent delay based on result: Prioritize API safety for errors
                 if (currentStart < actualEndTime) // Don't delay after the last iteration
                 {
-                    _logger.LogInformation("Waiting {Delay} minutes to avoid API rate limiting...", _options.CurrentValue.MinTimeWindowMinutes);
-                    await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
+                    // Priority 1: Always delay when there's an error (API safety)
+                    if (!result.IsSuccess)
+                    {
+                        _logger.LogWarning("⚠️ Error occurred, applying mandatory {Delay}min delay for API safety: {Error}", 
+                            _options.CurrentValue.MinTimeWindowMinutes, result.ErrorMessage);
+                        await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
+                    }
+                    // Priority 2: Skip delay only when successful with no tweets found
+                    else if (result.Data.TotalFetched == 0)
+                    {
+                        _logger.LogInformation("⚡ No tweets found in time window, proceeding immediately to next window (skipping {Delay}min delay)...", 
+                            _options.CurrentValue.MinTimeWindowMinutes);
+                    }
+                    // Priority 3: Normal delay when tweets were found
+                    else
+                    {
+                        _logger.LogInformation("⏳ Waiting {Delay} minutes to avoid API rate limiting (found {TweetCount} tweets)...", 
+                            _options.CurrentValue.MinTimeWindowMinutes, result.Data.TotalFetched);
+                        await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
+                    }
                 }
             }
 
