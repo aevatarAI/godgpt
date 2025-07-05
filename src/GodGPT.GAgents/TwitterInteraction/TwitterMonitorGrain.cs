@@ -588,8 +588,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 // Adding 3-5 second delay between requests to stay within limits
                 if (currentStart < actualEndTime) // Don't delay after the last iteration
                 {
-                    _logger.LogInformation("Waiting 300 seconds to avoid API rate limiting...");
-                    await Task.Delay(TimeSpan.FromSeconds(300));
+                    _logger.LogInformation("Waiting 15 minutes to avoid API rate limiting...");
+                    await Task.Delay(TimeSpan.FromSeconds(900));
                 }
             }
 
@@ -807,6 +807,15 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                         fetchResult.DuplicateSkipped++;
                         continue;
                     }
+
+                    if (_options.CurrentValue.ExcludedAccountIds.Contains(tweet.AuthorId))
+                    {
+                        _logger.LogDebug("⚠️ Skipping Excluded AuthorId tweet {TweetId} AuthorId {AuthorId}", tweet.Id,
+                            tweet.AuthorId);
+                        fetchResult.DuplicateSkipped++;
+                        continue;
+                    }
+                    
 
                     // Get detailed tweet analysis
                     _logger.LogDebug("🔍 Analyzing tweet details {TweetId}...", tweet.Id);
