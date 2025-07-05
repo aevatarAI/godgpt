@@ -1279,7 +1279,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 TweetId = tweetId,
                 AuthorId = tweetDetails.AuthorId,
                 AuthorHandle = tweetDetails.AuthorHandle,
-                AuthorName = tweetDetails.AuthorName,
+                AuthorName = userInfoResult.IsSuccess ? userInfoResult.Data.Name : string.Empty,
                 CreatedAt = tweetDetails.CreatedAt,
                 Type = tweetDetails.Type,
                 ViewCount = tweetDetails.ViewCount,
@@ -1343,7 +1343,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 TweetId = tweetId,
                 AuthorId = tweetDetails.AuthorId,
                 AuthorHandle = tweetDetails.AuthorHandle,
-                AuthorName = tweetDetails.AuthorName,
+                AuthorName = string.Empty, // Not fetched in lightweight mode to reduce API calls
                 CreatedAt = tweetDetails.CreatedAt,
                 Type = tweetDetails.Type,
                 ViewCount = tweetDetails.ViewCount,
