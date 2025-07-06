@@ -92,9 +92,9 @@ public class TwitterRewardOptions
     
     /// <summary>
     /// Minimum time window in minutes for dynamic adjustment
-    /// Default: 10 minutes - optimized for faster processing while maintaining API safety
+    /// Default: 15 minutes - matches Twitter's 15-minute rolling window for optimal API rate limit recovery
     /// </summary>
-    [Id(33)] public int MinTimeWindowMinutes { get; set; } = 10;
+    [Id(33)] public int MinTimeWindowMinutes { get; set; } = 15;
     
     /// <summary>
     /// Get all account IDs that need to be excluded (including compatibility handling)
