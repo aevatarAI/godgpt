@@ -1111,7 +1111,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 _logger.LogInformation("✅ Successfully fetched latest info for user {UserId} (@{Handle}): {FollowerCount} followers, {TweetCount} tweets analyzed", 
                     userId, userInfoResult.Data.Username, userInfoResult.Data.FollowersCount, tweetInfoResult.Data.Count);
                 
-                // RefetchTweetsByTimeRangeAsync Pattern: Apply intelligent delay strategy
+                // Optimized delay strategy for reward calculation: Use shorter delays to balance speed and API safety
                 var hasData = tweetInfoResult.Data.Count > 0;
                 var isLastUser = userCount >= totalUsers;
                 
@@ -1121,15 +1121,17 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 }
                 else if (!hasData)
                 {
-                    // RefetchTweetsByTimeRangeAsync Pattern: Priority 2 - No data found, skip delay for efficiency
-                    _logger.LogInformation("⚡ No tweet data found for user {UserId}. Skipping delay and proceeding immediately (RefetchTweetsByTimeRangeAsync pattern)", userId);
+                    // Priority 2 - No data found, skip delay for efficiency
+                    _logger.LogInformation("⚡ No tweet data found for user {UserId}. Skipping delay and proceeding immediately", userId);
                 }
                 else
                 {
-                    // RefetchTweetsByTimeRangeAsync Pattern: Priority 3 - Data found, normal delay to prevent rate limiting
-                    _logger.LogInformation("⏱️ Data found for user {UserId}. Applying normal {DelayMinutes}-minute delay to prevent rate limiting (RefetchTweetsByTimeRangeAsync pattern)", 
-                        userId, options.MinTimeWindowMinutes);
-                    await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
+                    // Priority 3 - Data found, use shorter delay for reward calculation efficiency
+                    // Use TweetProcessingDelayMs (3 seconds) instead of MinTimeWindowMinutes (15 minutes) for better balance
+                    var delayMs = options.TweetProcessingDelayMs;
+                    _logger.LogInformation("⏱️ Data found for user {UserId}. Applying {DelaySeconds}-second delay for API rate limiting", 
+                        userId, delayMs / 1000);
+                    await Task.Delay(delayMs);
                 }
             }
             catch (Exception ex)
