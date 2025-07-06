@@ -132,8 +132,8 @@ public class TweetMonitorIntegrationTests : TwitterIntegrationTestBase
         // Define time range for last 24 hours using simplified TimeRangeDto
         var timeRange = new TimeRangeDto
         {
-            StartTimeUtcSecond = 1751420640,
-            EndTimeUtcSecond = 1751420640 + 120
+            StartTimeUtcSecond = 1751542200,
+            EndTimeUtcSecond = 1751542200 + 600
         };
 
         // Act - refetch tweets by time range

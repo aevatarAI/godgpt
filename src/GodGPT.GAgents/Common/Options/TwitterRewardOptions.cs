@@ -67,15 +67,21 @@ public class TwitterRewardOptions
     // Twitter API Rate Limiting Configuration
     /// <summary>
     /// Delay in milliseconds between processing each tweet to avoid API rate limiting
-    /// Default: 3000ms (3 seconds) - optimized for faster processing while maintaining API safety
+    /// Default: 6000ms (6 seconds) - calculated for Twitter API safety: 300 requests/15min ÷ 2 requests/user = 10 users/min = 6s/user
     /// </summary>
-    [Id(29)] public int TweetProcessingDelayMs { get; set; } = 3000;
+    [Id(29)] public int TweetProcessingDelayMs { get; set; } = 6000;
+    
+    /// <summary>
+    /// Maximum number of users to process in a single batch for reward calculation
+    /// Default: 50 users - ensures API safety: 50 users × 2 requests = 100 requests in ~5 minutes, well within 300/15min limit
+    /// </summary>
+    [Id(30)] public int RewardCalculationBatchSize { get; set; } = 50;
     
     /// <summary>
     /// Delay in milliseconds between individual API calls within the same tweet analysis
     /// Default: 1000ms (1 second) - adds small delay between GetTweetDetails and GetUserInfo calls
     /// </summary>
-    [Id(30)] public int ApiCallDelayMs { get; set; } = 1000;
+    [Id(34)] public int ApiCallDelayMs { get; set; } = 1000;
     
     // Time Window Management Configuration
     /// <summary>

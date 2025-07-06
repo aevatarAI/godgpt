@@ -338,7 +338,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             var endUtc = timeRange.EndTimeUtcSecond;
 
             var filteredTweets = _state.State.StoredTweets.Values
-                .Where(tweet => tweet.CreatedAtUtc <= startUtc && tweet.CreatedAtUtc >= endUtc)
+                .Where(tweet => tweet.CreatedAtUtc >= startUtc && tweet.CreatedAtUtc <= endUtc)
                 .OrderBy(tweet => tweet.CreatedAtUtc)
                 .ToList();
 

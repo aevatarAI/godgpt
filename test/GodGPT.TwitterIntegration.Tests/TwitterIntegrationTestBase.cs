@@ -32,6 +32,12 @@ public class TestSiloConfigurator : ISiloConfigurator
         siloBuilder.AddMongoDBGrainStorage("DefaultGrainStorage", options =>
         {
             options.DatabaseName = "GodGPT_TwitterIntegration_Tests";
+        })
+        // ✅ Add EventSourcing services - CRITICAL for GAgentBase classes
+        .AddLogStorageBasedLogConsistencyProvider("LogStorage")
+        .AddMongoDBGrainStorage("PubSubStore", options =>
+        {
+            options.DatabaseName = "GodGPT_TwitterIntegration_Tests";
         });
         
         siloBuilder.ConfigureServices(services =>
