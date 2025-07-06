@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Aevatar.Application.Grains.TwitterInteraction.Dtos;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Agents.ChatManager;
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Invitation;
 using RewardTierDto = Aevatar.Application.Grains.TwitterInteraction.Dtos.RewardTierDto;
 
@@ -72,14 +73,20 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         
         _twitterInteractionGrain = GrainFactory.GetGrain<ITwitterInteractionGrain>(_options.CurrentValue.RewardTaskTargetId);
         
-        _invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
+        _invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(CommonHelper.StringToGuid(_options.CurrentValue.RewardTaskTargetId));
         // ChatManagerGAgent reference removed to comply with architecture constraint
         
         // Initialize or update configuration from appsettings.json
         var currentConfig = new RewardConfigDto
         {
-            TimeRangeStartHours = _options.CurrentValue.TimeOffsetMinutes / 60, // Convert minutes to hours
-            TimeRangeEndHours = _options.CurrentValue.TimeWindowMinutes / 60,  // Convert minutes to hours
+            TimeRangeStartHours =
+                _options.CurrentValue.TimeOffsetMinutes / 60 + (_options.CurrentValue.TimeOffsetMinutes % 60 == 0
+                    ? 0
+                    : 1), // Convert minutes to hours
+            TimeRangeEndHours =
+                _options.CurrentValue.TimeWindowMinutes / 60 + (_options.CurrentValue.TimeOffsetMinutes % 60 == 0
+                    ? 0
+                    : 1), // Convert minutes to hours
             ShareLinkMultiplier = _options.CurrentValue.ShareLinkMultiplier,
             MaxDailyCreditsPerUser = _options.CurrentValue.DailyRewardLimit,
             EnableRewardCalculation = true,
@@ -414,13 +421,13 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 TotalTweetsEligible = rewards.Count,
                 TweetsWithShareLinks = rewards.Count(r => r.HasValidShareLink),
                 AverageCreditsPerUser = rewards.Count > 0 ? rewards.Average(r => r.FinalCredits) : 0,
-                ShareLinkBonusTotal = rewards.Where(r => r.HasValidShareLink).Sum(r => r.FinalCredits - r.BaseCredits)
+                ShareLinkBonusTotal = rewards.Where(r => r.HasValidShareLink).Sum(r => r.BonusCredits - r.BonusCreditsBeforeMultiplier)
             };
 
             // Generate reward tier statistics
             foreach (var tier in _state.State.Config.RewardTiers)
             {
-                var tierRewards = rewards.Where(r => r.BaseCredits == tier.RewardCredits).ToList();
+                var tierRewards = rewards.Where(r => r.BonusCreditsBeforeMultiplier == tier.RewardCredits).ToList();
                 statistics.RewardsByTier[tier.TierName] = tierRewards.Count;
             }
 
@@ -699,8 +706,10 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
 
             // Query TweetMonitorGrain for tweets in the time range
             var bonusCreditsTweetsResult = await _tweetMonitorGrain!.QueryTweetsByTimeRangeAsync(timeRange);
-            
-            var regularCreditsTweetsResult = await _tweetMonitorGrain!.QueryTweetsByTimeRangeAsync(TimeRangeDto.FromDateTime(targetDate, targetDate.AddDays(-1)));
+
+            var regularCreditsTweetsResult =
+                await _tweetMonitorGrain!.QueryTweetsByTimeRangeAsync(
+                    TimeRangeDto.FromDateTime(targetDate.AddDays(-1), targetDate));
             
             if (!bonusCreditsTweetsResult.IsSuccess)
             {
@@ -848,8 +857,53 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         var userRewardDict = new Dictionary<string, UserRewardRecordDto>();
 
         // Get latest user and tweet information only for bonus credits users (regular credits don't need latest data)
-        _logger.LogInformation("Fetching latest information for {UserCount} bonus credit users to ensure accurate reward calculation", bonusCreditsTweetsByUser.Count);
-        var latestUserAndTweetInfo = await GetLatestUserAndTweetInfoAsync(bonusCreditsTweetsByUser);
+        // Apply batch processing to prevent API rate limiting
+        var options = _options.CurrentValue;
+        var totalBonusUsers = bonusCreditsTweetsByUser.Count;
+        var batchSize = options.RewardCalculationBatchSize;
+        
+        _logger.LogInformation("Fetching latest information for {UserCount} bonus credit users using batch processing (batch size: {BatchSize})", 
+            totalBonusUsers, batchSize);
+        
+        var latestUserAndTweetInfo = new Dictionary<string, (UserInfoDto UserInfo, List<TweetProcessResultDto> UpdatedTweets)>();
+        
+        // Process users in batches to respect API limits
+        var userBatches = bonusCreditsTweetsByUser
+            .Select((kvp, index) => new { kvp.Key, kvp.Value, Index = index })
+            .GroupBy(x => x.Index / batchSize)
+            .Select(g => g.ToDictionary(x => x.Key, x => x.Value))
+            .ToList();
+        
+        for (int batchIndex = 0; batchIndex < userBatches.Count; batchIndex++)
+        {
+            var batch = userBatches[batchIndex];
+            var isLastBatch = batchIndex == userBatches.Count - 1;
+            
+            _logger.LogInformation("🔄 Processing batch {BatchIndex}/{TotalBatches} with {UserCount} users", 
+                batchIndex + 1, userBatches.Count, batch.Count);
+            
+            var batchResult = await GetLatestUserAndTweetInfoAsync(batch);
+            
+            // Merge batch results
+            foreach (var kvp in batchResult)
+            {
+                latestUserAndTweetInfo[kvp.Key] = kvp.Value;
+            }
+            
+            // Apply inter-batch delay to ensure API safety (except for last batch)
+            if (!isLastBatch)
+            {
+                var interBatchDelayMinutes = options.MinTimeWindowMinutes;
+                _logger.LogInformation("🛡️ Completed batch {BatchIndex}/{TotalBatches}. Applying {DelayMinutes}-minute inter-batch delay for API safety", 
+                    batchIndex + 1, userBatches.Count, interBatchDelayMinutes);
+                await Task.Delay(TimeSpan.FromMinutes(interBatchDelayMinutes));
+            }
+            else
+            {
+                _logger.LogInformation("🎉 Completed final batch {BatchIndex}/{TotalBatches}. No inter-batch delay needed.", 
+                    batchIndex + 1, userBatches.Count);
+            }
+        }
 
         // Step 1: Process regular credits (yesterday's tweets) - No need to fetch latest data, no view count restrictions
         foreach (var userTweets in regularCreditsTweetsByUser)
@@ -873,7 +927,6 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                     TweetId = recordTweet.TweetId, // Use first tweet for reference
                     RewardDate = rewardDate,
                     RewardDateUtc = ((DateTimeOffset)rewardDate).ToUnixTimeSeconds(),
-                    BaseCredits = 0, // No base credits for regular rewards
                     ShareLinkMultiplier = 1.0, // No multiplier for regular rewards
                     FinalCredits = regularCredits,
                     HasValidShareLink = recordTweet.HasValidShareLink,
@@ -907,23 +960,45 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 var userId = userTweets.Key;
                 var tweets = userTweets.Value;
                 
-                // Skip if we couldn't get latest information for this user
-                if (!latestUserAndTweetInfo.ContainsKey(userId))
+                // Use latest information if available, otherwise use stored data
+                UserInfoDto userInfo;
+                List<TweetProcessResultDto> tweetInfo;
+                bool usingStoredData = false;
+                
+                if (latestUserAndTweetInfo.ContainsKey(userId))
                 {
-                    _logger.LogWarning("Skipping user {UserId} - could not fetch latest information", userId);
-                    continue;
+                    (userInfo, tweetInfo) = latestUserAndTweetInfo[userId];
+                }
+                else
+                {
+                    // Fallback to stored data to ensure user doesn't lose rewards
+                    usingStoredData = true;
+                    userInfo = new UserInfoDto
+                    {
+                        UserId = userId,
+                        Username = tweets.First().AuthorHandle,
+                        FollowersCount = tweets.First().FollowerCount // Use stored follower count
+                    };
+                    
+                    tweetInfo = tweets.Select(t => new TweetProcessResultDto
+                    {
+                        TweetId = t.TweetId,
+                        ViewCount = t.ViewCount, // Use stored view count
+                        HasValidShareLink = t.HasValidShareLink,
+                        FollowerCount = t.FollowerCount
+                    }).ToList();
+                    
+                    _logger.LogWarning("⚠️ Using stored data for user {UserId} - API calls failed but ensuring user gets rewards", userId);
                 }
                 
-                var (latestUserInfo, latestTweetInfo) = latestUserAndTweetInfo[userId];
-                
-                // Calculate bonus credits based on 8-tier system using LATEST data
+                // Calculate bonus credits based on 8-tier system using available data (latest or stored)
                 var totalBonusCredits = 0;
                 var totalBonusCreditsBeforeMultiplier = 0;
                 var bestTweet = tweets.First(); // Use first tweet for record keeping
-                var bestLatestTweet = latestTweetInfo.FirstOrDefault();
+                var bestLatestTweet = tweetInfo.FirstOrDefault();
                 
-                // Create a mapping from tweet ID to latest tweet info
-                var tweetIdToLatestInfo = latestTweetInfo.ToDictionary(t => t.TweetId, t => t);
+                // Create a mapping from tweet ID to tweet info
+                var tweetIdToLatestInfo = tweetInfo.ToDictionary(t => t.TweetId, t => t);
                 
                 foreach (var tweet in tweets)
                 {
@@ -932,9 +1007,9 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                         ? tweetIdToLatestInfo[tweet.TweetId] 
                         : null;
                     
-                    // Use latest view count if available, otherwise use stored value
+                    // Use available view count (latest or stored)
                     var currentViewCount = latestTweetData?.ViewCount ?? 0;
-                    var currentFollowerCount = latestUserInfo.FollowersCount;
+                    var currentFollowerCount = userInfo.FollowersCount;
                     var currentHasValidShareLink = latestTweetData?.HasValidShareLink ?? false;
                     
                     // Check minimum views requirement for bonus credits (using latest data)
@@ -980,15 +1055,15 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                      existingRecord.BonusCredits = totalBonusCredits;
                      existingRecord.BonusCreditsBeforeMultiplier = totalBonusCreditsBeforeMultiplier;
                      existingRecord.FinalCredits = existingRecord.RegularCredits + totalBonusCredits;
-                     existingRecord.BaseCredits = totalBonusCreditsBeforeMultiplier; // Keep for backward compatibility
                      existingRecord.ShareLinkMultiplier = (bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink) ? _state.State.Config.ShareLinkMultiplier : 1.0;
                      existingRecord.HasValidShareLink = bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink;
                      existingRecord.TweetCount += tweets.Count; // Add bonus tweet count
                      
                      // Keep the existing best tweet ID for reference (regular credits already set the best tweet)
                      
-                     _logger.LogInformation("Updated user {UserId} (@{UserHandle}) with bonus credits: {RegularCredits} regular + {BonusCredits} bonus = {FinalCredits} total credits",
-                         userId, latestUserInfo.Username, existingRecord.RegularCredits, totalBonusCredits, existingRecord.FinalCredits);
+                     var dataSource = usingStoredData ? "[STORED DATA]" : "[LATEST DATA]";
+                     _logger.LogInformation("Updated user {UserId} (@{UserHandle}) with bonus credits: {RegularCredits} regular + {BonusCredits} bonus = {FinalCredits} total credits {DataSource}",
+                         userId, userInfo.Username, existingRecord.RegularCredits, totalBonusCredits, existingRecord.FinalCredits, dataSource);
                  }
                 else
                 {
@@ -996,11 +1071,10 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                     var rewardRecord = new UserRewardRecordDto
                     {
                         UserId = userId,
-                        UserHandle = latestUserInfo.Username,
+                        UserHandle = userInfo.Username,
                         TweetId = bestTweet.TweetId, // Use best tweet for reference
                         RewardDate = rewardDate,
                         RewardDateUtc = ((DateTimeOffset)rewardDate).ToUnixTimeSeconds(),
-                        BaseCredits = totalBonusCreditsBeforeMultiplier, // Keep for backward compatibility
                         ShareLinkMultiplier = (bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink) ? _state.State.Config.ShareLinkMultiplier : 1.0,
                         FinalCredits = totalBonusCredits,
                         HasValidShareLink = bestLatestTweet?.HasValidShareLink ?? bestTweet.HasValidShareLink,
@@ -1016,10 +1090,11 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                     userRewardDict[userId] = rewardRecord;
                     processedUsers++;
 
+                    var dataSource = usingStoredData ? "[STORED DATA]" : "[LATEST DATA]";
                     _logger.LogInformation("Calculated bonus-only rewards for user {UserId} (@{UserHandle}): {BonusCredits} bonus credits " +
-                        "({TweetCount} tweets, best tweet: {TweetId} with {Views} views)", 
-                        userId, latestUserInfo.Username, totalBonusCredits, tweets.Count, bestTweet.TweetId, 
-                        bestLatestTweet?.ViewCount ?? bestTweet.ViewCount);
+                        "({TweetCount} tweets, best tweet: {TweetId} with {Views} views) {DataSource}", 
+                        userId, userInfo.Username, totalBonusCredits, tweets.Count, bestTweet.TweetId, 
+                        bestLatestTweet?.ViewCount ?? bestTweet.ViewCount, dataSource);
                 }
 
                 // Mark all tweets as processed
@@ -1046,7 +1121,8 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     }
 
     /// <summary>
-    /// Get latest user and tweet information for reward calculation
+    /// Get latest user and tweet information for reward calculation using RefetchTweetsByTimeRangeAsync pattern
+    /// Applies intelligent delay strategy with retry mechanism to ensure no user rewards are lost
     /// </summary>
     /// <param name="userTweets">User tweets grouped by user ID</param>
     /// <returns>Dictionary of user ID to updated tweet information</returns>
@@ -1055,37 +1131,50 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         var result = new Dictionary<string, (UserInfoDto UserInfo, List<TweetProcessResultDto> UpdatedTweets)>();
         var options = _options.CurrentValue;
+        var userCount = 0;
+        var totalUsers = userTweets.Count;
+        var failedUsers = new List<string>(); // Track failed users for retry
+        
+        _logger.LogInformation("🚀 Starting reward calculation user processing using RefetchTweetsByTimeRangeAsync pattern. Total users: {TotalUsers}", totalUsers);
         
         foreach (var kvp in userTweets)
         {
             var userId = kvp.Key;
             var tweets = kvp.Value;
+            userCount++;
             
             try
             {
-                _logger.LogInformation("Fetching latest information for user {UserId} with {TweetCount} tweets", userId, tweets.Count);
+                _logger.LogInformation("📅 Processing user {UserCount}/{TotalUsers}: {UserId} with {TweetCount} tweets", 
+                    userCount, totalUsers, userId, tweets.Count);
                 
                 // 1. Get latest user information (follower count, etc.) - ONE API call per user
                 var userInfoResult = await _twitterInteractionGrain!.GetUserInfoAsync(userId);
                 if (!userInfoResult.IsSuccess)
                 {
-                    _logger.LogWarning("Failed to get user info for {UserId}: {Error}", userId, userInfoResult.ErrorMessage);
+                    _logger.LogWarning("⚠️ Failed to get user info for {UserId}: {Error}. Adding to retry queue.", userId, userInfoResult.ErrorMessage);
+                    failedUsers.Add(userId);
+                    
+                    // Apply error delay but don't skip user - will retry later
+                    _logger.LogInformation("🛡️ API error detected. Applying mandatory {DelayMinutes}-minute delay for API safety", 
+                        options.MinTimeWindowMinutes);
+                    await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
                     continue;
                 }
                 
-                // Add delay after user info API call
-                if (options.ApiCallDelayMs > 0)
-                {
-                    await Task.Delay(options.ApiCallDelayMs);
-                }
-                
                 // 2. Get latest tweet information (view count, etc.) using LIGHTWEIGHT method
-                // This avoids duplicate GetUserInfoAsync calls - limit to 10 tweets per user
-                var tweetIds = tweets.Take(10).Select(t => t.TweetId).ToList();
+                // This avoids duplicate GetUserInfoAsync calls - limit to BatchFetchSize tweets per user
+                var tweetIds = tweets.Take(options.BatchFetchSize).Select(t => t.TweetId).ToList();
                 var tweetInfoResult = await _twitterInteractionGrain!.BatchAnalyzeTweetsLightweightAsync(tweetIds);
                 if (!tweetInfoResult.IsSuccess)
                 {
-                    _logger.LogWarning("Failed to get tweet info for user {UserId}: {Error}", userId, tweetInfoResult.ErrorMessage);
+                    _logger.LogWarning("⚠️ Failed to get tweet info for user {UserId}: {Error}. Adding to retry queue.", userId, tweetInfoResult.ErrorMessage);
+                    failedUsers.Add(userId);
+                    
+                    // Apply error delay but don't skip user - will retry later
+                    _logger.LogInformation("🛡️ API error detected. Applying mandatory {DelayMinutes}-minute delay for API safety", 
+                        options.MinTimeWindowMinutes);
+                    await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
                     continue;
                 }
                 
@@ -1097,20 +1186,100 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 
                 result[userId] = (userInfoResult.Data, tweetInfoResult.Data);
                 
-                _logger.LogInformation("Successfully fetched latest info for user {UserId} (@{Handle}): {FollowerCount} followers, {TweetCount} tweets analyzed", 
+                _logger.LogInformation("✅ Successfully fetched latest info for user {UserId} (@{Handle}): {FollowerCount} followers, {TweetCount} tweets analyzed", 
                     userId, userInfoResult.Data.Username, userInfoResult.Data.FollowersCount, tweetInfoResult.Data.Count);
                 
-                // Add delay between processing different users to avoid hitting API rate limits
-                if (options.TweetProcessingDelayMs > 0)
+                // Optimized delay strategy for reward calculation: Use shorter delays to balance speed and API safety
+                var hasData = tweetInfoResult.Data.Count > 0;
+                var isLastUser = userCount >= totalUsers;
+                
+                if (isLastUser)
                 {
-                    await Task.Delay(options.TweetProcessingDelayMs);
+                    _logger.LogInformation("🎉 Completed processing last user {UserCount}/{TotalUsers}. No delay needed.", userCount, totalUsers);
+                }
+                else if (!hasData)
+                {
+                    // Priority 2 - No data found, skip delay for efficiency
+                    _logger.LogInformation("⚡ No tweet data found for user {UserId}. Skipping delay and proceeding immediately", userId);
+                }
+                else
+                {
+                    // Priority 3 - Data found, use shorter delay for reward calculation efficiency
+                    // Use TweetProcessingDelayMs (3 seconds) instead of MinTimeWindowMinutes (15 minutes) for better balance
+                    var delayMs = options.TweetProcessingDelayMs;
+                    _logger.LogInformation("⏱️ Data found for user {UserId}. Applying {DelaySeconds}-second delay for API rate limiting", 
+                        userId, delayMs / 1000);
+                    await Task.Delay(delayMs);
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching latest information for user {UserId}", userId);
+                _logger.LogError(ex, "❌ Error fetching latest information for user {UserId}. Adding to retry queue.", userId);
+                failedUsers.Add(userId);
+                
+                // Apply error delay for API safety
+                _logger.LogInformation("🛡️ Exception occurred. Applying mandatory {DelayMinutes}-minute delay for API safety", 
+                    options.MinTimeWindowMinutes);
+                await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
             }
         }
+        
+        // Retry failed users to ensure no rewards are lost
+        if (failedUsers.Count > 0)
+        {
+            _logger.LogWarning("🔄 Retrying {FailedCount} failed users to ensure no rewards are lost: {FailedUsers}", 
+                failedUsers.Count, string.Join(", ", failedUsers));
+                
+            foreach (var userId in failedUsers)
+            {
+                if (result.ContainsKey(userId)) continue; // Skip if already processed successfully
+                
+                try
+                {
+                    var tweets = userTweets[userId];
+                    _logger.LogInformation("🔄 Retry attempt for user {UserId} with {TweetCount} tweets", userId, tweets.Count);
+                    
+                    // Retry with longer delay between attempts
+                    await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
+                    
+                    // 1. Retry user information
+                    var userInfoResult = await _twitterInteractionGrain!.GetUserInfoAsync(userId);
+                    if (!userInfoResult.IsSuccess)
+                    {
+                        _logger.LogError("🚫 Retry failed for user {UserId} user info: {Error}. User will be processed with stored data only.", 
+                            userId, userInfoResult.ErrorMessage);
+                        continue;
+                    }
+                    
+                    // 2. Retry tweet information
+                    var tweetIds = tweets.Take(options.BatchFetchSize).Select(t => t.TweetId).ToList();
+                    var tweetInfoResult = await _twitterInteractionGrain!.BatchAnalyzeTweetsLightweightAsync(tweetIds);
+                    if (!tweetInfoResult.IsSuccess)
+                    {
+                        _logger.LogError("🚫 Retry failed for user {UserId} tweet info: {Error}. User will be processed with stored data only.", 
+                            userId, tweetInfoResult.ErrorMessage);
+                        continue;
+                    }
+                    
+                    // 3. Success on retry
+                    foreach (var tweet in tweetInfoResult.Data)
+                    {
+                        tweet.FollowerCount = userInfoResult.Data.FollowersCount;
+                    }
+                    
+                    result[userId] = (userInfoResult.Data, tweetInfoResult.Data);
+                    _logger.LogInformation("✅ Retry successful for user {UserId} (@{Handle}): {FollowerCount} followers, {TweetCount} tweets", 
+                        userId, userInfoResult.Data.Username, userInfoResult.Data.FollowersCount, tweetInfoResult.Data.Count);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "🚫 Retry exception for user {UserId}. User will be processed with stored data only.", userId);
+                }
+            }
+        }
+        
+        _logger.LogInformation("🎯 Completed reward calculation user processing. Processed: {ProcessedUsers}/{TotalUsers} users, Failed: {FailedUsers}", 
+            result.Count, totalUsers, failedUsers.Count - result.Count);
         
         return result;
     }

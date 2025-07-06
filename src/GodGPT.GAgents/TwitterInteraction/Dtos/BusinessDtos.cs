@@ -400,7 +400,7 @@ public class UserRewardRecordDto
     [Id(2)] public string TweetId { get; set; } = string.Empty;
     [Id(3)] public DateTime? RewardDate { get; set; }
     [Id(4)] public long RewardDateUtc { get; set; } = 0;
-    [Id(5)] public int BaseCredits { get; set; } = 0;
+    [Id(5)] public int BonusCreditsBeforeMultiplier { get; set; } // Bonus credits before share link multiplier
     [Id(6)] public double ShareLinkMultiplier { get; set; } = 1.0;
     [Id(7)] public int FinalCredits { get; set; } = 0;
     [Id(8)] public bool HasValidShareLink { get; set; }
@@ -412,7 +412,6 @@ public class UserRewardRecordDto
     [Id(12)] public int RegularCredits { get; set; } // Regular credits: 2 per tweet, max 10 tweets
     [Id(13)] public int BonusCredits { get; set; } // Bonus credits: based on 8-tier system
     [Id(14)] public int TweetCount { get; set; } // Number of tweets for this user
-    [Id(15)] public int BonusCreditsBeforeMultiplier { get; set; } // Bonus credits before share link multiplier
 }
 
 /// <summary>

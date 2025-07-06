@@ -14,9 +14,9 @@ public class TwitterRewardOptions
     [Id(5)] public List<string> ExcludedAccountIds { get; set; } = new();
 
     // Scheduled task configuration
-    [Id(6)] public int PullIntervalMinutes { get; set; } = 30;
+    [Id(6)] public int PullIntervalMinutes { get; set; } = 20; // Reduced from 30 to 20 minutes for more frequent pulls
     [Id(7)] public int PullBatchSize { get; set; } = 100;
-    [Id(8)] public string PullSchedule { get; set; } = "*/30 * * * *";
+    [Id(8)] public string PullSchedule { get; set; } = "*/20 * * * *"; // Updated to match PullIntervalMinutes
     [Id(9)] public string RewardSchedule { get; set; } = "0 0 * * *";
     
     // Time range configuration
@@ -62,20 +62,26 @@ public class TwitterRewardOptions
     [Id(26)]
     public int MonitoringIntervalMinutes { get; set; } = 30;
     [Id(27)]
-    public int BatchFetchSize { get; set; } = 100;
+    public int BatchFetchSize { get; set; } = 15; // Further reduced from 25 to 15 to minimize API calls per batch
     
     // Twitter API Rate Limiting Configuration
     /// <summary>
     /// Delay in milliseconds between processing each tweet to avoid API rate limiting
-    /// Default: 5000ms (5 seconds) - ensures ~12 tweets per minute, well within Twitter's 300/15min limit
+    /// Default: 6000ms (6 seconds) - calculated for Twitter API safety: 300 requests/15min ÷ 2 requests/user = 10 users/min = 6s/user
     /// </summary>
-    [Id(29)] public int TweetProcessingDelayMs { get; set; } = 5000;
+    [Id(29)] public int TweetProcessingDelayMs { get; set; } = 6000;
+    
+    /// <summary>
+    /// Maximum number of users to process in a single batch for reward calculation
+    /// Default: 50 users - ensures API safety: 50 users × 2 requests = 100 requests in ~5 minutes, well within 300/15min limit
+    /// </summary>
+    [Id(30)] public int RewardCalculationBatchSize { get; set; } = 50;
     
     /// <summary>
     /// Delay in milliseconds between individual API calls within the same tweet analysis
     /// Default: 1000ms (1 second) - adds small delay between GetTweetDetails and GetUserInfo calls
     /// </summary>
-    [Id(30)] public int ApiCallDelayMs { get; set; } = 1000;
+    [Id(34)] public int ApiCallDelayMs { get; set; } = 1000;
     
     // Time Window Management Configuration
     /// <summary>
@@ -86,13 +92,13 @@ public class TwitterRewardOptions
     
     /// <summary>
     /// Maximum tweets to process per time window
-    /// Default: 25 - ensures we stay within Twitter API limits
+    /// Default: 15 - reduced to match BatchFetchSize and minimize API calls
     /// </summary>
-    [Id(32)] public int MaxTweetsPerWindow { get; set; } = 25;
+    [Id(32)] public int MaxTweetsPerWindow { get; set; } = 15;
     
     /// <summary>
     /// Minimum time window in minutes for dynamic adjustment
-    /// Default: 15 minutes - prevents window from becoming too small
+    /// Default: 15 minutes - matches Twitter's 15-minute rolling window for optimal API rate limit recovery
     /// </summary>
     [Id(33)] public int MinTimeWindowMinutes { get; set; } = 15;
     

@@ -11,7 +11,7 @@ public class TwitterTestConfig
 {
     public string BearerToken { get; set; } = string.Empty;
     public string MonitorHandle { get; set; } = string.Empty;
-    public int BatchFetchSize { get; set; } = 100;
+    public int BatchFetchSize { get; set; } = 25;
     public int MonitoringIntervalMinutes { get; set; } = 30;
     public int DataRetentionDays { get; set; } = 5;
 }
