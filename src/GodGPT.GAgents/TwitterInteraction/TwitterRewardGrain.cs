@@ -1046,7 +1046,8 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     }
 
     /// <summary>
-    /// Get latest user and tweet information for reward calculation
+    /// Get latest user and tweet information for reward calculation using RefetchTweetsByTimeRangeAsync pattern
+    /// Applies intelligent delay strategy: Error→15min delay, No data→immediate, Has data→15min delay
     /// </summary>
     /// <param name="userTweets">User tweets grouped by user ID</param>
     /// <returns>Dictionary of user ID to updated tweet information</returns>
@@ -1055,37 +1056,47 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         var result = new Dictionary<string, (UserInfoDto UserInfo, List<TweetProcessResultDto> UpdatedTweets)>();
         var options = _options.CurrentValue;
+        var userCount = 0;
+        var totalUsers = userTweets.Count;
+        
+        _logger.LogInformation("🚀 Starting reward calculation user processing using RefetchTweetsByTimeRangeAsync pattern. Total users: {TotalUsers}", totalUsers);
         
         foreach (var kvp in userTweets)
         {
             var userId = kvp.Key;
             var tweets = kvp.Value;
+            userCount++;
             
             try
             {
-                _logger.LogInformation("Fetching latest information for user {UserId} with {TweetCount} tweets", userId, tweets.Count);
+                _logger.LogInformation("📅 Processing user {UserCount}/{TotalUsers}: {UserId} with {TweetCount} tweets", 
+                    userCount, totalUsers, userId, tweets.Count);
                 
                 // 1. Get latest user information (follower count, etc.) - ONE API call per user
                 var userInfoResult = await _twitterInteractionGrain!.GetUserInfoAsync(userId);
                 if (!userInfoResult.IsSuccess)
                 {
-                    _logger.LogWarning("Failed to get user info for {UserId}: {Error}", userId, userInfoResult.ErrorMessage);
+                    _logger.LogWarning("⚠️ Failed to get user info for {UserId}: {Error}. Applying error delay strategy.", userId, userInfoResult.ErrorMessage);
+                    
+                    // RefetchTweetsByTimeRangeAsync Pattern: Priority 1 - Error occurred, mandatory delay for API safety
+                    _logger.LogInformation("🛡️ API error detected. Applying mandatory {DelayMinutes}-minute delay for API safety (RefetchTweetsByTimeRangeAsync pattern)", 
+                        options.MinTimeWindowMinutes);
+                    await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
                     continue;
                 }
                 
-                // Add delay after user info API call
-                if (options.ApiCallDelayMs > 0)
-                {
-                    await Task.Delay(options.ApiCallDelayMs);
-                }
-                
                 // 2. Get latest tweet information (view count, etc.) using LIGHTWEIGHT method
-                // This avoids duplicate GetUserInfoAsync calls - limit to 10 tweets per user
-                var tweetIds = tweets.Take(10).Select(t => t.TweetId).ToList();
+                // This avoids duplicate GetUserInfoAsync calls - limit to BatchFetchSize tweets per user
+                var tweetIds = tweets.Take(options.BatchFetchSize).Select(t => t.TweetId).ToList();
                 var tweetInfoResult = await _twitterInteractionGrain!.BatchAnalyzeTweetsLightweightAsync(tweetIds);
                 if (!tweetInfoResult.IsSuccess)
                 {
-                    _logger.LogWarning("Failed to get tweet info for user {UserId}: {Error}", userId, tweetInfoResult.ErrorMessage);
+                    _logger.LogWarning("⚠️ Failed to get tweet info for user {UserId}: {Error}. Applying error delay strategy.", userId, tweetInfoResult.ErrorMessage);
+                    
+                    // RefetchTweetsByTimeRangeAsync Pattern: Priority 1 - Error occurred, mandatory delay for API safety
+                    _logger.LogInformation("🛡️ API error detected. Applying mandatory {DelayMinutes}-minute delay for API safety (RefetchTweetsByTimeRangeAsync pattern)", 
+                        options.MinTimeWindowMinutes);
+                    await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
                     continue;
                 }
                 
@@ -1097,20 +1108,43 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 
                 result[userId] = (userInfoResult.Data, tweetInfoResult.Data);
                 
-                _logger.LogInformation("Successfully fetched latest info for user {UserId} (@{Handle}): {FollowerCount} followers, {TweetCount} tweets analyzed", 
+                _logger.LogInformation("✅ Successfully fetched latest info for user {UserId} (@{Handle}): {FollowerCount} followers, {TweetCount} tweets analyzed", 
                     userId, userInfoResult.Data.Username, userInfoResult.Data.FollowersCount, tweetInfoResult.Data.Count);
                 
-                // Add delay between processing different users to avoid hitting API rate limits
-                if (options.TweetProcessingDelayMs > 0)
+                // RefetchTweetsByTimeRangeAsync Pattern: Apply intelligent delay strategy
+                var hasData = tweetInfoResult.Data.Count > 0;
+                var isLastUser = userCount >= totalUsers;
+                
+                if (isLastUser)
                 {
-                    await Task.Delay(options.TweetProcessingDelayMs);
+                    _logger.LogInformation("🎉 Completed processing last user {UserCount}/{TotalUsers}. No delay needed.", userCount, totalUsers);
+                }
+                else if (!hasData)
+                {
+                    // RefetchTweetsByTimeRangeAsync Pattern: Priority 2 - No data found, skip delay for efficiency
+                    _logger.LogInformation("⚡ No tweet data found for user {UserId}. Skipping delay and proceeding immediately (RefetchTweetsByTimeRangeAsync pattern)", userId);
+                }
+                else
+                {
+                    // RefetchTweetsByTimeRangeAsync Pattern: Priority 3 - Data found, normal delay to prevent rate limiting
+                    _logger.LogInformation("⏱️ Data found for user {UserId}. Applying normal {DelayMinutes}-minute delay to prevent rate limiting (RefetchTweetsByTimeRangeAsync pattern)", 
+                        userId, options.MinTimeWindowMinutes);
+                    await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching latest information for user {UserId}", userId);
+                _logger.LogError(ex, "❌ Error fetching latest information for user {UserId}. Applying error delay strategy.", userId);
+                
+                // RefetchTweetsByTimeRangeAsync Pattern: Priority 1 - Exception occurred, mandatory delay for API safety
+                _logger.LogInformation("🛡️ Exception occurred. Applying mandatory {DelayMinutes}-minute delay for API safety (RefetchTweetsByTimeRangeAsync pattern)", 
+                    options.MinTimeWindowMinutes);
+                await Task.Delay(TimeSpan.FromMinutes(options.MinTimeWindowMinutes));
             }
         }
+        
+        _logger.LogInformation("🎯 Completed reward calculation user processing using RefetchTweetsByTimeRangeAsync pattern. Processed: {ProcessedUsers}/{TotalUsers} users", 
+            result.Count, totalUsers);
         
         return result;
     }
