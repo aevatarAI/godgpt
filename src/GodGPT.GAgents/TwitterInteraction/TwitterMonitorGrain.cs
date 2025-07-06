@@ -770,11 +770,11 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 queryWithFilters, _state.State.Config.MaxTweetsPerFetch, timeRangeMinutes);
             
             // Check if time window is larger than configured maximum and split if needed
-            if (_options.CurrentValue.ScheduledFetchSplitLargeTimeWindows && 
-                timeRangeMinutes > _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes)
+            var maxWindowMinutes = _options.CurrentValue.TimeWindowHours * 60; // Convert hours to minutes
+            if (timeRangeMinutes > maxWindowMinutes)
             {
                 _logger.LogInformation("🔄 Time window ({TimeRange} min) exceeds maximum ({MaxWindow} min), splitting into smaller windows", 
-                    timeRangeMinutes, _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes);
+                    timeRangeMinutes, maxWindowMinutes);
                 
                 var result = await FetchTweetsWithTimeWindowSplittingAsync(startTime, endTime);
                 _state.State.LastFetchTime = fetchStartTime;
@@ -829,19 +829,20 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
         try
         {
+            var maxWindowMinutes = _options.CurrentValue.TimeWindowHours * 60; // Convert hours to minutes
             _logger.LogInformation("🔄 Starting time window splitting fetch from {Start} to {End} (Window size: {WindowMinutes} min, Max tweets per window: {MaxTweets})", 
-                currentStart, endTime, _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes, _state.State.Config.MaxTweetsPerFetch);
+                currentStart, endTime, maxWindowMinutes, _state.State.Config.MaxTweetsPerFetch);
 
             while (currentStart < endTime)
             {
-                var currentEnd = currentStart.AddMinutes(_options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes);
+                var currentEnd = currentStart.AddMinutes(maxWindowMinutes);
                 if (currentEnd > endTime)
                     currentEnd = endTime;
 
                 windowCount++;
                 
                 _logger.LogInformation("📅 Processing scheduled fetch window {Window}: {Start} to {End} (Window: {WindowMinutes} min)", 
-                    windowCount, currentStart, currentEnd, _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes);
+                    windowCount, currentStart, currentEnd, maxWindowMinutes);
 
                 var searchRequest = new SearchTweetsRequestDto
                 {
@@ -873,7 +874,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     // Check if it's a rate limit error
                     if (result.ErrorMessage.Contains("TooManyRequests") || result.ErrorMessage.Contains("429"))
                     {
-                        _logger.LogWarning("⚠️ Rate limit detected. Consider reducing ScheduledFetchMaxTimeWindowMinutes or BatchFetchSize in configuration.");
+                        _logger.LogWarning("⚠️ Rate limit detected. Consider reducing TimeWindowHours or BatchFetchSize in configuration.");
                     }
                 }
 
@@ -917,7 +918,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             
             _logger.LogInformation("🎉 Scheduled fetch time window splitting completed: {Windows} windows processed ({WindowSize} min each), " +
                                   "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}", 
-                                  windowCount, _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes, overallResult.TotalFetched, 
+                                  windowCount, maxWindowMinutes, overallResult.TotalFetched, 
                                   overallResult.NewTweets, overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess);
 
             return new TwitterApiResultDto<TweetFetchResultDto>

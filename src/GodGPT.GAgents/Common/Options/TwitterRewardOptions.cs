@@ -96,19 +96,6 @@ public class TwitterRewardOptions
     /// </summary>
     [Id(33)] public int MinTimeWindowMinutes { get; set; } = 10;
     
-    // Scheduled Task Optimization Configuration
-    /// <summary>
-    /// Maximum time window in minutes for scheduled tweet fetching
-    /// Default: 30 minutes - reduced from 60 to minimize search scope and API calls
-    /// </summary>
-    [Id(34)] public int ScheduledFetchMaxTimeWindowMinutes { get; set; } = 30;
-    
-    /// <summary>
-    /// Whether to automatically split large time windows in scheduled tasks
-    /// Default: true - enables intelligent time window splitting for large gaps
-    /// </summary>
-    [Id(35)] public bool ScheduledFetchSplitLargeTimeWindows { get; set; } = true;
-    
     /// <summary>
     /// Get all account IDs that need to be excluded (including compatibility handling)
     /// </summary>
