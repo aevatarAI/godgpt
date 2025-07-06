@@ -14,9 +14,9 @@ public class TwitterRewardOptions
     [Id(5)] public List<string> ExcludedAccountIds { get; set; } = new();
 
     // Scheduled task configuration
-    [Id(6)] public int PullIntervalMinutes { get; set; } = 30;
+    [Id(6)] public int PullIntervalMinutes { get; set; } = 20; // Reduced from 30 to 20 minutes for more frequent pulls
     [Id(7)] public int PullBatchSize { get; set; } = 100;
-    [Id(8)] public string PullSchedule { get; set; } = "*/30 * * * *";
+    [Id(8)] public string PullSchedule { get; set; } = "*/20 * * * *"; // Updated to match PullIntervalMinutes
     [Id(9)] public string RewardSchedule { get; set; } = "0 0 * * *";
     
     // Time range configuration
@@ -62,14 +62,14 @@ public class TwitterRewardOptions
     [Id(26)]
     public int MonitoringIntervalMinutes { get; set; } = 30;
     [Id(27)]
-    public int BatchFetchSize { get; set; } = 100;
+    public int BatchFetchSize { get; set; } = 15; // Further reduced from 25 to 15 to minimize API calls per batch
     
     // Twitter API Rate Limiting Configuration
     /// <summary>
     /// Delay in milliseconds between processing each tweet to avoid API rate limiting
-    /// Default: 5000ms (5 seconds) - ensures ~12 tweets per minute, well within Twitter's 300/15min limit
+    /// Default: 3000ms (3 seconds) - optimized for faster processing while maintaining API safety
     /// </summary>
-    [Id(29)] public int TweetProcessingDelayMs { get; set; } = 5000;
+    [Id(29)] public int TweetProcessingDelayMs { get; set; } = 3000;
     
     /// <summary>
     /// Delay in milliseconds between individual API calls within the same tweet analysis
@@ -86,15 +86,28 @@ public class TwitterRewardOptions
     
     /// <summary>
     /// Maximum tweets to process per time window
-    /// Default: 25 - ensures we stay within Twitter API limits
+    /// Default: 15 - reduced to match BatchFetchSize and minimize API calls
     /// </summary>
-    [Id(32)] public int MaxTweetsPerWindow { get; set; } = 25;
+    [Id(32)] public int MaxTweetsPerWindow { get; set; } = 15;
     
     /// <summary>
     /// Minimum time window in minutes for dynamic adjustment
-    /// Default: 15 minutes - prevents window from becoming too small
+    /// Default: 10 minutes - optimized for faster processing while maintaining API safety
     /// </summary>
-    [Id(33)] public int MinTimeWindowMinutes { get; set; } = 15;
+    [Id(33)] public int MinTimeWindowMinutes { get; set; } = 10;
+    
+    // Scheduled Task Optimization Configuration
+    /// <summary>
+    /// Maximum time window in minutes for scheduled tweet fetching
+    /// Default: 30 minutes - reduced from 60 to minimize search scope and API calls
+    /// </summary>
+    [Id(34)] public int ScheduledFetchMaxTimeWindowMinutes { get; set; } = 30;
+    
+    /// <summary>
+    /// Whether to automatically split large time windows in scheduled tasks
+    /// Default: true - enables intelligent time window splitting for large gaps
+    /// </summary>
+    [Id(35)] public bool ScheduledFetchSplitLargeTimeWindows { get; set; } = true;
     
     /// <summary>
     /// Get all account IDs that need to be excluded (including compatibility handling)

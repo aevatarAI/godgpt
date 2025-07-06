@@ -762,31 +762,180 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             // Build query with filter conditions to exclude retweets and replies
             var queryWithFilters = $"{_state.State.Config.SearchQuery}";
             
-            _logger.LogInformation("🚀 Starting tweet fetch - Query: '{Query}', Max results: {MaxResults}", 
-                queryWithFilters, _state.State.Config.MaxTweetsPerFetch);
+            var startTime = _state.State.LastFetchTime ?? DateTime.UtcNow.AddHours(-1);
+            var endTime = DateTime.UtcNow;
+            var timeRangeMinutes = (endTime - startTime).TotalMinutes;
             
-            var searchRequest = new SearchTweetsRequestDto
+            _logger.LogInformation("🚀 Starting scheduled tweet fetch - Query: '{Query}', Max results: {MaxResults}, Time range: {TimeRange} minutes", 
+                queryWithFilters, _state.State.Config.MaxTweetsPerFetch, timeRangeMinutes);
+            
+            // Check if time window is larger than configured maximum and split if needed
+            if (_options.CurrentValue.ScheduledFetchSplitLargeTimeWindows && 
+                timeRangeMinutes > _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes)
             {
-                Query = queryWithFilters,
-                MaxResults = _state.State.Config.MaxTweetsPerFetch,
-                StartTime = _state.State.LastFetchTime ?? DateTime.UtcNow.AddHours(-1),
-                EndTime = DateTime.UtcNow
-            };
-            
-            _logger.LogInformation("📅 Fetch time range: {StartTime:yyyy-MM-dd HH:mm:ss} UTC to {EndTime:yyyy-MM-dd HH:mm:ss} UTC", 
-                searchRequest.StartTime, searchRequest.EndTime);
+                _logger.LogInformation("🔄 Time window ({TimeRange} min) exceeds maximum ({MaxWindow} min), splitting into smaller windows", 
+                    timeRangeMinutes, _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes);
+                
+                var result = await FetchTweetsWithTimeWindowSplittingAsync(startTime, endTime);
+                _state.State.LastFetchTime = fetchStartTime;
+                _state.State.LastFetchTimeUtc = fetchStartTimeUtc;
+                return result;
+            }
+            else
+            {
+                _logger.LogInformation("📅 Single fetch time range: {StartTime:yyyy-MM-dd HH:mm:ss} UTC to {EndTime:yyyy-MM-dd HH:mm:ss} UTC", 
+                    startTime, endTime);
+                
+                var searchRequest = new SearchTweetsRequestDto
+                {
+                    Query = queryWithFilters,
+                    MaxResults = _state.State.Config.MaxTweetsPerFetch,
+                    StartTime = startTime,
+                    EndTime = endTime
+                };
 
-            var result = await FetchTweetsWithRequestAsync(searchRequest);
-            
-            _state.State.LastFetchTime = fetchStartTime;
-            _state.State.LastFetchTimeUtc = fetchStartTimeUtc;
-
-            return result;
+                var result = await FetchTweetsWithRequestAsync(searchRequest);
+                _state.State.LastFetchTime = fetchStartTime;
+                _state.State.LastFetchTimeUtc = fetchStartTimeUtc;
+                return result;
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "❌ Internal tweet fetch failed");
             throw;
+        }
+    }
+
+    private async Task<TwitterApiResultDto<TweetFetchResultDto>> FetchTweetsWithTimeWindowSplittingAsync(DateTime startTime, DateTime endTime)
+    {
+        var fetchStartTime = DateTime.UtcNow;
+        var fetchStartTimeUtc = ((DateTimeOffset)fetchStartTime).ToUnixTimeSeconds();
+        
+        var overallResult = new TweetFetchResultDto
+        {
+            FetchStartTime = fetchStartTime,
+            FetchStartTimeUtc = fetchStartTimeUtc,
+            NewTweetIds = new List<string>(),
+            TotalFetched = 0,
+            NewTweets = 0,
+            DuplicateSkipped = 0,
+            FilteredOut = 0
+        };
+
+        var errorMessages = new List<string>();
+        var currentStart = startTime;
+        var windowCount = 0;
+
+        try
+        {
+            _logger.LogInformation("🔄 Starting time window splitting fetch from {Start} to {End} (Window size: {WindowMinutes} min, Max tweets per window: {MaxTweets})", 
+                currentStart, endTime, _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes, _state.State.Config.MaxTweetsPerFetch);
+
+            while (currentStart < endTime)
+            {
+                var currentEnd = currentStart.AddMinutes(_options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes);
+                if (currentEnd > endTime)
+                    currentEnd = endTime;
+
+                windowCount++;
+                
+                _logger.LogInformation("📅 Processing scheduled fetch window {Window}: {Start} to {End} (Window: {WindowMinutes} min)", 
+                    windowCount, currentStart, currentEnd, _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes);
+
+                var searchRequest = new SearchTweetsRequestDto
+                {
+                    Query = _state.State.Config.SearchQuery,
+                    MaxResults = _state.State.Config.MaxTweetsPerFetch,
+                    StartTime = currentStart,
+                    EndTime = currentEnd
+                };
+
+                var result = await FetchTweetsWithRequestAsync(searchRequest);
+                
+                if (result.IsSuccess)
+                {
+                    overallResult.TotalFetched += result.Data.TotalFetched;
+                    overallResult.NewTweets += result.Data.NewTweets;
+                    overallResult.DuplicateSkipped += result.Data.DuplicateSkipped;
+                    overallResult.FilteredOut += result.Data.FilteredOut;
+                    overallResult.NewTweetIds.AddRange(result.Data.NewTweetIds);
+                    
+                    _logger.LogInformation("✅ Window {Window} completed: Fetched={WindowFetched}, New={WindowNew}, Duplicates={WindowDuplicates}, Filtered={WindowFiltered}", 
+                        windowCount, result.Data.TotalFetched, result.Data.NewTweets, result.Data.DuplicateSkipped, result.Data.FilteredOut);
+                }
+                else
+                {
+                    var errorMsg = $"Window {windowCount} ({currentStart:HH:mm}-{currentEnd:HH:mm}): {result.ErrorMessage}";
+                    errorMessages.Add(errorMsg);
+                    _logger.LogError("❌ Window {Window} failed: {Error}", windowCount, result.ErrorMessage);
+                    
+                    // Check if it's a rate limit error
+                    if (result.ErrorMessage.Contains("TooManyRequests") || result.ErrorMessage.Contains("429"))
+                    {
+                        _logger.LogWarning("⚠️ Rate limit detected. Consider reducing ScheduledFetchMaxTimeWindowMinutes or BatchFetchSize in configuration.");
+                    }
+                }
+
+                currentStart = currentEnd;
+
+                // Intelligent delay based on result: Prioritize API safety
+                if (currentStart < endTime) // Don't delay after the last iteration
+                {
+                    // Priority 1: Always delay when there's an error (API safety)
+                    if (!result.IsSuccess)
+                    {
+                        _logger.LogWarning("⚠️ Error in scheduled fetch, applying mandatory {Delay}min delay for API safety: {Error}", 
+                            _options.CurrentValue.MinTimeWindowMinutes, result.ErrorMessage);
+                        await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
+                    }
+                    // Priority 2: Skip delay only when successful with no tweets found
+                    else if (result.Data.TotalFetched == 0)
+                    {
+                        _logger.LogInformation("⚡ No tweets found in scheduled fetch window, proceeding immediately to next window (skipping {Delay}min delay)...", 
+                            _options.CurrentValue.MinTimeWindowMinutes);
+                    }
+                    // Priority 3: Normal delay when tweets were found
+                    else
+                    {
+                        _logger.LogInformation("⏳ Scheduled fetch waiting {Delay} minutes to avoid API rate limiting (found {TweetCount} tweets)...", 
+                            _options.CurrentValue.MinTimeWindowMinutes, result.Data.TotalFetched);
+                        await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
+                    }
+                }
+            }
+
+            overallResult.FetchEndTime = DateTime.UtcNow;
+            overallResult.FetchEndTimeUtc = ((DateTimeOffset)overallResult.FetchEndTime).ToUnixTimeSeconds();
+            
+            if (errorMessages.Count > 0)
+            {
+                overallResult.ErrorMessage = string.Join("; ", errorMessages);
+            }
+
+            var isOverallSuccess = errorMessages.Count == 0;
+            
+            _logger.LogInformation("🎉 Scheduled fetch time window splitting completed: {Windows} windows processed ({WindowSize} min each), " +
+                                  "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}", 
+                                  windowCount, _options.CurrentValue.ScheduledFetchMaxTimeWindowMinutes, overallResult.TotalFetched, 
+                                  overallResult.NewTweets, overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess);
+
+            return new TwitterApiResultDto<TweetFetchResultDto>
+            {
+                IsSuccess = isOverallSuccess,
+                Data = overallResult,
+                ErrorMessage = overallResult.ErrorMessage
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Error in scheduled fetch time window splitting");
+            return new TwitterApiResultDto<TweetFetchResultDto>
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message,
+                Data = overallResult
+            };
         }
     }
 
