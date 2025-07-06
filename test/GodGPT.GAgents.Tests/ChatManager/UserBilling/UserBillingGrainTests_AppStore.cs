@@ -2,6 +2,7 @@ using System.Text.Json;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserBilling;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -242,22 +243,22 @@ public partial class UserBillingGrainTests
         try
         {
             // Create a unique user ID for testing
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing VerifyAppStoreReceiptAsync with UserId: {userId}");
             
             // Get UserBillingGrain
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // Prepare request
             var requestDto = new VerifyReceiptRequestDto
             {
                 ReceiptData = "base64encodedreceipt_mock",
-                UserId = userId,
+                UserId = userId.ToString(),
                 SandboxMode = true
             };
             
             // Execute test method
-            var result = await userBillingGrain.VerifyAppStoreReceiptAsync(requestDto, true);
+            var result = await userBillingGAgent.VerifyAppStoreReceiptAsync(requestDto, true);
             
             // Log results
             _testOutputHelper.WriteLine($"VerifyAppStoreReceiptAsync result: IsValid={result.IsValid}, Environment={result.Environment}, ProductId={result.ProductId}");
@@ -299,16 +300,16 @@ public partial class UserBillingGrainTests
         try
         {
             // Create a unique user ID for testing
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing HandleAppStoreNotificationAsync_InitialBuy with UserId: {userId}");
             
             // Get UserBillingGrain
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // First create a payment record, so that notification processing can find the corresponding user
             var paymentSummary = new PaymentSummary
             {
-                UserId = Guid.Parse(userId),
+                UserId = userId,
                 SubscriptionId = "1000000000000001", // Match the OriginalTransactionId in the notification
                 PriceId = "com.example.subscription.monthly",
                 Amount = 9.99m,
@@ -319,7 +320,7 @@ public partial class UserBillingGrainTests
                 PaymentType = PaymentType.Subscription
             };
             
-            await userBillingGrain.AddPaymentRecordAsync(paymentSummary);
+            await userBillingGAgent.AddPaymentRecordAsync(paymentSummary);
             _testOutputHelper.WriteLine($"Added payment record with SubscriptionId: {paymentSummary.SubscriptionId}");
             
             // Prepare notification data
@@ -327,7 +328,7 @@ public partial class UserBillingGrainTests
             var notificationToken = "mock_notification_token"; // Should match the value in configuration
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson);
+            var result = await userBillingGAgent.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson);
             
             // Log results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result: {result}");
@@ -336,7 +337,7 @@ public partial class UserBillingGrainTests
             // Note: Actual results depend on the current environment and configuration, especially notificationToken validation
             
             // Verify if payment record has been updated
-            var updatedPayment = await userBillingGrain.GetPaymentSummaryAsync(paymentSummary.PaymentGrainId);
+            var updatedPayment = await userBillingGAgent.GetPaymentSummaryAsync(paymentSummary.PaymentGrainId);
             if (updatedPayment != null)
             {
                 _testOutputHelper.WriteLine($"Updated payment status: {updatedPayment.Status}");
@@ -362,16 +363,16 @@ public partial class UserBillingGrainTests
         try
         {
             // Create a unique user ID for testing
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing HandleAppStoreNotificationAsync_Renewal with UserId: {userId}");
             
             // Get UserBillingGrain
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // First create a payment record, so that notification processing can find the corresponding user
             var paymentSummary = new PaymentSummary
             {
-                UserId = Guid.Parse(userId),
+                UserId = userId,
                 SubscriptionId = "1000000000000001", // Match the OriginalTransactionId in the notification
                 PriceId = "com.example.subscription.monthly",
                 Amount = 9.99m,
@@ -385,7 +386,7 @@ public partial class UserBillingGrainTests
                 SubscriptionEndDate = DateTime.UtcNow // Expires today
             };
             
-            await userBillingGrain.AddPaymentRecordAsync(paymentSummary);
+            await userBillingGAgent.AddPaymentRecordAsync(paymentSummary);
             _testOutputHelper.WriteLine($"Added payment record with SubscriptionId: {paymentSummary.SubscriptionId}");
             
             // Prepare notification data
@@ -393,13 +394,13 @@ public partial class UserBillingGrainTests
             var notificationToken = "mock_notification_token"; // Should match the value in configuration
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson);
+            var result = await userBillingGAgent.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson);
             
             // Log results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result: {result}");
             
             // Verify if payment record has been updated
-            var updatedPayment = await userBillingGrain.GetPaymentSummaryAsync(paymentSummary.PaymentGrainId);
+            var updatedPayment = await userBillingGAgent.GetPaymentSummaryAsync(paymentSummary.PaymentGrainId);
             if (updatedPayment != null)
             {
                 _testOutputHelper.WriteLine($"Updated payment status: {updatedPayment.Status}");
@@ -435,16 +436,16 @@ public partial class UserBillingGrainTests
         try
         {
             // Create a unique user ID for testing
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing HandleAppStoreNotificationAsync_Cancel with UserId: {userId}");
             
             // Get UserBillingGrain
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // First create a payment record, so that notification processing can find the corresponding user
             var paymentSummary = new PaymentSummary
             {
-                UserId = Guid.Parse(userId),
+                UserId = userId,
                 SubscriptionId = "1000000000000001", // Match the OriginalTransactionId in the notification
                 PriceId = "com.example.subscription.monthly",
                 Amount = 9.99m,
@@ -458,7 +459,7 @@ public partial class UserBillingGrainTests
                 SubscriptionEndDate = DateTime.UtcNow.AddDays(29) // Expires in 29 days
             };
             
-            await userBillingGrain.AddPaymentRecordAsync(paymentSummary);
+            await userBillingGAgent.AddPaymentRecordAsync(paymentSummary);
             _testOutputHelper.WriteLine($"Added payment record with SubscriptionId: {paymentSummary.SubscriptionId}");
             
             // Prepare notification data
@@ -466,13 +467,13 @@ public partial class UserBillingGrainTests
             var notificationToken = "mock_notification_token"; // Should match the value in configuration
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson);
+            var result = await userBillingGAgent.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson);
             
             // Log results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result: {result}");
             
             // Verify if payment record has been updated
-            var updatedPayment = await userBillingGrain.GetPaymentSummaryAsync(paymentSummary.PaymentGrainId);
+            var updatedPayment = await userBillingGAgent.GetPaymentSummaryAsync(paymentSummary.PaymentGrainId);
             if (updatedPayment != null)
             {
                 _testOutputHelper.WriteLine($"Updated payment status: {updatedPayment.Status}");
@@ -508,16 +509,16 @@ public partial class UserBillingGrainTests
         try
         {
             // Create a unique user ID for testing
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing HandleAppStoreNotificationAsync_Refund with UserId: {userId}");
             
             // Get UserBillingGrain
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // First create a payment record, so that notification processing can find the corresponding user
             var paymentSummary = new PaymentSummary
             {
-                UserId = Guid.Parse(userId),
+                UserId = userId,
                 SubscriptionId = "1000000000000001", // Match the OriginalTransactionId in the notification
                 PriceId = "com.example.subscription.monthly",
                 Amount = 9.99m,
@@ -531,7 +532,7 @@ public partial class UserBillingGrainTests
                 SubscriptionEndDate = DateTime.UtcNow.AddDays(29) // Expires in 29 days
             };
             
-            await userBillingGrain.AddPaymentRecordAsync(paymentSummary);
+            await userBillingGAgent.AddPaymentRecordAsync(paymentSummary);
             _testOutputHelper.WriteLine($"Added payment record with SubscriptionId: {paymentSummary.SubscriptionId}");
             
             // Prepare notification data
@@ -539,13 +540,13 @@ public partial class UserBillingGrainTests
             var notificationToken = "mock_notification_token"; // Should match the value in configuration
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson);
+            var result = await userBillingGAgent.HandleAppStoreNotificationAsync(paymentSummary.UserId, notificationJson);
             
             // Log results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result: {result}");
             
             // Verify if payment record has been updated
-            var updatedPayment = await userBillingGrain.GetPaymentSummaryAsync(paymentSummary.PaymentGrainId);
+            var updatedPayment = await userBillingGAgent.GetPaymentSummaryAsync(paymentSummary.PaymentGrainId);
             if (updatedPayment != null)
             {
                 _testOutputHelper.WriteLine($"Updated payment status: {updatedPayment.Status}");
@@ -581,18 +582,18 @@ public partial class UserBillingGrainTests
         try
         {
             // Create a unique user ID for testing
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing HandleAppStoreNotificationAsync_InvalidToken with UserId: {userId}");
             
             // Get UserBillingGrain
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // Prepare notification data
             var notificationJson = GenerateInitialBuyNotification();
             var invalidToken = "invalid_token"; // Intentionally use an invalid token
             
             // Execute test method
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(Guid.Parse(userId), notificationJson);
+            var result = await userBillingGAgent.HandleAppStoreNotificationAsync(userId, notificationJson);
             
             // Record results
             _testOutputHelper.WriteLine($"HandleAppStoreNotificationAsync result with invalid token: {result}");
@@ -620,20 +621,20 @@ public partial class UserBillingGrainTests
         try
         {
             // Create a unique user ID for testing
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing CreateAppStoreSubscriptionAsync with UserId: {userId}");
             
             // Get UserBillingGrain
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // Prepare request
             var requestDto = new CreateAppStoreSubscriptionDto
             {
-                UserId = userId
+                UserId = userId.ToString()
             };
             
             // Execute test method
-            var result = await userBillingGrain.CreateAppStoreSubscriptionAsync(requestDto);
+            var result = await userBillingGAgent.CreateAppStoreSubscriptionAsync(requestDto);
             
             // Record results
             _testOutputHelper.WriteLine($"CreateAppStoreSubscriptionAsync result: Success={result.Success}, SubscriptionId={result.SubscriptionId}, Status={result.Status}");

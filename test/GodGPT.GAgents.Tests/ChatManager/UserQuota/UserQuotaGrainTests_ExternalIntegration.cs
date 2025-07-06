@@ -1,5 +1,6 @@
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserQuota;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -20,10 +21,10 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
 
     #region Helper Methods
 
-    private async Task<IUserQuotaGrain> CreateTestUserQuotaGrainAsync()
+    private async Task<IUserQuotaGAgent> CreateTestUserQuotaGrainAsync()
     {
-        var userId = Guid.NewGuid().ToString();
-        var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(userId);
+        var userId = Guid.NewGuid();
+        var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         
         await userQuotaGrain.ClearAllAsync();
         await userQuotaGrain.InitializeCreditsAsync();
@@ -37,7 +38,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
     /// without knowing about Ultimate vs Standard specifics
     /// </summary>
     private async Task<bool> SimulateExternalSystemSubscriptionUpdate(
-        IUserQuotaGrain userQuotaGrain, 
+        IUserQuotaGAgent userQuotaGAgent, 
         PlanType planType,
         DateTime startDate,
         DateTime endDate)
@@ -57,7 +58,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             };
 
             // External system just calls the unified interface
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionDto);
+            await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionDto);
             
             _testOutputHelper.WriteLine($"External system updated subscription: PlanType={planType}, StartDate={startDate}, EndDate={endDate}");
             return true;

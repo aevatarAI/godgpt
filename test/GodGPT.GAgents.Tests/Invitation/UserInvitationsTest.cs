@@ -3,6 +3,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserQuota;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -199,7 +200,7 @@ public class UserInvitationsTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoud
             invitationStatsDto.TotalInvites.ShouldBe(1);
             invitationStatsDto.ValidInvites.ShouldBe(0);
             invitationStatsDto.InviteCode.ShouldBe(inviteCode);
-            var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(inviterId));
+            var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(inviterId);
             var creditsInfoDto = await userQuotaGrain.GetCreditsAsync();
             creditsInfoDto.Credits.ShouldBe(420);
         }
@@ -234,7 +235,7 @@ public class UserInvitationsTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoud
             invitationStatsDto.TotalInvites.ShouldBe(1);
             invitationStatsDto.ValidInvites.ShouldBe(0);
             invitationStatsDto.InviteCode.ShouldBe(inviteCode);
-            var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(inviterId));
+            var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(inviterId);
             var creditsInfoDto = await userQuotaGrain.GetCreditsAsync();
             creditsInfoDto.Credits.ShouldBe(320);
             var userProfileDto = await chatManagerGAgent.GetUserProfileAsync();

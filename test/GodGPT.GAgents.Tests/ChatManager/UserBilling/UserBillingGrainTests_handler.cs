@@ -5,6 +5,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.UserBilling;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -22,13 +23,13 @@ namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
             ;
         var signature =
             "t=1747699392,v1=54dbb66a6084ac8179e7873d87ebcef5273c22f55d09da12598b58e3318c9fd3,v0=cf5f47b2da6462b13533544c16c927f36070b60d1eabf8c77e47a41ff1cda830";
-        var userId = Guid.NewGuid().ToString();
+        var userId = Guid.NewGuid();
             // Arrange
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
-        var result = await userBillingGrain.HandleStripeWebhookEventAsync(json, signature);
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+        var result = await userBillingGAgent.HandleStripeWebhookEventAsync(json, signature);
         Assert.True(result);
 
-        var paymentSummaries = await userBillingGrain.GetPaymentHistoryAsync();
+        var paymentSummaries = await userBillingGAgent.GetPaymentHistoryAsync();
         paymentSummaries.ShouldNotBeEmpty();
         paymentSummaries.Count.ShouldBeGreaterThanOrEqualTo(1);
     }
@@ -44,9 +45,9 @@ namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
             ;
         var signature =
             "t=1747843892,v1=55d304edf71be9240a8c300515276a1e3cb1de55b3fe4f0b787b1babe2a43801,v0=942ff0afec0cb7af2346574719670a227f6fad5f88dff060f30ee036872bd3db";
-        var userBillingGrain =
-            Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
-        var result = await userBillingGrain.HandleStripeWebhookEventAsync(json, signature);
+        var userBillingGAgent =
+            Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+        var result = await userBillingGAgent.HandleStripeWebhookEventAsync(json, signature);
             Assert.True(result);
         }
         
@@ -61,9 +62,9 @@ namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
             ;
         var signature =
             "t=1747918995,v1=d1834379bbb9e67a2de6f8f3a8801349621eb1475de7880ca1a29c261202fd48,v0=96d41d7aa250387bc7a34b9faf777d4d272d2b4725d2c431fff7decf949a9962";
-        var userBillingGrain =
-            Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
-        var result = await userBillingGrain.HandleStripeWebhookEventAsync(json, signature);
+        var userBillingGAgent =
+            Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+        var result = await userBillingGAgent.HandleStripeWebhookEventAsync(json, signature);
         
         //invoice.paid
         json =
@@ -71,11 +72,11 @@ namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
             ;
         signature =
             "t=1747919136,v1=2fa8b928bd94c8b545cf0a8cdb51fe95fd84ca0f0f050681c9f7e089b13e7284,v0=22ffff7cccd920ba2dc2e51311ae9e0adf313babe42cfc3d20bddd8cbff26dd9";
-        userBillingGrain =
-            Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
-        result = await userBillingGrain.HandleStripeWebhookEventAsync(json, signature);
+        userBillingGAgent =
+            Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+        result = await userBillingGAgent.HandleStripeWebhookEventAsync(json, signature);
 
-        var paymentSummaries = await userBillingGrain.GetPaymentHistoryAsync();
+        var paymentSummaries = await userBillingGAgent.GetPaymentHistoryAsync();
         paymentSummaries.ShouldNotBeNull();
     }
 
@@ -84,9 +85,9 @@ namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
         try
         {
             _testOutputHelper.WriteLine($"Testing CreateCheckoutSessionAsync (HostedMode) with UserId: {userId}");
-            var userBillingGrain =
-                Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
-            var products = await userBillingGrain.GetStripeProductsAsync();
+            var userBillingGAgent =
+                Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+            var products = await userBillingGAgent.GetStripeProductsAsync();
             if (products.Count == 0)
             {
                 _testOutputHelper.WriteLine("WARNING: No products configured in StripeOptions. Skipping test.");
@@ -104,7 +105,7 @@ namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
                 Quantity = 1,
                 UiMode = StripeUiMode.HOSTED
             };
-            var result = await userBillingGrain.CreateCheckoutSessionAsync(dto);
+            var result = await userBillingGAgent.CreateCheckoutSessionAsync(dto);
             _testOutputHelper.WriteLine($"CreateCheckoutSessionAsync result: {result}");
             result.ShouldNotBeNullOrEmpty();
             result.ShouldContain("https://"); // URL should contain https://

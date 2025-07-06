@@ -11,6 +11,8 @@ using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserBilling;
+using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -415,8 +417,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
 
         // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        var actionResult = await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(),
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        var actionResult = await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(),
             CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         if (!actionResult.Success)
         {
@@ -458,9 +460,9 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"StreamChatWithSessionAsync - step1,time use:{sw.ElapsedMilliseconds}");
 
         // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGrain =
-            GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        var actionResult = await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(),
+        var userQuotaGAgent =
+            GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        var actionResult = await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(),
             CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         if (!actionResult.Success)
         {
@@ -804,11 +806,11 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         //Do not clear the content of ShareGrain. When querying, first determine whether the Session exists
         // Record the event to clear all sessions
-        var quotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        await quotaGrain.ClearAllAsync();
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        await userQuotaGAgent.ClearAllAsync();
 
-        var billingGrain = GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(this.GetPrimaryKey()));
-        await billingGrain.ClearAllAsync();
+        var userBillingGAgent = GrainFactory.GetGrain<IUserBillingGAgent>(this.GetPrimaryKey());
+        await userBillingGAgent.ClearAllAsync();
 
         RaiseEvent(new ClearAllEventLog());
         await ConfirmEvents();
@@ -832,10 +834,10 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     public async Task<UserProfileDto> GetUserProfileAsync()
     {
         Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] userId: {this.GetPrimaryKey().ToString()}");
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        var credits = await userQuotaGrain.GetCreditsAsync();
-        var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
-        var ultimateSubscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync(true);
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        var credits = await userQuotaGAgent.GetCreditsAsync();
+        var subscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync();
+        var ultimateSubscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync(true);
 
         var utcNow = DateTime.UtcNow;
         var invitationGrain = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
@@ -849,7 +851,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         foreach (var reward in scheduledRewards)
         {
             Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Processing scheduled reward for user {this.GetPrimaryKey()}, credits: {reward.Credits}");
-            await userQuotaGrain.AddCreditsAsync(reward.Credits);
+            await userQuotaGAgent.AddCreditsAsync(reward.Credits);
             await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
             credits.Credits += reward.Credits;
         }
@@ -951,7 +953,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
         
         // Step 1: First, check if the current user (invitee) is eligible for the reward.
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
 
         if (State.RegisteredAtUtc == null && State.SessionInfoList.IsNullOrEmpty())
         {
@@ -981,7 +983,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Logger.LogWarning($"State.RegisteredAtUtc userId:{this.GetPrimaryKey().ToString()} RegisteredAtUtc={registeredAtUtc.Value} now={now} minutes={minutes}");
             //
             
-            redeemResult = await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
+            redeemResult = await userQuotaGAgent.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
         }
 
         if (!redeemResult)

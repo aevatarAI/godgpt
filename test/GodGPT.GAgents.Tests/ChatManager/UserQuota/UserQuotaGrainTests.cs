@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.ChatManager.UserQuota;
+using Aevatar.Application.Grains.UserQuota;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -15,10 +16,10 @@ public partial class UserQuotaGrainTests : AevatarOrleansTestBase<AevatarGodGPTT
 
     #region Helper Methods
 
-    private async Task<IUserQuotaGrain> CreateTestUserQuotaGrainAsync()
+    private async Task<IUserQuotaGAgent> CreateTestUserQuotaGrainAsync()
     {
-        var userId = Guid.NewGuid().ToString();
-        var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(userId);
+        var userId = Guid.NewGuid();
+        var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         
         // Clear any existing state
         await userQuotaGrain.ClearAllAsync();

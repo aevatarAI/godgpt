@@ -1,6 +1,7 @@
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserQuota;
 using Aevatar.GodGPT.Tests;
 using Shouldly;
 using Xunit.Abstractions;
@@ -22,10 +23,10 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
 
     #region Helper Methods
 
-    private async Task<IUserQuotaGrain> CreateTestUserQuotaGrainAsync()
+    private async Task<IUserQuotaGAgent> CreateTestUserQuotaGrainAsync()
     {
-        var userId = Guid.NewGuid().ToString();
-        var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(userId);
+        var userId = Guid.NewGuid();
+        var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         
         await userQuotaGrain.ClearAllAsync();
         await userQuotaGrain.InitializeCreditsAsync();

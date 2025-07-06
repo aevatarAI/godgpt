@@ -7,6 +7,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -117,9 +118,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
     {
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start.");
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(State.ChatManagerGuid));
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
         var actionResultDto =
-            await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
+            await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
         if (!actionResultDto.Success)
         {
             Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} Access restricted");
