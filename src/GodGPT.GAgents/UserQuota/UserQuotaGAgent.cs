@@ -114,19 +114,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
 
     public async Task<bool> IsSubscribedAsync(bool ultimate = false)
     {
-        var subscriptionInfo = ultimate ? State.UltimateSubscription : State.Subscription;
-        if (subscriptionInfo == null)
-        {
-            subscriptionInfo = new SubscriptionInfo();
-            if (ultimate)
-            {
-                State.UltimateSubscription = subscriptionInfo;
-            }
-            else
-            {
-                State.Subscription = subscriptionInfo;
-            }
-        }
+        var subscriptionInfo = (ultimate ? State.UltimateSubscription : State.Subscription) ?? new SubscriptionInfo();
 
         var now = DateTime.UtcNow;
         var isSubscribed = subscriptionInfo.IsActive &&
@@ -137,7 +125,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         {
             _logger.LogDebug(
                 "[UserQuotaGrain][IsSubscribedAsync] Subscription for user {UserId} expired. Start: {StartDate}, End: {EndDate}, Now: {Now}, Ultimate: {Ultimate}",
-                this.GetPrimaryKeyString(), subscriptionInfo.StartDate, subscriptionInfo.EndDate, now, ultimate);
+                this.GetPrimaryKey().ToString(), subscriptionInfo.StartDate, subscriptionInfo.EndDate, now, ultimate);
 
             var subscriptionDto = new SubscriptionInfoDto
             {
@@ -168,7 +156,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         }
 
         _logger.LogDebug("[UserQuotaGrain][IsSubscribedAsync] User {UserId} subscription status: {IsSubscribed}",
-            this.GetPrimaryKeyString(), isSubscribed);
+            this.GetPrimaryKey().ToString(), isSubscribed);
 
         return isSubscribed;
     }
