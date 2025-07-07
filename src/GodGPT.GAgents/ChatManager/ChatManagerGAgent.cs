@@ -1108,23 +1108,23 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
     protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
     {
-        var configuration = GetConfiguration();
-        
-        var llm = await configuration.GetSystemLLM();
-        var streamingModeEnabled = false;
-        if (State.SystemLLM != llm || State.StreamingModeEnabled != streamingModeEnabled)
-        {
-            await InitializeAsync(new InitializeDto()
-            {
-                Instructions = "Please summarize the following content briefly, with no more than 8 words.",
-                LLMConfig = new LLMConfigDto() { SystemLLM = await configuration.GetSystemLLM(), },
-                StreamingModeEnabled = streamingModeEnabled,
-                StreamingConfig = new StreamingConfig()
-                {
-                    BufferingSize = 32,
-                }
-            });
-        }
+        // var configuration = GetConfiguration();
+        //
+        // var llm = await configuration.GetSystemLLM();
+        // var streamingModeEnabled = false;
+        // if (State.SystemLLM != llm || State.StreamingModeEnabled != streamingModeEnabled)
+        // {
+        //     await InitializeAsync(new InitializeDto()
+        //     {
+        //         Instructions = "Please summarize the following content briefly, with no more than 8 words.",
+        //         LLMConfig = new LLMConfigDto() { SystemLLM = await configuration.GetSystemLLM(), },
+        //         StreamingModeEnabled = streamingModeEnabled,
+        //         StreamingConfig = new StreamingConfig()
+        //         {
+        //             BufferingSize = 32,
+        //         }
+        //     });
+        // }
 
         if (State.MaxShareCount == 0)
         {
