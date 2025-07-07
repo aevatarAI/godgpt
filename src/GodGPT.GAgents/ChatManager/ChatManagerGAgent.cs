@@ -330,7 +330,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             var rolePrompt = GetRolePrompt(guider);
             if (!string.IsNullOrEmpty(rolePrompt))
             {
-                sysMessage += $"You should follow the rules below. 1. {rolePrompt}. 2. {sysMessage}";
+                sysMessage = $"You should follow the rules below. 1. {rolePrompt}. 2. {sysMessage}";
                 Logger.LogDebug($"[ChatGAgentManager][CreateSessionAsync] Added role prompt for guider: {guider}");
             }
         }
@@ -503,8 +503,24 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"StreamChatWithSessionAsync - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
-    public Task<List<SessionInfoDto>> GetSessionListAsync()
+    public async Task<List<SessionInfoDto>> GetSessionListAsync()
     {
+        // Clean expired sessions (7 days old and empty title)
+        var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+        var hasExpiredSessions = State.SessionInfoList.Any(s => 
+            s.CreateAt <= sevenDaysAgo && 
+            string.IsNullOrEmpty(s.Title));
+
+        if (hasExpiredSessions)
+        {
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionListAsync] Cleaning sessions older than {sevenDaysAgo}");
+            RaiseEvent(new CleanExpiredSessionsEventLog
+            {
+                CleanBefore = sevenDaysAgo
+            });
+            await ConfirmEvents();
+        }
+
         var result = new List<SessionInfoDto>();
         
         foreach (var item in State.SessionInfoList)
@@ -523,7 +539,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             });
         }
 
-        return Task.FromResult(result);
+        return result;
     }
 
     public async Task<List<SessionInfoDto>> SearchSessionsAsync(string keyword, int maxResults = 1000)
@@ -1057,6 +1073,24 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                     State.CurrentShareCount -= deleteSession.ShareIds.Count;
                 }
                 State.SessionInfoList.RemoveAll(f => f.SessionId == @deleteSessionEventLog.SessionId);
+                break;
+            case CleanExpiredSessionsEventLog @cleanExpiredSessionsEventLog:
+                var expiredSessionIds = State.SessionInfoList
+                    .Where(s => s.CreateAt <= @cleanExpiredSessionsEventLog.CleanBefore && 
+                               string.IsNullOrEmpty(s.Title))
+                    .Select(s => s.SessionId)
+                    .ToList();
+                
+                foreach (var expiredSessionId in expiredSessionIds)
+                {
+                    var expiredSession = State.GetSession(expiredSessionId);
+                    if (expiredSession != null && !expiredSession.ShareIds.IsNullOrEmpty())
+                    {
+                        State.CurrentShareCount -= expiredSession.ShareIds.Count;
+                    }
+                }
+                
+                State.SessionInfoList.RemoveAll(s => expiredSessionIds.Contains(s.SessionId));
                 break;
             case RenameTitleEventLog @renameTitleEventLog:
                 Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] event:{JsonConvert.SerializeObject(@renameTitleEventLog)}");

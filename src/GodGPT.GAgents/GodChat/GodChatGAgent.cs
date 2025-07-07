@@ -188,7 +188,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (State.Title.IsNullOrEmpty())
         {
             var sw = Stopwatch.StartNew();
+            // Take first 4 words and limit total length to 100 characters
             title = string.Join(" ", content.Split(" ").Take(4));
+            if (title.Length > 100)
+            {
+                title = title.Substring(0, 100);
+            }
 
             RaiseEvent(new RenameChatTitleEventLog()
             {
@@ -360,7 +365,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
             await proxy.ConfigAsync(new AIAgentStatusProxyConfig
             {
-                Instructions = await GetConfiguration().GetPrompt(),
+                Instructions = State.PromptTemplate, //await GetConfiguration().GetPrompt(),
                 LLMConfig = new LLMConfigDto { SystemLLM = llm },
                 StreamingModeEnabled = true,
                 StreamingConfig = new StreamingConfig { BufferingSize = 32 },
@@ -535,6 +540,34 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         await PushMessageToClientAsync(partialMessage);
     }
 
+    public async Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content, string chatId,
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
+    {
+        Logger.LogDebug($"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()} content:{content} start.");
+        var sw = new Stopwatch();
+        sw.Start();
+        var history = State.ChatHistory;
+        if (history.IsNullOrEmpty())
+        {
+            return new List<ChatMessage>();
+        }
+
+        var configuration = GetConfiguration();
+        var llm = await configuration.GetSystemLLM();
+        var streamingModeEnabled = await configuration.GetStreamingModeEnabled();
+        
+        var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
+        
+        var settings = promptSettings ?? new ExecutionPromptSettings();
+        settings.Temperature = "0.9";
+        
+        var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId, promptSettings, isHttpRequest, region);
+        var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
+        sw.Stop();
+        Logger.LogDebug($"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
+        return response;
+    }
+
     private async Task PushMessageToClientAsync(ResponseStreamGodChat chatMessage)
     {
         var streamId = StreamId.Create(AevatarOptions!.StreamNamespace, this.GetPrimaryKey());
@@ -610,8 +643,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // title = titleList is { Count: > 0 }
             //     ? titleList[0].Content!
             //     : string.Join(" ", content.Split(" ").Take(4));
-
+            // Take first 4 words and limit total length to 100 characters
             title = string.Join(" ", content.Split(" ").Take(4));
+            if (title.Length > 100)
+            {
+                title = title.Substring(0, 100);
+            }
 
             RaiseEvent(new RenameChatTitleEventLog()
             {

@@ -82,7 +82,7 @@ public class CommonHelper
   
         // Use a StringBuilder to efficiently concatenate strings  
         StringBuilder fileContent = new StringBuilder();  
-        using (StreamReader reader = new StreamReader(filePath))  
+        using (StreamReader reader = new StreamReader(filePath))
         {  
             string? line;  
             while ((line = reader.ReadLine()) != null)  
@@ -90,7 +90,7 @@ public class CommonHelper
                 fileContent.Append(line);  
             }  
         }  
-  
+        
         // Return the concatenated content, trimming the last '\n' if needed  
         return fileContent.ToString().TrimEnd('\n');  
     }
@@ -108,6 +108,4 @@ public class CommonHelper
 
         return LoadFileContent(fullPath);
     }
-
-  
 }
