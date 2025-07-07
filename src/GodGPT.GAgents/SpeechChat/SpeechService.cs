@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.Extensions.Options;
+using Aevatar.Application.Grains.Agents.ChatManager;
 
 namespace GodGPT.GAgents.SpeechChat;
 
@@ -132,6 +133,42 @@ public class SpeechService : ISpeechService
         using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig);
         using var result = await tempSynthesizer.SpeakTextAsync(text);
         return result.AudioData;
+    }
+
+    public async Task<(byte[] AudioData, AudioMetadata Metadata)> TextToSpeechWithMetadataAsync(string text, VoiceLanguageEnum language)
+    {
+        // Validate input parameters
+        if (string.IsNullOrEmpty(text))
+        {
+            throw new ArgumentException("Text cannot be null or empty", nameof(text));
+        }
+        
+        var tempSpeechConfig = SpeechConfig.FromSubscription(_speechConfig.SubscriptionKey, _speechConfig.Region);
+        tempSpeechConfig.SpeechSynthesisLanguage = GetLanguageCode(language);
+        tempSpeechConfig.SpeechSynthesisVoiceName = GetVoiceName(language);
+        
+        // Configure MP3 format with 16kHz sample rate
+        tempSpeechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3);
+        
+        using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig);
+        using var result = await tempSynthesizer.SpeakTextAsync(text);
+        
+        // Calculate approximate duration based on text length and speech rate
+        // Average speech rate is ~150 words per minute or ~2.5 words per second
+        var wordCount = text.Split(' ').Length;
+        var estimatedDuration = wordCount / 2.5; // seconds
+        
+        var metadata = new AudioMetadata
+        {
+            Duration = estimatedDuration,
+            SizeBytes = result.AudioData.Length,
+            SampleRate = 16000, // 16kHz as configured
+            BitRate = 32000, // 32kbps as configured
+            Format = "mp3",
+            LanguageType = language
+        };
+        
+        return (result.AudioData, metadata);
     }
 
     private static string GetLanguageCode(VoiceLanguageEnum language)

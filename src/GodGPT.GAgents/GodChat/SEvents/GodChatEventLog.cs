@@ -1,4 +1,5 @@
 using Aevatar.Core.Abstractions;
+using Aevatar.GAgents.AI.Common;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -39,4 +40,18 @@ public class SetAIAgentIdLogEvent : GodChatEventLog
 public class UpdateRegionProxiesLogEvent : GodChatEventLog
 {
     [Id(0)] public Dictionary<string, List<Guid>> RegionProxies;
+}
+
+[GenerateSerializer]
+public class AddChatHistoryLogEvent : GodChatEventLog
+{
+    [Id(0)] public List<ChatMessage> ChatList { get; set; }
+    [Id(1)] public List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
+}
+
+[GenerateSerializer]
+public class AddChatHistoryWithMetadataLogEvent : GodChatEventLog
+{
+    [Id(0)] public List<ChatMessage> ChatList { get; set; }
+    [Id(1)] public List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
 }
