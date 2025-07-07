@@ -25,6 +25,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<StripeOptions>(configuration.GetSection("Stripe"));
         Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"));
         Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
+        Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
         Configure<AnonymousGodGPTOptions>(configuration.GetSection("AnonymousGodGPT"));
 
         context.Services.AddHttpClient();

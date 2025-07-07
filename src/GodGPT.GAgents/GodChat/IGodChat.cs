@@ -27,6 +27,10 @@ public interface IGodChat : IGAgent
     Task ChatMessageCallbackAsync(AIChatContextDto aiChatContextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage,
         AIStreamChatContent? aiStreamChatContent);
+    
+    Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content, string chatId, 
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
+
 
     [ReadOnly]
     Task<DateTime?> GetFirstChatTimeAsync();

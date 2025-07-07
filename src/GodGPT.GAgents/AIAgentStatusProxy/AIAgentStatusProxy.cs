@@ -3,6 +3,7 @@ using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.ProxySEvents;
+using Aevatar.Application.Grains.Common;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -11,6 +12,7 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
+using Aevatar.GAgents.ChatAgent.Dtos;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 
@@ -46,13 +48,26 @@ public class AIAgentStatusProxy :
     public async Task<List<ChatMessage>?> ChatWithHistory(string prompt, List<ChatMessage>? history = null,
         ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null)
     {
-        return await base.ChatWithHistory(prompt, history, promptSettings, context: context);
+        var systemPrompt = State.PromptTemplate;
+        var selectedHistory = TokenHelper.SelectHistoryMessages(history, prompt, systemPrompt);
+        Logger.LogDebug($"[AIAgentStatusProxy][ChatWithHistory] Original history count: {history?.Count ?? 0}, Selected history count: {selectedHistory.Count}");
+        
+        return await base.ChatWithHistory(prompt, selectedHistory, promptSettings, context: context);
     }
 
     public async Task<bool> PromptWithStreamAsync(string prompt, List<ChatMessage>? history = null,
         ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null)
     {
-        return await base.PromptWithStreamAsync(prompt, history, promptSettings, context);
+        // Get system prompt
+        var systemPrompt = State.PromptTemplate;
+        
+        // Intelligently select historical messages
+        var selectedHistory = TokenHelper.SelectHistoryMessages(history, prompt, systemPrompt);
+        
+        Logger.LogDebug($"[AIAgentStatusProxy][PromptWithStreamAsync] Original history count: {history?.Count ?? 0}, Selected history count: {selectedHistory.Count}");
+        
+        // Call base method with filtered history messages
+        return await base.PromptWithStreamAsync(prompt, selectedHistory, promptSettings, context);
     }
 
     protected override async Task AIChatHandleStreamAsync(AIChatContextDto context, AIExceptionEnum errorEnum,
