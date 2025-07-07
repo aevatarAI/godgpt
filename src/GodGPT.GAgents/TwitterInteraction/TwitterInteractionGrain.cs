@@ -64,17 +64,58 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             }
 
             _logger.LogDebug("Searching tweets with query: {Query}", request.Query);
+            
+            // Comprehensive time validation to prevent future time searches and unreasonable time ranges
+            var currentUtc = DateTime.UtcNow;
+            var maxPastDays = 7; // Twitter API recent search limit
+            var minPastTime = currentUtc.AddDays(-maxPastDays);
+            
+            // Validate StartTime
+            if (request.StartTime.HasValue)
+            {
+                if (request.StartTime.Value > currentUtc)
+                {
+                    _logger.LogWarning("StartTime {StartTime} is in the future (current: {CurrentTime}). Adjusting to 1 hour ago.", 
+                        request.StartTime.Value, currentUtc);
+                    request.StartTime = currentUtc.AddHours(-1);
+                }
+                else if (request.StartTime.Value < minPastTime)
+                {
+                    _logger.LogWarning("StartTime {StartTime} is too far in the past (limit: {MinTime}). Adjusting to {Days} days ago.", 
+                        request.StartTime.Value, minPastTime, maxPastDays);
+                    request.StartTime = minPastTime;
+                }
+            }
+            
             // Validate EndTime: if not null, must be at least 10 seconds before current UTC time
             if (request.EndTime.HasValue)
             {
-                var currentUtc = DateTime.UtcNow;
                 var minimumEndTime = currentUtc.AddSeconds(-10);
                 
                 if (request.EndTime.Value > minimumEndTime)
                 {
+                    _logger.LogWarning("EndTime {EndTime} is too close to current time or in the future (current: {CurrentTime}). Adjusting to current time.", 
+                        request.EndTime.Value, currentUtc);
                     request.EndTime = currentUtc;
                 }
+                else if (request.EndTime.Value < minPastTime)
+                {
+                    _logger.LogWarning("EndTime {EndTime} is too far in the past (limit: {MinTime}). Adjusting to {Days} days ago.", 
+                        request.EndTime.Value, minPastTime, maxPastDays);
+                    request.EndTime = minPastTime;
+                }
             }
+            
+            // Validate time range consistency
+            if (request.StartTime.HasValue && request.EndTime.HasValue && request.StartTime.Value >= request.EndTime.Value)
+            {
+                _logger.LogWarning("StartTime {StartTime} is not before EndTime {EndTime}. Adjusting to 1-hour window ending at EndTime.", 
+                    request.StartTime.Value, request.EndTime.Value);
+                request.StartTime = request.EndTime.Value.AddHours(-1);
+            }
+            
+            _logger.LogInformation("Validated time range - StartTime: {StartTime}, EndTime: {EndTime}, Current: {CurrentTime}", 
+                request.StartTime, request.EndTime, currentUtc);
 
             // Build URL with encoded query parameter
             string encodedQuery = Uri.EscapeDataString(request.Query);
