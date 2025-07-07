@@ -701,26 +701,17 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             {
                 _logger.LogDebug("Reminder triggered for tweet fetch");
                 
-                // Use Task.Run to avoid blocking the reminder and potential timeout
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await ProcessReceiveReminderInBackground();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error in background reminder processing");
-                        _state.State.LastError = ex.Message;
-                        await _state.WriteStateAsync();
-                    }
-                });
+                // Process directly in the grain context instead of using Task.Run
+                // This ensures proper Orleans activation context access
+                await ProcessReceiveReminderInBackground();
                 
-                _logger.LogDebug("Background tweet fetch task started");
+                _logger.LogDebug("Tweet fetch task completed");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error starting reminder execution");
+                _logger.LogError(ex, "Error in reminder processing");
+                _state.State.LastError = ex.Message;
+                await _state.WriteStateAsync();
             }
         }
     }
