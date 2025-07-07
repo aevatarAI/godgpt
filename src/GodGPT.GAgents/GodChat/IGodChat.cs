@@ -4,6 +4,7 @@ using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
+using GodGPT.GAgents.SpeechChat;
 using Orleans.Concurrency;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
@@ -23,7 +24,7 @@ public interface IGodChat : IGAgent
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
     
     Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string? voiceData, string fileName, string chatId,
-        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, int languageCode = 0);
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, VoiceLanguageEnum voiceLanguage = VoiceLanguageEnum.English);
     
     Task SetUserProfileAsync(UserProfileDto? userProfileDto);
     Task<UserProfileDto?> GetUserProfileAsync();
