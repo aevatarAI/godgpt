@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Aevatar;
 using Aevatar.Application.Grains;
+using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
@@ -51,7 +52,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
         public void Configure(ISiloBuilder hostBuilder)
         {
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("/opt/evn/godgpt.appsettings.json")
+                .AddJsonFile("appsettings.json")
+                //.AddJsonFile("/opt/evn/godgpt.appsettings.json")
                 // .AddJsonFile("appsettings.secrets.json")
                 .Build();
 
@@ -129,6 +131,26 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
+                .Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"))
+                .Configure<TwitterRewardOptions>(options =>
+                {
+                    options.BearerToken = "test-bearer-token";
+                    options.ApiKey = "test-api-key";
+                    options.ApiSecret = "test-api-secret";
+                    options.MonitorHandle = "@GodGPT_";
+                    options.ShareLinkDomain = "https://app.godgpt.fun";
+                    options.SelfAccountId = "test-self-account";
+                    options.PullIntervalMinutes = 30;
+                    options.PullBatchSize = 100;
+                    options.TimeRangeStartOffsetMinutes = 2880;
+                    options.TimeRangeEndOffsetMinutes = 1440;
+                    options.DataRetentionDays = 5;
+                    options.DailyRewardLimit = 500;
+                    options.OriginalTweetReward = 2;
+                    options.MaxTweetsPerUser = 10;
+                    options.MaxUserReward = 20;
+                    options.ShareLinkMultiplier = 1.1;
+                })
                 .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"))
                 .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
         }

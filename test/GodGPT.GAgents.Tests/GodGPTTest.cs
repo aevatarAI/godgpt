@@ -803,4 +803,34 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             throw;
         }
     }
+    
+    
+    [Fact]
+    public async Task CreateSessionAsyncTest_Soul()
+    {
+        var grainId = Guid.NewGuid();
+        _testOutputHelper.WriteLine($"Chat Manager GrainId: {grainId.ToString()}");
+        
+        var chatManagerGAgent = await _agentFactory.GetGAgentAsync<IChatManagerGAgent>();
+        var godGAgentId = await chatManagerGAgent.CreateSessionAsync("OpenAI", string.Empty, new UserProfileDto
+        {
+            Gender = "Male",
+            BirthDate = DateTime.UtcNow,
+            BirthPlace = "Beijing",
+            FullName = "Test001"
+        }, "Nova·Chime");
+        _testOutputHelper.WriteLine($"God GAgent GrainId: {godGAgentId.ToString()}");
+
+        var chatId = Guid.NewGuid();
+        _testOutputHelper.WriteLine($"ChatId: {chatId.ToString()}");
+        
+        var godChat = await _agentFactory.GetGAgentAsync<IGodChat>(godGAgentId);
+        await godChat.StreamChatWithSessionAsync(grainId, "OpenAI", "Who are you",
+            chatId.ToString(), promptSettings: null, isHttpRequest: false, region: null);
+        await Task.Delay(TimeSpan.FromSeconds(20));
+        var chatMessage = await godChat.GetChatMessageAsync();
+        _testOutputHelper.WriteLine($"chatMessage: {JsonConvert.SerializeObject(chatMessage)}");
+        chatMessage.ShouldNotBeEmpty();
+        chatMessage.Count.ShouldBe(1);
+    }
 }
