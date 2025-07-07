@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Shouldly;
 using Xunit;
 using Xunit.Abstractions;
+using Aevatar.Application.Grains.Agents.ChatManager;
 
 namespace Aevatar.GodGPT.Tests.Speech;
 
@@ -47,7 +48,119 @@ public class SpeechServiceTests : AevatarGodGPTTestsBase
         result.ShouldContain("123456");
     }
 
- 
+    [Fact]
+    public async Task TextToSpeechWithMetadataAsync_Should_Return_AudioData_And_Metadata()
+    {
+        // Arrange
+        var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
+        var testText = "Hello, this is a test message for text-to-speech conversion.";
+        var language = VoiceLanguageEnum.English;
+
+        // Act
+        var result = await speechService.TextToSpeechWithMetadataAsync(testText, language);
+
+        // Assert
+        result.AudioData.ShouldNotBeNull();
+        result.AudioData.Length.ShouldBeGreaterThan(0);
+        
+        result.Metadata.ShouldNotBeNull();
+        result.Metadata.Format.ShouldBe("mp3");
+        result.Metadata.SampleRate.ShouldBe(16000);
+        result.Metadata.BitRate.ShouldBeGreaterThan(0);
+        result.Metadata.SizeBytes.ShouldBe(result.AudioData.Length);
+        result.Metadata.Duration.ShouldBeGreaterThan(0);
+        result.Metadata.LanguageType.ShouldBe(language);
+
+        _output.WriteLine($"Generated audio: {result.AudioData.Length} bytes");
+        _output.WriteLine($"Duration: {result.Metadata.Duration} seconds");
+        _output.WriteLine($"Sample Rate: {result.Metadata.SampleRate} Hz");
+        _output.WriteLine($"Bit Rate: {result.Metadata.BitRate} bps");
+    }
+
+    [Theory]
+    [InlineData(VoiceLanguageEnum.English, "Hello world, how are you today?")]
+    [InlineData(VoiceLanguageEnum.Chinese, "你好世界，今天你好吗？")]
+    [InlineData(VoiceLanguageEnum.Spanish, "Hola mundo, ¿cómo estás hoy?")]
+    public async Task TextToSpeechWithMetadataAsync_Should_Support_Multiple_Languages(VoiceLanguageEnum language, string text)
+    {
+        // Arrange
+        var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
+
+        // Act
+        var result = await speechService.TextToSpeechWithMetadataAsync(text, language);
+
+        // Assert
+        result.AudioData.ShouldNotBeNull();
+        result.AudioData.Length.ShouldBeGreaterThan(0);
+        
+        result.Metadata.ShouldNotBeNull();
+        result.Metadata.LanguageType.ShouldBe(language);
+        result.Metadata.Format.ShouldBe("mp3");
+        result.Metadata.SampleRate.ShouldBe(16000);
+
+        _output.WriteLine($"Language: {language}");
+        _output.WriteLine($"Text: {text}");
+        _output.WriteLine($"Audio size: {result.AudioData.Length} bytes");
+        _output.WriteLine($"Duration: {result.Metadata.Duration} seconds");
+    }
+
+    [Fact]
+    public async Task TextToSpeechWithMetadataAsync_Should_Handle_Empty_Text()
+    {
+        // Arrange
+        var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
+        var emptyText = "";
+        var language = VoiceLanguageEnum.English;
+
+        // Act & Assert
+        await Should.ThrowAsync<ArgumentException>(async () =>
+        {
+            await speechService.TextToSpeechWithMetadataAsync(emptyText, language);
+        });
+    }
+
+    [Fact]
+    public async Task TextToSpeechWithMetadataAsync_Should_Handle_Long_Text()
+    {
+        // Arrange
+        var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
+        var longText = string.Join(" ", Enumerable.Repeat("This is a test sentence for long text conversion.", 10));
+        var language = VoiceLanguageEnum.English;
+
+        // Act
+        var result = await speechService.TextToSpeechWithMetadataAsync(longText, language);
+
+        // Assert
+        result.AudioData.ShouldNotBeNull();
+        result.AudioData.Length.ShouldBeGreaterThan(0);
+        result.Metadata.Duration.ShouldBeGreaterThan(5); // Long text should have longer duration
+
+        _output.WriteLine($"Long text length: {longText.Length} characters");
+        _output.WriteLine($"Audio duration: {result.Metadata.Duration} seconds");
+        _output.WriteLine($"Audio size: {result.AudioData.Length} bytes");
+    }
+
+    [Fact]
+    public async Task TextToSpeechWithMetadataAsync_Should_Calculate_Correct_Duration()
+    {
+        // Arrange
+        var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
+        var shortText = "Hello";
+        var longText = "Hello world, this is a much longer text that should take more time to speak than the short one.";
+        var language = VoiceLanguageEnum.English;
+
+        // Act
+        var shortResult = await speechService.TextToSpeechWithMetadataAsync(shortText, language);
+        var longResult = await speechService.TextToSpeechWithMetadataAsync(longText, language);
+
+        // Assert
+        shortResult.Metadata.Duration.ShouldBeGreaterThan(0);
+        longResult.Metadata.Duration.ShouldBeGreaterThan(shortResult.Metadata.Duration);
+
+        _output.WriteLine($"Short text duration: {shortResult.Metadata.Duration} seconds");
+        _output.WriteLine($"Long text duration: {longResult.Metadata.Duration} seconds");
+    }
+
     private byte[] ConvertBase64ToByteArray(string base64String)
     {
         try

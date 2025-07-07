@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.SignalR;
+using GodGPT.GAgents.SpeechChat;
 
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
@@ -59,6 +60,16 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
     [Id(5)] public int SerialNumber { get; set; }
 
     [Id(6)] public Guid SessionId { get; set; }
+    
+    /// <summary>
+    /// Binary MP3 audio data for voice response
+    /// </summary>
+    [Id(7)] public byte[]? AudioData { get; set; }
+    
+    /// <summary>
+    /// Audio metadata including duration, format, language etc.
+    /// </summary>
+    [Id(8)] public AudioMetadata? AudioMetadata { get; set; }
 
     public ResponseStreamGodChatForHttp ConvertToHttpResponse()
     {
@@ -69,6 +80,8 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
             IsLastChunk = IsLastChunk,
             SerialNumber = SerialNumber,
             SessionId = SessionId,
+            AudioData = AudioData,
+            AudioMetadata = AudioMetadata,
         };
     }
 }
@@ -82,6 +95,16 @@ public class ResponseStreamGodChatForHttp
     public int SerialNumber { get; set; }
     public int SerialChunk { get; set; }
     public Guid SessionId { get; set; }
+    
+    /// <summary>
+    /// Binary MP3 audio data for voice response
+    /// </summary>
+    public byte[]? AudioData { get; set; }
+    
+    /// <summary>
+    /// Audio metadata including duration, format, language etc.
+    /// </summary>
+    public AudioMetadata? AudioMetadata { get; set; }
 }
 
 [GenerateSerializer]
@@ -206,4 +229,67 @@ public enum ResponseType
     ClearAll = 7,
     SetUserProfile = 8,
     GetUserProfile = 9
+}
+
+[GenerateSerializer]
+public class AudioMetadata
+{
+    /// <summary>
+    /// Audio duration in seconds
+    /// </summary>
+    [Id(0)] public double Duration { get; set; }
+    
+    /// <summary>
+    /// Audio file size in bytes
+    /// </summary>
+    [Id(1)] public int SizeBytes { get; set; }
+    
+    /// <summary>
+    /// Audio sample rate (16000 Hz)
+    /// </summary>
+    [Id(2)] public int SampleRate { get; set; }
+    
+    /// <summary>
+    /// Audio bit rate (24000 bps)
+    /// </summary>
+    [Id(3)] public int BitRate { get; set; }
+    
+    /// <summary>
+    /// Audio format (mp3)
+    /// </summary>
+    [Id(4)] public string Format { get; set; }
+    
+    /// <summary>
+    /// Language type for voice
+    /// </summary>
+    [Id(5)] public VoiceLanguageEnum LanguageType { get; set; }
+}
+
+[GenerateSerializer]
+public class ChatMessageMeta
+{
+    /// <summary>
+    /// Whether this message is a voice message
+    /// </summary>
+    [Id(0)] public bool IsVoiceMessage { get; set; }
+    
+    /// <summary>
+    /// Voice language if this is a voice message
+    /// </summary>
+    [Id(1)] public VoiceLanguageEnum VoiceLanguage { get; set; }
+    
+    /// <summary>
+    /// Whether voice parsing was successful
+    /// </summary>
+    [Id(2)] public bool VoiceParseSuccess { get; set; }
+    
+    /// <summary>
+    /// Error message if voice parsing failed (in English)
+    /// </summary>
+    [Id(3)] public string? VoiceParseErrorMessage { get; set; }
+    
+    /// <summary>
+    /// Duration of the voice message in seconds (from frontend)
+    /// </summary>
+    [Id(4)] public double VoiceDurationSeconds { get; set; }
 }
