@@ -444,8 +444,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         }
 
         // Issue the reward
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        await userQuotaGrain.AddCreditsAsync(credits);
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        await userQuotaGAgent.AddCreditsAsync(credits);
 
         // Record the reward
         RaiseEvent(new AddRewardLogEvent
