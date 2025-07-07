@@ -27,4 +27,10 @@ public interface IGodChat : IGAgent
     Task ChatMessageCallbackAsync(AIChatContextDto aiChatContextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage,
         AIStreamChatContent? aiStreamChatContent);
+
+    [ReadOnly]
+    Task<DateTime?> GetFirstChatTimeAsync();
+
+    [ReadOnly]
+    Task<DateTime?> GetLastChatTimeAsync();
 }

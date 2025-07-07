@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Http;
+using Aevatar.Application.Grains.UserBilling;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
@@ -15,7 +16,7 @@ public class UserBillingGrainTests_WebhookHandler
 {
     private readonly ITestOutputHelper _testOutputHelper;
     private readonly Mock<IClusterClient> _mockClusterClient;
-    private readonly Mock<IUserBillingGrain> _mockUserBillingGrain;
+    private readonly Mock<IUserBillingGAgent> _mockUserBillingGAgent;
     private readonly Mock<ILogger<AppleStoreWebhookHandler>> _mockLogger;
     
     public UserBillingGrainTests_WebhookHandler(ITestOutputHelper testOutputHelper)
@@ -24,13 +25,13 @@ public class UserBillingGrainTests_WebhookHandler
         
         // Initialize Mock objects
         _mockClusterClient = new Mock<IClusterClient>();
-        _mockUserBillingGrain = new Mock<IUserBillingGrain>();
+        _mockUserBillingGAgent = new Mock<IUserBillingGAgent>();
         _mockLogger = new Mock<ILogger<AppleStoreWebhookHandler>>();
         
         // Set up Mock behavior
         _mockClusterClient
-            .Setup(c => c.GetGrain<IUserBillingGrain>(It.IsAny<string>(), It.IsAny<string>()))
-            .Returns(_mockUserBillingGrain.Object);
+            .Setup(c => c.GetGrain<IUserBillingGAgent>(It.IsAny<Guid>(), It.IsAny<string>()))
+            .Returns(_mockUserBillingGAgent.Object);
     }
     
     [Fact]
@@ -56,7 +57,7 @@ public class UserBillingGrainTests_WebhookHandler
             httpContext.Request.ContentLength = requestBody.Length;
             
             // Mock UserBillingGrain.HandleAppStoreNotificationAsync return value
-            _mockUserBillingGrain
+            _mockUserBillingGAgent
                 .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>()))
                 .ReturnsAsync(true);
             
@@ -74,7 +75,7 @@ public class UserBillingGrainTests_WebhookHandler
             _testOutputHelper.WriteLine($"AppleStoreWebhookHandler.HandleAsync result: {JsonSerializer.Serialize(result)}");
             
             // Verify method calls
-            _mockUserBillingGrain.Verify(
+            _mockUserBillingGAgent.Verify(
                 g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),
                     It.Is<string>(json => json == notificationJson)
                 ),
@@ -112,7 +113,7 @@ public class UserBillingGrainTests_WebhookHandler
             httpContext.Request.ContentLength = requestBody.Length;
             
             // Mock UserBillingGrain.HandleAppStoreNotificationAsync to throw exception
-            _mockUserBillingGrain
+            _mockUserBillingGAgent
                 .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>()))
                 .ThrowsAsync(new Exception("Test exception"));
             
@@ -135,7 +136,7 @@ public class UserBillingGrainTests_WebhookHandler
             resultObject.ShouldNotBeNull();
             
             // Verify method calls
-            _mockUserBillingGrain.Verify(
+            _mockUserBillingGAgent.Verify(
                 g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),
                     It.Is<string>(json => json == notificationJson)
                 ),
@@ -171,7 +172,7 @@ public class UserBillingGrainTests_WebhookHandler
             httpContext.Request.ContentLength = requestBody.Length;
             
             // Mock UserBillingGrain.HandleAppStoreNotificationAsync return value
-            _mockUserBillingGrain
+            _mockUserBillingGAgent
                 .Setup(g => g.HandleAppStoreNotificationAsync(It.IsAny<Guid>(),It.IsAny<string>()))
                 .ReturnsAsync(false); // Expect validation to fail when token is missing
             
@@ -189,7 +190,7 @@ public class UserBillingGrainTests_WebhookHandler
             _testOutputHelper.WriteLine($"AppleStoreWebhookHandler.HandleAsync result: {JsonSerializer.Serialize(result)}");
             
             // Verify method calls
-            _mockUserBillingGrain.Verify(
+            _mockUserBillingGAgent.Verify(
                 g => g.HandleAppStoreNotificationAsync(
                     It.IsAny<Guid>(),It.IsAny<string>())
                 ,

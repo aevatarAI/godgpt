@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserBilling;
 using Shouldly;
 
 namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
@@ -15,10 +16,10 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreateSubscriptionAsync with valid parameters, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // First get product list, ensure there are available subscription products
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         var subscriptionProducts = products.Where(p => p.Mode == PaymentMode.SUBSCRIPTION).ToList();
         
         if (subscriptionProducts.Count == 0)
@@ -40,7 +41,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto);
+            var result = await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto);
             
             // Assert
             result.ShouldNotBeNull();
@@ -66,7 +67,7 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreateSubscriptionAsync with missing PriceId, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         var createSubscriptionDto = new CreateSubscriptionDto
         {
@@ -79,7 +80,7 @@ public partial class UserBillingGrainTests
         try
         {
             var exception = await Assert.ThrowsAsync<ArgumentException>(
-                async () => await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto));
+                async () => await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto));
             
             exception.Message.ShouldContain("PriceId is required", Case.Insensitive);
             _testOutputHelper.WriteLine($"Test passed: ArgumentException thrown with message: {exception.Message}");
@@ -99,10 +100,10 @@ public partial class UserBillingGrainTests
         // Arrange
         _testOutputHelper.WriteLine("Testing CreateSubscriptionAsync with empty UserId");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(Guid.NewGuid()));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(Guid.NewGuid());
         
         // First get product list to get a valid PriceId
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         var subscriptionProducts = products.Where(p => p.Mode == PaymentMode.SUBSCRIPTION).ToList();
         
         if (subscriptionProducts.Count == 0)
@@ -124,7 +125,7 @@ public partial class UserBillingGrainTests
         try
         {
             var exception = await Assert.ThrowsAsync<ArgumentException>(
-                async () => await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto));
+                async () => await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto));
             
             exception.Message.ShouldContain("UserId is required", Case.Insensitive);
             _testOutputHelper.WriteLine($"Test passed: ArgumentException thrown with message: {exception.Message}");
@@ -145,10 +146,10 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreateSubscriptionAsync with PaymentMethodId, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // First get product list, ensure there are available subscription products
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         var subscriptionProducts = products.Where(p => p.Mode == PaymentMode.SUBSCRIPTION).ToList();
         
         if (subscriptionProducts.Count == 0)
@@ -175,7 +176,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto);
+            var result = await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto);
             
             // Assert
             result.ShouldNotBeNull();
@@ -201,10 +202,10 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreateSubscriptionAsync with Metadata, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // First get product list, ensure there are available subscription products
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         var subscriptionProducts = products.Where(p => p.Mode == PaymentMode.SUBSCRIPTION).ToList();
         
         if (subscriptionProducts.Count == 0)
@@ -234,7 +235,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto);
+            var result = await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto);
             
             // Assert
             result.ShouldNotBeNull();
@@ -260,10 +261,10 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreateSubscriptionAsync with TrialPeriod, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // First get product list, ensure there are available subscription products
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         var subscriptionProducts = products.Where(p => p.Mode == PaymentMode.SUBSCRIPTION).ToList();
         
         if (subscriptionProducts.Count == 0)
@@ -286,7 +287,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto);
+            var result = await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto);
             
             // Assert
             result.ShouldNotBeNull();
@@ -312,7 +313,7 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreateSubscriptionAsync with non-existent PriceId, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         var nonExistentPriceId = "price_non_existent_" + Guid.NewGuid().ToString("N").Substring(0, 16);
         
@@ -328,7 +329,7 @@ public partial class UserBillingGrainTests
         {
             // This should throw an exception because the price ID doesn't exist
             await Assert.ThrowsAsync<ArgumentException>(
-                async () => await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto));
+                async () => await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto));
             
             _testOutputHelper.WriteLine("Test passed: Exception thrown for non-existent PriceId");
         }

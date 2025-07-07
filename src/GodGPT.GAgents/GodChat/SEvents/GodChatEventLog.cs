@@ -40,3 +40,9 @@ public class UpdateRegionProxiesLogEvent : GodChatEventLog
 {
     [Id(0)] public Dictionary<string, List<Guid>> RegionProxies;
 }
+
+[GenerateSerializer]
+public class UpdateChatTimeEventLog : GodChatEventLog
+{
+    [Id(0)] public DateTime ChatTime { get; set; }
+}

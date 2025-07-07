@@ -4,6 +4,7 @@ using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Invitation.SEvents;
+using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Application.Grains.Twitter;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
@@ -262,8 +263,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
 
     private async Task IssueReward(string inviteeId, int credits, RewardTypeEnum rewardType)
     {
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        await userQuotaGrain.AddCreditsAsync(credits);
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        await userQuotaGAgent.AddCreditsAsync(credits);
 
         RaiseEvent(new AddRewardLogEvent
         {
