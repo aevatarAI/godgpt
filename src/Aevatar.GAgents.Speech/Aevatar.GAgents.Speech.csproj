@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <RootNamespace>Aevatar.GAgents.Speech</RootNamespace>
+        <NoWarn>$(NoWarn);SKEXP0001;SKEXP0010;SKEXP0020;SKEXP0070</NoWarn>
+        <PackageId>Aevatar.GAgents.Speech</PackageId>
+        <PackageType>Dependency</PackageType>
+        <Title>aevatar GAgents</Title>
+        <Authors>AElf</Authors>
+        <PackageTags>agent</PackageTags>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CognitiveServices.Speech" />
+        <PackageReference Include="Volo.Abp.Core" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Volo.Abp.AutoMapper" />
+        <PackageReference Include="Aevatar.Core" />
+        <PackageReference Include="Aevatar.Core.Abstractions" />
+    </ItemGroup>
+
+</Project>

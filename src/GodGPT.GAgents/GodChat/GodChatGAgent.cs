@@ -13,12 +13,12 @@ using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.GAgent;
+using GodGPT.GAgents.SpeechChat;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
-using Orleans.Providers;
-using Volo.Abp;
+
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -35,7 +35,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     };
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
-
+    private readonly ISpeechService _speechService;
+    public GodChatGAgent(ISpeechService speechService)
+    {
+        _speechService = speechService;
+    }
+    
     protected override async Task ChatPerformConfigAsync(ChatConfigDto configuration)
     {
         if (RegionToLLMsMap.IsNullOrEmpty())
@@ -179,6 +184,101 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             content, chatId, promptSettings, isHttpRequest, region);
         sw.Stop();
         Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
+    }
+
+    public async Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string? voiceData, string fileName, string chatId,
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, VoiceLanguageEnum voiceLanguage = VoiceLanguageEnum.English)
+    {
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} start with voice file: {fileName}, size: {voiceData?.Length ?? 0} bytes, voiceLanguage: {voiceLanguage}");
+
+        // Validate voiceData
+        if (string.IsNullOrEmpty(voiceData))
+        {
+            Logger.LogError($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Invalid voice data");
+            var errorMessage = new ResponseStreamGodChat()
+            {
+                Response = "Invalid voice message. Please try again.",
+                ChatId = chatId,
+                IsLastChunk = true,
+                SerialNumber = -99,
+                SessionId = sessionId
+            };
+
+            if (isHttpRequest)
+            {
+                await PushMessageToClientAsync(errorMessage);
+            }
+            else
+            {
+                await PublishAsync(errorMessage);
+            }
+            return;
+        }
+
+        // Convert MP3 data to byte array (already byte[] but log for confirmation)
+        var voiceDataBytes = Convert.FromBase64String(voiceData);
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Processed MP3 data: {voiceDataBytes.Length} bytes");
+
+        var voiceContent = await _speechService.SpeechToTextAsync(voiceDataBytes, voiceLanguage);
+        
+        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(State.ChatManagerGuid));
+        var actionResultDto =
+            await userQuotaGrain.ExecuteVoiceActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
+        if (!actionResultDto.Success)
+        {
+            Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Access restricted");
+
+            //save conversation data
+            await SetSessionTitleAsync(sessionId, voiceContent);
+            var chatMessages = new List<ChatMessage>();
+            chatMessages.Add(new ChatMessage
+            {
+                ChatRole = ChatRole.User,
+                Content = voiceContent
+            });
+            chatMessages.Add(new ChatMessage
+            {
+                ChatRole = ChatRole.Assistant,
+                Content = actionResultDto.Message
+            });
+            RaiseEvent(new AddChatHistoryLogEvent
+            {
+                ChatList = chatMessages
+            });
+            await ConfirmEvents();
+            
+            //2、Directly respond with error information.
+            var chatMessage = new ResponseStreamGodChat()
+            {
+                Response = actionResultDto.Message,
+                ChatId = chatId,
+                IsLastChunk = true,
+                SerialNumber = -99,
+                SessionId = sessionId
+            };
+
+            if (isHttpRequest)
+            {
+                await PushMessageToClientAsync(chatMessage);
+            }
+            else
+            {
+                await PublishAsync(chatMessage);
+            }
+            return;
+        }
+
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} - Validation passed");
+        await SetSessionTitleAsync(sessionId, voiceContent);
+
+        var sw = new Stopwatch();
+        sw.Start();
+        var configuration = GetConfiguration();
+        await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
+            await configuration.GetStreamingModeEnabled(),
+            voiceContent, chatId, promptSettings, isHttpRequest, region);
+        sw.Stop();
+        Logger.LogDebug($"StreamVoiceChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
     private async Task SetSessionTitleAsync(Guid sessionId, string content)

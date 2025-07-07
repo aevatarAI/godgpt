@@ -69,7 +69,21 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         // Check if user has exceeded chat limit
         if (!await CanChatAsync())
         {
-            throw new UserFriendlyException("Daily chat limit exceeded for guest users");
+            Logger.LogWarning($"[AnonymousUserGAgent][CreateGuestSessionAsync] Chat limit exceeded for user: {State.UserHashId}");
+            throw new InvalidOperationException("Daily chat limit exceeded for guest users");
+        }
+
+        // Check if existing session can be reused (same guider and not yet used)
+        if (State.CurrentSessionId.HasValue && !State.CurrentSessionUsed)
+        {
+            var existingGuider = State.CurrentGuider ?? string.Empty;
+            var newGuider = guider ?? string.Empty;
+            
+            if (existingGuider.Equals(newGuider, StringComparison.OrdinalIgnoreCase))
+            {
+                Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Reusing existing session: {State.CurrentSessionId.Value} for user: {State.UserHashId}");
+                return State.CurrentSessionId.Value;
+            }
         }
 
         var configuration = GetConfiguration();
@@ -128,6 +142,7 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         // Update state
         State.CurrentSessionId = sessionId;
         State.CurrentGuider = guider;
+        State.CurrentSessionUsed = false; // Mark as unused initially
         
         Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Session created: {sessionId} for user: {State.UserHashId}");
         
@@ -142,13 +157,14 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         if (!await CanChatAsync())
         {
             Logger.LogWarning($"[AnonymousUserGAgent][GuestChatAsync] Chat limit exceeded for user: {State.UserHashId}");
-            return;
+            throw new InvalidOperationException("Daily chat limit exceeded for guest users");
         }
 
         // Validate current session
         if (!State.CurrentSessionId.HasValue)
         {
-            throw new UserFriendlyException("No active guest session. Please create a session first.");
+            Logger.LogWarning($"[AnonymousUserGAgent][GuestChatAsync] No active guest session for user: {State.UserHashId}");
+            throw new InvalidOperationException("No active guest session. Please create a session first.");
         }
 
         IGodChat godChat = GrainFactory.GetGrain<IGodChat>(State.CurrentSessionId.Value);
@@ -166,11 +182,12 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         stopwatch.Stop();
         Logger.LogDebug($"[AnonymousUserGAgent][GuestChatAsync] Chat execution: {stopwatch.ElapsedMilliseconds}ms");
 
-        // Increment chat count
+        // Mark session as used and increment chat count
         RaiseEvent(new GuestChatEventLog()
         {
             ChatCount = State.ChatCount + 1,
-            ChatAt = DateTime.UtcNow
+            ChatAt = DateTime.UtcNow,
+            SessionUsed = true // Mark session as used
         });
 
         await ConfirmEvents();
@@ -193,7 +210,8 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
             Guider = State.CurrentGuider,
             CreatedAt = State.CreatedAt,
             ChatCount = State.ChatCount,
-            RemainingChats = await GetRemainingChatsAsync()
+            RemainingChats = await GetRemainingChatsAsync(),
+            SessionUsed = State.CurrentSessionUsed
         };
     }
 
@@ -288,12 +306,14 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
             case CreateGuestSessionEventLog createSessionEvent:
                 State.CurrentSessionId = createSessionEvent.SessionId;
                 State.CurrentGuider = createSessionEvent.Guider;
+                State.CurrentSessionUsed = false; // Reset session used flag for new session
                 // Note: Don't increment chat count on session creation, only on actual chat
                 break;
                 
             case GuestChatEventLog chatEvent:
                 State.ChatCount = chatEvent.ChatCount;
                 State.LastChatTime = chatEvent.ChatAt;
+                State.CurrentSessionUsed = chatEvent.SessionUsed;
                 break;
         }
     }

@@ -44,4 +44,10 @@ public class AnonymousUserState : AIGAgentStateBase
     /// </summary>
     [Id(5)] 
     public string? CurrentGuider { get; set; }
+    
+    /// <summary>
+    /// Whether the current session has been used for chatting
+    /// </summary>
+    [Id(6)] 
+    public bool CurrentSessionUsed { get; set; }
 } 

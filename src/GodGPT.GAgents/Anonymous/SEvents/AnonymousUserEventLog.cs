@@ -29,6 +29,7 @@ public class GuestChatEventLog : AnonymousUserEventLog
 {
     [Id(0)] public int ChatCount { get; set; }
     [Id(1)] public DateTime ChatAt { get; set; }
+    [Id(2)] public bool SessionUsed { get; set; }
 }
 
 /// <summary>
