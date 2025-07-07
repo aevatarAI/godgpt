@@ -151,7 +151,69 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         // Update reminder target ID based on configuration version
         _state.State.ReminderTargetId = _options.CurrentValue.ReminderTargetIdVersion;
 
+        // Ensure state consistency: check if reminder registration matches IsRunning state
+        await EnsureStateConsistencyAsync();
+
         await base.OnActivateAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Ensure reminder registration state matches the IsRunning state
+    /// This handles cases where service interruption caused state inconsistency
+    /// </summary>
+    private async Task EnsureStateConsistencyAsync()
+    {
+        try
+        {
+            var hasReminder = false;
+            try
+            {
+                var reminder = await this.GetReminder(REMINDER_NAME);
+                hasReminder = reminder != null;
+            }
+            catch (Exception)
+            {
+                hasReminder = false;
+            }
+
+            _logger.LogInformation("TwitterRewardGrain State consistency check - IsRunning: {IsRunning}, HasReminder: {HasReminder}", 
+                _state.State.IsRunning, hasReminder);
+
+            // Case 1: Should be running but no reminder - register it
+            if (_state.State.IsRunning && !hasReminder)
+            {
+                _logger.LogWarning("TwitterRewardGrain ⚠️ Inconsistent state detected: IsRunning=true but no reminder found. Registering reminder...");
+                
+                var nextMidnightUtc = GetNextMidnightUtc();
+                var timeUntilMidnight = nextMidnightUtc - DateTime.UtcNow;
+                await this.RegisterOrUpdateReminder(
+                    REMINDER_NAME,
+                    timeUntilMidnight,
+                    TimeSpan.FromDays(1));
+                    
+                _logger.LogInformation("TwitterRewardGrain ✅ Reminder registered to match IsRunning=true state, next execution at {NextTime} UTC", nextMidnightUtc);
+            }
+            // Case 2: Should not be running but has reminder - unregister it
+            else if (!_state.State.IsRunning && hasReminder)
+            {
+                _logger.LogWarning("TwitterRewardGrain ⚠️ Inconsistent state detected: IsRunning=false but reminder exists. Cleaning up reminder...");
+                var reminder = await this.GetReminder(REMINDER_NAME);
+                if (reminder != null)
+                {
+                    await this.UnregisterReminder(reminder);
+                }
+                _logger.LogInformation("TwitterRewardGrain ✅ Reminder cleaned up to match IsRunning=false state");
+            }
+            // Case 3: States are consistent
+            else
+            {
+                _logger.LogInformation("TwitterRewardGrain ✅ State consistency verified - no action needed");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "TwitterRewardGrain ❌ Error during state consistency check");
+        }
     }
 
     public async Task<TwitterApiResultDto<bool>> StartRewardCalculationAsync()
@@ -607,8 +669,17 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
 
     public async Task ReceiveReminder(string reminderName, TickStatus status)
     {
-        if (reminderName == REMINDER_NAME && _state.State.IsRunning)
+        if (reminderName == REMINDER_NAME)
         {
+            // Check for state inconsistency and auto-correct if needed
+            if (!_state.State.IsRunning)
+            {
+                _logger.LogWarning("TwitterRewardGrain ⚠️ Reminder triggered but IsRunning=false. This indicates state inconsistency - auto-correcting...");
+                _state.State.IsRunning = true;
+                await _state.WriteStateAsync();
+                _logger.LogInformation("TwitterRewardGrain ✅ State auto-corrected: IsRunning set to true to match active reminder");
+            }
+            
             try
             {
                 _logger.LogInformation("Daily reward calculation reminder triggered at {CurrentTime} UTC", DateTime.UtcNow);

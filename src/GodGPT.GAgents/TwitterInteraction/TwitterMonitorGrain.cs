@@ -753,8 +753,18 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             // Build query with filter conditions to exclude retweets and replies
             var queryWithFilters = $"{_state.State.Config.SearchQuery}";
             
+            // Fix time range calculation to prevent future time searches
             var startTime = _state.State.LastFetchTime ?? DateTime.UtcNow.AddHours(-1);
             var endTime = DateTime.UtcNow;
+            
+            // Ensure startTime is not in the future (safety check)
+            if (startTime > endTime)
+            {
+                _logger.LogWarning("⚠️ LastFetchTime is in the future ({LastFetch} > {Now}), adjusting to 1 hour ago", 
+                    startTime, endTime);
+                startTime = endTime.AddHours(-1);
+            }
+            
             var timeRangeMinutes = (endTime - startTime).TotalMinutes;
             
             _logger.LogInformation("🚀 Starting scheduled tweet fetch - Query: '{Query}', Max results per window: {MaxResults}, Time range: {TimeRange} minutes", 
@@ -764,8 +774,10 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             _logger.LogInformation("🔄 Applying RefetchTweetsByTimeRangeAsync pattern: fixed window processing for scheduled tasks");
             
             var result = await FetchTweetsWithRefetchPatternAsync(startTime, endTime);
-            _state.State.LastFetchTime = fetchStartTime;
-            _state.State.LastFetchTimeUtc = fetchStartTimeUtc;
+            
+            // Update LastFetchTime to endTime (not fetchStartTime) to prevent gaps and future time issues
+            _state.State.LastFetchTime = endTime;
+            _state.State.LastFetchTimeUtc = ((DateTimeOffset)endTime).ToUnixTimeSeconds();
             return result;
         }
         catch (Exception ex)
@@ -806,6 +818,23 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 var currentEnd = currentStart.AddMinutes(maxWindowMinutes);
                 if (currentEnd > endTime)
                     currentEnd = endTime;
+
+                // Additional safety check: prevent future time searches
+                var now = DateTime.UtcNow;
+                if (currentEnd > now)
+                {
+                    _logger.LogWarning("⚠️ Window end time is in the future ({WindowEnd} > {Now}), adjusting to current time", 
+                        currentEnd, now);
+                    currentEnd = now;
+                }
+                
+                // Skip window if start time equals or exceeds end time
+                if (currentStart >= currentEnd)
+                {
+                    _logger.LogWarning("⚠️ Invalid window: start time {Start} >= end time {End}, skipping window", 
+                        currentStart, currentEnd);
+                    break;
+                }
 
                 windowCount++;
                 
