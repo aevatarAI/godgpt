@@ -612,22 +612,12 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             try
             {
                 _logger.LogInformation("Daily reward calculation reminder triggered at {CurrentTime} UTC", DateTime.UtcNow);
-                //Use Task.Run to avoid blocking the reminder and potential timeout
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await ProcessReceiveReminderInBackground();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error in background reminder processing");
-                        _state.State.LastError = ex.Message;
-                        await _state.WriteStateAsync();
-                    }
-                });
-
-                _logger.LogDebug("Background tweet fetch task started");
+                
+                // Process directly in the grain context instead of using Task.Run
+                // This ensures proper Orleans activation context access
+                await ProcessReceiveReminderInBackground();
+                
+                _logger.LogDebug("Daily reward calculation task completed");
                 
             }
             catch (Exception ex)
