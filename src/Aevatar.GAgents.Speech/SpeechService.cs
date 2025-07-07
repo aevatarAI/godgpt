@@ -14,11 +14,11 @@ public class SpeechService : ISpeechService
 
     public SpeechService(IOptions<SpeechOptions> speechOptions)
     {
-        _speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
+        /*_speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
         _speechConfig.SpeechRecognitionLanguage = "zh-CN";
         _speechConfig.SpeechSynthesisLanguage = "zh-CN";
         _speechConfig.SpeechSynthesisVoiceName = "zh-CN-XiaoxiaoNeural";
-        _synthesizer = new SpeechSynthesizer(_speechConfig);
+        _synthesizer = new SpeechSynthesizer(_speechConfig);*/
     }
 
     public async Task<string> SpeechToTextAsync(byte[] audioData)
@@ -85,5 +85,73 @@ public class SpeechService : ISpeechService
     {
         using var result = await _synthesizer.SpeakTextAsync(text);
         return result.AudioData;
+    }
+
+    public async Task<string> SpeechToTextAsync(byte[] audioData, VoiceLanguageEnum language)
+    {
+        try
+        {
+            var tempSpeechConfig = SpeechConfig.FromSubscription(_speechConfig.SubscriptionKey, _speechConfig.Region);
+            tempSpeechConfig.SpeechRecognitionLanguage = GetLanguageCode(language);
+
+            using var pushStream = AudioInputStream.CreatePushStream();
+            using var audioConfig = AudioConfig.FromStreamInput(pushStream);
+            using var recognizer = new SpeechRecognizer(tempSpeechConfig, audioConfig);
+            
+            pushStream.Write(audioData);
+            pushStream.Close();
+
+            var result = await recognizer.RecognizeOnceAsync();
+            if (result.Reason == ResultReason.Canceled)
+            {
+                var cancellation = CancellationDetails.FromResult(result);
+                Console.WriteLine($"  Cancellation Reason: {cancellation.Reason}");
+                if (cancellation.Reason == CancellationReason.Error)
+                {
+                    Console.WriteLine($"  Error Code: {cancellation.ErrorCode}");
+                    Console.WriteLine($"  Error Details: {cancellation.ErrorDetails}");
+                }
+            }
+            
+            return result.Text;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Speech recognition error: {ex.Message}");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> TextToSpeechAsync(string text, VoiceLanguageEnum language)
+    {
+        var tempSpeechConfig = SpeechConfig.FromSubscription(_speechConfig.SubscriptionKey, _speechConfig.Region);
+        tempSpeechConfig.SpeechSynthesisLanguage = GetLanguageCode(language);
+        tempSpeechConfig.SpeechSynthesisVoiceName = GetVoiceName(language);
+        
+        using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig);
+        using var result = await tempSynthesizer.SpeakTextAsync(text);
+        return result.AudioData;
+    }
+
+    private static string GetLanguageCode(VoiceLanguageEnum language)
+    {
+        return language switch
+        {
+            VoiceLanguageEnum.English => "en-US",
+            VoiceLanguageEnum.Chinese => "zh-CN",
+            VoiceLanguageEnum.Spanish => "es-ES",
+            _ => "en-US"
+        };
+    }
+
+    private static string GetVoiceName(VoiceLanguageEnum language)
+    {
+        return language switch
+        {
+            VoiceLanguageEnum.English => "en-US-JennyNeural",
+            VoiceLanguageEnum.Chinese => "zh-CN-XiaoxiaoNeural",
+            VoiceLanguageEnum.Spanish => "es-ES-ElviraNeural",
+            _ => "en-US-JennyNeural"
+        };
     }
 }
