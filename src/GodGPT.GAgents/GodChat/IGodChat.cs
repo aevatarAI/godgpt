@@ -5,7 +5,6 @@ using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Orleans.Concurrency;
-using Aevatar.GAgents.Speech;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 

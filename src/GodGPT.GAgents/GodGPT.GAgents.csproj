@@ -40,16 +40,13 @@
         <PackageReference Include="Microsoft.Orleans.Streaming" />
         <PackageReference Include="Microsoft.Orleans.Runtime" />
         <PackageReference Include="Microsoft.Orleans.EventSourcing" />
+        <PackageReference Include="Microsoft.CognitiveServices.Speech" />
     </ItemGroup>
 
     <ItemGroup>
         <None Include="ChatManager/UserBilling/Certificates/AppleRootCA-G3.cer">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Aevatar.GAgents.Speech\Aevatar.GAgents.Speech.csproj" />
     </ItemGroup>
 
 </Project>

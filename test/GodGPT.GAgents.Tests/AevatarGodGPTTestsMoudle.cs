@@ -1,5 +1,5 @@
 using Aevatar.Application.Grains.Common.Options;
-using Aevatar.GAgents.Speech;
+using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Modularity;
 
@@ -7,7 +7,7 @@ namespace Aevatar.Application.Grains.Tests;
 
 [DependsOn(
     typeof(AevatarOrleansTestBaseModule),
-    typeof(AevatarGAgentsSpeechModule)
+    typeof(GodGPTGAgentModule)
 )]
 public class AevatarGodGPTTestsMoudle : AbpModule
 {
