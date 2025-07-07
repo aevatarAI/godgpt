@@ -187,9 +187,35 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     }
 
     public async Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string? voiceData, string fileName, string chatId,
-        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, VoiceLanguageEnum language = VoiceLanguageEnum.English)
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, int languageCode = 0)
     {
-        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} start with voice file: {fileName}, size: {voiceData?.Length ?? 0} bytes");
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} start with voice file: {fileName}, size: {voiceData?.Length ?? 0} bytes, languageCode: {languageCode}");
+        
+        // Convert languageCode to VoiceLanguageEnum
+        VoiceLanguageEnum language;
+        if (!Enum.IsDefined(typeof(VoiceLanguageEnum), languageCode))
+        {
+            Logger.LogError($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Invalid language code: {languageCode}");
+            var errorMessage = new ResponseStreamGodChat()
+            {
+                Response = $"Invalid language code: {languageCode}. Supported values: 0 (English), 1 (Chinese), 2 (Spanish)",
+                ChatId = chatId,
+                IsLastChunk = true,
+                SerialNumber = -99,
+                SessionId = sessionId
+            };
+
+            if (isHttpRequest)
+            {
+                await PushMessageToClientAsync(errorMessage);
+            }
+            else
+            {
+                await PublishAsync(errorMessage);
+            }
+            return;
+        }
+        language = (VoiceLanguageEnum)languageCode;
         
         // Validate voiceData
         if (string.IsNullOrEmpty(voiceData))

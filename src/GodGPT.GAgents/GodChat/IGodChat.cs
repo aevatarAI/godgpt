@@ -24,7 +24,7 @@ public interface IGodChat : IGAgent
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
     
     Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string? voiceData, string fileName, string chatId,
-        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, VoiceLanguageEnum language = VoiceLanguageEnum.English);
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, int languageCode = 0);
     
     Task SetUserProfileAsync(UserProfileDto? userProfileDto);
     Task<UserProfileDto?> GetUserProfileAsync();
