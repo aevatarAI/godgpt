@@ -186,15 +186,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
-    public async Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, byte[] mp3Data, string fileName, string chatId,
+    public async Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string? voiceData, string fileName, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
     {
-        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} start with MP3 file: {fileName}, size: {mp3Data?.Length ?? 0} bytes");
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} start with voice file: {fileName}, size: {voiceData?.Length ?? 0} bytes");
         
-        // Validate MP3 data
-        if (mp3Data == null || mp3Data.Length == 0)
+        // Validate voiceData
+        if (string.IsNullOrEmpty(voiceData))
         {
-            Logger.LogError($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Invalid MP3 data");
+            Logger.LogError($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Invalid voice data");
             var errorMessage = new ResponseStreamGodChat()
             {
                 Response = "Invalid voice message. Please try again.",
@@ -216,7 +216,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         }
 
         // Convert MP3 data to byte array (already byte[] but log for confirmation)
-        var voiceDataBytes = mp3Data;
+        var voiceDataBytes = Convert.FromBase64String(voiceData);
         Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Processed MP3 data: {voiceDataBytes.Length} bytes");
 
         var voiceContent = await _speechService.SpeechToTextAsync(voiceDataBytes);
