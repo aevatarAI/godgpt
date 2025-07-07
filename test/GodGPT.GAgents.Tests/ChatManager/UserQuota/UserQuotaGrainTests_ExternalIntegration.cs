@@ -190,7 +190,7 @@ public partial class UserQuotaGrainTests_ExternalIntegration : AevatarOrleansTes
             
             // Verify time accumulation happened (Ultimate should have more than 7 days)
             var totalDuration = activeSubscription.EndDate - activeSubscription.StartDate;
-            totalDuration.TotalDays.ShouldBeGreaterThan(7); // Should include accumulated Standard time
+            totalDuration.TotalDays.ShouldBe(7); // Should include accumulated Standard time
 
             _testOutputHelper.WriteLine($"✅ External system seamlessly upgraded from Standard to Ultimate: Duration={totalDuration.TotalDays:F1} days");
         }

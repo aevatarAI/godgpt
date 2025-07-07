@@ -45,7 +45,7 @@ public partial class UserQuotaGrainTests : AevatarOrleansTestBase<AevatarGodGPTT
             
             creditsInfo.ShouldNotBeNull();
             creditsInfo.IsInitialized.ShouldBeTrue();
-            creditsInfo.Credits.ShouldBeGreaterThan(0);
+            creditsInfo.Credits.ShouldBeGreaterThan(10);
             
             _testOutputHelper.WriteLine($"Credits initialized: {creditsInfo.Credits}");
         }

@@ -201,7 +201,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     {
         _logger.LogDebug(
             "[UserQuotaGrain][GetSubscriptionAsync] Getting subscription info for user {UserId}, ultimate={Ultimate}",
-            this.GetPrimaryKeyString(), ultimate);
+            this.GetPrimaryKey().ToString(), ultimate);
         var subscriptionInfo = ultimate ? State.UltimateSubscription : State.Subscription;
 
         if (subscriptionInfo == null)
@@ -251,20 +251,20 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     public async Task CancelSubscriptionAsync()
     {
         var premiumSubscription = State.Subscription;
-        if (premiumSubscription.IsActive)
+        if (premiumSubscription != null && premiumSubscription.IsActive)
         {
             _logger.LogInformation("[UserQuotaGrain][CancelSubscriptionAsync] cancel premium subscription {0}",
-                this.GetPrimaryKeyString());
+                this.GetPrimaryKey().ToString());
 
             RaiseEvent(new CancelSubscriptionLogEvent { IsUltimate = false });
             await ConfirmEvents();
         }
 
         var ultimateSubscription = State.UltimateSubscription;
-        if (ultimateSubscription.IsActive)
+        if (ultimateSubscription!= null && ultimateSubscription.IsActive)
         {
             _logger.LogInformation("[UserQuotaGrain][CancelSubscriptionAsync] cancel ultimate subscription {0}",
-                this.GetPrimaryKeyString());
+                this.GetPrimaryKey().ToString());
 
             RaiseEvent(new CancelSubscriptionLogEvent { IsUltimate = true });
             await ConfirmEvents();

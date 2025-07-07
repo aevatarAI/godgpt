@@ -251,6 +251,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     }
                 });
 
+                RaiseEvent(new UpdateChatTimeEventLog
+                {
+                    ChatTime = DateTime.UtcNow
+                });
+
                 await ConfirmEvents();
             }
         }
@@ -507,6 +512,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     }
                 }
             });
+            await ConfirmEvents();
+
+            RaiseEvent(new UpdateChatTimeEventLog
+            {
+                ChatTime = DateTime.UtcNow
+            });
 
             await ConfirmEvents();
 
@@ -552,6 +563,16 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         return Task.FromResult(State.ChatHistory);
     }
 
+    public Task<DateTime?> GetFirstChatTimeAsync()
+    {
+        return Task.FromResult(State.FirstChatTime);
+    }
+
+    public Task<DateTime?> GetLastChatTimeAsync()
+    {
+        return Task.FromResult(State.LastChatTime);
+    }
+
     protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
     {
     }
@@ -592,6 +613,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     }
                     State.RegionProxies[regionProxy.Key] = regionProxy.Value;
                 }
+                break;
+            case UpdateChatTimeEventLog updateChatTimeEventLog:
+                if (State.FirstChatTime == null)
+                {
+                    State.FirstChatTime = updateChatTimeEventLog.ChatTime;
+                }
+                State.LastChatTime = updateChatTimeEventLog.ChatTime;
                 break;
         }
     }
