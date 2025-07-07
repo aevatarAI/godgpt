@@ -14,6 +14,7 @@ public class SpeechService : ISpeechService
 
     public SpeechService(IOptions<SpeechOptions> speechOptions)
     {
+        _speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
         /*_speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
         _speechConfig.SpeechRecognitionLanguage = "zh-CN";
         _speechConfig.SpeechSynthesisLanguage = "zh-CN";
