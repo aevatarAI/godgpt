@@ -50,7 +50,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     public TwitterRewardGrain(
         ILogger<TwitterRewardGrain> logger,
         IOptionsMonitor<TwitterRewardOptions> options,
-        [PersistentState("twitterRewardState", "DefaultGrainStorage")] IPersistentState<TwitterRewardState> state)
+        [PersistentState("twitterRewardState", "PubSubStore")] IPersistentState<TwitterRewardState> state)
     {
         _logger = logger;
         _options = options;

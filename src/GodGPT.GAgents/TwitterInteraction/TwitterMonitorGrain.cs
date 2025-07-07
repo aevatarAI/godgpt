@@ -38,7 +38,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
     public TwitterMonitorGrain(
         ILogger<TwitterMonitorGrain> logger,
         IOptionsMonitor<TwitterRewardOptions> options,
-        [PersistentState("tweetMonitorState", "DefaultGrainStorage")] IPersistentState<TwitterMonitorState> state)
+        [PersistentState("tweetMonitorState", "PubSubStore")] IPersistentState<TwitterMonitorState> state)
     {
         _logger = logger;
         _options = options;
