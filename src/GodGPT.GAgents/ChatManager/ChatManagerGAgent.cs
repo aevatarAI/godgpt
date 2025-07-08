@@ -18,6 +18,7 @@ using Aevatar.GAgents.AIGAgent.Agent;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
+using GodGPT.GAgents.SpeechChat;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -829,6 +830,34 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return this.GetPrimaryKey();
     }
 
+    /// <summary>
+    /// Sets the voice language preference for the user.
+    /// Validates that the user exists before updating the voice language setting.
+    /// </summary>
+    /// <param name="voiceLanguage">The voice language to set for the user</param>
+    /// <returns>The user ID if successful</returns>
+    /// <exception cref="UserFriendlyException">Thrown when user is not found or initialized</exception>
+    public async Task<Guid> SetVoiceLanguageAsync(VoiceLanguageEnum voiceLanguage)
+    {
+        // Check if user is properly initialized (has at least one session or profile data)
+        var userId = this.GetPrimaryKey();
+        if (userId == Guid.Empty)
+        {
+            Logger.LogWarning("[ChatGAgentManager][SetVoiceLanguageAsync] Invalid user ID");
+            throw new UserFriendlyException("Invalid user. Please ensure you are properly logged in.");
+        }
+        // Raise event to update voice language
+        RaiseEvent(new SetVoiceLanguageEventLog()
+        {
+            VoiceLanguage = voiceLanguage
+        });
+
+        await ConfirmEvents();
+        
+        Logger.LogDebug($"[ChatGAgentManager][SetVoiceLanguageAsync] Successfully set voice language to {voiceLanguage} for user {userId}");
+        return userId;
+    }
+
     public async Task<UserProfileDto> GetUserProfileAsync()
     {
         Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] userId: {this.GetPrimaryKey().ToString()}");
@@ -1080,6 +1109,11 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 State.BirthDate = @setFortuneInfoEventLog.BirthDate;
                 State.BirthPlace = @setFortuneInfoEventLog.BirthPlace;
                 State.FullName = @setFortuneInfoEventLog.FullName;
+                break;
+            case SetVoiceLanguageEventLog @setVoiceLanguageEventLog:
+                // Update the voice language preference for the user
+                State.VoiceLanguage = @setVoiceLanguageEventLog.VoiceLanguage;
+                Logger.LogDebug($"[ChatGAgentManager][SetVoiceLanguageEventLog] Voice language updated to {State.VoiceLanguage}");
                 break;
             case GenerateChatShareContentLogEvent generateChatShareContentLogEvent:
                 var session = State.GetSession(generateChatShareContentLogEvent.SessionId);
