@@ -882,7 +882,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
             credits.Credits += reward.Credits;
         }
-        
+        Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Success scheduled reward for user {this.GetPrimaryKey()}, VoiceLanguage: {State.VoiceLanguage}");
+
         return new UserProfileDto
         {
             Gender = State.Gender,
