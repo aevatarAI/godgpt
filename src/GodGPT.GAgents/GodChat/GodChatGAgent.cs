@@ -734,7 +734,33 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         else if (aiExceptionEnum != AIExceptionEnum.None)
         {
             Logger.LogError(
-                $"[GodChatGAgent][ChatMessageCallbackAsync] stream error. sessionId {contextDto?.RequestId.ToString()}, chatId {contextDto?.ChatId}, error {aiExceptionEnum}");
+                $"[GodChatGAgent][ChatMessageCallbackAsync] DETAILED ERROR - sessionId {contextDto?.RequestId.ToString()}, chatId {contextDto?.ChatId}, aiExceptionEnum: {aiExceptionEnum}, errorMessage: '{errorMessage}', MessageId: '{contextDto?.MessageId}'");
+            
+            // Extract voice chat info if available
+            string voiceChatInfo = "";
+            if (!contextDto.MessageId.IsNullOrWhiteSpace())
+            {
+                try
+                {
+                    var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
+                    bool isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                    if (isVoiceChat)
+                    {
+                        // Safe type conversion for voice language
+                        var voiceLanguageValue = messageData.GetValueOrDefault("VoiceLanguage", 0);
+                        var voiceLanguage = (VoiceLanguageEnum)Convert.ToInt32(voiceLanguageValue);
+                        var message = messageData.GetValueOrDefault("Message", "").ToString();
+                        voiceChatInfo = $" [VOICE CHAT] Language: {voiceLanguage}, Message: '{message}'";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Failed to parse MessageId for voice chat info");
+                }
+            }
+            
+            Logger.LogError($"[GodChatGAgent][ChatMessageCallbackAsync] ERROR CONTEXT:{voiceChatInfo}");
+            
             var chatMessage = new ResponseStreamGodChat()
             {
                 Response =
@@ -804,7 +830,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
             if (isVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
             {
-                var voiceLanguage = (VoiceLanguageEnum)(int)messageData.GetValueOrDefault("VoiceLanguage", 0);
+                // Safe type conversion to handle both int and long from JSON deserialization
+                var voiceLanguageValue = messageData.GetValueOrDefault("VoiceLanguage", 0);
+                var voiceLanguage = (VoiceLanguageEnum)Convert.ToInt32(voiceLanguageValue);
                 
                 // Get or create text accumulator for this chat session
                 if (!VoiceTextAccumulators.ContainsKey(contextDto.ChatId))
@@ -1182,7 +1210,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 context: aiChatContextDto);
             if (!result)
             {
-                Logger.LogError($"Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
+                Logger.LogError($"[GodChatGAgent][GodVoiceStreamChatAsync] Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
             }
 
             // Step 5: Save user voice message to history with metadata
