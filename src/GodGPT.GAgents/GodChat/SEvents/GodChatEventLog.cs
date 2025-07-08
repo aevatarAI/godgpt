@@ -46,12 +46,6 @@ public class UpdateRegionProxiesLogEvent : GodChatEventLog
 public class AddChatHistoryLogEvent : GodChatEventLog
 {
     [Id(0)] public List<ChatMessage> ChatList { get; set; }
-    [Id(1)] public List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
+    [Id(1)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<ChatMessageMeta>();
 }
 
-[GenerateSerializer]
-public class AddChatHistoryWithMetadataLogEvent : GodChatEventLog
-{
-    [Id(0)] public List<ChatMessage> ChatList { get; set; }
-    [Id(1)] public List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
-}

@@ -55,7 +55,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     private static readonly Regex MarkdownInlineCodeRegex = new Regex(@"`([^`]+)`", RegexOptions.Compiled);
     private static readonly Regex MarkdownTableRegex = new Regex(@"\|.*?\|", RegexOptions.Compiled);
     private static readonly Regex MarkdownStrikethroughRegex = new Regex(@"~~([^~]+)~~", RegexOptions.Compiled);
-    private static readonly Regex EmojiRegex = new Regex(@"[\uD83D\uDE00-\uD83D\uDE4F]|[\uD83C\uDF00-\uD83D\uDDFF]|[\uD83D\uDE80-\uD83D\uDEFF]|[\uD83C\uDDE0-\uD83C\uDDFF]|[\u2600-\u26FF]|[\u2700-\u27BF]", RegexOptions.Compiled);
+    private static readonly Regex EmojiRegex = new Regex(@"[\u2600-\u26FF]|[\u2700-\u27BF]", RegexOptions.Compiled);
 
     public GodChatGAgent(ISpeechService speechService)
     {
