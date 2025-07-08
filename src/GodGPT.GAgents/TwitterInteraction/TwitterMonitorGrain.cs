@@ -85,7 +85,12 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             _logger.LogInformation($"TweetMonitorGrain Cleaning up existing reminder due to configuration change");
             try
             {
-                await UnregisterReminder(GetReminder(REMINDER_NAME));
+                var existingReminder = await this.GetReminder(REMINDER_NAME);
+                if (existingReminder != null)
+                {
+                    _logger.LogInformation($"TweetMonitorGrain Reminder cleaned up to match IsRunning=false state");
+                    await this.UnregisterReminder(existingReminder);
+                }
             }
             catch (Exception e)
             {
@@ -126,7 +131,6 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             if (_state.State.IsRunning && !hasReminder)
             {
                 _logger.LogWarning($"TweetMonitorGrain Inconsistent state detected: IsRunning=true but no reminder found. Registering reminder...");
-                var nextMidnightUtc = GetNextMidnightUtc();
                 await this.RegisterOrUpdateReminder(
                     REMINDER_NAME,
                     TimeSpan.FromMinutes(_state.State.Config.FetchIntervalMinutes),
@@ -137,8 +141,11 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             {
                 _logger.LogWarning($"TweetMonitorGrain Inconsistent state detected: IsRunning=false but reminder exists. Cleaning up reminder...");
                 var existingReminder = await this.GetReminder(REMINDER_NAME);
-                await this.UnregisterReminder(existingReminder);
-                _logger.LogInformation($"TweetMonitorGrain Reminder cleaned up to match IsRunning=false state");
+                if (existingReminder != null)
+                {
+                    _logger.LogInformation($"TweetMonitorGrain Reminder cleaned up to match IsRunning=false state");
+                    await this.UnregisterReminder(existingReminder);
+                }
             }
             else
             {
@@ -181,9 +188,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 TimeSpan.FromMinutes(_state.State.Config.FetchIntervalMinutes),
                 TimeSpan.FromMinutes(_state.State.Config.FetchIntervalMinutes));
 
-            _logger.LogInformation($"Tweet monitoring started with interval {IntervalMinutes} minutes", 
-                _state.State.Config.FetchIntervalMinutes);
-
+            _logger.LogInformation(
+                $"Tweet monitoring started with interval {_state.State.Config.FetchIntervalMinutes} minutes");
             return new TwitterApiResultDto<bool>
             {
                 IsSuccess = true,
@@ -444,20 +450,17 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
     {
         try
         {
-            _logger.LogInformation($"Starting background refetch for time range {Start} to {End}", 
-                timeRange.StartTime, timeRange.EndTime);
+            _logger.LogInformation($"Starting background refetch for time range {timeRange.StartTime} to {timeRange.EndTime}");
 
             var maxEndTime = DateTime.UtcNow;
             var actualEndTime = timeRange.EndTime > maxEndTime ? maxEndTime : timeRange.EndTime;
             
-            _logger.LogInformation($"Adjusted end time from {OriginalEnd} to {ActualEnd}", 
-                timeRange.EndTime, actualEndTime);
+            _logger.LogInformation($"Adjusted end time from {timeRange.EndTime} to {actualEndTime}");
 
             // Handle edge case: StartTime equals or after EndTime
             if (timeRange.StartTime >= actualEndTime)
             {
-                _logger.LogWarning($"Invalid time range: StartTime {Start} >= EndTime {End}", 
-                    timeRange.StartTime, actualEndTime);
+                _logger.LogWarning($"Invalid time range: StartTime {timeRange.StartTime} >= EndTime {actualEndTime}");
                 return new TwitterApiResultDto<bool>
                 {
                     IsSuccess = false,
@@ -500,8 +503,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
     {
         try
         {
-            _logger.LogInformation($"Background processing started for time range {Start} to {End}", 
-                timeRange.StartTime, actualEndTime);
+            _logger.LogInformation($"Background processing started for time range {timeRange.StartTime} to {actualEndTime}");
 
             var overallResult = new TweetFetchResultDto
             {
@@ -518,8 +520,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             var currentStart = timeRange.StartTime;
             var hourlyIntervals = 0;
 
-            _logger.LogInformation($"Starting time window fetch process from {Start} to {End} (Window size: {WindowHours}h, Max tweets per window: {MaxTweets})", 
-                currentStart, actualEndTime, _options.CurrentValue.TimeWindowHours, _options.CurrentValue.MaxTweetsPerWindow);
+            _logger.LogInformation($"Starting time window fetch process from {currentStart} to {actualEndTime} (Window size: {_options.CurrentValue.TimeWindowHours}h, Max tweets per window: {_options.CurrentValue.MaxTweetsPerWindow})");
 
             while (currentStart < actualEndTime)
             {
@@ -529,8 +530,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
                 hourlyIntervals++;
                 
-                _logger.LogInformation($"Processing time interval {Interval}: {Start} to {End} (Window: {WindowHours}h)", 
-                    hourlyIntervals, currentStart, currentEnd, _options.CurrentValue.TimeWindowHours);
+                _logger.LogInformation($"Processing time interval {hourlyIntervals}: {currentStart} to {currentEnd} (Window: {_options.CurrentValue.TimeWindowHours}h)");
 
                 var searchRequest = new SearchTweetsRequestDto
                 {
@@ -547,9 +547,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     // Check if we need to adjust window size for high tweet density
                     if (result.Data.TotalFetched >= _options.CurrentValue.MaxTweetsPerWindow)
                     {
-                        _logger.LogWarning($"High tweet density detected ({TweetCount} tweets in {Hours}h window). " +
-                                           "Consider reducing time window for better API rate control.", 
-                                           result.Data.TotalFetched, _options.CurrentValue.TimeWindowHours);
+                        _logger.LogWarning($"High tweet density detected ({result.Data.TotalFetched} tweets in {_options.CurrentValue.TimeWindowHours}h window). " +
+                                           "Consider reducing time window for better API rate control.");
                     }
                     
                     // Accumulate results
@@ -559,15 +558,13 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     overallResult.FilteredOut += result.Data.FilteredOut;
                     overallResult.NewTweetIds.AddRange(result.Data.NewTweetIds);
                     
-                    _logger.LogInformation($"Time interval {Interval} completed: Fetched={Fetched}, New={New}, Duplicates={Duplicates}, Filtered={Filtered}", 
-                        hourlyIntervals, result.Data.TotalFetched, result.Data.NewTweets, 
-                        result.Data.DuplicateSkipped, result.Data.FilteredOut);
+                    _logger.LogInformation($"Time interval {hourlyIntervals} completed: Fetched={result.Data.TotalFetched}, New={result.Data.NewTweets}, Duplicates={result.Data.DuplicateSkipped}, Filtered={result.Data.FilteredOut}");
                 }
                 else
                 {
                     var errorMsg = $"Time window {currentStart:HH:mm}-{currentEnd:HH:mm}: {result.ErrorMessage}";
                     errorMessages.Add(errorMsg);
-                    _logger.LogError($"Time interval {Interval} failed: {Error}", hourlyIntervals, result.ErrorMessage);
+                    _logger.LogError($"Time interval {hourlyIntervals} failed: {result.ErrorMessage}");
                     
                     // Check if it's a rate limit error
                     if (result.ErrorMessage.Contains("TooManyRequests") || result.ErrorMessage.Contains("429"))
@@ -584,21 +581,18 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     // Priority 1: Always delay when there's an error (API safety)
                     if (!result.IsSuccess)
                     {
-                        _logger.LogWarning($"⚠️ Error occurred, applying mandatory {Delay}min delay for API safety: {Error}", 
-                            _options.CurrentValue.MinTimeWindowMinutes, result.ErrorMessage);
+                        _logger.LogWarning($"⚠️ Error occurred, applying mandatory {_options.CurrentValue.MinTimeWindowMinutes}min delay for API safety: {result.ErrorMessage}");
                         await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
                     }
                     // Priority 2: Skip delay only when successful with no tweets found
                     else if (result.Data.TotalFetched == 0)
                     {
-                        _logger.LogInformation($"⚡ No tweets found in time window, proceeding immediately to next window (skipping {Delay}min delay)...", 
-                            _options.CurrentValue.MinTimeWindowMinutes);
+                        _logger.LogInformation($"⚡ No tweets found in time window, proceeding immediately to next window (skipping {_options.CurrentValue.MinTimeWindowMinutes}min delay)...");
                     }
                     // Priority 3: Normal delay when tweets were found
                     else
                     {
-                        _logger.LogInformation($"⏳ Waiting {Delay} minutes to avoid API rate limiting (found {TweetCount} tweets)...", 
-                            _options.CurrentValue.MinTimeWindowMinutes, result.Data.TotalFetched);
+                        _logger.LogInformation($"⏳ Waiting {_options.CurrentValue.MinTimeWindowMinutes} minutes to avoid API rate limiting (found {result.Data.TotalFetched} tweets)...");
                         await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
                     }
                 }
@@ -614,10 +608,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
             var isOverallSuccess = errorMessages.Count == 0;
             
-            _logger.LogInformation($"Background processing completed: {Intervals} time windows processed ({WindowSize}h each), " +
-                                  "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}", 
-                                  hourlyIntervals, _options.CurrentValue.TimeWindowHours, overallResult.TotalFetched, overallResult.NewTweets, 
-                                  overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess);
+            _logger.LogInformation($"Background processing completed: {hourlyIntervals} time windows processed ({_options.CurrentValue.TimeWindowHours}h each), " +
+                                  "Overall: Fetched={overallResult.TotalFetched}, New={overallResult.NewTweets}, Duplicates={overallResult.DuplicateSkipped}, Filtered={overallResult.FilteredOut}, Success={isOverallSuccess}");
         }
         catch (Exception ex)
         {
@@ -707,7 +699,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
         if (!result.IsSuccess)
         {
-            _logger.LogWarning($"Scheduled tweet fetch failed: {Error}", result.ErrorMessage);
+            _logger.LogWarning($"Scheduled tweet fetch failed: {result.ErrorMessage}");
             _state.State.LastError = result.ErrorMessage;
         }
         else
@@ -741,15 +733,13 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             // Ensure startTime is not in the future (safety check)
             if (startTime > endTime)
             {
-                _logger.LogWarning($"⚠️ LastFetchTime is in the future ({LastFetch} > {Now}), adjusting to 1 hour ago", 
-                    startTime, endTime);
+                _logger.LogWarning($"⚠️ LastFetchTime is in the future ({startTime} > {endTime}), adjusting to 1 hour ago");
                 startTime = endTime.AddHours(-1);
             }
             
             var timeRangeMinutes = (endTime - startTime).TotalMinutes;
             
-            _logger.LogInformation($"🚀 Starting scheduled tweet fetch - Query: '{Query}', Max results per window: {MaxResults}, Time range: {TimeRange} minutes", 
-                queryWithFilters, _options.CurrentValue.BatchFetchSize, timeRangeMinutes);
+            _logger.LogInformation($"🚀 Starting scheduled tweet fetch - Query: '{queryWithFilters}', Max results per window: {_options.CurrentValue.BatchFetchSize}, Time range: {timeRangeMinutes} minutes");
             
             // Always use RefetchTweetsByTimeRangeAsync pattern: fixed window processing for all scheduled tasks
             _logger.LogInformation($"🔄 Applying RefetchTweetsByTimeRangeAsync pattern: fixed window processing for scheduled tasks");
@@ -760,17 +750,14 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             if (result.Data.LastSuccessfulFetchTime.HasValue)
             {
                 var newLastFetchTime = result.Data.LastSuccessfulFetchTime.Value;
-                _logger.LogInformation($"✅ Updating LastFetchTime from {OldTime} to {NewTime} (last successful API call - ensures no time gaps)", 
-                    _state.State.LastFetchTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "None", 
-                    newLastFetchTime.ToString("yyyy-MM-dd HH:mm:ss"));
+                _logger.LogInformation($"✅ Updating LastFetchTime from {_state.State.LastFetchTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "None"} to {newLastFetchTime.ToString("yyyy-MM-dd HH:mm:ss")} (last successful API call - ensures no time gaps)");
                     
                 _state.State.LastFetchTime = newLastFetchTime;
                 _state.State.LastFetchTimeUtc = result.Data.LastSuccessfulFetchTimeUtc;
             }
             else
             {
-                _logger.LogWarning($"⚠️ No successful API calls in this fetch cycle. LastFetchTime remains unchanged at {LastFetchTime} to avoid time gaps", 
-                    _state.State.LastFetchTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "None");
+                _logger.LogWarning($"⚠️ No successful API calls in this fetch cycle. LastFetchTime remains unchanged at {_state.State.LastFetchTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "None"} to avoid time gaps");
             }
             
             return result;
@@ -807,8 +794,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
         try
         {
             var maxWindowMinutes = _options.CurrentValue.TimeWindowHours * 60; // Convert hours to minutes
-            _logger.LogInformation($"🔄 Starting scheduled fetch using RefetchTweetsByTimeRangeAsync pattern from {Start} to {End} (Window size: {WindowMinutes} min, Max tweets per window: {MaxTweets})", 
-                currentStart, endTime, maxWindowMinutes, _options.CurrentValue.BatchFetchSize);
+            _logger.LogInformation($"🔄 Starting scheduled fetch using RefetchTweetsByTimeRangeAsync pattern from {currentStart} to {endTime} (Window size: {maxWindowMinutes} min, Max tweets per window: {_options.CurrentValue.BatchFetchSize})");
 
             while (currentStart < endTime)
             {
@@ -820,23 +806,20 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 var now = DateTime.UtcNow;
                 if (currentEnd > now)
                 {
-                    _logger.LogWarning($"⚠️ Window end time is in the future ({WindowEnd} > {Now}), adjusting to current time", 
-                        currentEnd, now);
+                    _logger.LogWarning($"⚠️ Window end time is in the future ({currentEnd} > {now}), adjusting to current time");
                     currentEnd = now;
                 }
                 
                 // Skip window if start time equals or exceeds end time
                 if (currentStart >= currentEnd)
                 {
-                    _logger.LogWarning($"⚠️ Invalid window: start time {Start} >= end time {End}, skipping window", 
-                        currentStart, currentEnd);
+                    _logger.LogWarning($"⚠️ Invalid window: start time {currentStart} >= end time {currentEnd}, skipping window");
                     break;
                 }
 
                 windowCount++;
                 
-                _logger.LogInformation($"📅 Processing scheduled fetch window {Window}: {Start} to {End} (Window: {WindowMinutes} min)", 
-                    windowCount, currentStart, currentEnd, maxWindowMinutes);
+                _logger.LogInformation($"📅 Processing scheduled fetch window {windowCount}: {currentStart} to {currentEnd} (Window: {maxWindowMinutes} min)");
 
                 var searchRequest = new SearchTweetsRequestDto
                 {
@@ -858,9 +841,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     // Check if we need to adjust window size for high tweet density
                     if (result.Data.TotalFetched >= _options.CurrentValue.BatchFetchSize)
                     {
-                        _logger.LogWarning($"High tweet density detected in scheduled fetch ({TweetCount} tweets in {Minutes} min window). " +
-                                           "Consider reducing TimeWindowHours for better API rate control.", 
-                                           result.Data.TotalFetched, maxWindowMinutes);
+                        _logger.LogWarning($"High tweet density detected in scheduled fetch ({result.Data.TotalFetched} tweets in {maxWindowMinutes} min window). " +
+                                           "Consider reducing TimeWindowHours for better API rate control.");
                     }
                     
                     // Accumulate results
@@ -872,21 +854,18 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     
                     if (result.Data.TotalFetched > 0)
                     {
-                        _logger.LogInformation($"✅ Scheduled fetch window {Window} completed: Fetched={WindowFetched}, New={WindowNew}, Duplicates={WindowDuplicates}, Filtered={WindowFiltered}, LastSuccessTime={LastSuccessTime}", 
-                            windowCount, result.Data.TotalFetched, result.Data.NewTweets, result.Data.DuplicateSkipped, result.Data.FilteredOut, currentEnd.ToString("HH:mm:ss"));
+                        _logger.LogInformation($"✅ Scheduled fetch window {windowCount} completed: Fetched={result.Data.TotalFetched}, New={result.Data.NewTweets}, Duplicates={result.Data.DuplicateSkipped}, Filtered={result.Data.FilteredOut}, LastSuccessTime={currentEnd.ToString("HH:mm:ss")}" );
                     }
                     else
                     {
-                        _logger.LogInformation($"✅ Scheduled fetch window {Window} completed (empty): No tweets found in time range, LastSuccessTime={LastSuccessTime}", 
-                            windowCount, currentEnd.ToString("HH:mm:ss"));
+                        _logger.LogInformation($"✅ Scheduled fetch window {windowCount} completed (empty): No tweets found in time range, LastSuccessTime={currentEnd.ToString("HH:mm:ss")}");
                     }
                 }
                 else
                 {
                     var errorMsg = $"Scheduled fetch window {windowCount} ({currentStart:HH:mm}-{currentEnd:HH:mm}): {result.ErrorMessage}";
                     errorMessages.Add(errorMsg);
-                    _logger.LogError($"❌ Scheduled fetch window {Window} failed: {Error} (LastSuccessTime remains: {LastSuccessTime})", 
-                        windowCount, result.ErrorMessage, overallResult.LastSuccessfulFetchTime?.ToString("HH:mm:ss") ?? "None");
+                    _logger.LogError($"❌ Scheduled fetch window {windowCount} failed: {result.ErrorMessage} (LastSuccessTime remains: { overallResult.LastSuccessfulFetchTime?.ToString("HH:mm:ss") ?? "None"})");
                     
                     // Check if it's a rate limit error
                     if (result.ErrorMessage.Contains("TooManyRequests") || result.ErrorMessage.Contains("429"))
@@ -903,21 +882,18 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     // Priority 1: Always delay when there's an error (API safety first)
                     if (!result.IsSuccess)
                     {
-                        _logger.LogWarning($"⚠️ Error in scheduled fetch, applying mandatory {Delay}min delay for API safety: {Error}", 
-                            _options.CurrentValue.MinTimeWindowMinutes, result.ErrorMessage);
+                        _logger.LogWarning($"⚠️ Error in scheduled fetch, applying mandatory {_options.CurrentValue.MinTimeWindowMinutes}min delay for API safety: {result.ErrorMessage}");
                         await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
                     }
                     // Priority 2: Skip delay only when successful with no tweets found (efficiency)
                     else if (result.Data.TotalFetched == 0)
                     {
-                        _logger.LogInformation($"⚡ No tweets found in scheduled fetch window, proceeding immediately to next window (skipping {Delay}min delay)...", 
-                            _options.CurrentValue.MinTimeWindowMinutes);
+                        _logger.LogInformation($"⚡ No tweets found in scheduled fetch window, proceeding immediately to next window (skipping {_options.CurrentValue.MinTimeWindowMinutes}min delay)");
                     }
                     // Priority 3: Normal delay when tweets were found (API rate limiting)
                     else
                     {
-                        _logger.LogInformation($"⏳ Scheduled fetch waiting {Delay} minutes to avoid API rate limiting (found {TweetCount} tweets)...", 
-                            _options.CurrentValue.MinTimeWindowMinutes, result.Data.TotalFetched);
+                        _logger.LogInformation($"⏳ Scheduled fetch waiting {_options.CurrentValue.MinTimeWindowMinutes} minutes to avoid API rate limiting (found {result.Data.TotalFetched} tweets)...");
                         await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
                     }
                 }
@@ -934,7 +910,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             var isOverallSuccess = errorMessages.Count == 0;
             var hasAnySuccess = overallResult.LastSuccessfulFetchTime.HasValue;
             
-            _logger.LogInformation($"🎉 Scheduled fetch using RefetchTweetsByTimeRangeAsync pattern completed: {Windows} windows processed ({WindowSize} min each), " +
+            _logger.LogInformation("🎉 Scheduled fetch using RefetchTweetsByTimeRangeAsync pattern completed: {Windows} windows processed ({WindowSize} min each), " +
                                   "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}, LastSuccessTime={LastSuccessTime}", 
                                   windowCount, maxWindowMinutes, overallResult.TotalFetched, 
                                   overallResult.NewTweets, overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess,
@@ -984,8 +960,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
         try
         {
             var maxWindowMinutes = _options.CurrentValue.TimeWindowHours * 60; // Convert hours to minutes
-            _logger.LogInformation($"🔄 Starting time window splitting fetch from {Start} to {End} (Window size: {WindowMinutes} min, Max tweets per window: {MaxTweets})", 
-                currentStart, endTime, maxWindowMinutes, _state.State.Config.MaxTweetsPerFetch);
+            _logger.LogInformation($"🔄 Starting time window splitting fetch from {currentStart} to {endTime} (Window size: {maxWindowMinutes} min, Max tweets per window: {_state.State.Config.MaxTweetsPerFetch})");
 
             while (currentStart < endTime)
             {
@@ -995,8 +970,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
                 windowCount++;
                 
-                _logger.LogInformation($"📅 Processing scheduled fetch window {Window}: {Start} to {End} (Window: {WindowMinutes} min)", 
-                    windowCount, currentStart, currentEnd, maxWindowMinutes);
+                _logger.LogInformation($"📅 Processing scheduled fetch window {windowCount}: {currentStart} to {currentEnd} (Window: {maxWindowMinutes} min)");
 
                 var searchRequest = new SearchTweetsRequestDto
                 {
@@ -1021,9 +995,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     overallResult.FilteredOut += result.Data.FilteredOut;
                     overallResult.NewTweetIds.AddRange(result.Data.NewTweetIds);
                     
-                    _logger.LogInformation($"✅ Window [{Start} - {End}] processed successfully: {TotalFetched} fetched, {NewTweets} new", 
-                        currentStart.ToString("MM-dd HH:mm"), currentEnd.ToString("MM-dd HH:mm"), 
-                        result.Data.TotalFetched, result.Data.NewTweets);
+                    _logger.LogInformation($"✅ Window [{currentStart.ToString("MM-dd HH:mm")} - {currentEnd.ToString("MM-dd HH:mm")}] processed successfully: {result.Data.TotalFetched} fetched, {result.Data.NewTweets} new");
                 }
                 else
                 {
@@ -1031,8 +1003,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     // This ensures failed time ranges will be retried in next fetch cycle
                     overallResult.ErrorMessage += $"Window [{currentStart:MM-dd HH:mm} - {currentEnd:MM-dd HH:mm}]: {result.ErrorMessage}; ";
                     
-                    _logger.LogWarning($"❌ Window [{Start} - {End}] failed: {Error}", 
-                        currentStart.ToString("MM-dd HH:mm"), currentEnd.ToString("MM-dd HH:mm"), result.ErrorMessage);
+                    _logger.LogWarning($"❌ Window [{currentStart.ToString("MM-dd HH:mm")} - {currentEnd.ToString("MM-dd HH:mm")}] failed: {result.ErrorMessage}");
                 }
 
                 currentStart = currentEnd;
@@ -1043,21 +1014,18 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     // Priority 1: Always delay when there's an error (API safety)
                     if (!result.IsSuccess)
                     {
-                        _logger.LogWarning($"⚠️ Error in scheduled fetch, applying mandatory {Delay}min delay for API safety: {Error}", 
-                            _options.CurrentValue.MinTimeWindowMinutes, result.ErrorMessage);
+                        _logger.LogWarning($"⚠️ Error in scheduled fetch, applying mandatory {_options.CurrentValue.MinTimeWindowMinutes}min delay for API safety: {result.ErrorMessage}");
                         await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
                     }
                     // Priority 2: Skip delay only when successful with no tweets found
                     else if (result.Data.TotalFetched == 0)
                     {
-                        _logger.LogInformation($"⚡ No tweets found in scheduled fetch window, proceeding immediately to next window (skipping {Delay}min delay)...", 
-                            _options.CurrentValue.MinTimeWindowMinutes);
+                        _logger.LogInformation($"⚡ No tweets found in scheduled fetch window, proceeding immediately to next window (skipping { _options.CurrentValue.MinTimeWindowMinutes}min delay)...");
                     }
                     // Priority 3: Normal delay when tweets were found
                     else
                     {
-                        _logger.LogInformation($"⏳ Scheduled fetch waiting {Delay} minutes to avoid API rate limiting (found {TweetCount} tweets)...", 
-                            _options.CurrentValue.MinTimeWindowMinutes, result.Data.TotalFetched);
+                        _logger.LogInformation($"⏳ Scheduled fetch waiting {_options.CurrentValue.MinTimeWindowMinutes} minutes to avoid API rate limiting (found {result.Data.TotalFetched} tweets)...");
                         await Task.Delay(TimeSpan.FromMinutes(_options.CurrentValue.MinTimeWindowMinutes));
                     }
                 }
@@ -1074,7 +1042,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             var isOverallSuccess = errorMessages.Count == 0;
             var hasAnySuccess = overallResult.LastSuccessfulFetchTime.HasValue;
             
-            _logger.LogInformation($"🎉 Scheduled fetch time window splitting completed: {Windows} windows processed ({WindowSize} min each), " +
+            _logger.LogInformation("🎉 Scheduled fetch time window splitting completed: {Windows} windows processed ({WindowSize} min each), " +
                                   "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}, LastSuccessTime={LastSuccessTime}", 
                                   windowCount, maxWindowMinutes, overallResult.TotalFetched, 
                                   overallResult.NewTweets, overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess,
@@ -1117,7 +1085,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             var searchResult = await _twitterGrain!.SearchTweetsAsync(searchRequest);
             if (!searchResult.IsSuccess)
             {
-                _logger.LogError($"❌ Twitter API search failed: {ErrorMessage}", searchResult.ErrorMessage);
+                _logger.LogError($"❌ Twitter API search failed: {searchResult.ErrorMessage}");
                 fetchResult.ErrorMessage = searchResult.ErrorMessage;
                 await RecordFetchHistory(fetchResult, false, searchResult.ErrorMessage);
                 
@@ -1130,7 +1098,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             }
 
             fetchResult.TotalFetched = searchResult.Data.Data.Count;
-            _logger.LogInformation($"📊 Twitter API returned {Count} tweets", fetchResult.TotalFetched);
+            _logger.LogInformation($"📊 Twitter API returned {fetchResult.TotalFetched} tweets");
 
             // Process each tweet
             _logger.LogInformation($"🔄 Starting tweet processing and filtering...");
@@ -1162,7 +1130,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     
                     if (!analysisResult.IsSuccess)
                     {
-                        _logger.LogWarning($"❌ Tweet analysis failed {TweetId}: {Error}", tweet.Id, analysisResult.ErrorMessage);
+                        _logger.LogWarning($"❌ Tweet analysis failed {tweet.Id}: {analysisResult.ErrorMessage}");
                         fetchResult.FilteredOut++;
                         continue;
                     }
@@ -1183,8 +1151,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     var excludedAccountIds = _options.CurrentValue.GetExcludedAccountIds();
                     if (excludedAccountIds.Contains(tweetDetails.AuthorId))
                     {
-                        _logger.LogInformation($"🚫 Filtering excluded account tweet {TweetId} - Author ID: {AuthorId} (@{AuthorHandle})", 
-                            tweet.Id, tweetDetails.AuthorId, tweetDetails.AuthorHandle);
+                        _logger.LogInformation($"🚫 Filtering excluded account tweet {tweet.Id} - Author ID: {tweetDetails.AuthorId} (@{tweetDetails.AuthorHandle})");
                         fetchResult.FilteredOut++;
                         continue;
                     }
@@ -1204,10 +1171,8 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
 
                     if (userTweetCountOnThatDay >= _options.CurrentValue.MaxTweetsPerUser)
                     {
-                        _logger.LogInformation($"🚫 User daily limit reached - Tweet {TweetId}, Author: @{AuthorHandle} ({AuthorId}), " +
-                                              "Tweets on {TweetDateUtc} UTC: {Count}/{Limit}", 
-                                              tweet.Id, tweetDetails.AuthorHandle, tweetDetails.AuthorId, 
-                                              tweetDateUtc.ToString("yyyy-MM-dd"), userTweetCountOnThatDay, _options.CurrentValue.MaxTweetsPerUser);
+                        _logger.LogInformation($"🚫 User daily limit reached - Tweet {tweet.Id}, Author: @{tweetDetails.AuthorHandle} ({tweetDetails.AuthorId}), " +
+                                              "Tweets on {tweetDateUtc} UTC: {userTweetCountOnThatDay}/{_options.CurrentValue.MaxTweetsPerUser}");
                         fetchResult.FilteredOut++;
                         continue;
                     }
@@ -1235,8 +1200,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     fetchResult.NewTweetIds.Add(tweet.Id);
                     fetchResult.NewTweets++;
                     
-                    _logger.LogInformation($"✅ Saved valid tweet {TweetId} - Author: @{AuthorHandle}, Share link: {HasShareLink}", 
-                        tweet.Id, tweetDetails.AuthorHandle, tweetDetails.HasValidShareLink);
+                    _logger.LogInformation($"✅ Saved valid tweet {tweet.Id} - Author: @{tweetDetails.AuthorHandle}, Share link: {tweetDetails.HasValidShareLink}");
                     
                     // Add delay between processing tweets to avoid API rate limiting
                     if (_options.CurrentValue.TweetProcessingDelayMs > 0)
@@ -1258,12 +1222,11 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             await _state.WriteStateAsync();
             await RecordFetchHistory(fetchResult, true, string.Empty);
 
-            _logger.LogInformation($"🎉 Fetch completed - Total: {Total}, New: {New}, Duplicates: {Duplicates}, Filtered: {Filtered}", 
-                fetchResult.TotalFetched, fetchResult.NewTweets, fetchResult.DuplicateSkipped, fetchResult.FilteredOut);
+            _logger.LogInformation($"🎉 Fetch completed - Total: {fetchResult.TotalFetched}, New: {fetchResult.NewTweets}, Duplicates: {fetchResult.DuplicateSkipped}, Filtered: {fetchResult.FilteredOut}");
             
             if (fetchResult.NewTweets > 0)
             {
-                _logger.LogInformation($"📋 New tweet IDs: [{TweetIds}]", string.Join(", ", fetchResult.NewTweetIds));
+                _logger.LogInformation("📋 New tweet IDs: [{TweetIds}]", string.Join(", ", fetchResult.NewTweetIds));
             }
 
                         return new TwitterApiResultDto<TweetFetchResultDto>
