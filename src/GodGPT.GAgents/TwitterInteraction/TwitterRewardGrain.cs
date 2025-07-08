@@ -1419,12 +1419,12 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             try
             {
                 if (reward.IsRewardSent) continue;
-                var bindingGrain = GrainFactory.GetGrain<ITwitterIdentityBindingGAgent>(CommonHelper.StringToGuid(reward.TweetId));
+                var bindingGrain = GrainFactory.GetGrain<ITwitterIdentityBindingGAgent>(CommonHelper.StringToGuid(reward.UserId));
                 
 
                 if (bindingGrain == null)
                 {
-                    _logger.LogInformation($"SendRewardsToUsersAsync no binding info 1, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId} for tweetId={reward.TweetId}");
+                    _logger.LogInformation($"SendRewardsToUsersAsync no binding info 1, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId}");
 
                     continue;
                 }
@@ -1432,12 +1432,12 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 
                 if (userId == null || userId == Guid.Empty)
                 {
-                    _logger.LogInformation($"SendRewardsToUsersAsync no binding info 2, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId} for tweetId={reward.TweetId}");
+                    _logger.LogInformation($"SendRewardsToUsersAsync no binding info 2, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId}");
 
                     continue;
                 }
                 
-                _logger.LogInformation($"SendRewardsToUsersAsync binding info, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId} for tweetId={reward.TweetId} userId={userId}");
+                _logger.LogInformation($"SendRewardsToUsersAsync binding info, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId}  userId={userId}");
                 
                 var invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(userId.Value);
                 
