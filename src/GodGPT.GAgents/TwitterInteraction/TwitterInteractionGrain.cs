@@ -87,16 +87,16 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 }
             }
             
-            // Validate EndTime: if not null, must be at least 10 seconds before current UTC time
+            // Validate EndTime: if not null, must be at least 30 seconds before current UTC time (increased buffer for API safety)
             if (request.EndTime.HasValue)
             {
-                var minimumEndTime = currentUtc.AddSeconds(-10);
+                var minimumEndTime = currentUtc.AddSeconds(-30);  // 增加到30秒缓冲
                 
                 if (request.EndTime.Value > minimumEndTime)
                 {
-                    _logger.LogWarning("EndTime {EndTime} is too close to current time or in the future (current: {CurrentTime}). Adjusting to current time.", 
-                        request.EndTime.Value, currentUtc);
-                    request.EndTime = currentUtc;
+                    _logger.LogWarning("EndTime {EndTime} is too close to current time or in the future (current: {CurrentTime}). Adjusting to {MinimumEndTime}.", 
+                        request.EndTime.Value, currentUtc, minimumEndTime);
+                    request.EndTime = minimumEndTime;  
                 }
                 else if (request.EndTime.Value < minPastTime)
                 {
@@ -143,8 +143,20 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             try
             {
                 var response = await _httpClient.GetAsync(url);
-                response.EnsureSuccessStatusCode();
                 var content = await response.Content.ReadAsStringAsync();
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("SearchTweetsAsync Error: StatusCode={StatusCode}, Content={Content}, url={url}", 
+                        response.StatusCode, content, url);
+                    return new TwitterApiResultDto<SearchTweetsResponseDto>
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = $"Twitter API error {response.StatusCode}: {content}",
+                        StatusCode = (int)response.StatusCode,
+                        Data = new SearchTweetsResponseDto()
+                    };
+                }
                 
                 //_logger.LogDebug("SearchTweetsAsync Response: {resp}", content);
 
