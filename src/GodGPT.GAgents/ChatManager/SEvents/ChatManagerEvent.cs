@@ -302,7 +302,7 @@ public class ChatMessageMeta
 
 public enum ChatErrorCode
 {
-    Success = 0,
+    Success = 20000,
     ParamInvalid = 20001,
     VoiceParsingFailed = 20002,
     InsufficientCredits = 20003,
