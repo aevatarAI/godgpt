@@ -83,6 +83,7 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
             SessionId = SessionId,
             AudioData = AudioData,
             AudioMetadata = AudioMetadata,
+            ErrorCode = ErrorCode
         };
     }
 }
@@ -105,7 +106,9 @@ public class ResponseStreamGodChatForHttp
     /// <summary>
     /// Audio metadata including duration, format, language etc.
     /// </summary>
-    public AudioMetadata? AudioMetadata { get; set; }
+    public AudioMetadata? AudioMetadata { get; set; } 
+    public ChatErrorCode ErrorCode { get; set; }
+
 }
 
 [GenerateSerializer]
@@ -299,7 +302,7 @@ public class ChatMessageMeta
 
 public enum ChatErrorCode
 {
-    Success = 0,
+    Success = 20000,
     ParamInvalid = 20001,
     VoiceParsingFailed = 20002,
     InsufficientCredits = 20003,
