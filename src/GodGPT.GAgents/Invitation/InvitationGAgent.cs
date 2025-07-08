@@ -17,6 +17,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
 {
     private readonly ILogger<InvitationGAgent> _logger;
 
+    private readonly DateTime DefaultIssueAt = new DateTime(2025, 7, 8, 0, 0, 0);
+
     public InvitationGAgent(ILogger<InvitationGAgent> logger)
     {
         _logger = logger;
@@ -249,9 +251,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                 Credits = credits,
                 RewardType = RewardTypeEnum.SubscriptionReward,
                 IsScheduled = true,
-                //TODO Testing 
-                //ScheduledDate = DateTime.UtcNow.AddDays(30),
-                ScheduledDate = DateTime.UtcNow.AddMinutes(10),
+                ScheduledDate = DateTime.UtcNow.AddDays(30),
                 InvoiceId = invoiceId,
                 IssueAt = DateTime.UtcNow
             });
@@ -389,6 +389,10 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                     InvoiceId = addReward.InvoiceId,
                     TweetId = addReward.TweetId
                 };
+                if (addReward.IssueAt == null || addReward.IssueAt == default)
+                {
+                    rewardRecord.IssuedAt = DefaultIssueAt;
+                }
                 State.RewardHistory.Add(rewardRecord);
                 if (!addReward.IsScheduled)
                 {
