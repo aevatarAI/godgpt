@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
@@ -38,6 +39,23 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
     private readonly ISpeechService _speechService;
+    
+    // Dictionary to maintain text accumulator for voice chat sessions
+    // Key: chatId, Value: accumulated text buffer for sentence detection
+    private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new Dictionary<string, StringBuilder>();
+    private static readonly List<char> SentenceEnders = new List<char> { '.', '?', '!', '。', '？', '！' };
+    private static readonly int MinSentenceLength = 10;
+    
+    // Regular expressions for cleaning text before speech synthesis
+    private static readonly Regex MarkdownLinkRegex = new Regex(@"\[([^\]]+)\]\([^\)]+\)", RegexOptions.Compiled);
+    private static readonly Regex MarkdownBoldRegex = new Regex(@"\*\*([^*]+)\*\*", RegexOptions.Compiled);
+    private static readonly Regex MarkdownItalicRegex = new Regex(@"\*([^*]+)\*", RegexOptions.Compiled);
+    private static readonly Regex MarkdownHeaderRegex = new Regex(@"^#+\s*(.+)$", RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly Regex MarkdownCodeBlockRegex = new Regex(@"```[\s\S]*?```", RegexOptions.Compiled);
+    private static readonly Regex MarkdownInlineCodeRegex = new Regex(@"`([^`]+)`", RegexOptions.Compiled);
+    private static readonly Regex MarkdownTableRegex = new Regex(@"\|.*?\|", RegexOptions.Compiled);
+    private static readonly Regex MarkdownStrikethroughRegex = new Regex(@"~~([^~]+)~~", RegexOptions.Compiled);
+    private static readonly Regex EmojiRegex = new Regex(@"[\uD83D\uDE00-\uD83D\uDE4F]|[\uD83C\uDF00-\uD83D\uDDFF]|[\uD83D\uDE80-\uD83D\uDEFF]|[\uD83C\uDDE0-\uD83C\uDDFF]|[\u2600-\u26FF]|[\u2700-\u27BF]", RegexOptions.Compiled);
 
     public GodChatGAgent(ISpeechService speechService)
     {
@@ -778,7 +796,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             SessionId = contextDto.RequestId
         };
 
-        // Check if this is a voice chat and handle voice synthesis
+        // Check if this is a voice chat and handle real-time voice synthesis
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
         {
             var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
@@ -787,25 +805,101 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             if (isVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
             {
                 var voiceLanguage = (VoiceLanguageEnum)(int)messageData.GetValueOrDefault("VoiceLanguage", 0);
-
-                // Use simple sentence detection for voice synthesis
-                if (IsSentenceComplete(chatContent.ResponseContent))
+                
+                // Get or create text accumulator for this chat session
+                if (!VoiceTextAccumulators.ContainsKey(contextDto.ChatId))
+                {
+                    VoiceTextAccumulators[contextDto.ChatId] = new StringBuilder();
+                }
+                
+                var textAccumulator = VoiceTextAccumulators[contextDto.ChatId];
+                textAccumulator.Append(chatContent.ResponseContent);
+                
+                // Check for complete sentences in accumulated text
+                var accumulatedText = textAccumulator.ToString();
+                var completeSentence = ExtractCompleteSentence(accumulatedText, textAccumulator);
+                
+                if (!string.IsNullOrEmpty(completeSentence))
                 {
                     try
                     {
-                        var voiceResult =
-                            await _speechService.TextToSpeechWithMetadataAsync(chatContent.ResponseContent,
-                                voiceLanguage);
-                        partialMessage.AudioData = voiceResult.AudioData;
-                        partialMessage.AudioMetadata = voiceResult.Metadata;
-                        Logger.LogDebug(
-                            $"[GodChatGAgent][ChatMessageCallbackAsync] Added voice data for: {chatContent.ResponseContent}");
+                        // Clean text for speech synthesis (remove markdown and math formulas)
+                        var cleanedText = CleanTextForSpeech(completeSentence, voiceLanguage);
+                        
+                        // Skip synthesis if cleaned text is too short or empty
+                        if (!string.IsNullOrWhiteSpace(cleanedText) && cleanedText.Length >= MinSentenceLength)
+                        {
+                            // Synthesize voice for cleaned sentence
+                            var voiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
+                            partialMessage.AudioData = voiceResult.AudioData;
+                            partialMessage.AudioMetadata = voiceResult.Metadata;
+                            
+                            Logger.LogDebug(
+                                $"[GodChatGAgent][ChatMessageCallbackAsync] Synthesized voice for cleaned sentence: {cleanedText}");
+                        }
+                        else
+                        {
+                            Logger.LogDebug(
+                                $"[GodChatGAgent][ChatMessageCallbackAsync] Skipped voice synthesis for sentence too short after cleaning: {cleanedText}");
+                        }
                     }
                     catch (Exception ex)
                     {
                         Logger.LogError(ex,
-                            $"[GodChatGAgent][ChatMessageCallbackAsync] Voice synthesis failed for: {chatContent.ResponseContent}");
+                            $"[GodChatGAgent][ChatMessageCallbackAsync] Voice synthesis failed for sentence: {completeSentence}");
                     }
+                }
+                
+                // Clean up accumulator if this is the last chunk
+                if (chatContent.IsLastChunk)
+                {
+                    // Process any remaining text as final sentence if long enough
+                    var remainingText = textAccumulator.ToString().Trim();
+                    if (!string.IsNullOrEmpty(remainingText) && remainingText.Length >= MinSentenceLength)
+                    {
+                        try
+                        {
+                            // Clean remaining text for speech synthesis
+                            var cleanedRemainingText = CleanTextForSpeech(remainingText, voiceLanguage);
+                            
+                            if (!string.IsNullOrWhiteSpace(cleanedRemainingText) && cleanedRemainingText.Length >= MinSentenceLength)
+                            {
+                                var finalVoiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedRemainingText, voiceLanguage);
+                                // If current message doesn't have audio data, use final synthesis
+                                if (partialMessage.AudioData == null || partialMessage.AudioData.Length == 0)
+                                {
+                                    partialMessage.AudioData = finalVoiceResult.AudioData;
+                                    partialMessage.AudioMetadata = finalVoiceResult.Metadata;
+                                }
+                                
+                                Logger.LogDebug(
+                                    $"[GodChatGAgent][ChatMessageCallbackAsync] Final voice synthesis for cleaned remaining text: {cleanedRemainingText}");
+                            }
+                            else
+                            {
+                                Logger.LogDebug(
+                                    $"[GodChatGAgent][ChatMessageCallbackAsync] Skipped final voice synthesis - remaining text too short after cleaning: {cleanedRemainingText}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError(ex,
+                                $"[GodChatGAgent][ChatMessageCallbackAsync] Final voice synthesis failed for: {remainingText}");
+                        }
+                    }
+                    
+                    // Clean up accumulator for this chat session
+                    VoiceTextAccumulators.Remove(contextDto.ChatId);
+                    
+                    // Add assistant response metadata
+                    State.ChatMessageMetas.Add(new ChatMessageMeta
+                    {
+                        IsVoiceMessage = false, // Assistant response is not a voice message
+                        VoiceLanguage = voiceLanguage,
+                        VoiceParseSuccess = true,
+                        VoiceParseErrorMessage = null,
+                        VoiceDurationSeconds = 0.0 // Will be calculated from audio metadata if needed
+                    });
                 }
             }
         }
@@ -921,6 +1015,103 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         return sentenceEndings.Any(ending => trimmedText.EndsWith(ending));
     }
 
+    /// <summary>
+    /// Extracts complete sentences from accumulated text and removes them from the accumulator
+    /// </summary>
+    /// <param name="accumulatedText">The full accumulated text</param>
+    /// <param name="textAccumulator">The accumulator to update</param>
+    /// <returns>Complete sentence if found, otherwise null</returns>
+    private string ExtractCompleteSentence(string accumulatedText, StringBuilder textAccumulator)
+    {
+        if (string.IsNullOrEmpty(accumulatedText))
+            return null;
+
+        // Find the last sentence ending position
+        int lastSentenceEndIndex = -1;
+        for (int i = accumulatedText.Length - 1; i >= 0; i--)
+        {
+            if (SentenceEnders.Contains(accumulatedText[i]))
+            {
+                // Check if this creates a sentence of minimum length
+                if (i + 1 >= MinSentenceLength)
+                {
+                    lastSentenceEndIndex = i;
+                    break;
+                }
+            }
+        }
+
+        if (lastSentenceEndIndex == -1)
+            return null;
+
+        // Extract complete sentence(s)
+        var completeSentence = accumulatedText.Substring(0, lastSentenceEndIndex + 1).Trim();
+        if (string.IsNullOrEmpty(completeSentence))
+            return null;
+
+        // Remove processed text from accumulator
+        var remainingText = accumulatedText.Substring(lastSentenceEndIndex + 1);
+        textAccumulator.Clear();
+        textAccumulator.Append(remainingText);
+
+        return completeSentence;
+    }
+
+    /// <summary>
+    /// Cleans text for speech synthesis by removing markdown syntax and emojis
+    /// </summary>
+    /// <param name="text">Text to clean</param>
+    /// <param name="language">Language for text replacement</param>
+    /// <returns>Clean text suitable for speech synthesis</returns>
+    private string CleanTextForSpeech(string text, VoiceLanguageEnum language = VoiceLanguageEnum.English)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        var cleanText = text;
+
+        // Remove markdown links but keep link text
+        cleanText = MarkdownLinkRegex.Replace(cleanText, "$1");
+
+        // Remove bold and italic formatting
+        cleanText = MarkdownBoldRegex.Replace(cleanText, "$1");
+        cleanText = MarkdownItalicRegex.Replace(cleanText, "$1");
+
+        // Remove strikethrough formatting
+        cleanText = MarkdownStrikethroughRegex.Replace(cleanText, "$1");
+
+        // Remove header formatting
+        cleanText = MarkdownHeaderRegex.Replace(cleanText, "$1");
+
+        // Replace code blocks with speech-friendly text
+        cleanText = MarkdownCodeBlockRegex.Replace(cleanText, language == VoiceLanguageEnum.Chinese ? "代码块" : "code block");
+
+        // Remove inline code formatting but keep content
+        cleanText = MarkdownInlineCodeRegex.Replace(cleanText, "$1");
+
+        // Remove table formatting
+        cleanText = MarkdownTableRegex.Replace(cleanText, " ");
+
+        // Remove emojis completely (they don't speech-synthesize well)
+        cleanText = EmojiRegex.Replace(cleanText, "");
+
+        // Remove multiple spaces and special markdown symbols
+        cleanText = cleanText.Replace("**", "")
+                             .Replace("__", "")
+                             .Replace("~~", "")
+                             .Replace("---", "")
+                             .Replace("***", "")
+                             .Replace("===", "")
+                             .Replace("```", "")
+                             .Replace(">>>", "")
+                             .Replace("<<<", "");
+
+        // Remove excessive whitespace
+        cleanText = System.Text.RegularExpressions.Regex.Replace(cleanText, @"\s+", " ").Trim();
+
+        return cleanText;
+    }
+
     public async Task<Tuple<string, string>> ChatWithSessionAsync(Guid sessionId, string sysmLLM, string content,
         ExecutionPromptSettings promptSettings = null)
     {
@@ -964,67 +1155,74 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogDebug(
             $"[GodChatGAgent][GodVoiceStreamChatAsync] {sessionId.ToString()} start with message: {message}, language: {voiceLanguage}");
 
-        // Initialize sentence collector for real-time voice synthesis
-        var sentenceCollector = new SentenceCollector(voiceLanguage, async (text, lang) =>
+        // Step 1: Get configuration and system message (same as GodStreamChatAsync)
+        var configuration = GetConfiguration();
+        var sysMessage = await configuration.GetPrompt();
+
+        // Step 2: Initialize LLM if needed (same as GodStreamChatAsync)
+        await LLMInitializedAsync(llm, streamingModeEnabled, sysMessage);
+
+        // Step 3: Create voice chat context with voice-specific metadata
+        var aiChatContextDto = CreateVoiceChatContext(sessionId, llm, streamingModeEnabled, message, chatId, 
+            promptSettings, isHttpRequest, region, voiceLanguage, voiceDurationSeconds);
+
+        // Step 4: Get AI proxy and start streaming chat (same as GodStreamChatAsync)
+        var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
+        if (aiAgentStatusProxy != null)
         {
-            try
+            Logger.LogDebug(
+                $"[GodChatGAgent][GodVoiceStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
+            
+            // Set default temperature for voice chat
+            var settings = promptSettings ?? new ExecutionPromptSettings();
+            settings.Temperature = "0.9";
+            
+            // Start streaming with voice context
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(message, State.ChatHistory, settings,
+                context: aiChatContextDto);
+            if (!result)
             {
-                return await _speechService.TextToSpeechWithMetadataAsync(text, lang);
+                Logger.LogError($"Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
             }
-            catch (Exception ex)
+
+            // Step 5: Save user voice message to history with metadata
+            if (addToHistory)
             {
-                Logger.LogError(ex,
-                    $"[GodChatGAgent][GodVoiceStreamChatAsync] Voice synthesis failed for text: {text}");
-                return (new byte[0],
-                    new AudioMetadata { Duration = 0, SizeBytes = 0, Format = "mp3", LanguageType = lang });
+                // Add user voice message metadata
+                State.ChatMessageMetas.Add(new ChatMessageMeta
+                {
+                    IsVoiceMessage = true,
+                    VoiceLanguage = voiceLanguage,
+                    VoiceParseSuccess = true,
+                    VoiceParseErrorMessage = null,
+                    VoiceDurationSeconds = voiceDurationSeconds
+                });
+
+                // Save user message to chat history
+                RaiseEvent(new AddChatHistoryLogEvent
+                {
+                    ChatList = new List<ChatMessage>()
+                    {
+                        new ChatMessage
+                        {
+                            ChatRole = ChatRole.User,
+                            Content = message
+                        }
+                    }
+                });
+
+                await ConfirmEvents();
             }
-        });
-
-        var stringBuilder = new StringBuilder();
-        int serialNumber = 0;
-        var contextDto = CreateVoiceChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings,
-            isHttpRequest, region, voiceLanguage, voiceDurationSeconds);
-
-        var proxy = await GetProxyByRegionAsync(region);
-        if (proxy == null)
+        }
+        else
         {
-            throw new InvalidOperationException("No available AI proxy found");
+            Logger.LogDebug(
+                $"[GodChatGAgent][GodVoiceStreamChatAsync] fallback to history agent, session {sessionId.ToString()}, chat {chatId}");
+            // Fallback to non-streaming chat if no proxy available
+            await ChatAsync(message, promptSettings, aiChatContextDto);
         }
 
-        var result = await proxy.PromptWithStreamAsync(message, State.ChatHistory, promptSettings, contextDto);
-        if (!result)
-        {
-            Logger.LogError($"Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
-        }
-
-        // Save user voice message metadata
-        if (addToHistory)
-        {
-            var userChatMessage = new ChatMessage
-            {
-                ChatRole = ChatRole.User,
-                Content = message
-            };
-
-            // Add metadata for voice message
-            State.ChatMessageMetas.Add(new ChatMessageMeta
-            {
-                IsVoiceMessage = true,
-                VoiceLanguage = voiceLanguage,
-                VoiceParseSuccess = true,
-                VoiceParseErrorMessage = null,
-                VoiceDurationSeconds = voiceDurationSeconds
-            });
-
-            RaiseEvent(new AddChatHistoryLogEvent
-            {
-                ChatList = new List<ChatMessage> { userChatMessage }
-            });
-            await ConfirmEvents();
-        }
-
-        // For voice chat, the response processing happens in ChatMessageCallbackAsync
-        // Return empty string as this is handled asynchronously
+        // Voice synthesis and streaming handled in ChatMessageCallbackAsync
         return string.Empty;
     }
 }
