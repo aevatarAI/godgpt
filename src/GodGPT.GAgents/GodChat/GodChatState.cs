@@ -16,7 +16,7 @@ public class GodChatState:ChatGAgentState
     /// Metadata for chat messages including voice-related information
     /// Parallel list to ChatHistory from base class
     /// </summary>
-    [Id(5)] public List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
+    [Id(5)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
 }
 
 [GenerateSerializer]
