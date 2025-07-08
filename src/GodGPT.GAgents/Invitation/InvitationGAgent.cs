@@ -249,8 +249,11 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                 Credits = credits,
                 RewardType = RewardTypeEnum.SubscriptionReward,
                 IsScheduled = true,
-                ScheduledDate = DateTime.UtcNow.AddDays(30),
-                InvoiceId = invoiceId
+                //TODO Testing 
+                //ScheduledDate = DateTime.UtcNow.AddDays(30),
+                ScheduledDate = DateTime.UtcNow.AddMinutes(10),
+                InvoiceId = invoiceId,
+                IssueAt = DateTime.UtcNow
             });
             await ConfirmEvents();
             _logger.LogInformation($"Scheduled reward of {credits} credits for invitee {inviteeId} in 30 days");
@@ -270,7 +273,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         {
             InviteeId = inviteeId,
             Credits = credits,
-            RewardType = rewardType
+            RewardType = rewardType,
+            IssueAt = DateTime.UtcNow
         });
         await ConfirmEvents();
     }
@@ -374,17 +378,18 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                 break;
 
             case AddRewardLogEvent addReward:
-                State.RewardHistory.Add(new RewardRecord
+                var rewardRecord = new RewardRecord
                 {
                     InviteeId = addReward.InviteeId,
                     Credits = addReward.Credits,
                     RewardType = addReward.RewardType,
-                    IssuedAt = DateTime.UtcNow,
+                    IssuedAt = addReward.IssueAt,
                     IsScheduled = addReward.IsScheduled,
                     ScheduledDate = addReward.ScheduledDate,
                     InvoiceId = addReward.InvoiceId,
                     TweetId = addReward.TweetId
-                });
+                };
+                State.RewardHistory.Add(rewardRecord);
                 if (!addReward.IsScheduled)
                 {
                     if (addReward.RewardType == RewardTypeEnum.TwitterReward)
@@ -438,11 +443,11 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
     public async Task<bool> ProcessTwitterRewardAsync(string tweetId, int credits)
     {
         // Check if the tweet has already been rewarded
-        if (State.RewardHistory.Any(r => r.TweetId == tweetId && r.RewardType == RewardTypeEnum.TwitterReward))
-        {
-            return false;
-        }
-
+        // if (State.RewardHistory.Any(r => r.TweetId == tweetId && r.RewardType == RewardTypeEnum.TwitterReward))
+        // {
+        //     return false;
+        // }
+        _logger.LogDebug($"[InvitationGAgent][ProcessTwitterRewardAsync] process twitter reward. userId {this.GetPrimaryKey().ToString()}, tweetId {tweetId}, credits {credits}");
         // Issue the reward
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
         await userQuotaGAgent.AddCreditsAsync(credits);
@@ -454,7 +459,8 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             Credits = credits,
             RewardType = RewardTypeEnum.TwitterReward,
             IsScheduled = false,
-            TweetId = tweetId
+            TweetId = tweetId,
+            IssueAt = DateTime.UtcNow
         });
         await ConfirmEvents();
 
