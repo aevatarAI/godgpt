@@ -215,7 +215,7 @@ public class UserProfileDto
     [Id(6)] public SubscriptionInfoDto UltimateSubscription { get; set; }
     [Id(7)] public Guid Id { get; set; }
     [Id(8)] public Guid? InviterId { get; set; }
-    [Id(9)] public VoiceLanguageEnum VoiceLanguage { get; set; } = VoiceLanguageEnum.English;
+    [Id(9)] public VoiceLanguageEnum VoiceLanguage { get; set; }
 
 }
 
