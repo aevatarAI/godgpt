@@ -11,16 +11,10 @@ namespace GodGPT.GAgents.SpeechChat;
 public class SpeechService : ISpeechService
 {
     private readonly SpeechConfig _speechConfig;
-    private readonly SpeechSynthesizer _synthesizer;
 
     public SpeechService(IOptions<SpeechOptions> speechOptions)
     {
         _speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
-        /*_speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
-        _speechConfig.SpeechRecognitionLanguage = "zh-CN";
-        _speechConfig.SpeechSynthesisLanguage = "zh-CN";
-        _speechConfig.SpeechSynthesisVoiceName = "zh-CN-XiaoxiaoNeural";
-        _synthesizer = new SpeechSynthesizer(_speechConfig);*/
     }
 
     public async Task<string> SpeechToTextAsync(byte[] audioData)
@@ -34,33 +28,6 @@ public class SpeechService : ISpeechService
             
             pushStream.Write(audioData);
             pushStream.Close();
-
-            /*// Add event handlers for better debugging
-            recognizer.Recognizing += (s, e) => {
-                Console.WriteLine($"RECOGNIZING: Text={e.Result.Text}");
-            };
-
-            recognizer.Recognized += (s, e) => {
-                Console.WriteLine($"RECOGNIZED: Text={e.Result.Text}");
-                Console.WriteLine($"RECOGNIZED: Reason={e.Result.Reason}");
-                if (e.Result.Reason == ResultReason.RecognizedSpeech)
-                {
-                    Console.WriteLine($"RECOGNIZED: Final result: {e.Result.Text}");
-                }
-                else if (e.Result.Reason == ResultReason.NoMatch)
-                {
-                    Console.WriteLine($"NOMATCH: Speech could not be recognized.");
-                }
-            };
-
-            recognizer.Canceled += (s, e) => {
-                Console.WriteLine($"CANCELED: Reason={e.Reason}");
-                if (e.Reason == CancellationReason.Error)
-                {
-                    Console.WriteLine($"CANCELED: ErrorCode={e.ErrorCode}");
-                    Console.WriteLine($"CANCELED: ErrorDetails={e.ErrorDetails}");
-                }
-            };*/
 
             var result = await recognizer.RecognizeOnceAsync();
             if (result.Reason == ResultReason.Canceled)
@@ -85,7 +52,10 @@ public class SpeechService : ISpeechService
 
     public async Task<byte[]> TextToSpeechAsync(string text)
     {
-        using var result = await _synthesizer.SpeakTextAsync(text);
+        // Create audio config for memory output instead of system audio
+        using var audioConfig = AudioConfig.FromStreamOutput(AudioOutputStream.CreatePullStream());
+        using var synthesizer = new SpeechSynthesizer(_speechConfig, audioConfig);
+        using var result = await synthesizer.SpeakTextAsync(text);
         return result.AudioData;
     }
 
@@ -130,7 +100,9 @@ public class SpeechService : ISpeechService
         tempSpeechConfig.SpeechSynthesisLanguage = GetLanguageCode(language);
         tempSpeechConfig.SpeechSynthesisVoiceName = GetVoiceName(language);
         
-        using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig);
+        // Create audio config for memory output instead of system audio
+        using var audioConfig = AudioConfig.FromStreamOutput(AudioOutputStream.CreatePullStream());
+        using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig, audioConfig);
         using var result = await tempSynthesizer.SpeakTextAsync(text);
         return result.AudioData;
     }
@@ -150,7 +122,9 @@ public class SpeechService : ISpeechService
         // Configure MP3 format with 16kHz sample rate
         tempSpeechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3);
         
-        using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig);
+        // Create audio config for memory output instead of system audio to avoid SPXERR_AUDIO_SYS_LIBRARY_NOT_FOUND error
+        using var audioConfig = AudioConfig.FromStreamOutput(AudioOutputStream.CreatePullStream());
+        using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig, audioConfig);
         using var result = await tempSynthesizer.SpeakTextAsync(text);
         
         // Calculate approximate duration based on text length and speech rate
