@@ -83,6 +83,7 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
             SessionId = SessionId,
             AudioData = AudioData,
             AudioMetadata = AudioMetadata,
+            ErrorCode = ErrorCode
         };
     }
 }
@@ -105,7 +106,9 @@ public class ResponseStreamGodChatForHttp
     /// <summary>
     /// Audio metadata including duration, format, language etc.
     /// </summary>
-    public AudioMetadata? AudioMetadata { get; set; }
+    public AudioMetadata? AudioMetadata { get; set; } 
+    public ChatErrorCode ErrorCode { get; set; }
+
 }
 
 [GenerateSerializer]
