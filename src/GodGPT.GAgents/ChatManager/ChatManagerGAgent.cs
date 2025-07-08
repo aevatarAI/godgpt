@@ -893,7 +893,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Subscription = subscriptionInfo,
             UltimateSubscription = ultimateSubscriptionInfo,
             Id = this.GetPrimaryKey(),
-            InviterId = State.InviterId
+            InviterId = State.InviterId,
+            VoiceLanguage = State.VoiceLanguage
         };
     }
     

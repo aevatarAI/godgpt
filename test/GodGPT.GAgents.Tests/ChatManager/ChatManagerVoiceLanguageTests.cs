@@ -42,6 +42,8 @@ public class ChatManagerVoiceLanguageTests : AevatarGodGPTTestsBase
             // Assert
             result.ShouldNotBe(Guid.Empty);
             _testOutputHelper.WriteLine($"Successfully set voice language to {targetLanguage} for user {result}");
+            var userProfile = await chatManagerGAgent.GetUserProfileAsync();
+            userProfile.VoiceLanguage.ShouldBe(targetLanguage);
         }
         catch (Exception ex)
         {
@@ -77,6 +79,8 @@ public class ChatManagerVoiceLanguageTests : AevatarGodGPTTestsBase
             // Assert
             result.ShouldNotBe(Guid.Empty);
             _testOutputHelper.WriteLine($"Successfully set voice language to {targetLanguage} for user {result}");
+            var userProfile = await chatManagerGAgent.GetUserProfileAsync();
+            userProfile.VoiceLanguage.ShouldBe(targetLanguage);
         }
         catch (Exception ex)
         {
