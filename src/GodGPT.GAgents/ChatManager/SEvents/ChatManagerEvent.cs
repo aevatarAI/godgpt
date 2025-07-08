@@ -70,6 +70,7 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
     /// Audio metadata including duration, format, language etc.
     /// </summary>
     [Id(8)] public AudioMetadata? AudioMetadata { get; set; }
+    [Id(9)] public ChatErrorCode ErrorCode { get; set; }
 
     public ResponseStreamGodChatForHttp ConvertToHttpResponse()
     {
@@ -294,4 +295,13 @@ public class ChatMessageMeta
     /// Duration of the voice message in seconds (from frontend)
     /// </summary>
     [Id(4)] public double VoiceDurationSeconds { get; set; }
+}
+
+public enum ChatErrorCode
+{
+    Success = 0,
+    ParamInvalid = 20001,
+    VoiceParsingFailed = 20002,
+    InsufficientCredits = 20003,
+    RateLimitExceeded = 20004
 }

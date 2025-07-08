@@ -227,7 +227,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 ChatId = chatId,
                 IsLastChunk = true,
                 SerialNumber = -99,
-                SessionId = sessionId
+                SessionId = sessionId,
+                ErrorCode = ChatErrorCode.ParamInvalid
             };
 
             if (isHttpRequest)
@@ -313,7 +314,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 ChatId = chatId,
                 IsLastChunk = true,
                 SerialNumber = -99,
-                SessionId = sessionId
+                SessionId = sessionId,
+                ErrorCode = ChatErrorCode.VoiceParsingFailed
+
             };
 
             if (isHttpRequest)
@@ -380,13 +383,21 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             await ConfirmEvents();
 
             //2、Directly respond with error information.
+            var errorCode = actionResultDto.Code switch
+            {
+                ExecuteActionStatus.InsufficientCredits => ChatErrorCode.InsufficientCredits,
+                ExecuteActionStatus.RateLimitExceeded => ChatErrorCode.RateLimitExceeded,
+                _ => ChatErrorCode.RateLimitExceeded
+            };
+
             var chatMessage = new ResponseStreamGodChat()
             {
                 Response = actionResultDto.Message,
                 ChatId = chatId,
                 IsLastChunk = true,
                 SerialNumber = -99,
-                SessionId = sessionId
+                SessionId = sessionId,
+                ErrorCode = errorCode
             };
 
             if (isHttpRequest)
