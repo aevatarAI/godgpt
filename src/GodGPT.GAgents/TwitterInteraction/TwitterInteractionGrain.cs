@@ -134,7 +134,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             var bearerToken = _options.CurrentValue.BearerToken;
             
             // Log for debugging
-            _logger.LogDebug($"SearchTweetsAsync url--->{url}");
+           _logger.LogInformation($"SearchTweetsAsync url--->{url}");
             //_logger.LogDebug($"SearchTweetsAsync bearerToken--->{bearerToken}");
             
             // Set authorization header using the reference code approach
@@ -159,8 +159,8 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 };
             }
             catch (HttpRequestException e)
-            {
-                _logger.LogError("SearchTweetsAsync Error: {err}, code: {code}", e.Message, e.Data);
+            { 
+                _logger.LogError("SearchTweetsAsync Error: {err}, code: {code} url: {url}", e.Message, e.Data, url);
                 return new TwitterApiResultDto<SearchTweetsResponseDto>
                 {
                     IsSuccess = false,

@@ -7,6 +7,7 @@ using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.Twitter;
 using RewardTierDto = Aevatar.Application.Grains.TwitterInteraction.Dtos.RewardTierDto;
 
 namespace Aevatar.Application.Grains.TwitterInteraction;
@@ -41,7 +42,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     private readonly IPersistentState<TwitterRewardState> _state;
     private ITwitterMonitorGrain? _tweetMonitorGrain;
     private ITwitterInteractionGrain? _twitterInteractionGrain;
-    private IInvitationGAgent _invitationAgent;
+    //private IInvitationGAgent _invitationAgent;
     
     // Removed IChatManagerGAgent to comply with architecture constraint
     
@@ -59,7 +60,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("TwitterRewardGrain {GrainId} activating", this.GetPrimaryKeyString());
+        _logger.LogInformation($"TwitterRewardGrain {this.GetPrimaryKeyString()} activating");
 
         if (string.IsNullOrEmpty(_options.CurrentValue.PullTaskTargetId))
         {
@@ -73,7 +74,6 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         
         _twitterInteractionGrain = GrainFactory.GetGrain<ITwitterInteractionGrain>(_options.CurrentValue.RewardTaskTargetId);
         
-        _invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(CommonHelper.StringToGuid(_options.CurrentValue.RewardTaskTargetId));
         // ChatManagerGAgent reference removed to comply with architecture constraint
         
         // Initialize or update configuration from appsettings.json
@@ -114,10 +114,8 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         await _state.WriteStateAsync();
         if (configChanged)
         {
-            _logger.LogInformation("TwitterRewardGrain Configuration changed, updating from appsettings.json. " +
-                "TimeRange: {StartHours}-{EndHours}h, MaxDailyCredits: {MaxCredits}, ShareMultiplier: {Multiplier}, MinViews: {MinViews}, RewardTiers: {TierCount}", 
-                currentConfig.TimeRangeStartHours, currentConfig.TimeRangeEndHours, 
-                currentConfig.MaxDailyCreditsPerUser, currentConfig.ShareLinkMultiplier, currentConfig.MinViewsForReward, currentConfig.RewardTiers.Count);
+            _logger.LogInformation($"TwitterRewardGrain Configuration changed, updating from appsettings.json. " +
+                $"TimeRange: {currentConfig.TimeRangeStartHours}-{currentConfig.TimeRangeEndHours}h, MaxDailyCredits: {currentConfig.MaxDailyCreditsPerUser}, ShareMultiplier: {currentConfig.ShareLinkMultiplier}, MinViews: {currentConfig.MinViewsForReward}, RewardTiers: {currentConfig.RewardTiers.Count}");
 
             // Clean up any existing reminder first (to avoid conflicts with new configuration)
             try
@@ -125,20 +123,20 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 var existingReminder = await this.GetReminder(REMINDER_NAME);
                 if (existingReminder != null)
                 {
-                    _logger.LogInformation("TwitterRewardGrain Cleaning up existing reminder due to configuration change");
+                    _logger.LogInformation($"TwitterRewardGrain Cleaning up existing reminder due to configuration change");
                     await this.UnregisterReminder(existingReminder);
                 }
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "TwitterRewardGrain Reminder doesn't exist");
+                _logger.LogError(e, $"TwitterRewardGrain Reminder doesn't exist");
                 // Reminder doesn't exist, which is fine
             }
             
             // If reward calculation is running, register reminder with new configuration
             if (_state.State.IsRunning)
             {
-                _logger.LogInformation("TwitterRewardGrain Restarting reward calculation with new configuration");
+                _logger.LogInformation($"TwitterRewardGrain Restarting reward calculation with new configuration");
                 var nextMidnightUtc = GetNextMidnightUtc();
                 var timeUntilMidnight = nextMidnightUtc - DateTime.UtcNow;
                 await this.RegisterOrUpdateReminder(
@@ -176,13 +174,12 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 hasReminder = false;
             }
 
-            _logger.LogInformation("TwitterRewardGrain State consistency check - IsRunning: {IsRunning}, HasReminder: {HasReminder}", 
-                _state.State.IsRunning, hasReminder);
+            _logger.LogInformation($"TwitterRewardGrain State consistency check - IsRunning: {_state.State.IsRunning}, HasReminder: {hasReminder}");
 
             // Case 1: Should be running but no reminder - register it
             if (_state.State.IsRunning && !hasReminder)
             {
-                _logger.LogWarning("TwitterRewardGrain ⚠️ Inconsistent state detected: IsRunning=true but no reminder found. Registering reminder...");
+                _logger.LogWarning($"TwitterRewardGrain ⚠️ Inconsistent state detected: IsRunning=true but no reminder found. Registering reminder...");
                 
                 var nextMidnightUtc = GetNextMidnightUtc();
                 var timeUntilMidnight = nextMidnightUtc - DateTime.UtcNow;
@@ -191,28 +188,28 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                     timeUntilMidnight,
                     TimeSpan.FromDays(1));
                     
-                _logger.LogInformation("TwitterRewardGrain ✅ Reminder registered to match IsRunning=true state, next execution at {NextTime} UTC", nextMidnightUtc);
+                _logger.LogInformation($"TwitterRewardGrain ✅ Reminder registered to match IsRunning=true state, next execution at {nextMidnightUtc} UTC");
             }
             // Case 2: Should not be running but has reminder - unregister it
             else if (!_state.State.IsRunning && hasReminder)
             {
-                _logger.LogWarning("TwitterRewardGrain ⚠️ Inconsistent state detected: IsRunning=false but reminder exists. Cleaning up reminder...");
+                _logger.LogWarning($"TwitterRewardGrain ⚠️ Inconsistent state detected: IsRunning=false but reminder exists. Cleaning up reminder...");
                 var reminder = await this.GetReminder(REMINDER_NAME);
                 if (reminder != null)
                 {
                     await this.UnregisterReminder(reminder);
                 }
-                _logger.LogInformation("TwitterRewardGrain ✅ Reminder cleaned up to match IsRunning=false state");
+                _logger.LogInformation($"TwitterRewardGrain ✅ Reminder cleaned up to match IsRunning=false state");
             }
             // Case 3: States are consistent
             else
             {
-                _logger.LogInformation("TwitterRewardGrain ✅ State consistency verified - no action needed");
+                _logger.LogInformation($"TwitterRewardGrain ✅ State consistency verified - no action needed");
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "TwitterRewardGrain ❌ Error during state consistency check");
+            _logger.LogError(ex, $"TwitterRewardGrain ❌ Error during state consistency check");
         }
     }
 
@@ -220,7 +217,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         try
         {
-            _logger.LogInformation("Starting daily reward calculation");
+            _logger.LogInformation($"Starting daily reward calculation");
 
             if (_state.State.IsRunning)
             {
@@ -250,7 +247,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 timeUntilMidnight,
                 TimeSpan.FromDays(1)); // Repeat every 24 hours
 
-            _logger.LogInformation("Daily reward calculation started, next execution at {NextTime} UTC", nextMidnightUtc);
+            _logger.LogInformation($"Daily reward calculation started, next execution at {nextMidnightUtc} UTC");
 
             return new TwitterApiResultDto<bool>
             {
@@ -261,7 +258,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error starting reward calculation");
+            _logger.LogError(ex, $"Error starting reward calculation");
             return new TwitterApiResultDto<bool>
             {
                 IsSuccess = false,
@@ -275,7 +272,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         try
         {
-            _logger.LogInformation("Stopping daily reward calculation");
+            _logger.LogInformation($"Stopping daily reward calculation");
 
             if (!_state.State.IsRunning)
             {
@@ -304,7 +301,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             _state.State.IsRunning = false;
             await _state.WriteStateAsync();
 
-            _logger.LogInformation("Daily reward calculation stopped");
+            _logger.LogInformation($"Daily reward calculation stopped");
 
             return new TwitterApiResultDto<bool>
             {
@@ -315,7 +312,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error stopping reward calculation");
+            _logger.LogError(ex, $"Error stopping reward calculation");
             return new TwitterApiResultDto<bool>
             {
                 IsSuccess = false,
@@ -350,7 +347,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting reward calculation status");
+            _logger.LogError(ex, $"Error getting reward calculation status");
             return new TwitterApiResultDto<RewardCalculationStatusDto>
             {
                 IsSuccess = false,
@@ -364,7 +361,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         try
         {
-            _logger.LogInformation("Manual reward calculation triggered for date {TargetDate}", targetDate.ToString("yyyy-MM-dd"));
+            _logger.LogInformation($"Manual reward calculation triggered for date {targetDate.ToString("yyyy-MM-dd")}");
             
             // Update state to indicate manual calculation is starting
             _state.State.LastError = "Manual calculation in progress...";
@@ -388,7 +385,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error starting manual reward calculation");
+            _logger.LogError(ex, $"Error starting manual reward calculation");
             return new TwitterApiResultDto<bool>
             {
                 IsSuccess = false,
@@ -398,7 +395,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
     }
 
-    public async Task<TwitterApiResultDto<List<RewardCalculationHistoryDto>>> GetRewardCalculationHistoryAsync(int days = 30)
+    public async Task<TwitterApiResultDto<List<RewardCalculationHistoryDto>>> GetRewardCalculationHistoryAsync(int days = 7)
     {
         try
         {
@@ -418,7 +415,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting calculation history");
+            _logger.LogError(ex, $"Error getting calculation history");
             return new TwitterApiResultDto<List<RewardCalculationHistoryDto>>
             {
                 IsSuccess = false,
@@ -428,7 +425,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
     }
 
-    public async Task<TwitterApiResultDto<List<UserRewardRecordDto>>> GetUserRewardRecordsAsync(string userId, int days = 30)
+    public async Task<TwitterApiResultDto<List<UserRewardRecordDto>>> GetUserRewardRecordsAsync(string userId, int days = 7)
     {
         try
         {
@@ -455,7 +452,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting user reward records for user {UserId}", userId);
+            _logger.LogError(ex, $"Error getting user reward records for user {userId}");
             return new TwitterApiResultDto<List<UserRewardRecordDto>>
             {
                 IsSuccess = false,
@@ -464,6 +461,63 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             };
         }
     }
+
+    public async Task<TwitterApiResultDto<Dictionary<string, List<UserRewardRecordDto>>>> GetUserRewardsByUserIdAsync(string userId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return new TwitterApiResultDto<Dictionary<string, List<UserRewardRecordDto>>>
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "User ID cannot be empty",
+                    Data = new Dictionary<string, List<UserRewardRecordDto>>()
+                };
+            }
+
+            _logger.LogInformation($"Getting user rewards for user ID {userId}");
+
+            var result = new Dictionary<string, List<UserRewardRecordDto>>();
+
+            // Iterate through all date keys in UserRewards
+            foreach (var kvp in _state.State.UserRewards)
+            {
+                var dateKey = kvp.Key;
+                var dayRewards = kvp.Value;
+
+                // Filter rewards for the specified user
+                var userDayRewards = dayRewards
+                    .Where(r => r.UserId == userId)
+                    .ToList();
+
+                // Only add to result if user has rewards for this date
+                if (userDayRewards.Count > 0)
+                {
+                    result[dateKey] = userDayRewards;
+                }
+            }
+
+            _logger.LogInformation($"Found user rewards for {result.Count} dates for user ID {userId}");
+
+            return new TwitterApiResultDto<Dictionary<string, List<UserRewardRecordDto>>>
+            {
+                IsSuccess = true,
+                Data = result
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error getting user rewards for user ID {userId}");
+            return new TwitterApiResultDto<Dictionary<string, List<UserRewardRecordDto>>>
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message,
+                Data = new Dictionary<string, List<UserRewardRecordDto>>()
+            };
+        }
+    }
+
 
     public async Task<TwitterApiResultDto<DailyRewardStatisticsDto>> GetDailyRewardStatisticsAsync(DateTime targetDate)
     {
@@ -508,7 +562,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error generating daily statistics for {Date}", targetDate.ToString("yyyy-MM-dd"));
+            _logger.LogError(ex, $"Error generating daily statistics for {targetDate.ToString("yyyy-MM-dd")}");
             return new TwitterApiResultDto<DailyRewardStatisticsDto>
             {
                 IsSuccess = false,
@@ -825,9 +879,13 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             // Store user rewards
             _state.State.UserRewards[dateKey] = userRewards;
             
-            // Clean up old reward records to control data size - only keep today's records
-            var today = DateTime.UtcNow.Date.ToString("yyyy-MM-dd");
-            var keysToRemove = _state.State.UserRewards.Keys.Where(key => key != today && key != dateKey).ToList();
+            // Clean up old reward records based on data retention policy (relative to target date)
+            var cutoffDate = targetDate.AddDays(-_options.CurrentValue.DataRetentionDays);
+            var cutoffDateKey = cutoffDate.ToString("yyyy-MM-dd");
+            var keysToRemove = _state.State.UserRewards.Keys
+                .Where(key => string.Compare(key, cutoffDateKey, StringComparison.Ordinal) < 0)
+                .ToList();
+            
             foreach (var keyToRemove in keysToRemove)
             {
                 _state.State.UserRewards.Remove(keyToRemove);
@@ -835,8 +893,8 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             
             if (keysToRemove.Count > 0)
             {
-                _logger.LogInformation("Cleaned up {Count} old reward record dates to control data size. Keeping only: {KeptDates}", 
-                    keysToRemove.Count, string.Join(", ", _state.State.UserRewards.Keys));
+                _logger.LogInformation("Cleaned up {Count} old reward record dates (older than {CutoffDate}). Keeping {RetainedDates} recent dates: {KeptDates}", 
+                    keysToRemove.Count, cutoffDateKey, _state.State.UserRewards.Keys.Count, string.Join(", ", _state.State.UserRewards.Keys.OrderBy(k => k)));
             }
             
             // Update totals
@@ -1361,10 +1419,33 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             try
             {
                 if (reward.IsRewardSent) continue;
-                _logger.LogInformation("SendRewardsToUsersAsync  Send {Credits} credits to user {UserId} for tweet {TweetId} (calculation complete)", 
-                    reward.FinalCredits, reward.UserId, reward.TweetId);
+                var bindingGrain = GrainFactory.GetGrain<ITwitterIdentityBindingGAgent>(CommonHelper.StringToGuid(reward.TweetId));
+                
 
-                await _invitationAgent.ProcessTwitterRewardAsync(reward.TweetId, reward.FinalCredits);
+                if (bindingGrain == null)
+                {
+                    _logger.LogInformation($"SendRewardsToUsersAsync no binding info 1, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId} for tweetId={reward.TweetId}");
+
+                    continue;
+                }
+                var userId = await bindingGrain.GetUserIdAsync();
+                
+                if (userId == null || userId == Guid.Empty)
+                {
+                    _logger.LogInformation($"SendRewardsToUsersAsync no binding info 2, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId} for tweetId={reward.TweetId}");
+
+                    continue;
+                }
+                
+                _logger.LogInformation($"SendRewardsToUsersAsync binding info, continue FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId} for tweetId={reward.TweetId} userId={userId}");
+                
+                var invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(userId.Value);
+                
+                await invitationAgent.ProcessTwitterRewardAsync(reward.TweetId, reward.FinalCredits);
+                
+                _logger.LogInformation($"SendRewardsToUsersAsync ProcessTwitterRewardAsync FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId} for tweetId={reward.TweetId} userId={userId} result={invitationAgent}");
+
+                
                 // Mark as processed for calculation purposes, actual sending pending
                 reward.IsRewardSent = true; // Set to false as per development phase requirements
                 reward.RewardSentTime = DateTime.UtcNow; // No actual sending yet
