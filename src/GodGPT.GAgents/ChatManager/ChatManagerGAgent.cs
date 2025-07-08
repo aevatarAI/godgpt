@@ -882,7 +882,6 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
             credits.Credits += reward.Credits;
         }
-        Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Success scheduled reward for user {this.GetPrimaryKey()}, VoiceLanguage: {State.VoiceLanguage}");
 
         return new UserProfileDto
         {
@@ -1115,7 +1114,6 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             case SetVoiceLanguageEventLog @setVoiceLanguageEventLog:
                 // Update the voice language preference for the user
                 State.VoiceLanguage = @setVoiceLanguageEventLog.VoiceLanguage;
-                Logger.LogDebug($"[ChatGAgentManager][SetVoiceLanguageEventLog] Voice language updated to {State.VoiceLanguage}");
                 break;
             case GenerateChatShareContentLogEvent generateChatShareContentLogEvent:
                 var session = State.GetSession(generateChatShareContentLogEvent.SessionId);
