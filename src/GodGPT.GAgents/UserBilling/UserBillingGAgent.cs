@@ -3726,13 +3726,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
                 _logger.LogDebug(
                     "[UserBillingGAgent][OnGAgentActivateAsync] State initialized from IUserBillingGrain for user {UserId}",
-                    this.GetPrimaryKeyString());
+                    this.GetPrimaryKey().ToString());
             }
             else
             {
                 _logger.LogDebug(
                     "[UserBillingGAgent][OnGAgentActivateAsync] No state found in IUserBillingGrain for user {UserId}, marking as initialized",
-                    this.GetPrimaryKeyString());
+                    this.GetPrimaryKey().ToString());
 
                 RaiseEvent(new MarkInitializedLogEvent());
                 await ConfirmEvents();
