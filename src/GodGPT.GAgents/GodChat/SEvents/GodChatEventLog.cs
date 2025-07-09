@@ -43,9 +43,7 @@ public class UpdateRegionProxiesLogEvent : GodChatEventLog
 }
 
 [GenerateSerializer]
-public class AddChatHistoryLogEvent : GodChatEventLog
+public class AddChatMessageMetasLogEvent : GodChatEventLog
 {
-    [Id(0)] public List<ChatMessage> ChatList { get; set; }
-    [Id(1)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<ChatMessageMeta>();
+    [Id(0)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<ChatMessageMeta>();
 }
-

@@ -15,7 +15,6 @@ using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.GAgent;
-using GodGPT.GAgents.Common;
 using GodGPT.GAgents.SpeechChat;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
@@ -43,6 +42,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
     private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new Dictionary<string, StringBuilder>();
+    // Voice synthesis sentence detection
     private static readonly List<char> SentenceEnders = new List<char> { '.', '?', '!', '。', '？', '！' };
     private static readonly int MinSentenceLength = 10;
     
@@ -172,6 +172,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             {
                 ChatList = chatMessages
             });
+            
+            RaiseEvent(new AddChatMessageMetasLogEvent
+            {
+                ChatMessageMetas = new List<ChatMessageMeta>()
+            });
+            
             await ConfirmEvents();
 
             //2、Directly respond with error information.
@@ -214,8 +220,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null,
         VoiceLanguageEnum voiceLanguage = VoiceLanguageEnum.English, double voiceDurationSeconds = 0.0)
     {
-        Logger.LogDebug(
-            $"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} start with voice file: {fileName}, size: {voiceData?.Length ?? 0} bytes, voiceLanguage: {voiceLanguage}, duration: {voiceDurationSeconds}s");
+        var totalStopwatch = Stopwatch.StartNew();
+        Logger.LogInformation($"[PERF][VoiceChat] {sessionId} START - file: {fileName}, size: {voiceData?.Length ?? 0} chars, language: {voiceLanguage}, duration: {voiceDurationSeconds}s");
 
         // Validate voiceData
         if (string.IsNullOrEmpty(voiceData))
@@ -243,29 +249,39 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return;
         }
 
-        // Convert MP3 data to byte array (already byte[] but log for confirmation)
+        // Convert MP3 data to byte array - track processing time
+        var conversionStopwatch = Stopwatch.StartNew();
         var voiceDataBytes = Convert.FromBase64String(voiceData);
-        Logger.LogDebug(
-            $"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Processed MP3 data: {voiceDataBytes.Length} bytes");
+        conversionStopwatch.Stop();
+        Logger.LogInformation($"[PERF][VoiceChat] {sessionId} Base64_Conversion: {conversionStopwatch.ElapsedMilliseconds}ms, bytes: {voiceDataBytes.Length}");
 
         string voiceContent;
         var voiceParseSuccess = true;
         string? voiceParseErrorMessage = null;
 
+        // STT Processing - track time and performance
+        var sttStopwatch = Stopwatch.StartNew();
         try
         {
             voiceContent = await _speechService.SpeechToTextAsync(voiceDataBytes, voiceLanguage);
+            sttStopwatch.Stop();
+            
             if (string.IsNullOrWhiteSpace(voiceContent))
             {
                 voiceParseSuccess = false;
                 voiceParseErrorMessage = "Speech recognition service timeout";
                 voiceContent = "Transcript Unavailable";
+                Logger.LogWarning($"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - FAILED (empty result)");
+            }
+            else
+            {
+                Logger.LogInformation($"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - SUCCESS, length: {voiceContent.Length} chars, content: '{voiceContent}'");
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex,
-                $"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Voice parsing failed");
+            sttStopwatch.Stop();
+            Logger.LogError(ex, $"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - FAILED with exception");
             voiceParseSuccess = false;
             voiceParseErrorMessage = ex.Message.Contains("timeout") ? "Speech recognition service timeout" :
                 ex.Message.Contains("format") ? "Audio file corrupted or unsupported format" :
@@ -298,13 +314,16 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 VoiceDurationSeconds = voiceDurationSeconds
             };
 
-            // Add to state directly
-            State.ChatMessageMetas.Add(chatMessageMeta);
-
             RaiseEvent(new AddChatHistoryLogEvent
             {
                 ChatList = chatMessages
             });
+            
+            RaiseEvent(new AddChatMessageMetasLogEvent
+            {
+                ChatMessageMetas = new List<ChatMessageMeta> { chatMessageMeta }
+            });
+            
             await ConfirmEvents();
 
             // Send error response
@@ -328,16 +347,21 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 await PublishAsync(errorResponse);
             }
 
+            totalStopwatch.Stop();
+            Logger.LogInformation($"[PERF][VoiceChat] {sessionId} TOTAL_Time: {totalStopwatch.ElapsedMilliseconds}ms - FAILED (parse error)");
             return;
         }
 
         Logger.LogDebug(
             $"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Voice parsed successfully: {voiceContent}");
 
+        var quotaStopwatch = Stopwatch.StartNew();
         var userQuotaGrain =
             GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(State.ChatManagerGuid));
         var actionResultDto =
             await userQuotaGrain.ExecuteVoiceActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
+        quotaStopwatch.Stop();
+        Logger.LogInformation($"[PERF][VoiceChat] {sessionId} Quota_Check: {quotaStopwatch.ElapsedMilliseconds}ms - success: {actionResultDto.Success}");
         if (!actionResultDto.Success)
         {
             Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Access restricted");
@@ -356,28 +380,31 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 Content = actionResultDto.Message
             });
 
-            RaiseEvent(new AddChatHistoryLogEvent
-            {
-                ChatList = chatMessages
-            });
-            
-            // Add metadata for the two messages: user voice message + assistant response
-            // We need two metadata entries because we added two chat messages above
-            State.ChatMessageMetas.Add(new ChatMessageMeta // For user's voice message
+            var userVoiceMeta = new ChatMessageMeta
             {
                 IsVoiceMessage = true,
                 VoiceLanguage = voiceLanguage,
                 VoiceParseSuccess = true,
                 VoiceParseErrorMessage = null,
                 VoiceDurationSeconds = voiceDurationSeconds
-            });
-            State.ChatMessageMetas.Add(new ChatMessageMeta // For assistant's error response
+            };
+            var assistantResponseMeta = new ChatMessageMeta
             {
                 IsVoiceMessage = false,
                 VoiceLanguage = VoiceLanguageEnum.English,
                 VoiceParseSuccess = true,
                 VoiceParseErrorMessage = null,
                 VoiceDurationSeconds = 0.0
+            };
+
+            RaiseEvent(new AddChatHistoryLogEvent
+            {
+                ChatList = chatMessages
+            });
+            
+            RaiseEvent(new AddChatMessageMetasLogEvent
+            {
+                ChatMessageMetas = new List<ChatMessageMeta> { userVoiceMeta, assistantResponseMeta }
             });
             
             await ConfirmEvents();
@@ -409,21 +436,24 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 await PublishAsync(chatMessage);
             }
 
+            totalStopwatch.Stop();
+            Logger.LogInformation($"[PERF][VoiceChat] {sessionId} TOTAL_Time: {totalStopwatch.ElapsedMilliseconds}ms - FAILED (quota denied)");
             return;
         }
 
         Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} - Validation passed");
         await SetSessionTitleAsync(sessionId, voiceContent);
 
-        var sw = new Stopwatch();
-        sw.Start();
+        var llmStopwatch = Stopwatch.StartNew();
         var configuration = GetConfiguration();
         await GodVoiceStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
             voiceContent, chatId, promptSettings, isHttpRequest, region, voiceLanguage, voiceDurationSeconds);
-        sw.Stop();
-        Logger.LogDebug(
-            $"StreamVoiceChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
+        llmStopwatch.Stop();
+        
+        totalStopwatch.Stop();
+        Logger.LogInformation($"[PERF][VoiceChat] {sessionId} LLM_Processing: {llmStopwatch.ElapsedMilliseconds}ms");
+        Logger.LogInformation($"[PERF][VoiceChat] {sessionId} TOTAL_Time: {totalStopwatch.ElapsedMilliseconds}ms");
     }
 
     private async Task SetSessionTitleAsync(Guid sessionId, string content)
@@ -494,6 +524,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                             Content = message
                         }
                     }
+                });
+                
+                RaiseEvent(new AddChatMessageMetasLogEvent
+                {
+                    ChatMessageMetas = new List<ChatMessageMeta>()
                 });
 
                 await ConfirmEvents();
@@ -812,6 +847,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     }
                 }
             });
+            
+            RaiseEvent(new AddChatMessageMetasLogEvent
+            {
+                ChatMessageMetas = new List<ChatMessageMeta>()
+            });
 
             await ConfirmEvents();
 
@@ -929,16 +969,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     
                     // Clean up accumulator for this chat session
                     VoiceTextAccumulators.Remove(contextDto.ChatId);
-                    
-                    // Add assistant response metadata
-                    State.ChatMessageMetas.Add(new ChatMessageMeta
-                    {
-                        IsVoiceMessage = false, // Assistant response is not a voice message
-                        VoiceLanguage = voiceLanguage,
-                        VoiceParseSuccess = true,
-                        VoiceParseErrorMessage = null,
-                        VoiceDurationSeconds = 0.0 // Will be calculated from audio metadata if needed
-                    });
                 }
             }
         }
@@ -1039,9 +1069,35 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 }
 
                 break;
-            case AddChatHistoryLogEvent addChatHistoryLogEvent:
-                // Ensure ChatMessageMetas list has the same count as ChatHistory
-                // Fill with default metadata for messages without explicit metadata
+            case AddChatMessageMetasLogEvent addChatMessageMetasLogEvent:
+                if (addChatMessageMetasLogEvent.ChatMessageMetas != null && addChatMessageMetasLogEvent.ChatMessageMetas.Any())
+                {
+                    // Calculate the starting index for new metadata based on current ChatHistory count
+                    // minus the number of new metadata items we're adding
+                    int newMetadataCount = addChatMessageMetasLogEvent.ChatMessageMetas.Count;
+                    int targetStartIndex = Math.Max(0, State.ChatHistory.Count - newMetadataCount);
+                    
+                    // Ensure we have enough default metadata up to the target start index
+                    while (State.ChatMessageMetas.Count < targetStartIndex)
+                    {
+                        State.ChatMessageMetas.Add(new ChatMessageMeta
+                        {
+                            IsVoiceMessage = false,
+                            VoiceLanguage = VoiceLanguageEnum.English,
+                            VoiceParseSuccess = true,
+                            VoiceParseErrorMessage = null,
+                            VoiceDurationSeconds = 0.0
+                        });
+                    }
+                    
+                    // Add the new metadata
+                    foreach (var meta in addChatMessageMetasLogEvent.ChatMessageMetas)
+                    {
+                        State.ChatMessageMetas.Add(meta);
+                    }
+                }
+                
+                // Final sync: ensure ChatMessageMetas matches ChatHistory count
                 while (State.ChatMessageMetas.Count < State.ChatHistory.Count)
                 {
                     State.ChatMessageMetas.Add(new ChatMessageMeta
@@ -1074,12 +1130,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return false;
 
         var trimmedText = text.Trim();
-        if (trimmedText.Length < 3) // Minimum sentence length
+        if (trimmedText.Length < MinSentenceLength)
             return false;
 
-        // Check for sentence endings in multiple languages
-        var sentenceEndings = new[] { '.', '!', '?', '。', '！', '？' };
-        return sentenceEndings.Any(ending => trimmedText.EndsWith(ending));
+        return SentenceEnders.Any(ending => trimmedText.EndsWith(ending));
     }
 
     /// <summary>
@@ -1093,8 +1147,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (string.IsNullOrEmpty(accumulatedText))
             return null;
 
-        // Find the last sentence ending position
-        int lastSentenceEndIndex = -1;
+        int extractIndex = -1;
+        
+        // Look for complete sentence endings
         for (int i = accumulatedText.Length - 1; i >= 0; i--)
         {
             if (SentenceEnders.Contains(accumulatedText[i]))
@@ -1102,22 +1157,22 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 // Check if this creates a sentence of minimum length
                 if (i + 1 >= MinSentenceLength)
                 {
-                    lastSentenceEndIndex = i;
+                    extractIndex = i;
                     break;
                 }
             }
         }
 
-        if (lastSentenceEndIndex == -1)
+        if (extractIndex == -1)
             return null;
 
-        // Extract complete sentence(s)
-        var completeSentence = accumulatedText.Substring(0, lastSentenceEndIndex + 1).Trim();
+        // Extract complete sentence
+        var completeSentence = accumulatedText.Substring(0, extractIndex + 1).Trim();
         if (string.IsNullOrEmpty(completeSentence))
             return null;
 
         // Remove processed text from accumulator
-        var remainingText = accumulatedText.Substring(lastSentenceEndIndex + 1);
+        var remainingText = accumulatedText.Substring(extractIndex + 1);
         textAccumulator.Clear();
         textAccumulator.Append(remainingText);
 
@@ -1174,7 +1229,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                              .Replace("<<<", "");
 
         // Remove excessive whitespace
-        cleanText = System.Text.RegularExpressions.Regex.Replace(cleanText, @"\s+", " ").Trim();
+        cleanText = Regex.Replace(cleanText, @"\s+", " ").Trim();
 
         return cleanText;
     }
@@ -1252,20 +1307,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 Logger.LogError($"[GodChatGAgent][GodVoiceStreamChatAsync] Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
             }
 
-            // Step 5: Save user voice message to history with metadata
             if (addToHistory)
             {
-                // Add user voice message metadata
-                State.ChatMessageMetas.Add(new ChatMessageMeta
+                var userVoiceMeta = new ChatMessageMeta
                 {
                     IsVoiceMessage = true,
                     VoiceLanguage = voiceLanguage,
                     VoiceParseSuccess = true,
                     VoiceParseErrorMessage = null,
                     VoiceDurationSeconds = voiceDurationSeconds
-                });
+                };
 
-                // Save user message to chat history
                 RaiseEvent(new AddChatHistoryLogEvent
                 {
                     ChatList = new List<ChatMessage>()
@@ -1276,6 +1328,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                             Content = message
                         }
                     }
+                });
+                
+                RaiseEvent(new AddChatMessageMetasLogEvent
+                {
+                    ChatMessageMetas = new List<ChatMessageMeta> { userVoiceMeta }
                 });
 
                 await ConfirmEvents();
