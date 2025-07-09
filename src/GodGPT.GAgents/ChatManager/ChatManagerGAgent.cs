@@ -320,17 +320,18 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"[ChatGAgentManager][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
         
         sw.Reset();
-        var sysMessage = await configuration.GetPrompt();
+        //var sysMessage = await configuration.GetPrompt();
         //put user data into the user prompt
         //sysMessage = await AppendUserInfoToSystemPromptAsync(configuration, sysMessage, userProfile);
 
         // Add role-specific prompt if guider is provided
+        var sysMessage = string.Empty;
         if (!string.IsNullOrEmpty(guider))
         {
             var rolePrompt = GetRolePrompt(guider);
             if (!string.IsNullOrEmpty(rolePrompt))
             {
-                sysMessage = $"You should follow the rules below. 1. {rolePrompt}. 2. {sysMessage}";
+                sysMessage = $"You should follow the rules below. 1. {rolePrompt}.";
                 Logger.LogDebug($"[ChatGAgentManager][CreateSessionAsync] Added role prompt for guider: {guider}");
             }
         }
