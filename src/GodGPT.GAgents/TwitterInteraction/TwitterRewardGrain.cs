@@ -858,12 +858,10 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             var bonusCreditsEligibleTweets = FilterEligibleTweets(bonusCreditsTweets);
             var regularCreditsEligibleTweets = FilterEligibleTweets(regularCreditsTweets);
             result.EligibleTweets = bonusCreditsEligibleTweets.Count + regularCreditsEligibleTweets.Count;
-
+            
             _logger.LogInformation(
-                "CreditsTweets Found {Total} bonusTweets, {Eligible} bonusEligible for bonusreward evaluation (original tweets, min {MinViews} views, non-excluded users, unprocessed)" +
-                " Found {Total} regularTweets, {Eligible} regularEligible for regularreward ", bonusCreditsTweets.Count,
-                bonusCreditsEligibleTweets.Count, _state.State.Config.MinViewsForReward, regularCreditsTweets.Count,
-                regularCreditsEligibleTweets.Count);
+                $"CreditsTweets Found {bonusCreditsTweets.Count} bonusTweets, {bonusCreditsEligibleTweets.Count} bonusEligible for bonusreward evaluation (original tweets, min {_state.State.Config.MinViewsForReward} views, non-excluded users, unprocessed)" +
+                " Found {regularCreditsTweets.Count} regularTweets, {regularCreditsEligibleTweets.Count} regularEligible for regularreward ");
             
 
             // Group tweets by user and calculate rewards
@@ -954,9 +952,9 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         // Create set of already rewarded users for fast lookup
         var alreadyRewardedUsers = existingRewards.Select(r => r.UserId).ToHashSet();
 
-        _logger.LogInformation(
-            "Found {ExistingCount} existing user rewards for date {Date}, processing bonusCreditsType {EligibleCount} regularCreditsType {regularEligibleCount} eligible tweets",
-            existingRewards.Count, dateKey, bonusCreditsEligibleTweets.Count, regularCreditsEligibleTweets.Count);
+        // _logger.LogInformation(
+        //     "Found {ExistingCount} existing user rewards for date {Date}, processing bonusCreditsType {EligibleCount} regularCreditsType {regularEligibleCount} eligible tweets",
+        //     existingRewards.Count, dateKey, bonusCreditsEligibleTweets.Count, regularCreditsEligibleTweets.Count);
 
         // Group tweets by user for calculating both regular and bonus credits
         var bonusCreditsTweetsByUser = bonusCreditsEligibleTweets
@@ -981,8 +979,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         var totalBonusUsers = bonusCreditsTweetsByUser.Count;
         var batchSize = options.RewardCalculationBatchSize;
         
-        _logger.LogInformation("Fetching latest information for {UserCount} bonus credit users using batch processing (batch size: {BatchSize})", 
-            totalBonusUsers, batchSize);
+        _logger.LogInformation($"Fetching latest information for {totalBonusUsers} bonus credit users using batch processing (batch size: {batchSize})");
         
         var latestUserAndTweetInfo = new Dictionary<string, (UserInfoDto UserInfo, List<TweetProcessResultDto> UpdatedTweets)>();
         
@@ -998,8 +995,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             var batch = userBatches[batchIndex];
             var isLastBatch = batchIndex == userBatches.Count - 1;
             
-            _logger.LogInformation("🔄 Processing batch {BatchIndex}/{TotalBatches} with {UserCount} users", 
-                batchIndex + 1, userBatches.Count, batch.Count);
+            _logger.LogInformation($"Processing batch {batchIndex + 1}/{userBatches.Count} with {batch.Count} users");
             
             var batchResult = await GetLatestUserAndTweetInfoAsync(batch);
             
@@ -1013,14 +1009,12 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             if (!isLastBatch)
             {
                 var interBatchDelayMinutes = options.MinTimeWindowMinutes;
-                _logger.LogInformation("🛡️ Completed batch {BatchIndex}/{TotalBatches}. Applying {DelayMinutes}-minute inter-batch delay for API safety", 
-                    batchIndex + 1, userBatches.Count, interBatchDelayMinutes);
+                _logger.LogInformation($"Completed batch {batchIndex + 1}/{userBatches.Count}. Applying {interBatchDelayMinutes}-minute inter-batch delay for API safety");
                 await Task.Delay(TimeSpan.FromMinutes(interBatchDelayMinutes));
             }
             else
             {
-                _logger.LogInformation("🎉 Completed final batch {BatchIndex}/{TotalBatches}. No inter-batch delay needed.", 
-                    batchIndex + 1, userBatches.Count);
+                _logger.LogInformation($" Completed final batch {batchIndex + 1}/{userBatches.Count}. No inter-batch delay needed.");
             }
         }
 
@@ -1061,9 +1055,9 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 userRewardDict[userId] = rewardRecord;
                 processedUsers++;
 
-                _logger.LogInformation("Calculated regular rewards for user {UserId} (@{UserHandle}): {RegularCredits} regular credits " +
-                    "({TweetCount} tweets, reference tweet: {TweetId}) [USING STORED DATA]", 
-                    userId, recordTweet.AuthorHandle, regularCredits, regularTweetCount, recordTweet.TweetId);
+                // _logger.LogInformation("Calculated regular rewards for user {UserId} (@{UserHandle}): {RegularCredits} regular credits " +
+                //     "({TweetCount} tweets, reference tweet: {TweetId}) [USING STORED DATA]", 
+                //     userId, recordTweet.AuthorHandle, regularCredits, regularTweetCount, recordTweet.TweetId);
             }
             catch (Exception ex)
             {
@@ -1181,8 +1175,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                      // Keep the existing best tweet ID for reference (regular credits already set the best tweet)
                      
                      var dataSource = usingStoredData ? "[STORED DATA]" : "[LATEST DATA]";
-                     _logger.LogInformation("Updated user {UserId} (@{UserHandle}) with bonus credits: {RegularCredits} regular + {BonusCredits} bonus = {FinalCredits} total credits {DataSource}",
-                         userId, userInfo.Username, existingRecord.RegularCredits, totalBonusCredits, existingRecord.FinalCredits, dataSource);
+                     _logger.LogInformation($"Updated user {userId} (@{userInfo.Username}) with bonus credits: {existingRecord.RegularCredits} regular + {totalBonusCredits} bonus = {existingRecord.FinalCredits} total credits {dataSource}");
                  }
                 else
                 {
@@ -1209,11 +1202,11 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                     userRewardDict[userId] = rewardRecord;
                     processedUsers++;
 
-                    var dataSource = usingStoredData ? "[STORED DATA]" : "[LATEST DATA]";
-                    _logger.LogInformation("Calculated bonus-only rewards for user {UserId} (@{UserHandle}): {BonusCredits} bonus credits " +
-                        "({TweetCount} tweets, best tweet: {TweetId} with {Views} views) {DataSource}", 
-                        userId, userInfo.Username, totalBonusCredits, tweets.Count, bestTweet.TweetId, 
-                        bestLatestTweet?.ViewCount ?? bestTweet.ViewCount, dataSource);
+                    // var dataSource = usingStoredData ? "[STORED DATA]" : "[LATEST DATA]";
+                    // _logger.LogInformation("Calculated bonus-only rewards for user {UserId} (@{UserHandle}): {BonusCredits} bonus credits " +
+                    //     "({TweetCount} tweets, best tweet: {TweetId} with {Views} views) {DataSource}", 
+                    //     userId, userInfo.Username, totalBonusCredits, tweets.Count, bestTweet.TweetId, 
+                    //     bestLatestTweet?.ViewCount ?? bestTweet.ViewCount, dataSource);
                 }
 
                 // Mark all tweets as processed
@@ -1228,8 +1221,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             }
         }
 
-        _logger.LogInformation("Reward calculation summary: {ProcessedUsers} users processed with rewards, {SkippedAlreadyRewarded} tweets skipped (already rewarded)", 
-            processedUsers, skippedAlreadyRewarded);
+        _logger.LogInformation($"Reward calculation summary: {processedUsers} users processed with rewards, {skippedAlreadyRewarded} tweets skipped (already rewarded)");
 
         // Combine new rewards with existing rewards for return
         var allRewards = new List<UserRewardRecordDto>();

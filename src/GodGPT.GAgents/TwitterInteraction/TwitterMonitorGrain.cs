@@ -1106,26 +1106,23 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             {
                 try
                 {
-                    _logger.LogDebug("📝 Processing tweet {TweetId} (author: {AuthorId})", tweet.Id, tweet.AuthorId);
-
+                    _logger.LogDebug($"📝 Processing tweet {tweet.Id} (author: {tweet.AuthorId})");
+                    
                     if (_state.State.StoredTweets.ContainsKey(tweet.Id))
                     {
-                        _logger.LogDebug("⚠️ Skipping duplicate tweet {TweetId}", tweet.Id);
                         fetchResult.DuplicateSkipped++;
                         continue;
                     }
 
                     if (_options.CurrentValue.ExcludedAccountIds.Contains(tweet.AuthorId))
                     {
-                        _logger.LogDebug("⚠️ Skipping Excluded AuthorId tweet {TweetId} AuthorId {AuthorId}", tweet.Id,
-                            tweet.AuthorId);
                         fetchResult.DuplicateSkipped++;
                         continue;
                     }
                     
 
                     // Get detailed tweet analysis
-                    _logger.LogDebug("🔍 Analyzing tweet details {TweetId}...", tweet.Id);
+                    _logger.LogDebug($"🔍 Analyzing tweet details {tweet.Id}...");
                     var analysisResult = await _twitterGrain.AnalyzeTweetLightweightAsync(tweet.Id);
                     
                     if (!analysisResult.IsSuccess)
@@ -1136,13 +1133,12 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     }
 
                     var tweetDetails = analysisResult.Data;
-                    _logger.LogDebug("✅ Tweet analysis completed {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}", 
-                        tweet.Id, tweetDetails.AuthorHandle, tweetDetails.AuthorId, tweetDetails.Type);
+                    _logger.LogDebug($"✅ Tweet analysis completed {tweet.Id} - Author: @{tweetDetails.AuthorHandle} ({tweetDetails.AuthorId}), Type: {tweetDetails.Type}");
 
                     // Filter if only original tweets required
                     if (_state.State.Config.FilterOriginalOnly && tweetDetails.Type != TweetType.Original)
                     {
-                        _logger.LogDebug("🚫 Filtering non-original tweet {TweetId} - Type: {Type}", tweet.Id, tweetDetails.Type);
+                        _logger.LogDebug($"🚫 Filtering non-original tweet {tweet.Id} - Type: {tweetDetails.Type}");
                         fetchResult.FilteredOut++;
                         continue;
                     }
@@ -1160,8 +1156,6 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                     var tweetDateUtc = tweetDetails.CreatedAt.Date;  // Use UTC date from tweetDetails which is already correctly parsed
                     var tweetDateStartUtc = new DateTimeOffset(DateTime.SpecifyKind(tweetDateUtc, DateTimeKind.Utc)).ToUnixTimeSeconds();
                     var tweetDateEndUtc = new DateTimeOffset(DateTime.SpecifyKind(tweetDateUtc.AddDays(1), DateTimeKind.Utc)).ToUnixTimeSeconds();
-                    
-
                     
                     var userTweetCountOnThatDay = _state.State.StoredTweets.Values
                         .Where(t => t.AuthorId == tweetDetails.AuthorId && 

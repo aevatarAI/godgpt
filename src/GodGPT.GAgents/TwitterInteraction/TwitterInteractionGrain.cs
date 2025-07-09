@@ -207,7 +207,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 };
             }
 
-            _logger.LogDebug("Getting tweet details for ID: {TweetId}", tweetId);
+            _logger.LogDebug($"Getting tweet details for ID: {tweetId}");
 
             var url = $"{TWITTER_API_BASE}{string.Format(GET_TWEET_ENDPOINT, tweetId)}" +
                      "?tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations,entities" +
@@ -1325,14 +1325,13 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
     {
         try
         {
-            _logger.LogDebug("🔍 Starting lightweight tweet analysis: {TweetId}", tweetId);
+            _logger.LogDebug($"Starting lightweight tweet analysis: {tweetId}");
 
             // Only get detailed tweet information (no user info to reduce API calls)
-            _logger.LogDebug("📄 Getting tweet details: {TweetId}", tweetId);
             var tweetDetailsResult = await GetTweetDetailsAsync(tweetId);
             if (!tweetDetailsResult.IsSuccess)
             {
-                _logger.LogWarning("❌ Failed to get tweet details {TweetId}: {Error}", tweetId, tweetDetailsResult.ErrorMessage);
+                _logger.LogWarning($"❌ Failed to get tweet details {tweetId}: {tweetDetailsResult.ErrorMessage}");
                 return new TwitterApiResultDto<TweetProcessResultDto>
                 {
                     IsSuccess = false,
@@ -1342,8 +1341,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             }
 
             var tweetDetails = tweetDetailsResult.Data;
-            _logger.LogDebug("✅ Tweet details retrieved successfully {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}", 
-                tweetId, tweetDetails.AuthorHandle, tweetDetails.AuthorId, tweetDetails.Type);
+            _logger.LogDebug($"✅ Tweet details retrieved successfully {tweetId} - Author: @{tweetDetails.AuthorHandle} ({ tweetDetails.AuthorId}), Type: {tweetDetails.Type}");
 
             // Create lightweight result (no follower count - will be populated later if needed)
             var result = new TweetProcessResultDto
