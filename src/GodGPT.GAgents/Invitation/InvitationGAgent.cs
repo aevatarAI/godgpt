@@ -272,9 +272,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                 Credits = credits,
                 RewardType = RewardTypeEnum.SubscriptionReward,
                 IsScheduled = true,
-                //TODO Testing
-                //ScheduledDate = DateTime.UtcNow.AddDays(30),
-                ScheduledDate = DateTime.UtcNow.AddMinutes(11),
+                ScheduledDate = DateTime.UtcNow.AddDays(30),
                 InvoiceId = invoiceId,
                 IssueAt = DateTime.UtcNow
             };
