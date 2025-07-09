@@ -11,7 +11,11 @@ namespace GodGPT.GAgents.SpeechChat;
 public class SpeechService : ISpeechService
 {
     private readonly SpeechConfig _speechConfig;
-
+    
+    // SSML volume control configuration - hardcoded for enhanced audio output
+    private const string DEFAULT_VOLUME_BOOST = "+40%";  // Increase volume by 40%
+    private const string BACKUP_VOLUME_BOOST = "+30%";   // Fallback if +40% fails
+    
     public SpeechService(IOptions<SpeechOptions> speechOptions)
     {
         _speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
@@ -125,7 +129,35 @@ public class SpeechService : ISpeechService
         // Create audio config for memory output instead of system audio to avoid SPXERR_AUDIO_SYS_LIBRARY_NOT_FOUND error
         using var audioConfig = AudioConfig.FromStreamOutput(AudioOutputStream.CreatePullStream());
         using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig, audioConfig);
-        using var result = await tempSynthesizer.SpeakTextAsync(text);
+        
+        // Use SSML with volume control for enhanced audio output
+        string ssmlText = WrapTextWithVolumeSSML(text, language, DEFAULT_VOLUME_BOOST);
+        SpeechSynthesisResult result;
+        
+        try
+        {
+            // Try with primary volume boost
+            result = await tempSynthesizer.SpeakSsmlAsync(ssmlText);
+            
+            // Check if synthesis failed, fallback to backup volume or plain text
+            if (result.Reason == ResultReason.Canceled)
+            {
+                Console.WriteLine($"Primary SSML synthesis failed, trying backup volume");
+                ssmlText = WrapTextWithVolumeSSML(text, language, BACKUP_VOLUME_BOOST);
+                result = await tempSynthesizer.SpeakSsmlAsync(ssmlText);
+                
+                if (result.Reason == ResultReason.Canceled)
+                {
+                    Console.WriteLine($"Backup SSML synthesis failed, using plain text");
+                    result = await tempSynthesizer.SpeakTextAsync(text);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SSML synthesis error: {ex.Message}, falling back to plain text");
+            result = await tempSynthesizer.SpeakTextAsync(text);
+        }
         
         // Calculate approximate duration based on text length and speech rate
         // Average speech rate is ~150 words per minute or ~2.5 words per second
@@ -142,7 +174,36 @@ public class SpeechService : ISpeechService
             LanguageType = language
         };
         
+        result.Dispose();
         return (result.AudioData, metadata);
+    }
+    
+    /// <summary>
+    /// Wraps plain text with SSML prosody tags for volume control
+    /// </summary>
+    /// <param name="text">Plain text to synthesize</param>
+    /// <param name="language">Target language for proper SSML configuration</param>
+    /// <param name="volumeBoost">Volume boost percentage (e.g., "+40%")</param>
+    /// <returns>SSML formatted string with volume control</returns>
+    private static string WrapTextWithVolumeSSML(string text, VoiceLanguageEnum language, string volumeBoost)
+    {
+        // Escape any XML special characters in the text
+        var escapedText = text.Replace("&", "&amp;")
+                             .Replace("<", "&lt;")
+                             .Replace(">", "&gt;")
+                             .Replace("\"", "&quot;")
+                             .Replace("'", "&apos;");
+        
+        var languageCode = GetLanguageCode(language);
+        var voiceName = GetVoiceName(language);
+        
+        return $@"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{languageCode}'>
+    <voice name='{voiceName}'>
+        <prosody volume='{volumeBoost}'>
+            {escapedText}
+        </prosody>
+    </voice>
+</speak>";
     }
 
     private static string GetLanguageCode(VoiceLanguageEnum language)
