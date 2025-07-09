@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.CognitiveServices.Speech;
 using Microsoft.CognitiveServices.Speech.Audio;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using Aevatar.Application.Grains.Agents.ChatManager;
 
 namespace GodGPT.GAgents.SpeechChat;
@@ -11,21 +12,100 @@ namespace GodGPT.GAgents.SpeechChat;
 public class SpeechService : ISpeechService
 {
     private readonly SpeechConfig _speechConfig;
+    private readonly AudioGainProcessor _audioGainProcessor;
+    private readonly ILogger<SpeechService> _logger;
     
-    // SSML volume control configuration - hardcoded for enhanced audio output
-    private const string DEFAULT_VOLUME_BOOST = "+200%";  // Increase volume by 200%
-    private const string BACKUP_VOLUME_BOOST = "+150%";   // Fallback if +200% fails
-    
-    public SpeechService(IOptions<SpeechOptions> speechOptions)
+    public SpeechService(IOptions<SpeechOptions> speechOptions, ILogger<SpeechService> logger)
     {
         _speechConfig = SpeechConfig.FromSubscription(speechOptions.Value.SubscriptionKey, speechOptions.Value.Region);
+        
+        // Configure for MP3 output format - 16kHz, 32kbps, mono
+        _speechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3);
+        
+        _audioGainProcessor = new AudioGainProcessor();
+        _logger = logger;
+        
+        _logger.LogInformation("SpeechService initialized with MP3 output format: 16kHz, 32kbps, mono");
+    }
+
+    public async Task<(byte[] AudioData, AudioMetadata Metadata)> TextToSpeechWithMetadataAsync(string text, VoiceLanguageEnum voiceLanguage)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            throw new ArgumentException("Text cannot be null or empty", nameof(text));
+        }
+
+        try
+        {
+            using var synthesizer = new SpeechSynthesizer(_speechConfig);
+            
+            // Configure voice based on language
+            var voiceName = GetVoiceName(voiceLanguage);
+            _speechConfig.SpeechSynthesisVoiceName = voiceName;
+            
+            _logger.LogDebug("Starting TTS synthesis for text length: {TextLength}, voice: {Voice}", 
+                text.Length, voiceName);
+
+            // Perform text-to-speech synthesis
+            using var result = await synthesizer.SpeakTextAsync(text);
+            
+            // Check synthesis result
+            if (result.Reason == ResultReason.SynthesizingAudioCompleted)
+            {
+                _logger.LogDebug("TTS synthesis completed successfully, audio data size: {DataSize} bytes", 
+                    result.AudioData.Length);
+                
+                // Apply 3x audio gain amplification for volume enhancement
+                var amplifiedAudioData = await _audioGainProcessor.ApplyGainAsync(result.AudioData, 3.0f);
+                
+                _logger.LogDebug("Audio gain processing completed, final size: {FinalSize} bytes", 
+                    amplifiedAudioData.Length);
+                
+                // Create metadata for MP3 format
+                var metadata = new AudioMetadata
+                {
+                    Format = "mp3",
+                    SampleRate = 16000,  // 16kHz
+                    BitRate = 32000,     // 32kbps  
+                    SizeBytes = amplifiedAudioData.Length,
+                    Duration = EstimateDurationInSeconds(amplifiedAudioData.Length, 32000), // Estimate based on bitrate
+                    LanguageType = voiceLanguage
+                };
+                
+                return (amplifiedAudioData, metadata);
+            }
+            else if (result.Reason == ResultReason.Canceled)
+            {
+                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                var errorMessage = $"TTS synthesis was cancelled: {cancellation.Reason}";
+                
+                if (cancellation.Reason == CancellationReason.Error)
+                {
+                    errorMessage += $" - Error: {cancellation.ErrorDetails}";
+                }
+                
+                _logger.LogError("TTS synthesis failed: {ErrorMessage}", errorMessage);
+                throw new InvalidOperationException(errorMessage);
+            }
+            else
+            {
+                var errorMessage = $"TTS synthesis failed with reason: {result.Reason}";
+                _logger.LogError("TTS synthesis failed: {ErrorMessage}", errorMessage);
+                throw new InvalidOperationException(errorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error occurred during TTS synthesis");
+            throw;
+        }
     }
 
     public async Task<string> SpeechToTextAsync(byte[] audioData)
     {
         try
         {
-            //support mav、mp3、aac、ogg、flac、opus
+            //support wav、mp3、aac、ogg、flac、opus
             using var pushStream = AudioInputStream.CreatePushStream();
             using var audioConfig = AudioConfig.FromStreamInput(pushStream);
             using var recognizer = new SpeechRecognizer(_speechConfig, audioConfig);
@@ -111,101 +191,6 @@ public class SpeechService : ISpeechService
         return result.AudioData;
     }
 
-    public async Task<(byte[] AudioData, AudioMetadata Metadata)> TextToSpeechWithMetadataAsync(string text, VoiceLanguageEnum language)
-    {
-        // Validate input parameters
-        if (string.IsNullOrEmpty(text))
-        {
-            throw new ArgumentException("Text cannot be null or empty", nameof(text));
-        }
-        
-        var tempSpeechConfig = SpeechConfig.FromSubscription(_speechConfig.SubscriptionKey, _speechConfig.Region);
-        tempSpeechConfig.SpeechSynthesisLanguage = GetLanguageCode(language);
-        tempSpeechConfig.SpeechSynthesisVoiceName = GetVoiceName(language);
-        
-        // Configure MP3 format with 16kHz sample rate
-        tempSpeechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3);
-        
-        // Create audio config for memory output instead of system audio to avoid SPXERR_AUDIO_SYS_LIBRARY_NOT_FOUND error
-        using var audioConfig = AudioConfig.FromStreamOutput(AudioOutputStream.CreatePullStream());
-        using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig, audioConfig);
-        
-        // Use SSML with volume control for enhanced audio output
-        string ssmlText = WrapTextWithVolumeSSML(text, language, DEFAULT_VOLUME_BOOST);
-        SpeechSynthesisResult result;
-        
-        try
-        {
-            // Try with primary volume boost
-            result = await tempSynthesizer.SpeakSsmlAsync(ssmlText);
-            
-            // Check if synthesis failed, fallback to backup volume or plain text
-            if (result.Reason == ResultReason.Canceled)
-            {
-                Console.WriteLine($"Primary SSML synthesis failed, trying backup volume");
-                ssmlText = WrapTextWithVolumeSSML(text, language, BACKUP_VOLUME_BOOST);
-                result = await tempSynthesizer.SpeakSsmlAsync(ssmlText);
-                
-                if (result.Reason == ResultReason.Canceled)
-                {
-                    Console.WriteLine($"Backup SSML synthesis failed, using plain text");
-                    result = await tempSynthesizer.SpeakTextAsync(text);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"SSML synthesis error: {ex.Message}, falling back to plain text");
-            result = await tempSynthesizer.SpeakTextAsync(text);
-        }
-        
-        // Calculate approximate duration based on text length and speech rate
-        // Average speech rate is ~150 words per minute or ~2.5 words per second
-        var wordCount = text.Split(' ').Length;
-        var estimatedDuration = wordCount / 2.5; // seconds
-        
-        var metadata = new AudioMetadata
-        {
-            Duration = estimatedDuration,
-            SizeBytes = result.AudioData.Length,
-            SampleRate = 16000, // 16kHz as configured
-            BitRate = 32000, // 32kbps as configured
-            Format = "mp3",
-            LanguageType = language
-        };
-        
-        result.Dispose();
-        return (result.AudioData, metadata);
-    }
-    
-    /// <summary>
-    /// Wraps plain text with SSML prosody tags for volume control
-    /// </summary>
-    /// <param name="text">Plain text to synthesize</param>
-    /// <param name="language">Target language for proper SSML configuration</param>
-    /// <param name="volumeBoost">Volume boost percentage (e.g., "+40%")</param>
-    /// <returns>SSML formatted string with volume control</returns>
-    private static string WrapTextWithVolumeSSML(string text, VoiceLanguageEnum language, string volumeBoost)
-    {
-        // Escape any XML special characters in the text
-        var escapedText = text.Replace("&", "&amp;")
-                             .Replace("<", "&lt;")
-                             .Replace(">", "&gt;")
-                             .Replace("\"", "&quot;")
-                             .Replace("'", "&apos;");
-        
-        var languageCode = GetLanguageCode(language);
-        var voiceName = GetVoiceName(language);
-        
-        return $@"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{languageCode}'>
-    <voice name='{voiceName}'>
-        <prosody volume='{volumeBoost}'>
-            {escapedText}
-        </prosody>
-    </voice>
-</speak>";
-    }
-
     private static string GetLanguageCode(VoiceLanguageEnum language)
     {
         return language switch
@@ -217,14 +202,20 @@ public class SpeechService : ISpeechService
         };
     }
 
-    private static string GetVoiceName(VoiceLanguageEnum language)
+    private string GetVoiceName(VoiceLanguageEnum voiceLanguage)
     {
-        return language switch
+        return voiceLanguage switch
         {
-            VoiceLanguageEnum.English => "en-US-JennyNeural",
+            VoiceLanguageEnum.English => "en-US-AriaNeural",
             VoiceLanguageEnum.Chinese => "zh-CN-XiaoxiaoNeural",
             VoiceLanguageEnum.Spanish => "es-ES-ElviraNeural",
-            _ => "en-US-JennyNeural"
+            _ => "en-US-AriaNeural" // Default to English
         };
+    }
+    
+    private double EstimateDurationInSeconds(int audioDataLength, int bitrate)
+    {
+        // Estimate duration: (data size in bytes * 8 bits/byte) / bitrate = duration in seconds
+        return (audioDataLength * 8.0) / bitrate;
     }
 }
