@@ -860,8 +860,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             result.EligibleTweets = bonusCreditsEligibleTweets.Count + regularCreditsEligibleTweets.Count;
             
             _logger.LogInformation(
-                $"CreditsTweets Found {bonusCreditsTweets.Count} bonusTweets, {bonusCreditsEligibleTweets.Count} bonusEligible for bonusreward evaluation (original tweets, min {_state.State.Config.MinViewsForReward} views, non-excluded users, unprocessed) 
-                 Found { regularCreditsTweets.Count } regularTweets, {regularCreditsEligibleTweets.Count} regularEligible for regularreward ");
+                $"CreditsTweets Found {bonusCreditsTweets.Count} bonusTweets, {bonusCreditsEligibleTweets.Count} bonusEligible for bonusreward evaluation (original tweets, min {_state.State.Config.MinViewsForReward} views, non-excluded users, unprocessed) Found { regularCreditsTweets.Count } regularTweets, {regularCreditsEligibleTweets.Count} regularEligible for regularreward ");
             
 
             // Group tweets by user and calculate rewards
