@@ -32,7 +32,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     {
         //"SkyLark-Pro-250415"
         { "CN", new List<string> { "BytePlusDeepSeekV3"} },
-        { "DEFAULT", new List<string>() {  ProxyGPTModelName, "OpenAILast", "OpenAI" }}
+        { "DEFAULT", new List<string>() {  ProxyGPTModelName, /*"OpenAILast",*/ "OpenAI" }}
     };
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
@@ -372,10 +372,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var proxies = new List<Guid>();
         foreach (var llm in llmsForRegion)
         {
-            var systemPrompt = State.PromptTemplate;
+            var systemPrompt = string.Empty;
             if (llm != ProxyGPTModelName)
             {
-                systemPrompt = $"{systemPrompt} 2. {oldSystemPrompt}";
+                systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+            }
+            else
+            {
+                systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
             }
             Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
             var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
@@ -708,5 +712,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var configuration = GetConfiguration();
         var response = await GodChatAsync(await configuration.GetSystemLLM(), content, promptSettings);
         return new Tuple<string, string>(response, title);
+    }
+
+    private string GetCustomPrompt()
+    {
+        return $"The current UTC time is: {DateTime.UtcNow}. Please answer all questions based on this UTC time.";
     }
 }

@@ -333,7 +333,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             var rolePrompt = GetRolePrompt(guider);
             if (!string.IsNullOrEmpty(rolePrompt))
             {
-                sysMessage = $"You should follow the rules below. 1. {rolePrompt}.";
+                sysMessage = rolePrompt;
                 Logger.LogDebug($"[ChatGAgentManager][CreateSessionAsync] Added role prompt for guider: {guider}");
             }
         }
