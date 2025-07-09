@@ -1,6 +1,7 @@
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserBilling;
 using Aevatar.GodGPT.Tests;
 using Shouldly;
 using Xunit.Abstractions;
@@ -21,10 +22,10 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
     {
         try
         {
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing GetStripeProductsAsync with UserId: {userId}");
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
-            var products = await userBillingGrain.GetStripeProductsAsync();
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+            var products = await userBillingGAgent.GetStripeProductsAsync();
             
             _testOutputHelper.WriteLine($"Retrieved {products.Count} products:");
             foreach (var product in products)
@@ -75,10 +76,10 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
     {
         try
         {
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing CreateCheckoutSessionAsync (HostedMode) with UserId: {userId}");
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
-            var products = await userBillingGrain.GetStripeProductsAsync();
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+            var products = await userBillingGAgent.GetStripeProductsAsync();
             if (products.Count == 0)
             {
                 _testOutputHelper.WriteLine("WARNING: No products configured in StripeOptions. Skipping test.");
@@ -88,13 +89,13 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
             _testOutputHelper.WriteLine($"Selected product for test: PlanType={product.PlanType}, PriceId={product.PriceId}, Mode={product.Mode}");
             var dto = new CreateCheckoutSessionDto
             {
-                UserId = userId,
+                UserId = userId.ToString(),
                 PriceId = product.PriceId,
                 Mode = product.Mode,
                 Quantity = 1,
                 UiMode = StripeUiMode.HOSTED
             };
-            var result = await userBillingGrain.CreateCheckoutSessionAsync(dto);
+            var result = await userBillingGAgent.CreateCheckoutSessionAsync(dto);
             _testOutputHelper.WriteLine($"CreateCheckoutSessionAsync result: {result}");
             result.ShouldNotBeNullOrEmpty();
             result.ShouldContain("https://"); // URL should contain https://
@@ -115,14 +116,14 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
         try
         {
             // Create user ID
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing CreateCheckoutSessionAsync (EmbeddedMode) with UserId: {userId}");
 
             // Get UserBillingGrain instance
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // First get product list, ensure there are available products
-            var products = await userBillingGrain.GetStripeProductsAsync();
+            var products = await userBillingGAgent.GetStripeProductsAsync();
             if (products.Count == 0)
             {
                 _testOutputHelper.WriteLine("WARNING: No products configured in StripeOptions. Skipping test.");
@@ -136,7 +137,7 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
             // Create checkout session request
             var dto = new CreateCheckoutSessionDto
             {
-                UserId = userId,
+                UserId = userId.ToString(),
                 PriceId = product.PriceId,
                 Mode = product.Mode,
                 Quantity = 1,
@@ -144,7 +145,7 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
             };
             
             // Call create session method
-            var result = await userBillingGrain.CreateCheckoutSessionAsync(dto);
+            var result = await userBillingGAgent.CreateCheckoutSessionAsync(dto);
             
             // Log the result (Note: don't log the entire clientSecret, only record part of it for verification)
             if (result != null && result.Length > 10)
@@ -175,14 +176,14 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
         try
         {
             // Create user ID
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing CreateCheckoutSessionAsync (SubscriptionMode) with UserId: {userId}");
 
             // Get UserBillingGrain instance
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // First get product list, ensure there are available products
-            var products = await userBillingGrain.GetStripeProductsAsync();
+            var products = await userBillingGAgent.GetStripeProductsAsync();
             
             // Filter products that support subscription mode
             var subscriptionProducts = products.Where(p => p.Mode == PaymentMode.SUBSCRIPTION).ToList();
@@ -200,7 +201,7 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
             // Create checkout session request
             var dto = new CreateCheckoutSessionDto
             {
-                UserId = userId,
+                UserId = userId.ToString(),
                 PriceId = product.PriceId,
                 Mode = PaymentMode.SUBSCRIPTION, // Force using SUBSCRIPTION mode
                 Quantity = 1,
@@ -208,7 +209,7 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
             };
             
             // Call create session method
-            var result = await userBillingGrain.CreateCheckoutSessionAsync(dto);
+            var result = await userBillingGAgent.CreateCheckoutSessionAsync(dto);
             
             // Log the result
             _testOutputHelper.WriteLine($"CreateCheckoutSessionAsync (Subscription) result: {result}");
