@@ -433,55 +433,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             };
         }
     }
-
-    public async Task<TwitterApiResultDto<bool>> HasValidShareLinkAsync(string tweetText)
-    {
-        try
-        {
-            var urlsResult = await ExtractUrlsFromTweetAsync(tweetText);
-            if (!urlsResult.IsSuccess)
-            {
-                return new TwitterApiResultDto<bool>
-                {
-                    IsSuccess = false,
-                    ErrorMessage = urlsResult.ErrorMessage,
-                    Data = false
-                };
-            }
-
-            foreach (var url in urlsResult.Data)
-            {
-                var validationResult = await ValidateShareLinkAsync(url);
-                if (validationResult.IsSuccess && validationResult.Data.IsValid)
-                {
-                    return new TwitterApiResultDto<bool>
-                    {
-                        IsSuccess = true,
-                        ErrorMessage = "Valid share link found",
-                        Data = true
-                    };
-                }
-            }
-
-            return new TwitterApiResultDto<bool>
-            {
-                IsSuccess = true,
-                ErrorMessage = "No valid share link found",
-                Data = false
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error checking for valid share link in tweet text");
-            return new TwitterApiResultDto<bool>
-            {
-                IsSuccess = false,
-                ErrorMessage = $"Error checking share link: {ex.Message}",
-                Data = false
-            };
-        }
-    }
-
+    
     #endregion
 
     #region Helper Methods
@@ -721,58 +673,21 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                         }
                     }
                 }
-                
-                // Supplementary method: Also extract from text using regex (for additional coverage)
-                if (!string.IsNullOrEmpty(tweetText))
-                {
-                    var urlPattern = @"https?://[^\s]+";
-                    var matches = Regex.Matches(tweetText, urlPattern, RegexOptions.IgnoreCase);
-                    foreach (Match match in matches)
-                    {
-                        var textUrl = match.Value;
-                        // Only add if not already in extractedUrls to avoid duplicates
-                        if (!extractedUrls.Contains(textUrl))
-                        {
-                            extractedUrls.Add(textUrl);
-                        }
-                    }
-                }
 
                 // Store extracted URLs for reference
                 tweetDetails.ExtractedUrls = extractedUrls;
 
                 // Validate share links
-                var validShareLinks = new List<string>();
+                tweetDetails.HasValidShareLink = false;
                 foreach (var url in extractedUrls)
                 {
                     if (url.StartsWith(_options.CurrentValue.ShareLinkDomain, StringComparison.OrdinalIgnoreCase))
                     {
-                        validShareLinks.Add(url);
-                    }
-                }
-
-                if (validShareLinks.Any())
-                {
-                    // Validate first share link
-                    var firstShareLink = validShareLinks.First();
-                    var validationResult = await ValidateShareLinkAsync(firstShareLink);
-                    
-                    if (validationResult.IsSuccess && validationResult.Data.IsValid)
-                    {
                         tweetDetails.HasValidShareLink = true;
                         // Keep ShareLinkUrl field as empty string, do not store content
                         tweetDetails.ShareLinkUrl = string.Empty;
+                        break;
                     }
-                    else
-                    {
-                        tweetDetails.HasValidShareLink = false;
-                        tweetDetails.ShareLinkUrl = string.Empty;
-                    }
-                }
-                else
-                {
-                    tweetDetails.HasValidShareLink = false;
-                    tweetDetails.ShareLinkUrl = string.Empty;
                 }
             }
 
