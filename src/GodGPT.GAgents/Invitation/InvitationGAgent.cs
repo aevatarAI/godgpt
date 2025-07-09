@@ -266,7 +266,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         // For annual plans, schedule the reward for 30 days later
         if (planType == PlanType.Year)
         {
-            RaiseEvent(new AddRewardLogEvent
+            var addRewardLogEvent = new AddRewardLogEvent
             {
                 InviteeId = inviteeId,
                 Credits = credits,
@@ -274,12 +274,13 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                 IsScheduled = true,
                 //TODO Testing
                 //ScheduledDate = DateTime.UtcNow.AddDays(30),
-                ScheduledDate = DateTime.UtcNow.AddMinutes(10),
+                ScheduledDate = DateTime.UtcNow.AddMinutes(11),
                 InvoiceId = invoiceId,
                 IssueAt = DateTime.UtcNow
-            });
+            };
+            RaiseEvent(addRewardLogEvent);
             await ConfirmEvents();
-            _logger.LogInformation($"Scheduled reward of {credits} credits for invitee {inviteeId} in 30 days");
+            _logger.LogInformation($"Scheduled reward of {credits} credits for invitee {inviteeId} in 30 days {addRewardLogEvent.ScheduledDate}");
         }
         else
         {
