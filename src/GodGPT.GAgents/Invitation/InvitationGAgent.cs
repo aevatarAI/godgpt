@@ -274,7 +274,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                 IsScheduled = true,
                 //TODO Testing
                 //ScheduledDate = DateTime.UtcNow.AddDays(30),
-                ScheduledDate = DateTime.UtcNow.AddMinutes(10),
+                ScheduledDate = DateTime.UtcNow.AddMinutes(11),
                 InvoiceId = invoiceId,
                 IssueAt = DateTime.UtcNow
             });
