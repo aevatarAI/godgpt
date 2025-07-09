@@ -120,7 +120,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             // Build URL with encoded query parameter
             string encodedQuery = Uri.EscapeDataString(request.Query);
             string url = $"{TWITTER_API_BASE}{SEARCH_TWEETS_ENDPOINT}?query={encodedQuery}&max_results={request.MaxResults}" +
-                        "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
+                        "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations,entities" +
                         "&expansions=author_id&user.fields=id,username,name,public_metrics";
             // Add optional parameters
             if (request.StartTime.HasValue)
@@ -210,7 +210,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             _logger.LogDebug("Getting tweet details for ID: {TweetId}", tweetId);
 
             var url = $"{TWITTER_API_BASE}{string.Format(GET_TWEET_ENDPOINT, tweetId)}" +
-                     "?tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
+                     "?tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations,entities" +
                      "&expansions=author_id" +
                      "&user.fields=id,username,name,public_metrics";
 
@@ -701,27 +701,62 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                     }
                 }
 
-                // Share link validation: Completed during parsing, no link content stored
-                if (!string.IsNullOrEmpty(tweetText))
+                // Share link validation: Extract URLs from entities first, then fallback to text regex
+                var extractedUrls = new List<string>();
+                
+                // Primary method: Extract from entities.urls (expanded URLs)
+                if (dataElement.TryGetProperty("entities", out var entitiesElement) &&
+                    entitiesElement.TryGetProperty("urls", out var urlsElement) &&
+                    urlsElement.ValueKind == JsonValueKind.Array)
                 {
-                    var shareLinksResult = await ExtractShareLinksAsync(tweetText);
-                    if (shareLinksResult.IsSuccess && shareLinksResult.Data.Any())
+                    foreach (var urlElement in urlsElement.EnumerateArray())
                     {
-                        // Validate first share link
-                        var firstShareLink = shareLinksResult.Data.First();
-                        var validationResult = await ValidateShareLinkAsync(firstShareLink);
-                        
-                        if (validationResult.IsSuccess && validationResult.Data.IsValid)
+                        if (urlElement.TryGetProperty("expanded_url", out var expandedUrlElement))
                         {
-                            tweetDetails.HasValidShareLink = true;
-                            // Keep ShareLinkUrl field as empty string, do not store content
-                            tweetDetails.ShareLinkUrl = string.Empty;
+                            var expandedUrl = expandedUrlElement.GetString();
+                            if (!string.IsNullOrEmpty(expandedUrl))
+                            {
+                                extractedUrls.Add(expandedUrl);
+                            }
                         }
-                        else
-                        {
-                            tweetDetails.HasValidShareLink = false;
-                            tweetDetails.ShareLinkUrl = string.Empty;
-                        }
+                    }
+                }
+                
+                // Fallback method: Extract from text using regex (for backward compatibility)
+                if (!extractedUrls.Any() && !string.IsNullOrEmpty(tweetText))
+                {
+                    var urlPattern = @"https?://[^\s]+";
+                    var matches = Regex.Matches(tweetText, urlPattern, RegexOptions.IgnoreCase);
+                    foreach (Match match in matches)
+                    {
+                        extractedUrls.Add(match.Value);
+                    }
+                }
+
+                // Store extracted URLs for reference
+                tweetDetails.ExtractedUrls = extractedUrls;
+
+                // Validate share links
+                var validShareLinks = new List<string>();
+                foreach (var url in extractedUrls)
+                {
+                    if (url.StartsWith(_options.CurrentValue.ShareLinkDomain, StringComparison.OrdinalIgnoreCase))
+                    {
+                        validShareLinks.Add(url);
+                    }
+                }
+
+                if (validShareLinks.Any())
+                {
+                    // Validate first share link
+                    var firstShareLink = validShareLinks.First();
+                    var validationResult = await ValidateShareLinkAsync(firstShareLink);
+                    
+                    if (validationResult.IsSuccess && validationResult.Data.IsValid)
+                    {
+                        tweetDetails.HasValidShareLink = true;
+                        // Keep ShareLinkUrl field as empty string, do not store content
+                        tweetDetails.ShareLinkUrl = string.Empty;
                     }
                     else
                     {
@@ -844,7 +879,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
 
             var url = $"{TWITTER_API_BASE}{GET_TWEETS_ENDPOINT}" +
                       $"?ids={tweetIdsString}" +
-                      "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
+                      "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations,entities" +
                       "&expansions=author_id" +
                       "&user.fields=id,username,name,public_metrics";
 
