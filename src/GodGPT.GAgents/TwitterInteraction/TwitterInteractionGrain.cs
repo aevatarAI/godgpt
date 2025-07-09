@@ -701,7 +701,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                     }
                 }
 
-                // Share link validation: Extract URLs from entities first, then fallback to text regex
+                // Share link validation: Extract URLs from entities and text, then filter by ShareLinkDomain
                 var extractedUrls = new List<string>();
                 
                 // Primary method: Extract from entities.urls (expanded URLs)
@@ -722,14 +722,19 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                     }
                 }
                 
-                // Fallback method: Extract from text using regex (for backward compatibility)
-                if (!extractedUrls.Any() && !string.IsNullOrEmpty(tweetText))
+                // Supplementary method: Also extract from text using regex (for additional coverage)
+                if (!string.IsNullOrEmpty(tweetText))
                 {
                     var urlPattern = @"https?://[^\s]+";
                     var matches = Regex.Matches(tweetText, urlPattern, RegexOptions.IgnoreCase);
                     foreach (Match match in matches)
                     {
-                        extractedUrls.Add(match.Value);
+                        var textUrl = match.Value;
+                        // Only add if not already in extractedUrls to avoid duplicates
+                        if (!extractedUrls.Contains(textUrl))
+                        {
+                            extractedUrls.Add(textUrl);
+                        }
                     }
                 }
 
