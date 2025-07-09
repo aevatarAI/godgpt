@@ -1,27 +1,27 @@
 namespace Aevatar.Application.Grains.TwitterInteraction.Dtos;
 
 /// <summary>
-/// Twitter推文类型枚举
+/// Twitter tweet type enumeration
 /// </summary>
 public enum TweetType
 {
     /// <summary>
-    /// 原创推文
+    /// Original tweet
     /// </summary>
     Original = 0,
     
     /// <summary>
-    /// 回复推文
+    /// Reply tweet
     /// </summary>
     Reply = 1,
     
     /// <summary>
-    /// 转推
+    /// Retweet
     /// </summary>
     Retweet = 2,
     
     /// <summary>
-    /// 引用推文
+    /// Quote tweet
     /// </summary>
     Quote = 3
 } 

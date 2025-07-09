@@ -1,6 +1,7 @@
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserQuota;
 using Aevatar.GodGPT.Tests;
 using Shouldly;
 using Xunit.Abstractions;
@@ -22,16 +23,16 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
 
     #region Helper Methods
 
-    private async Task<IUserQuotaGrain> CreateTestUserQuotaGrainAsync()
+    private async Task<IUserQuotaGAgent> CreateTestUserQuotaGrainAsync()
     {
-        var userId = Guid.NewGuid().ToString();
-        var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(userId);
+        var userId = Guid.NewGuid();
+        var userQuotaGAgent = Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         
-        await userQuotaGrain.ClearAllAsync();
-        await userQuotaGrain.InitializeCreditsAsync();
+        await userQuotaGAgent.ClearAllAsync();
+        await userQuotaGAgent.InitializeCreditsAsync();
         
         _testOutputHelper.WriteLine($"Created test UserQuotaGrain with UserId: {userId}");
-        return userQuotaGrain;
+        return userQuotaGAgent;
     }
 
     private SubscriptionInfoDto CreateStandardSubscription(DateTime? startDate = null, int durationDays = 30)
@@ -277,23 +278,23 @@ public partial class UserQuotaGrainTests_UnifiedInterface : AevatarOrleansTestBa
         try
         {
             // Arrange
-            var userQuotaGrain = await CreateTestUserQuotaGrainAsync();
+            var userQuotaGAgent = await CreateTestUserQuotaGrainAsync();
             
             // Add Ultimate subscription
             var ultimateSubscription = CreateUltimateSubscription(durationDays: 7);
-            await userQuotaGrain.UpdateSubscriptionAsync(ultimateSubscription);
+            await userQuotaGAgent.UpdateSubscriptionAsync(ultimateSubscription);
             
             _testOutputHelper.WriteLine($"Ultimate subscription added: EndDate={ultimateSubscription.EndDate}");
             
             // Verify Ultimate is active
-            var beforeCancel = await userQuotaGrain.GetSubscriptionAsync();
+            var beforeCancel = await userQuotaGAgent.GetSubscriptionAsync();
             beforeCancel.PlanType.ShouldBe(PlanType.Week);
             
             // Act - Use unified cancellation interface
-            await userQuotaGrain.CancelSubscriptionAsync();
+            await userQuotaGAgent.CancelSubscriptionAsync();
             
             // Assert
-            var afterCancel = await userQuotaGrain.GetSubscriptionAsync();
+            var afterCancel = await userQuotaGAgent.GetSubscriptionAsync();
             
             // Should handle cancellation according to refund logic
             _testOutputHelper.WriteLine($"After cancellation: Active={afterCancel.IsActive}, PlanType={afterCancel.PlanType}");

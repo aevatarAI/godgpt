@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserBilling;
 using Shouldly;
 
 namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
@@ -15,10 +16,10 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreatePaymentSheet with valid PriceId, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // Get valid product and price ID
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         if (products.Count == 0)
         {
             _testOutputHelper.WriteLine("Warning: No products configured in StripeOptions. Skipping test.");
@@ -38,7 +39,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CreatePaymentSheetAsync(createPaymentSheetDto);
+            var result = await userBillingGAgent.CreatePaymentSheetAsync(createPaymentSheetDto);
             
             // Assert
             result.ShouldNotBeNull();
@@ -50,7 +51,7 @@ public partial class UserBillingGrainTests
             _testOutputHelper.WriteLine($"CreatePaymentSheetAsync succeeded, PaymentIntent: {result.PaymentIntent.Substring(0, 10)}...");
             
             // Query payment history, verify if a record has been added
-            var paymentHistory = await userBillingGrain.GetPaymentHistoryAsync();
+            var paymentHistory = await userBillingGAgent.GetPaymentHistoryAsync();
             paymentHistory.ShouldNotBeEmpty("Payment history should not be empty");
             var latestPayment = paymentHistory.First();
             latestPayment.UserId.ShouldBe(userId, "UserId in payment record should match");
@@ -72,7 +73,7 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreatePaymentSheet with explicit amount, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         var createPaymentSheetDto = new CreatePaymentSheetDto
         {
@@ -85,7 +86,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CreatePaymentSheetAsync(createPaymentSheetDto);
+            var result = await userBillingGAgent.CreatePaymentSheetAsync(createPaymentSheetDto);
             
             // Assert
             result.ShouldNotBeNull();
@@ -112,7 +113,7 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreatePaymentSheet with invalid parameters, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         var createPaymentSheetDto = new CreatePaymentSheetDto
         {
@@ -124,7 +125,7 @@ public partial class UserBillingGrainTests
         try
         {
             var exception = await Should.ThrowAsync<ArgumentException>(async () => 
-                await userBillingGrain.CreatePaymentSheetAsync(createPaymentSheetDto)
+                await userBillingGAgent.CreatePaymentSheetAsync(createPaymentSheetDto)
             );
             
             _testOutputHelper.WriteLine($"Received expected exception: {exception.Message}");
@@ -145,7 +146,7 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreatePaymentSheet with non-existent PriceId, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         var createPaymentSheetDto = new CreatePaymentSheetDto
         {
@@ -157,7 +158,7 @@ public partial class UserBillingGrainTests
         try
         {
             var exception = await Should.ThrowAsync<ArgumentException>(async () => 
-                await userBillingGrain.CreatePaymentSheetAsync(createPaymentSheetDto)
+                await userBillingGAgent.CreatePaymentSheetAsync(createPaymentSheetDto)
             );
             
             _testOutputHelper.WriteLine($"Received expected exception: {exception.Message}");
@@ -178,10 +179,10 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CreatePaymentSheet with payment method types, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // Get valid product and price ID
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         if (products.Count == 0)
         {
             _testOutputHelper.WriteLine("Warning: No products configured in StripeOptions. Skipping test.");
@@ -201,7 +202,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CreatePaymentSheetAsync(createPaymentSheetDto);
+            var result = await userBillingGAgent.CreatePaymentSheetAsync(createPaymentSheetDto);
             
             // Assert
             result.ShouldNotBeNull();

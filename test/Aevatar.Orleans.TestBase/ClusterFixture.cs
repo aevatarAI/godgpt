@@ -142,15 +142,15 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                     options.SelfAccountId = "test-self-account";
                     options.PullIntervalMinutes = 30;
                     options.PullBatchSize = 100;
-                    options.TimeRangeStartOffsetMinutes = 2880;
-                    options.TimeRangeEndOffsetMinutes = 1440;
                     options.DataRetentionDays = 5;
                     options.DailyRewardLimit = 500;
                     options.OriginalTweetReward = 2;
                     options.MaxTweetsPerUser = 10;
                     options.MaxUserReward = 20;
                     options.ShareLinkMultiplier = 1.1;
-                });
+                })
+                .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"))
+                .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
         }
     }
 

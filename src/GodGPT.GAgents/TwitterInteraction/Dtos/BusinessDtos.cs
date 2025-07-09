@@ -5,7 +5,7 @@ using Orleans;
 namespace Aevatar.Application.Grains.TwitterInteraction.Dtos;
 
 /// <summary>
-/// 任务信息
+/// Task information
 /// </summary>
 [GenerateSerializer]
 public class TaskInfo
@@ -19,7 +19,7 @@ public class TaskInfo
 }
 
 /// <summary>
-/// Twitter系统配置DTO
+/// Twitter system configuration DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterSystemConfigDto
@@ -33,7 +33,7 @@ public class TwitterSystemConfigDto
 }
 
 /// <summary>
-/// 处理历史DTO
+/// Processing history DTO
 /// </summary>
 [GenerateSerializer]
 public class ProcessingHistoryDto
@@ -47,7 +47,7 @@ public class ProcessingHistoryDto
 }
 
 /// <summary>
-/// 推文处理结果DTO
+/// Tweet processing result DTO
 /// </summary>
 [GenerateSerializer]
 public class TweetProcessResultDto
@@ -68,7 +68,7 @@ public class TweetProcessResultDto
 }
 
 /// <summary>
-/// 推文详情DTO
+/// Tweet details DTO
 /// </summary>
 [GenerateSerializer]
 public class TweetDetailsDto
@@ -90,7 +90,7 @@ public class TweetDetailsDto
 }
 
 /// <summary>
-/// 用户信息DTO
+/// User information DTO
 /// </summary>
 [GenerateSerializer]
 public class UserInfoDto
@@ -106,7 +106,7 @@ public class UserInfoDto
 }
 
 /// <summary>
-/// 分享链接验证结果DTO
+/// Share link validation result DTO
 /// </summary>
 [GenerateSerializer]
 public class ShareLinkValidationDto
@@ -119,7 +119,7 @@ public class ShareLinkValidationDto
 }
 
 /// <summary>
-/// 批量推文处理请求DTO
+/// Batch tweet processing request DTO
 /// </summary>
 [GenerateSerializer]
 public class BatchTweetProcessRequestDto
@@ -131,7 +131,7 @@ public class BatchTweetProcessRequestDto
 }
 
 /// <summary>
-/// 批量推文处理响应DTO
+/// Batch tweet processing response DTO
 /// </summary>
 [GenerateSerializer]
 public class BatchTweetProcessResponseDto
@@ -145,7 +145,7 @@ public class BatchTweetProcessResponseDto
 }
 
 /// <summary>
-/// Twitter API配额信息DTO
+/// Twitter API quota information DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterApiQuotaDto
@@ -158,7 +158,7 @@ public class TwitterApiQuotaDto
 }
 
 /// <summary>
-/// 推文记录 - 存储在TweetMonitorGrain中的推文数据结构
+/// Tweet record - Tweet data structure stored in TweetMonitorGrain
 /// </summary>
 [GenerateSerializer]
 public class TweetRecord
@@ -180,19 +180,76 @@ public class TweetRecord
 }
 
 /// <summary>
-/// 时间区间DTO
+/// Time range DTO - simplified to use only UTC timestamps
 /// </summary>
 [GenerateSerializer]
 public class TimeRangeDto
 {
-    [Id(0)] public DateTime StartTime { get; set; }
-    [Id(1)] public DateTime EndTime { get; set; }
-    [Id(2)] public long StartTimeUtc { get; set; } // UTC timestamp in seconds
-    [Id(3)] public long EndTimeUtc { get; set; } // UTC timestamp in seconds
+    /// <summary>
+    /// Start time as UTC timestamp in seconds
+    /// </summary>
+    [Id(0)] public long StartTimeUtcSecond { get; set; }
+    
+    /// <summary>
+    /// End time as UTC timestamp in seconds
+    /// </summary>
+    [Id(1)] public long EndTimeUtcSecond { get; set; }
+    
+    /// <summary>
+    /// Convenience property to get StartTime as DateTime
+    /// </summary>
+    public DateTime StartTime => DateTimeOffset.FromUnixTimeSeconds(StartTimeUtcSecond).DateTime;
+    
+    /// <summary>
+    /// Convenience property to get EndTime as DateTime
+    /// </summary>
+    public DateTime EndTime => DateTimeOffset.FromUnixTimeSeconds(EndTimeUtcSecond).DateTime;
+    
+    /// <summary>
+    /// Create TimeRangeDto from UTC timestamps
+    /// </summary>
+    /// <param name="startTimeUtcSecond">Start time UTC timestamp in seconds</param>
+    /// <param name="endTimeUtcSecond">End time UTC timestamp in seconds</param>
+    /// <returns>TimeRangeDto instance</returns>
+    public static TimeRangeDto FromUtcSeconds(long startTimeUtcSecond, long endTimeUtcSecond)
+    {
+        return new TimeRangeDto
+        {
+            StartTimeUtcSecond = startTimeUtcSecond,
+            EndTimeUtcSecond = endTimeUtcSecond
+        };
+    }
+    
+    /// <summary>
+    /// Create TimeRangeDto from DateTime objects
+    /// </summary>
+    /// <param name="startTime">Start DateTime</param>
+    /// <param name="endTime">End DateTime</param>
+    /// <returns>TimeRangeDto instance</returns>
+    public static TimeRangeDto FromDateTime(DateTime startTime, DateTime endTime)
+    {
+        return new TimeRangeDto
+        {
+            StartTimeUtcSecond = ((DateTimeOffset)startTime).ToUnixTimeSeconds(),
+            EndTimeUtcSecond = ((DateTimeOffset)endTime).ToUnixTimeSeconds()
+        };
+    }
+    
+    /// <summary>
+    /// Create TimeRangeDto for last N hours
+    /// </summary>
+    /// <param name="hours">Number of hours back from now</param>
+    /// <returns>TimeRangeDto instance</returns>
+    public static TimeRangeDto LastHours(int hours)
+    {
+        var endTime = DateTime.UtcNow.AddMinutes(-1); // 30 minutes ago to avoid very recent tweets
+        var startTime = endTime.AddHours(-hours);
+        return FromDateTime(startTime, endTime);
+    }
 }
 
 /// <summary>
-/// 推文监控状态DTO
+/// Tweet monitoring status DTO
 /// </summary>
 [GenerateSerializer]
 public class TweetMonitorStatusDto
@@ -209,7 +266,7 @@ public class TweetMonitorStatusDto
 }
 
 /// <summary>
-/// 推文拉取结果DTO
+/// Tweet fetch result DTO
 /// </summary>
 [GenerateSerializer]
 public class TweetFetchResultDto
@@ -224,10 +281,16 @@ public class TweetFetchResultDto
     [Id(7)] public long FetchEndTimeUtc { get; set; }
     [Id(8)] public List<string> NewTweetIds { get; set; } = new();
     [Id(9)] public string ErrorMessage { get; set; } = string.Empty;
+    [Id(10)] public DateTime QueryStartTime { get; set; }
+    [Id(11)] public DateTime QueryEndTime { get; set; }
+    [Id(12)] public long QueryStartTimeUtc { get; set; }
+    [Id(13)] public long QueryEndTimeUtc { get; set; }
+    [Id(14)] public DateTime? LastSuccessfulFetchTime { get; set; }  // 新增：最后成功的拉取时间
+    [Id(15)] public long LastSuccessfulFetchTimeUtc { get; set; }     // 新增：最后成功的拉取时间UTC
 }
 
 /// <summary>
-/// 推文拉取历史记录DTO
+/// Tweet fetch history record DTO
 /// </summary>
 [GenerateSerializer]
 public class TweetFetchHistoryDto
@@ -242,7 +305,7 @@ public class TweetFetchHistoryDto
 }
 
 /// <summary>
-/// 推文监控配置DTO
+/// Tweet monitoring configuration DTO
 /// </summary>
 [GenerateSerializer]
 public class TweetMonitorConfigDto
@@ -250,14 +313,14 @@ public class TweetMonitorConfigDto
     [Id(0)] public int FetchIntervalMinutes { get; set; } = 30;
     [Id(1)] public int MaxTweetsPerFetch { get; set; } = 100;
     [Id(2)] public int DataRetentionDays { get; set; } = 5;
-    [Id(3)] public string SearchQuery { get; set; } = "@GodGPT_";
+    [Id(3)] public string SearchQuery { get; set; } = "@godgpt_";
     [Id(4)] public bool FilterOriginalOnly { get; set; } = true;
     [Id(5)] public bool EnableAutoCleanup { get; set; } = true;
     [Id(6)] public long ConfigVersion { get; set; } = 1;
 }
 
 /// <summary>
-/// 推文统计信息DTO
+/// Tweet statistics DTO
 /// </summary>
 [GenerateSerializer]
 public class TweetStatisticsDto
@@ -273,7 +336,7 @@ public class TweetStatisticsDto
 }
 
 /// <summary>
-/// 奖励计算状态DTO
+/// Reward calculation status DTO
 /// </summary>
 [GenerateSerializer]
 public class RewardCalculationStatusDto
@@ -290,7 +353,7 @@ public class RewardCalculationStatusDto
 }
 
 /// <summary>
-/// 奖励计算结果DTO
+/// Reward calculation result DTO
 /// </summary>
 [GenerateSerializer]
 public class RewardCalculationResultDto
@@ -312,7 +375,7 @@ public class RewardCalculationResultDto
 }
 
 /// <summary>
-/// 奖励计算历史记录DTO
+/// Reward calculation history record DTO
 /// </summary>
 [GenerateSerializer]
 public class RewardCalculationHistoryDto
@@ -329,7 +392,7 @@ public class RewardCalculationHistoryDto
 }
 
 /// <summary>
-/// 用户奖励记录DTO
+/// User reward record DTO
 /// </summary>
 [GenerateSerializer]
 public class UserRewardRecordDto
@@ -337,21 +400,24 @@ public class UserRewardRecordDto
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string UserHandle { get; set; } = string.Empty;
     [Id(2)] public string TweetId { get; set; } = string.Empty;
-    [Id(3)] public DateTime RewardDate { get; set; }
-    [Id(4)] public long RewardDateUtc { get; set; }
-    [Id(5)] public int BaseCredits { get; set; }
+    [Id(3)] public DateTime? RewardDate { get; set; }
+    [Id(4)] public long RewardDateUtc { get; set; } = 0;
+    [Id(5)] public int BonusCreditsBeforeMultiplier { get; set; } // Bonus credits before share link multiplier
     [Id(6)] public double ShareLinkMultiplier { get; set; } = 1.0;
-    [Id(7)] public int FinalCredits { get; set; }
-    [Id(8)] public int ViewCount { get; set; }
-    [Id(9)] public int FollowerCount { get; set; }
-    [Id(10)] public bool HasValidShareLink { get; set; }
-    [Id(11)] public bool IsRewardSent { get; set; }
-    [Id(12)] public DateTime? RewardSentTime { get; set; }
-    [Id(13)] public string RewardTransactionId { get; set; } = string.Empty;
+    [Id(7)] public int FinalCredits { get; set; } = 0;
+    [Id(8)] public bool HasValidShareLink { get; set; }
+    [Id(9)] public bool IsRewardSent { get; set; }
+    [Id(10)] public DateTime? RewardSentTime { get; set; }
+    [Id(11)] public string RewardTransactionId { get; set; } = string.Empty;
+    
+    // New fields for separated credit calculation
+    [Id(12)] public int RegularCredits { get; set; } // Regular credits: 2 per tweet, max 10 tweets
+    [Id(13)] public int BonusCredits { get; set; } // Bonus credits: based on 8-tier system
+    [Id(14)] public int TweetCount { get; set; } // Number of tweets for this user
 }
 
 /// <summary>
-/// 每日奖励统计DTO
+/// Daily reward statistics DTO
 /// </summary>
 [GenerateSerializer]
 public class DailyRewardStatisticsDto
@@ -369,7 +435,7 @@ public class DailyRewardStatisticsDto
 }
 
 /// <summary>
-/// 奖励配置DTO
+/// Reward configuration DTO
 /// </summary>
 [GenerateSerializer]
 public class RewardConfigDto
@@ -382,10 +448,11 @@ public class RewardConfigDto
     [Id(5)] public bool EnableRewardCalculation { get; set; } = true;
     [Id(6)] public long ConfigVersion { get; set; } = 1;
     [Id(7)] public List<string> ExcludedUserIds { get; set; } = new(); // System accounts to exclude
+    [Id(8)] public int MinViewsForReward { get; set; } = 20; // Minimum views required for reward eligibility
 }
 
 /// <summary>
-/// 奖励等级DTO
+/// Reward tier DTO
 /// </summary>
 [GenerateSerializer]
 public class RewardTierDto
@@ -397,7 +464,7 @@ public class RewardTierDto
 }
 
 /// <summary>
-/// 时间控制状态DTO
+/// Time control status DTO
 /// </summary>
 [GenerateSerializer]
 public class TimeControlStatusDto
@@ -414,7 +481,7 @@ public class TimeControlStatusDto
 }
 
 /// <summary>
-/// 任务执行状态DTO
+/// Task execution status DTO
 /// </summary>
 [GenerateSerializer]
 public class TaskExecutionStatusDto
@@ -435,12 +502,12 @@ public class TaskExecutionStatusDto
 }
 
 /// <summary>
-/// Twitter奖励配置DTO
+/// Twitter reward configuration DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterRewardConfigDto
 {
-    [Id(0)] public string MonitorHandle { get; set; } = "@GodGPT_";
+    [Id(0)] public string MonitorHandle { get; set; } = "@godgpt_";
     [Id(1)] public string SelfAccountId { get; set; } = string.Empty;
     [Id(2)] public bool EnablePullTask { get; set; } = true;
     [Id(3)] public bool EnableRewardTask { get; set; } = true;
@@ -459,7 +526,7 @@ public class TwitterRewardConfigDto
 }
 
 /// <summary>
-/// 推文拉取结果DTO
+/// Tweet pull result DTO
 /// </summary>
 [GenerateSerializer]
 public class PullTweetResultDto
@@ -480,7 +547,7 @@ public class PullTweetResultDto
 }
 
 /// <summary>
-/// 系统健康状态DTO
+/// System health status DTO
 /// </summary>
 [GenerateSerializer]
 public class SystemHealthDto
@@ -498,7 +565,7 @@ public class SystemHealthDto
 }
 
 /// <summary>
-/// 任务健康状态DTO
+/// Task health status DTO
 /// </summary>
 [GenerateSerializer]
 public class TaskHealthStatusDto
@@ -512,7 +579,7 @@ public class TaskHealthStatusDto
 }
 
 /// <summary>
-/// 系统指标DTO
+/// System metrics DTO
 /// </summary>
 [GenerateSerializer]
 public class SystemMetricsDto
@@ -532,7 +599,7 @@ public class SystemMetricsDto
 }
 
 /// <summary>
-/// 缺失时间段DTO
+/// Missing period DTO
 /// </summary>
 [GenerateSerializer]
 public class MissingPeriodDto
@@ -550,7 +617,7 @@ public class MissingPeriodDto
 }
 
 /// <summary>
-/// 系统故障检测结果DTO
+/// System outage detection result DTO
 /// </summary>
 [GenerateSerializer]
 public class SystemOutageDto
@@ -568,7 +635,7 @@ public class SystemOutageDto
 }
 
 /// <summary>
-/// 数据恢复结果DTO
+/// Data recovery result DTO
 /// </summary>
 [GenerateSerializer]
 public class RecoveryResultDto
@@ -588,7 +655,7 @@ public class RecoveryResultDto
 }
 
 /// <summary>
-/// 恢复步骤DTO
+/// Recovery step DTO
 /// </summary>
 [GenerateSerializer]
 public class RecoveryStepDto
@@ -603,7 +670,7 @@ public class RecoveryStepDto
 }
 
 /// <summary>
-/// 数据完整性报告DTO
+/// Data integrity report DTO
 /// </summary>
 [GenerateSerializer]
 public class DataIntegrityReportDto
@@ -621,7 +688,7 @@ public class DataIntegrityReportDto
 }
 
 /// <summary>
-/// 数据不一致DTO
+/// Data inconsistency DTO
 /// </summary>
 [GenerateSerializer]
 public class DataInconsistencyDto
@@ -635,7 +702,7 @@ public class DataInconsistencyDto
 }
 
 /// <summary>
-/// 恢复操作请求DTO
+/// Recovery operation request DTO
 /// </summary>
 [GenerateSerializer]
 public class RecoveryRequestDto
@@ -653,7 +720,7 @@ public class RecoveryRequestDto
 }
 
 /// <summary>
-/// 测试数据摘要DTO
+/// Test data summary DTO
 /// </summary>
 [GenerateSerializer]
 public class TestDataSummaryDto
@@ -669,7 +736,7 @@ public class TestDataSummaryDto
 }
 
 /// <summary>
-/// 测试处理结果DTO
+/// Test processing result DTO
 /// </summary>
 [GenerateSerializer]
 public class TestProcessingResultDto
@@ -685,7 +752,7 @@ public class TestProcessingResultDto
 }
 
 /// <summary>
-/// 测试场景DTO
+/// Test scenario DTO
 /// </summary>
 [GenerateSerializer]
 public class TestScenarioDto
@@ -703,7 +770,7 @@ public class TestScenarioDto
 }
 
 /// <summary>
-/// 测试步骤DTO
+/// Test step DTO
 /// </summary>
 [GenerateSerializer]
 public class TestStepDto
@@ -717,7 +784,7 @@ public class TestStepDto
 }
 
 /// <summary>
-/// 测试场景结果DTO
+/// Test scenario result DTO
 /// </summary>
 [GenerateSerializer]
 public class TestScenarioResultDto
@@ -738,7 +805,7 @@ public class TestScenarioResultDto
 }
 
 /// <summary>
-/// 测试步骤结果DTO
+/// Test step result DTO
 /// </summary>
 [GenerateSerializer]
 public class TestStepResultDto
@@ -754,7 +821,7 @@ public class TestStepResultDto
 }
 
 /// <summary>
-/// 压力测试配置DTO
+/// Stress test configuration DTO
 /// </summary>
 [GenerateSerializer]
 public class StressTestConfigDto
@@ -771,7 +838,7 @@ public class StressTestConfigDto
 }
 
 /// <summary>
-/// 压力测试结果DTO
+/// Stress test result DTO
 /// </summary>
 [GenerateSerializer]
 public class StressTestResultDto
@@ -802,7 +869,7 @@ public class StressTestResultDto
 }
 
 /// <summary>
-/// 验证规则DTO
+/// Validation rule DTO
 /// </summary>
 [GenerateSerializer]
 public class ValidationRuleDto
@@ -818,7 +885,7 @@ public class ValidationRuleDto
 }
 
 /// <summary>
-/// 验证结果DTO
+/// Validation result DTO
 /// </summary>
 [GenerateSerializer]
 public class ValidationResultDto
@@ -841,7 +908,7 @@ public class ValidationResultDto
 }
 
 /// <summary>
-/// 测试报告DTO
+/// Test report DTO
 /// </summary>
 [GenerateSerializer]
 public class TestReportDto
@@ -869,7 +936,7 @@ public class TestReportDto
 }
 
 /// <summary>
-/// 测试执行记录DTO
+/// Test execution record DTO
 /// </summary>
 [GenerateSerializer]
 public class TestExecutionRecordDto
@@ -892,7 +959,7 @@ public class TestExecutionRecordDto
 }
 
 /// <summary>
-/// 测试数据导出DTO
+/// Test data export DTO
 /// </summary>
 [GenerateSerializer]
 public class TestDataExportDto
@@ -907,7 +974,7 @@ public class TestDataExportDto
 }
 
 /// <summary>
-/// 规则验证结果
+/// Rule validation result
 /// </summary>
 [GenerateSerializer]
 public class RuleValidationResult

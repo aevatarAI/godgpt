@@ -1,7 +1,7 @@
 namespace Aevatar.Application.Grains.TwitterInteraction.Dtos;
 
 /// <summary>
-/// Twitter API通用结果包装类
+/// Twitter API common result wrapper class
 /// </summary>
 [GenerateSerializer]
 public class TwitterApiResultDto<T>
@@ -13,7 +13,7 @@ public class TwitterApiResultDto<T>
 }
 
 /// <summary>
-/// Twitter API搜索推文请求
+/// Twitter API search tweets request
 /// </summary>
 [GenerateSerializer]
 public class SearchTweetsRequestDto
@@ -26,7 +26,7 @@ public class SearchTweetsRequestDto
 }
 
 /// <summary>
-/// Twitter API搜索推文响应
+/// Twitter API search tweets response
 /// </summary>
 [GenerateSerializer]
 public class SearchTweetsResponseDto
@@ -37,7 +37,7 @@ public class SearchTweetsResponseDto
 }
 
 /// <summary>
-/// 推文信息DTO
+/// Tweet information DTO
 /// </summary>
 [GenerateSerializer]
 public class TweetDto
@@ -52,7 +52,7 @@ public class TweetDto
 }
 
 /// <summary>
-/// Twitter用户信息DTO
+/// Twitter user information DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterUserDto
@@ -64,7 +64,7 @@ public class TwitterUserDto
 }
 
 /// <summary>
-/// Twitter推文公开指标DTO
+/// Twitter tweet public metrics DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterPublicMetricsDto
@@ -78,7 +78,7 @@ public class TwitterPublicMetricsDto
 }
 
 /// <summary>
-/// Twitter引用推文DTO
+/// Twitter referenced tweet DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterReferencedTweetDto
@@ -88,7 +88,7 @@ public class TwitterReferencedTweetDto
 }
 
 /// <summary>
-/// Twitter上下文注释DTO
+/// Twitter context annotation DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterContextAnnotationDto
@@ -98,7 +98,7 @@ public class TwitterContextAnnotationDto
 }
 
 /// <summary>
-/// Twitter域DTO
+/// Twitter domain DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterDomainDto
@@ -109,7 +109,7 @@ public class TwitterDomainDto
 }
 
 /// <summary>
-/// Twitter实体DTO
+/// Twitter entity DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterEntityDto
@@ -120,7 +120,7 @@ public class TwitterEntityDto
 }
 
 /// <summary>
-/// Twitter API响应元数据DTO
+/// Twitter API response metadata DTO
 /// </summary>
 [GenerateSerializer]
 public class TwitterMetaDto

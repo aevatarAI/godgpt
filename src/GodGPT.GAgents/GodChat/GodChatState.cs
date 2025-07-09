@@ -11,6 +11,8 @@ public class GodChatState:ChatGAgentState
     [Obsolete("This class is deprecated and no longer in use.")]
     [Id(3)] public List<Guid> AIAgentIds { get; set; } = new List<Guid>();
     [Id(4)] public Dictionary<string, List<Guid>> RegionProxies = new ();
+    [Id(5)] public DateTime? FirstChatTime { get; set; }
+    [Id(6)] public DateTime? LastChatTime { get; set; }
 }
 
 [GenerateSerializer]

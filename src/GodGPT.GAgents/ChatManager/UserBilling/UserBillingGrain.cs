@@ -20,47 +20,43 @@ using Aevatar.Application.Grains.Common;
 using System.Security.Cryptography.X509Certificates;
 using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserQuota;
 using Newtonsoft.Json.Linq;
 
 namespace Aevatar.Application.Grains.ChatManager.UserBilling;
 
 public interface IUserBillingGrain : IGrainWithStringKey
 {
-    Task<List<StripeProductDto>> GetStripeProductsAsync();
-    Task<List<AppleProductDto>> GetAppleProductsAsync();
-    Task<string> GetOrCreateStripeCustomerAsync(string userId = null);
-    Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null);
-    /**
-     * web
-     */
-    Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto);
-    /**
-     * [app]
-     * platform:android/ios
-     */
-    Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
-    Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
-    Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary);
-    Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
-    Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
-    Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
-    Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
-    Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
-    Task<object> RefundedSubscriptionAsync(object  obj);
-    Task ClearAllAsync();
+    //ask<List<StripeProductDto>> GetStripeProductsAsync();
+    //Task<List<AppleProductDto>> GetAppleProductsAsync();
+    //Task<string> GetOrCreateStripeCustomerAsync(string userId = null);
+    //Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null);
+    //Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto);
+    //Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
+    //Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
+    //Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary);
+    //Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
+    //Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
+    //Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
+    //Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
+    //Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
+    //Task<object> RefundedSubscriptionAsync(object  obj);
+    //Task ClearAllAsync();
     
     // App Store related methods
-    Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto, bool savePaymentEnabled);
-    Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto);
-    Task<bool> HandleAppStoreNotificationAsync(Guid userId, string jsonPayload);
-    Task<GrainResultDto<AppStoreJWSTransactionDecodedPayload>> GetAppStoreTransactionInfoAsync(string transactionId, string environment);
+    //Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto, bool savePaymentEnabled);
+    //Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto);
+    //Task<bool> HandleAppStoreNotificationAsync(Guid userId, string jsonPayload);
+    //Task<GrainResultDto<AppStoreJWSTransactionDecodedPayload>> GetAppStoreTransactionInfoAsync(string transactionId, string environment);
     /// <summary>
     /// Determines whether there is an active (renewing) Apple subscription.
     /// An active Apple subscription is defined as a payment record with Platform=AppStore,
     /// InvoiceDetails is not null or empty, and all InvoiceDetail's Status are not Cancelled.
     /// </summary>
     /// <returns>True if there is an active Apple subscription; otherwise, false.</returns>
-    Task<bool> HasActiveAppleSubscriptionAsync();
+    //Task<bool> HasActiveAppleSubscriptionAsync();
+
+    Task<UserBillingState> GetUserBillingGrainStateAsync();
 }
 
 public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
@@ -941,10 +937,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         
         var userId = detailsDto.UserId;
         var productConfig = await GetProductConfigAsync(detailsDto.PriceId);
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] allocate resource {0}, {1}, {2}, {3})",
             userId, detailsDto.OrderId, detailsDto.SubscriptionId, detailsDto.InvoiceId);
-        var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync(productConfig.IsUltimate);
+        var subscriptionInfoDto = await userQuotaGAgent.GetSubscriptionAsync(productConfig.IsUltimate);
 
         var subscriptionIds = subscriptionInfoDto.SubscriptionIds ?? new List<string>();
         var invoiceIds = subscriptionInfoDto.InvoiceIds ?? new List<string>();
@@ -984,16 +980,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 subscriptionInfoDto.StartDate = DateTime.UtcNow;
                 subscriptionInfoDto.EndDate =
                     GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate);
-                await userQuotaGrain.ResetRateLimitsAsync();
+                await userQuotaGAgent.ResetRateLimitsAsync();
             }
             subscriptionInfoDto.Status = PaymentStatus.Completed;
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
             subscriptionInfoDto.InvoiceIds = invoiceIds;
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
+            await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
 
             if (productConfig.IsUltimate)
             {
-                var premiumSubscription = await userQuotaGrain.GetSubscriptionAsync(false);
+                var premiumSubscription = await userQuotaGAgent.GetSubscriptionAsync(false);
                 if (!premiumSubscription.SubscriptionIds.IsNullOrEmpty())
                 {
                     foreach (var subscriptionId in premiumSubscription.SubscriptionIds)
@@ -1013,7 +1009,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                         GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.StartDate);
                     premiumSubscription.EndDate =
                         GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.EndDate);
-                    await userQuotaGrain.UpdateSubscriptionAsync(premiumSubscription);
+                    await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscription);
                 }
             }
             
@@ -1028,7 +1024,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
             subscriptionIds.Remove(paymentSummary.SubscriptionId);
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto);
+            await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto);
         }
         else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Refunded && invoiceIds.Contains(invoiceDetail.InvoiceId))
         {
@@ -1043,19 +1039,19 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             subscriptionInfoDto.PlanType = await GetMaxPlanTypeAsync(DateTime.UtcNow, productConfig.IsUltimate);
             
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            await userQuotaGrain.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
+            await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
 
             if (productConfig.IsUltimate)
             {
                 var diffTimeSpan = (invoiceDetail.SubscriptionEndDate - DateTime.UtcNow);
                 if (diffTimeSpan.TotalMilliseconds > 0)
                 {
-                    var premiumSubscription = await userQuotaGrain.GetSubscriptionAsync();
+                    var premiumSubscription = await userQuotaGAgent.GetSubscriptionAsync();
                     if (premiumSubscription.IsActive)
                     {
                         premiumSubscription.StartDate = premiumSubscription.StartDate.Add(- diffTimeSpan);
                         premiumSubscription.EndDate = premiumSubscription.EndDate.Add(- diffTimeSpan);
-                        await userQuotaGrain.UpdateSubscriptionAsync(premiumSubscription);
+                        await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscription);
                     }
                 }
             }
@@ -1068,10 +1064,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         DateTime subscriptionStartDate;
         DateTime subscriptionEndDate;
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         
         // Use unified subscription interface
-        var subscription = await userQuotaGrain.GetAndSetSubscriptionAsync(productConfig.IsUltimate);
+        var subscription = await userQuotaGAgent.GetAndSetSubscriptionAsync(productConfig.IsUltimate);
         var targetPlanType = (PlanType)productConfig.PlanType;
         
         if (subscription.IsActive)
@@ -1092,8 +1088,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         DateTime subscriptionStartDate;
         DateTime subscriptionEndDate;
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
-        var subscriptionInfoDto = await userQuotaGrain.GetSubscriptionAsync(ultimate);
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+        var subscriptionInfoDto = await userQuotaGAgent.GetSubscriptionAsync(ultimate);
         if (subscriptionInfoDto.IsActive)
         {
             subscriptionStartDate = subscriptionInfoDto.EndDate;
@@ -1483,8 +1479,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             return;
         }
 
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(parsedUserId));
-        var currentSubscription = await userQuotaGrain.GetSubscriptionAsync(productConfig.IsUltimate);
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(parsedUserId);
+        var currentSubscription = await userQuotaGAgent.GetSubscriptionAsync(productConfig.IsUltimate);
 
         if (!currentSubscription.IsActive)
         {
@@ -1740,22 +1736,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             }
 
             _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Processing notification type: {Type}, subtype: {SubType}", notificationTypeEnum, subtypeEnum);
-            
-            // // 9. If userId is still empty at this point, try to get it from the transaction info
-            // if (userId == Guid.Empty && appStoreTransactionInfo != null)
-            // {
-            //     var userIdStr = await GetUserIdFromTransactionInfoAsync(appStoreTransactionInfo);
-            //     if (!string.IsNullOrEmpty(userIdStr) && Guid.TryParse(userIdStr, out var parsedId))
-            //     {
-            //         userId = parsedId;
-            //         _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Found userId from transaction info: {UserId}", userId);
-            //     }
-            //     else
-            //     {
-            //         _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Could not determine userId from notification");
-            //     }
-            // }
-            
+
             // 10. Process based on notification type and subtype
             switch (notificationTypeEnum)
             {
@@ -2207,7 +2188,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         
         try
         {
-            var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(userId);
+            var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(Guid.Parse(userId));
             
             switch (eventType)
             {
@@ -2217,14 +2198,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     // Grant or update user rights
                     _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Updating user quota for {UserId} with product {ProductId}, expires on {ExpiresDate}",
                         userId, subscriptionInfo.ProductId, subscriptionInfo.ExpiresDate);
-                    await userQuotaGrain.UpdateQuotaAsync(subscriptionInfo.ProductId, subscriptionInfo.ExpiresDate);
+                    await userQuotaGAgent.UpdateQuotaAsync(subscriptionInfo.ProductId, subscriptionInfo.ExpiresDate);
                     break;
                 
                 case "REFUND":
                     // For refund, immediately revoke user rights
                     _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Resetting quota for {UserId} due to refund",
                         userId);
-                    await userQuotaGrain.ResetQuotaAsync();
+                    await userQuotaGAgent.ResetQuotaAsync();
                     break;
                 
                 case "DID_CHANGE_RENEWAL_PREF":
@@ -2250,8 +2231,8 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     private async Task RevokeUserQuotaAsync(string userId)
     {
         // In actual implementation, this should call the user quota management service to revoke user rights
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(userId);
-        await userQuotaGrain.ResetQuotaAsync();
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(Guid.Parse(userId));
+        await userQuotaGAgent.ResetQuotaAsync();
     }
     
     private async Task<bool> UpdatePaymentRecordAsync(Guid paymentId, PaymentSummary newPaymentSummary)
@@ -2640,10 +2621,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         AppleProduct appleProduct)
     {
         // Update user quota
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         var subscriptionDto = appleProduct.IsUltimate
-            ? await userQuotaGrain.GetSubscriptionAsync(true)
-            : await userQuotaGrain.GetSubscriptionAsync();
+            ? await userQuotaGAgent.GetSubscriptionAsync(true)
+            : await userQuotaGAgent.GetSubscriptionAsync();
         _logger.LogDebug("[UserBillingGrain][VerifyAppStoreTransactionAsync] allocate resource {0}, {1}, {2})",
             userId, appleResponse.OriginalTransactionId, appleResponse.TransactionId);
         var subscriptionIds = subscriptionDto.SubscriptionIds;
@@ -2682,16 +2663,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             subscriptionDto.StartDate = DateTime.UtcNow;
             subscriptionDto.EndDate =
                 GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionDto.StartDate);
-            await userQuotaGrain.ResetRateLimitsAsync();
+            await userQuotaGAgent.ResetRateLimitsAsync();
         }
 
         subscriptionDto.Status = PaymentStatus.Completed;
-        await userQuotaGrain.UpdateSubscriptionAsync(subscriptionDto, appleProduct.IsUltimate);
+        await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionDto, appleProduct.IsUltimate);
 
         //UpdatePremium quota
         if (appleProduct.IsUltimate)
         {
-            var premiumSubscriptionDto = await userQuotaGrain.GetSubscriptionAsync();
+            var premiumSubscriptionDto = await userQuotaGAgent.GetSubscriptionAsync();
             if (!premiumSubscriptionDto.SubscriptionIds.IsNullOrEmpty())
             {
                 _logger.LogDebug(
@@ -2716,7 +2697,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     GetSubscriptionEndDate(subscriptionDto.PlanType, premiumSubscriptionDto.StartDate);
                 premiumSubscriptionDto.EndDate =
                     GetSubscriptionEndDate(subscriptionDto.PlanType, premiumSubscriptionDto.EndDate);
-                await userQuotaGrain.UpdateSubscriptionAsync(premiumSubscriptionDto);
+                await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscriptionDto);
             }
         }
     }
@@ -2796,10 +2777,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         // Update user quota
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
+        var userQuotaGAgent = GrainFactory.GetGrain<UserQuotaGAgent>(userId);
         var subscriptionDto = appleProduct.IsUltimate
-            ? await userQuotaGrain.GetSubscriptionAsync(true)
-            : await userQuotaGrain.GetSubscriptionAsync();
+            ? await userQuotaGAgent.GetSubscriptionAsync(true)
+            : await userQuotaGAgent.GetSubscriptionAsync();
         _logger.LogDebug("[UserBillingGrain][VerifyAppStoreReceiptAsync] allocate resource {0}, {1}, {2})",
             userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
         var subscriptionIds = subscriptionDto.SubscriptionIds;
@@ -2835,16 +2816,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             subscriptionDto.StartDate = DateTime.UtcNow;
             subscriptionDto.EndDate =
                 GetSubscriptionEndDate(subscriptionDto.PlanType, subscriptionDto.StartDate);
-            await userQuotaGrain.ResetRateLimitsAsync();
+            await userQuotaGAgent.ResetRateLimitsAsync();
         }
 
         subscriptionDto.Status = PaymentStatus.Completed;
-        await userQuotaGrain.UpdateSubscriptionAsync(subscriptionDto, appleProduct.IsUltimate);
+        await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionDto, appleProduct.IsUltimate);
 
         //UpdatePremium quota
         if (appleProduct.IsUltimate)
         {
-            var premiumSubscriptionDto = await userQuotaGrain.GetSubscriptionAsync();
+            var premiumSubscriptionDto = await userQuotaGAgent.GetSubscriptionAsync();
             if (!premiumSubscriptionDto.SubscriptionIds.IsNullOrEmpty())
             {
                 _logger.LogDebug("[UserBillingGrain][VerifyAppStoreReceiptAsync] cancel stripe premiumSubscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
@@ -2866,7 +2847,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     GetSubscriptionEndDate(subscriptionDto.PlanType, premiumSubscriptionDto.StartDate);
                 premiumSubscriptionDto.EndDate =
                     GetSubscriptionEndDate(subscriptionDto.PlanType, premiumSubscriptionDto.EndDate);
-                await userQuotaGrain.UpdateSubscriptionAsync(premiumSubscriptionDto);
+                await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscriptionDto);
             }
         }
     }
@@ -3614,7 +3595,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         _logger.LogInformation("[UserBillingGrain][HasActiveAppleSubscriptionAsync] Has active Apple subscription: {HasActive}", hasActive);
         return hasActive;
     }
-    
+
+    public Task<UserBillingState> GetUserBillingGrainStateAsync()
+    {
+        return Task.FromResult(State);
+    }
+
     private async Task ProcessInviteeSubscriptionAsync(Guid userId, PlanType planType, bool isUltimate, string invoiceId)
     {
         var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(userId);

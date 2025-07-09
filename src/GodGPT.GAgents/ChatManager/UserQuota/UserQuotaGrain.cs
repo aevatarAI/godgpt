@@ -11,32 +11,31 @@ namespace Aevatar.Application.Grains.ChatManager.UserQuota;
 
 using Orleans;
 
+[Obsolete]
 public interface IUserQuotaGrain : IGrainWithStringKey
 {
-    Task<bool> InitializeCreditsAsync();
-    Task<CreditsInfoDto> GetCreditsAsync();
-    Task SetShownCreditsToastAsync(bool hasShownInitialCreditsToast);
-    Task<bool> IsSubscribedAsync(bool ultimate = false);
-    Task<SubscriptionInfoDto> GetSubscriptionAsync(bool ultimate = false);
-    Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync(bool ultimate = false);
-    Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto, bool ultimate = false);
-    Task CancelSubscriptionAsync();
-
-    Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
-        string actionType = "conversation");
-
-    Task ResetRateLimitsAsync(string actionType = "conversation");
-
-    Task ClearAllAsync();
+    //Task<bool> InitializeCreditsAsync();
+    //Task<CreditsInfoDto> GetCreditsAsync();
+    //Task SetShownCreditsToastAsync(bool hasShownInitialCreditsToast);
+    //Task<bool> IsSubscribedAsync(bool ultimate = false);
+    //Task<SubscriptionInfoDto> GetSubscriptionAsync(bool ultimate = false);
+    //Task<SubscriptionInfoDto> GetAndSetSubscriptionAsync(bool ultimate = false);
+    //Task UpdateSubscriptionAsync(SubscriptionInfoDto subscriptionInfoDto, bool ultimate = false);
+    //Task CancelSubscriptionAsync();
+    //Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,string actionType = "conversation");
+    //Task ResetRateLimitsAsync(string actionType = "conversation");
+    //Task ClearAllAsync();
 
     // New method to support App Store subscriptions
-    Task UpdateQuotaAsync(string productId, DateTime expiresDate);
-    Task ResetQuotaAsync();
-    Task<GrainResultDto<int>> UpdateCreditsAsync(string operatorUserId, int creditsChange);
-    Task AddCreditsAsync(int credits);
-    Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime);
+    //Task UpdateQuotaAsync(string productId, DateTime expiresDate);
+    //Task ResetQuotaAsync();
+    //Task<GrainResultDto<int>> UpdateCreditsAsync(string operatorUserId, int creditsChange);
+    //Task AddCreditsAsync(int credits);
+    //Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime);
+    Task<UserQuotaState> GetUserQuotaStateAsync();
 }
 
+[Obsolete]
 public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
 {
     private readonly ILogger<UserQuotaGrain> _logger;
@@ -558,5 +557,10 @@ public class UserQuotaGrain : Grain<UserQuotaState>, IUserQuotaGrain
         await WriteStateAsync();
         _logger.LogWarning($"User {userId} receive invite,reward end");
         return true;
+    }
+
+    public Task<UserQuotaState> GetUserQuotaStateAsync()
+    {
+        return Task.FromResult(State);
     }
 }
