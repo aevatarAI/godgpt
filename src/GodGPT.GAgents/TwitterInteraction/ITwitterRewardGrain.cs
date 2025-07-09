@@ -34,6 +34,11 @@ public interface ITwitterRewardGrain : IGrainWithStringKey
     Task<TwitterApiResultDto<List<RewardCalculationHistoryDto>>> GetRewardCalculationHistoryAsync(int days = 7);
 
     /// <summary>
+    /// Get full calculation history list
+    /// </summary>
+    Task<List<RewardCalculationHistoryDto>> GetCalculationHistoryListAsync();
+
+    /// <summary>
     /// Query user reward records
     /// </summary>
     Task<TwitterApiResultDto<List<UserRewardRecordDto>>> GetUserRewardRecordsAsync(string userId, int days = 7);

@@ -46,7 +46,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     
     // Removed IChatManagerGAgent to comply with architecture constraint
     
-    private const string REMINDER_NAME = "DailyRewardCalculationReminder";
+    private const string REMINDER_NAME = "RewardCalculationReminder";
 
     public TwitterRewardGrain(
         ILogger<TwitterRewardGrain> logger,
@@ -137,12 +137,12 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             if (_state.State.IsRunning)
             {
                 _logger.LogInformation($"TwitterRewardGrain Restarting reward calculation with new configuration");
-                var nextMidnightUtc = GetNextMidnightUtc();
-                var timeUntilMidnight = nextMidnightUtc - DateTime.UtcNow;
+                var nextTriggerTime = GetNextRewardTriggerTimeUtc();
+                var timeUntilNextTrigger = nextTriggerTime - DateTime.UtcNow;
                 await this.RegisterOrUpdateReminder(
                     REMINDER_NAME,
-                    timeUntilMidnight,
-                    TimeSpan.FromDays(1));
+                    timeUntilNextTrigger,
+                    TimeSpan.FromHours(4));
             }
         }
 
@@ -181,14 +181,14 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             {
                 _logger.LogWarning($"TwitterRewardGrain ⚠️ Inconsistent state detected: IsRunning=true but no reminder found. Registering reminder...");
                 
-                var nextMidnightUtc = GetNextMidnightUtc();
-                var timeUntilMidnight = nextMidnightUtc - DateTime.UtcNow;
+                var nextTriggerTime = GetNextRewardTriggerTimeUtc();
+                var timeUntilNextTrigger = nextTriggerTime - DateTime.UtcNow;
                 await this.RegisterOrUpdateReminder(
                     REMINDER_NAME,
-                    timeUntilMidnight,
-                    TimeSpan.FromDays(1));
+                    timeUntilNextTrigger,
+                    TimeSpan.FromHours(4));
                     
-                _logger.LogInformation($"TwitterRewardGrain ✅ Reminder registered to match IsRunning=true state, next execution at {nextMidnightUtc} UTC");
+                _logger.LogInformation($"TwitterRewardGrain ✅ Reminder registered to match IsRunning=true state, next execution at {nextTriggerTime} UTC");
             }
             // Case 2: Should not be running but has reminder - unregister it
             else if (!_state.State.IsRunning && hasReminder)
@@ -217,7 +217,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         try
         {
-            _logger.LogInformation($"Starting daily reward calculation");
+            _logger.LogInformation($"Starting reward calculation with 4-hour intervals");
 
             if (_state.State.IsRunning)
             {
@@ -234,26 +234,26 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             _state.State.IsRunning = true;
             
             // Calculate next 00:00 UTC time
-            var nextMidnightUtc = GetNextMidnightUtc();
-            _state.State.NextScheduledCalculation = nextMidnightUtc;
-            _state.State.NextScheduledCalculationUtc = ((DateTimeOffset)nextMidnightUtc).ToUnixTimeSeconds();
+            var nextTriggerTime = GetNextRewardTriggerTimeUtc();
+            _state.State.NextScheduledCalculation = nextTriggerTime;
+            _state.State.NextScheduledCalculationUtc = ((DateTimeOffset)nextTriggerTime).ToUnixTimeSeconds();
             
             await _state.WriteStateAsync();
 
-            // Register reminder for daily execution at 00:00 UTC
-            var timeUntilMidnight = nextMidnightUtc - DateTime.UtcNow;
+            // Register reminder for execution every 4 hours
+            var timeUntilNextTrigger = nextTriggerTime - DateTime.UtcNow;
             var reminder = await this.RegisterOrUpdateReminder(
                 REMINDER_NAME,
-                timeUntilMidnight,
-                TimeSpan.FromDays(1)); // Repeat every 24 hours
+                timeUntilNextTrigger,
+                TimeSpan.FromHours(4)); // Repeat every 4 hours
 
-            _logger.LogInformation($"Daily reward calculation started, next execution at {nextMidnightUtc} UTC");
+            _logger.LogInformation($"Reward calculation started with 4-hour intervals, next execution at {nextTriggerTime} UTC");
 
             return new TwitterApiResultDto<bool>
             {
                 IsSuccess = true,
                 Data = true,
-                ErrorMessage = $"Reward calculation scheduled for {nextMidnightUtc:yyyy-MM-dd HH:mm:ss} UTC"
+                ErrorMessage = $"Reward calculation scheduled for {nextTriggerTime:yyyy-MM-dd HH:mm:ss} UTC"
             };
         }
         catch (Exception ex)
@@ -272,7 +272,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
     {
         try
         {
-            _logger.LogInformation($"Stopping daily reward calculation");
+            _logger.LogInformation($"Stopping reward calculation");
 
             if (!_state.State.IsRunning)
             {
@@ -301,7 +301,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
             _state.State.IsRunning = false;
             await _state.WriteStateAsync();
 
-            _logger.LogInformation($"Daily reward calculation stopped");
+            _logger.LogInformation($"Reward calculation stopped");
 
             return new TwitterApiResultDto<bool>
             {
@@ -688,7 +688,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         try
         {
             var currentUtc = DateTime.UtcNow;
-            var nextMidnightUtc = GetNextMidnightUtc();
+            var nextTriggerTime = GetNextRewardTriggerTimeUtc();
             
             var status = new TimeControlStatusDto
             {
@@ -696,9 +696,9 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 CurrentUtcTimestamp = ((DateTimeOffset)currentUtc).ToUnixTimeSeconds(),
                 LastRewardCalculationTime = _state.State.LastCalculationTime ?? DateTime.MinValue,
                 LastRewardCalculationTimestamp = _state.State.LastCalculationTimeUtc,
-                NextRewardCalculationTime = nextMidnightUtc,
-                NextRewardCalculationTimestamp = ((DateTimeOffset)nextMidnightUtc).ToUnixTimeSeconds(),
-                TimeUntilNextCalculation = nextMidnightUtc - currentUtc,
+                NextRewardCalculationTime = nextTriggerTime,
+                NextRewardCalculationTimestamp = ((DateTimeOffset)nextTriggerTime).ToUnixTimeSeconds(),
+                TimeUntilNextCalculation = nextTriggerTime - currentUtc,
                 IsRewardCalculationDay = ShouldExecuteRewardCalculation(currentUtc),
                 TimezoneInfo = "UTC"
             };
@@ -761,9 +761,9 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         var targetDate = DateTime.UtcNow.Date.AddDays(0);
                 
         // Update next scheduled calculation
-        var nextMidnightUtc = GetNextMidnightUtc();
-        _state.State.NextScheduledCalculation = nextMidnightUtc;
-        _state.State.NextScheduledCalculationUtc = ((DateTimeOffset)nextMidnightUtc).ToUnixTimeSeconds();
+        var nextTriggerTime = GetNextRewardTriggerTimeUtc();
+        _state.State.NextScheduledCalculation = nextTriggerTime;
+        _state.State.NextScheduledCalculationUtc = ((DateTimeOffset)nextTriggerTime).ToUnixTimeSeconds();
                 
         var result = await ExecuteRewardCalculationAsync(targetDate);
                 
@@ -1492,17 +1492,36 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         }
     }
 
-    private DateTime GetNextMidnightUtc()
+    private DateTime GetNextRewardTriggerTimeUtc()
     {
         var now = DateTime.UtcNow;
-        return now.Date.AddDays(1); // Next day at 00:00 UTC
-
+        
+        // Define trigger times: 0:10, 4:10, 8:10, 12:10, 16:10, 20:10
+        var triggerHours = new[] { 0, 4, 8, 12, 16, 20 };
+        
+        var today = new DateTime(now.Year, now.Month, now.Day, 0, 0, 0, DateTimeKind.Utc);
+        
+        // Find the next trigger time today
+        foreach (var hour in triggerHours)
+        {
+            var triggerTime = today.AddHours(hour).AddMinutes(10);
+            if (now < triggerTime)
+                return triggerTime;
+        }
+        
+        // If all today's triggers have passed, return tomorrow's first trigger (0:10)
+        return today.AddDays(1).AddMinutes(10);
     }
 
     private bool ShouldExecuteRewardCalculation(DateTime currentTime)
     {
         // Execute at 00:00 UTC daily
         return currentTime.Hour == 0 && currentTime.Minute < 5; // 5-minute window
+    }
+
+    public Task<List<RewardCalculationHistoryDto>> GetCalculationHistoryListAsync()
+    {
+        return Task.FromResult(_state.State.CalculationHistory);
     }
 }
 
