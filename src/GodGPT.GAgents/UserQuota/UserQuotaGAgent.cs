@@ -686,9 +686,9 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 State.Credits = 0;
                 State.HasInitialCredits = false;
                 State.HasShownInitialCreditsToast = false;
-                State.Subscription = null;
-                State.RateLimits = null;
-                State.UltimateSubscription = null;
+                State.Subscription = new SubscriptionInfo();
+                State.RateLimits = new Dictionary<string, RateLimitInfo>();
+                State.UltimateSubscription = new SubscriptionInfo();
                 State.CreatedAt = default;
                 State.CanReceiveInviteReward = canReceiveInviteReward;
                 break;
