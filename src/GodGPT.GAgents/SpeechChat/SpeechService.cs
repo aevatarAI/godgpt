@@ -12,7 +12,6 @@ namespace GodGPT.GAgents.SpeechChat;
 public class SpeechService : ISpeechService
 {
     private readonly SpeechConfig _speechConfig;
-    private readonly AudioGainProcessor _audioGainProcessor;
     private readonly ILogger<SpeechService> _logger;
     
     public SpeechService(IOptions<SpeechOptions> speechOptions, ILogger<SpeechService> logger)
@@ -22,7 +21,6 @@ public class SpeechService : ISpeechService
         // Configure for MP3 output format - 16kHz, 32kbps, mono
         _speechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3);
         
-        _audioGainProcessor = new AudioGainProcessor();
         _logger = logger;
         
         _logger.LogInformation("SpeechService initialized with MP3 output format: 16kHz, 32kbps, mono");
@@ -55,24 +53,18 @@ public class SpeechService : ISpeechService
                 _logger.LogDebug("TTS synthesis completed successfully, audio data size: {DataSize} bytes", 
                     result.AudioData.Length);
                 
-                // Apply 3x audio gain amplification for volume enhancement
-                var amplifiedAudioData = await _audioGainProcessor.ApplyGainAsync(result.AudioData, 3.0f);
-                
-                _logger.LogDebug("Audio gain processing completed, final size: {FinalSize} bytes", 
-                    amplifiedAudioData.Length);
-                
                 // Create metadata for MP3 format
                 var metadata = new AudioMetadata
                 {
                     Format = "mp3",
                     SampleRate = 16000,  // 16kHz
                     BitRate = 32000,     // 32kbps  
-                    SizeBytes = amplifiedAudioData.Length,
-                    Duration = EstimateDurationInSeconds(amplifiedAudioData.Length, 32000), // Estimate based on bitrate
+                    SizeBytes = result.AudioData.Length,
+                    Duration = EstimateDurationInSeconds(result.AudioData.Length, 32000), // Estimate based on bitrate
                     LanguageType = voiceLanguage
                 };
                 
-                return (amplifiedAudioData, metadata);
+                return (result.AudioData, metadata);
             }
             else if (result.Reason == ResultReason.Canceled)
             {
