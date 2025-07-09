@@ -850,27 +850,30 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     public async Task<UserProfileDto> GetUserProfileAsync()
     {
         Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] userId: {this.GetPrimaryKey().ToString()}");
+        
+        var invitationGrain = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
+        await invitationGrain.ProcessScheduledRewardAsync();
+        
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
         var credits = await userQuotaGAgent.GetCreditsAsync();
         var subscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync();
         var ultimateSubscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync(true);
 
-        var utcNow = DateTime.UtcNow;
-        var invitationGrain = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
-        var scheduledRewards = (await invitationGrain.GetRewardHistoryAsync())
-            .Where(r => r.IsScheduled && 
-           r.ScheduledDate.HasValue && 
-           utcNow > r.ScheduledDate.Value && 
-           !string.IsNullOrEmpty(r.InvoiceId))
-            .ToList();
-            
-        foreach (var reward in scheduledRewards)
-        {
-            Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Processing scheduled reward for user {this.GetPrimaryKey()}, credits: {reward.Credits}");
-            await userQuotaGAgent.AddCreditsAsync(reward.Credits);
-            await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
-            credits.Credits += reward.Credits;
-        }
+        // var utcNow = DateTime.UtcNow;
+        // var scheduledRewards = (await invitationGrain.GetRewardHistoryAsync())
+        //     .Where(r => r.IsScheduled && 
+        //    r.ScheduledDate.HasValue && 
+        //    utcNow > r.ScheduledDate.Value && 
+        //    !string.IsNullOrEmpty(r.InvoiceId))
+        //     .ToList();
+        //     
+        // foreach (var reward in scheduledRewards)
+        // {
+        //     Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Processing scheduled reward for user {this.GetPrimaryKey()}, credits: {reward.Credits}");
+        //     await userQuotaGAgent.AddCreditsAsync(reward.Credits);
+        //     await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
+        //     credits.Credits += reward.Credits;
+        // }
         
         return new UserProfileDto
         {
