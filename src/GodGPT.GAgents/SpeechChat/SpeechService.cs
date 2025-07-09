@@ -13,8 +13,8 @@ public class SpeechService : ISpeechService
     private readonly SpeechConfig _speechConfig;
     
     // SSML volume control configuration - hardcoded for enhanced audio output
-    private const string DEFAULT_VOLUME_BOOST = "+40%";  // Increase volume by 40%
-    private const string BACKUP_VOLUME_BOOST = "+30%";   // Fallback if +40% fails
+    private const string DEFAULT_VOLUME_BOOST = "+200%";  // Increase volume by 200%
+    private const string BACKUP_VOLUME_BOOST = "+150%";   // Fallback if +200% fails
     
     public SpeechService(IOptions<SpeechOptions> speechOptions)
     {
