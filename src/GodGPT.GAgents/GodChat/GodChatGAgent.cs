@@ -372,7 +372,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var proxies = new List<Guid>();
         foreach (var llm in llmsForRegion)
         {
-            var systemPrompt = string.Empty;
+            var systemPrompt = State.PromptTemplate;
             if (llm != ProxyGPTModelName)
             {
                 systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
