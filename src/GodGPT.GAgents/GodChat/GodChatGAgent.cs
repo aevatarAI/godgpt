@@ -36,7 +36,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     };
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
-    private const string ProxyGPTModelName = "hyperecho-godgpt";
+    private const string ProxyGPTModelName = "HyperEcho";
 
     protected override async Task ChatPerformConfigAsync(ChatConfigDto configuration)
     {
