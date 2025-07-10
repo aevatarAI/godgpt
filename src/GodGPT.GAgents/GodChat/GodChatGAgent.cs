@@ -32,10 +32,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     {
         //"SkyLark-Pro-250415"
         { "CN", new List<string> { "BytePlusDeepSeekV3"} },
-        { "DEFAULT", new List<string>() {  "OpenAILast", "OpenAI" }}
+        { "DEFAULT", new List<string>() {  ProxyGPTModelName, /*"OpenAILast",*/ "OpenAI",  }} //ProxyGPTModelName
     };
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
+    private const string ProxyGPTModelName = "HyperEcho";
 
     protected override async Task ChatPerformConfigAsync(ChatConfigDto configuration)
     {
@@ -364,14 +365,27 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region}, LLM not config");
             return new List<Guid>();
         }
+        
+        var oldSystemPrompt = await GetConfiguration().GetPrompt();
+        //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} old system prompt: {oldSystemPrompt}");
 
         var proxies = new List<Guid>();
         foreach (var llm in llmsForRegion)
         {
+            var systemPrompt = State.PromptTemplate;
+            if (llm != ProxyGPTModelName)
+            {
+                systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+            }
+            else
+            {
+                systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+            }
+            //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
             var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
             await proxy.ConfigAsync(new AIAgentStatusProxyConfig
             {
-                Instructions = State.PromptTemplate, //await GetConfiguration().GetPrompt(),
+                Instructions = systemPrompt,
                 LLMConfig = new LLMConfigDto { SystemLLM = llm },
                 StreamingModeEnabled = true,
                 StreamingConfig = new StreamingConfig { BufferingSize = 32 },
@@ -698,5 +712,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var configuration = GetConfiguration();
         var response = await GodChatAsync(await configuration.GetSystemLLM(), content, promptSettings);
         return new Tuple<string, string>(response, title);
+    }
+
+    private string GetCustomPrompt()
+    {
+        return $"The current UTC time is: {DateTime.UtcNow}. Please answer all questions based on this UTC time.";
     }
 }

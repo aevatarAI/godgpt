@@ -737,7 +737,16 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 startTime = endTime.AddHours(-1);
             }
             
+            // Fix: Ensure minimum time gap to prevent start_time equals end_time error
+            var minTimeGapMinutes = 2; // Minimum 2 minutes gap to ensure API safety
             var timeRangeMinutes = (endTime - startTime).TotalMinutes;
+            
+            if (timeRangeMinutes < minTimeGapMinutes)
+            {
+                _logger.LogWarning($"⚠️ Time gap too small ({timeRangeMinutes:F1} minutes), adjusting startTime to ensure minimum {minTimeGapMinutes} minutes gap");
+                startTime = endTime.AddMinutes(-minTimeGapMinutes);
+                timeRangeMinutes = minTimeGapMinutes;
+            }
             
             _logger.LogInformation($"🚀 Starting scheduled tweet fetch - Query: '{queryWithFilters}', Max results per window: {_options.CurrentValue.BatchFetchSize}, Time range: {timeRangeMinutes} minutes");
             
