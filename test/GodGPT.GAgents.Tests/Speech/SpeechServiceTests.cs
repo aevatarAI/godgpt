@@ -27,12 +27,18 @@ public class SpeechServiceTests : AevatarGodGPTTestsBase
     public async Task SpeechToTextAsync_Should_Initialize_Without_Error()
     {
         var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
-        // Convert base64 string to byte array
-        var wavData = ConvertBase64ToByteArray(SpeechConstants.WAW_BASE64);
+        var audioData = Convert.FromBase64String(SpeechConstants.WAW_BASE64);
+
+        // Act & Assert
+        var result = await speechService.SpeechToTextAsync(audioData, VoiceLanguageEnum.Chinese);
             
-        // Act
-        var result = await speechService.SpeechToTextAsync(wavData);
-        Assert.NotNull(result);
+        // For WAV format, expect actual recognition (would work with real Azure Speech service)
+        // For Opus format on macOS without GStreamer, expect our informative message
+        Assert.True(!string.IsNullOrEmpty(result), "Result should not be null or empty");
+            
+        // Log the result for debugging
+        Console.WriteLine($"Speech recognition result: '{result}'");
+            
         result.ShouldContain("123456");
     }
     [Fact]
