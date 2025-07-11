@@ -32,7 +32,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     {
         //"SkyLark-Pro-250415"
         { "CN", new List<string> { "BytePlusDeepSeekV3"} },
-        { "DEFAULT", new List<string>() {  ProxyGPTModelName, /*"OpenAILast",*/ "OpenAI",  }} //ProxyGPTModelName
+        { "DEFAULT", new List<string>() {  "OpenAILast", "OpenAI",  }}
     };
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
