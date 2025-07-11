@@ -25,6 +25,7 @@
         <PackageReference Include="Aevatar.GAgents.SemanticKernel" />
         <PackageReference Include="Aevatar.EventSourcing.Core" />
         <PackageReference Include="Stripe.net" />
+        <PackageReference Include="Aevatar.SignalR" />
     </ItemGroup>
 
     <ItemGroup>

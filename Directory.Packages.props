@@ -3,8 +3,10 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <AbpVersion>9.0.3</AbpVersion>
     <OrleansVerion>9.0.1</OrleansVerion>
-    <AevatarVerion>1.4.13</AevatarVerion>
-    <AevatarGAgentVerion>1.4.16</AevatarGAgentVerion>
+<!--    <AevatarVerion>1.4.13</AevatarVerion>-->
+<!--    <AevatarGAgentVerion>1.4.16</AevatarGAgentVerion>-->
+    <AevatarVerion>1.5.2</AevatarVerion>
+    <AevatarGAgentVerion>1.5.0-stream-1</AevatarGAgentVerion>
   </PropertyGroup>
   <ItemGroup>
     <!-- GodGPT -->
