@@ -2,6 +2,8 @@ using System.Security.AccessControl;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
+using Aevatar.Application.Grains.UserBilling;
+using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Application.Grains.Webhook;
 using Shouldly;
 using Xunit.Abstractions;
@@ -48,11 +50,11 @@ public class AppleStoreWebhookHandlerTests : AevatarOrleansTestBase<AevatarGodGP
         userIdB.ShouldNotBe(default);
         userIdB.ShouldBe(userIdA);
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userIdA));
-        var result = await userBillingGrain.HandleAppStoreNotificationAsync(userIdA, json);
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userIdA);
+        var result = await userBillingGAgent.HandleAppStoreNotificationAsync(userIdA, json);
         result.ShouldBeTrue();
 
-        var paymentHistory = await userBillingGrain.GetPaymentHistoryAsync();
+        var paymentHistory = await userBillingGAgent.GetPaymentHistoryAsync();
         paymentHistory.ShouldNotBeNull();
         paymentHistory.Count.ShouldBe(2);
     }
@@ -74,8 +76,8 @@ public class AppleStoreWebhookHandlerTests : AevatarOrleansTestBase<AevatarGodGP
     {
         var transactionId = "2000000939024249";
         var userId = Guid.NewGuid();
-        var userBillingGrain =  Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
-        var grainResult = await userBillingGrain.GetAppStoreTransactionInfoAsync(transactionId, "SandBox");
+        var userBillingGAgent =  Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+        var grainResult = await userBillingGAgent.GetAppStoreTransactionInfoAsync(transactionId, "SandBox");
         grainResult.ShouldNotBeNull();
     }
 
@@ -83,18 +85,18 @@ public class AppleStoreWebhookHandlerTests : AevatarOrleansTestBase<AevatarGodGP
     public async Task CreateAppStoreSubscriptionAsyncTest()
     {
         var transactionId = "2000000939299589";
-        transactionId = "2000000939700961"; //异常ID
+        transactionId = "2000000939700961";
         var userId = Guid.NewGuid();
         await CreateAppStoreSubscriptionAsync(userId, transactionId);
         
-        var userQuotaGrain =  Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(userId));
-        var subscription = await userQuotaGrain.GetSubscriptionAsync();
+        var userQuotaGAgent =  Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+        var subscription = await userQuotaGAgent.GetSubscriptionAsync();
         subscription.IsActive.ShouldBeFalse();
-        subscription = await userQuotaGrain.GetSubscriptionAsync(true);
+        subscription = await userQuotaGAgent.GetSubscriptionAsync(true);
         subscription.IsActive.ShouldBeTrue();
 
-        var userBillingGrain =  Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
-        var paymentSummaries = await userBillingGrain.GetPaymentHistoryAsync();
+        var userBillingGAgent =  Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+        var paymentSummaries = await userBillingGAgent.GetPaymentHistoryAsync();
         paymentSummaries.ShouldNotBeNull();
         paymentSummaries.Count.ShouldBe(1);
     }
@@ -102,8 +104,8 @@ public class AppleStoreWebhookHandlerTests : AevatarOrleansTestBase<AevatarGodGP
     private async Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(Guid userId, string transactionId)
     {
         
-        var userBillingGrain =  Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
-        var grainResult = await userBillingGrain.CreateAppStoreSubscriptionAsync(new CreateAppStoreSubscriptionDto
+        var userBillingGAgent =  Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
+        var grainResult = await userBillingGAgent.CreateAppStoreSubscriptionAsync(new CreateAppStoreSubscriptionDto
         {
             UserId = userId.ToString(),
             SandboxMode = true,

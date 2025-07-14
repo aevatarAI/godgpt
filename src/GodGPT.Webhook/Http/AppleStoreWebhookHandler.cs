@@ -1,6 +1,7 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.Webhook;
 using Aevatar.Webhook.SDK.Handler;
 using Microsoft.AspNetCore.Http;
@@ -67,8 +68,8 @@ public class AppleStoreWebhookHandler : IWebhookHandler
             }
             
             // 2. Use the found userId to request UserBillingGrain to process the notification
-            var userBillingGrain = _clusterClient.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
-            var result = await userBillingGrain.HandleAppStoreNotificationAsync(userId, json);
+            var userBillingGAgent = _clusterClient.GetGrain<IUserBillingGAgent>(userId);
+            var result = await userBillingGAgent.HandleAppStoreNotificationAsync(userId, json);
             
             if (!result)
             {

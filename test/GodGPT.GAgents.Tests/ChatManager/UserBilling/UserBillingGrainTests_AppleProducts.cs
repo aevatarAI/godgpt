@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.UserBilling;
 using Microsoft.Extensions.Options;
 using Moq;
 using Shouldly;
@@ -20,14 +21,14 @@ public partial class UserBillingGrainTests  : AevatarOrleansTestBase<AevatarGodG
         try
         {
             // Arrange
-            var userId = Guid.NewGuid().ToString();
+            var userId = Guid.NewGuid();
             _testOutputHelper.WriteLine($"Testing GetAppleProductsAsync_NoProducts with UserId: {userId}");
             
             // Get UserBillingGrain
-            var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(userId);
+            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
             
             // Act
-            var result = await userBillingGrain.GetAppleProductsAsync();
+            var result = await userBillingGAgent.GetAppleProductsAsync();
             
             // Assert
             result.ShouldNotBeNull();

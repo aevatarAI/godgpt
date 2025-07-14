@@ -35,7 +35,7 @@ public interface IInvitationGAgent : IGAgent
     /// </summary>
     [ReadOnly]
     Task<PagedResultDto<RewardHistoryDto>> GetRewardHistoryAsync(GetRewardHistoryRequestDto request);
-
+    Task ProcessScheduledRewardAsync();
     /// <summary>
     /// Process new user registration with invite code
     /// </summary>
@@ -50,13 +50,6 @@ public interface IInvitationGAgent : IGAgent
     /// Process invitee's subscription purchase
     /// </summary>
     Task ProcessInviteeSubscriptionAsync(string inviteeId, PlanType planType, bool isUltimate, string invoiceId);
-
-    /// <summary>
-    /// Mark a scheduled reward as issued
-    /// </summary>
-    /// <param name="inviteeId">The ID of the invitee</param>
-    /// <param name="invoiceId">The invoice ID of the reward</param>
-    Task MarkRewardAsIssuedAsync(string inviteeId, string invoiceId);
 
     /// <summary>
     /// Process Twitter reward for the user

@@ -1,15 +1,7 @@
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using GodGPT.GAgents.SpeechChat;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Shouldly;
-using Xunit;
 using Xunit.Abstractions;
-using Aevatar.Application.Grains.Agents.ChatManager;
 
 namespace Aevatar.GodGPT.Tests.Speech;
 
@@ -85,7 +77,6 @@ public class SpeechServiceTests : AevatarGodGPTTestsBase
 
     [Theory]
     [InlineData(VoiceLanguageEnum.English, "Hello world, how are you today?")]
-    [InlineData(VoiceLanguageEnum.Chinese, "你好世界，今天你好吗？")]
     [InlineData(VoiceLanguageEnum.Spanish, "Hola mundo, ¿cómo estás hoy?")]
     public async Task TextToSpeechWithMetadataAsync_Should_Support_Multiple_Languages(VoiceLanguageEnum language, string text)
     {

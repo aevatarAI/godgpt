@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserBilling;
 using Shouldly;
 
 namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
@@ -15,10 +16,10 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CancelSubscriptionAsync with immediate cancel, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // First create a subscription
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         var subscriptionProducts = products.Where(p => p.Mode == PaymentMode.SUBSCRIPTION).ToList();
         
         if (subscriptionProducts.Count == 0)
@@ -40,7 +41,7 @@ public partial class UserBillingGrainTests
         SubscriptionResponseDto subscriptionResult;
         try
         {
-            subscriptionResult = await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto);
+            subscriptionResult = await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto);
             _testOutputHelper.WriteLine($"Created test subscription with ID: {subscriptionResult.SubscriptionId}");
         }
         catch (Exception ex)
@@ -62,7 +63,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CancelSubscriptionAsync(cancelSubscriptionDto);
+            var result = await userBillingGAgent.CancelSubscriptionAsync(cancelSubscriptionDto);
             
             // Assert
             result.ShouldNotBeNull();
@@ -74,7 +75,7 @@ public partial class UserBillingGrainTests
             _testOutputHelper.WriteLine($"CancelSubscriptionAsync succeeded, Status: {result.Status}");
             
             // Verify payment history updated
-            var paymentHistory = await userBillingGrain.GetPaymentHistoryAsync();
+            var paymentHistory = await userBillingGAgent.GetPaymentHistoryAsync();
             var subscription = paymentHistory.FirstOrDefault(p => p.SubscriptionId == subscriptionResult.SubscriptionId);
             if (subscription != null)
             {
@@ -97,10 +98,10 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CancelSubscriptionAsync with cancel at period end, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // First create a subscription
-        var products = await userBillingGrain.GetStripeProductsAsync();
+        var products = await userBillingGAgent.GetStripeProductsAsync();
         var subscriptionProducts = products.Where(p => p.Mode == PaymentMode.SUBSCRIPTION).ToList();
         
         if (subscriptionProducts.Count == 0)
@@ -122,7 +123,7 @@ public partial class UserBillingGrainTests
         SubscriptionResponseDto subscriptionResult;
         try
         {
-            subscriptionResult = await userBillingGrain.CreateSubscriptionAsync(createSubscriptionDto);
+            subscriptionResult = await userBillingGAgent.CreateSubscriptionAsync(createSubscriptionDto);
             _testOutputHelper.WriteLine($"Created test subscription with ID: {subscriptionResult.SubscriptionId}");
         }
         catch (Exception ex)
@@ -144,7 +145,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CancelSubscriptionAsync(cancelSubscriptionDto);
+            var result = await userBillingGAgent.CancelSubscriptionAsync(cancelSubscriptionDto);
             
             // Assert
             result.ShouldNotBeNull();
@@ -170,7 +171,7 @@ public partial class UserBillingGrainTests
         // Arrange
         _testOutputHelper.WriteLine("Testing CancelSubscriptionAsync with invalid (empty) UserId");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(Guid.NewGuid()));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(Guid.NewGuid());
         
         var cancelSubscriptionDto = new CancelSubscriptionDto
         {
@@ -183,7 +184,7 @@ public partial class UserBillingGrainTests
         try
         {
             var exception = await Assert.ThrowsAsync<ArgumentException>(
-                async () => await userBillingGrain.CancelSubscriptionAsync(cancelSubscriptionDto));
+                async () => await userBillingGAgent.CancelSubscriptionAsync(cancelSubscriptionDto));
             
             exception.Message.ShouldContain("UserId is required", Case.Insensitive);
             _testOutputHelper.WriteLine($"Test passed: ArgumentException thrown with message: {exception.Message}");
@@ -203,7 +204,7 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CancelSubscriptionAsync with invalid (empty) SubscriptionId, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         var cancelSubscriptionDto = new CancelSubscriptionDto
         {
@@ -216,7 +217,7 @@ public partial class UserBillingGrainTests
         try
         {
             var exception = await Assert.ThrowsAsync<ArgumentException>(
-                async () => await userBillingGrain.CancelSubscriptionAsync(cancelSubscriptionDto));
+                async () => await userBillingGAgent.CancelSubscriptionAsync(cancelSubscriptionDto));
             
             exception.Message.ShouldContain("SubscriptionId is required", Case.Insensitive);
             _testOutputHelper.WriteLine($"Test passed: ArgumentException thrown with message: {exception.Message}");
@@ -236,7 +237,7 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing CancelSubscriptionAsync with non-existent subscription ID, user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         var cancelSubscriptionDto = new CancelSubscriptionDto
         {
@@ -249,7 +250,7 @@ public partial class UserBillingGrainTests
         // Act
         try
         {
-            var result = await userBillingGrain.CancelSubscriptionAsync(cancelSubscriptionDto);
+            var result = await userBillingGAgent.CancelSubscriptionAsync(cancelSubscriptionDto);
             
             // Assert
             result.ShouldNotBeNull();

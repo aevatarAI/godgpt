@@ -36,4 +36,10 @@ public interface IGodChat : IGAgent
     Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content, string chatId, 
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
 
+
+    [ReadOnly]
+    Task<DateTime?> GetFirstChatTimeAsync();
+
+    [ReadOnly]
+    Task<DateTime?> GetLastChatTimeAsync();
 }

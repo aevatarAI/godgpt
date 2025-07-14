@@ -285,6 +285,8 @@ public class TweetFetchResultDto
     [Id(11)] public DateTime QueryEndTime { get; set; }
     [Id(12)] public long QueryStartTimeUtc { get; set; }
     [Id(13)] public long QueryEndTimeUtc { get; set; }
+    [Id(14)] public DateTime? LastSuccessfulFetchTime { get; set; }
+    [Id(15)] public long LastSuccessfulFetchTimeUtc { get; set; }
 }
 
 /// <summary>

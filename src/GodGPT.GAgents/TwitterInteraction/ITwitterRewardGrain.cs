@@ -31,12 +31,22 @@ public interface ITwitterRewardGrain : IGrainWithStringKey
     /// <summary>
     /// Get reward calculation history
     /// </summary>
-    Task<TwitterApiResultDto<List<RewardCalculationHistoryDto>>> GetRewardCalculationHistoryAsync(int days = 30);
+    Task<TwitterApiResultDto<List<RewardCalculationHistoryDto>>> GetRewardCalculationHistoryAsync(int days = 7);
+
+    /// <summary>
+    /// Get full calculation history list
+    /// </summary>
+    Task<List<RewardCalculationHistoryDto>> GetCalculationHistoryListAsync();
 
     /// <summary>
     /// Query user reward records
     /// </summary>
-    Task<TwitterApiResultDto<List<UserRewardRecordDto>>> GetUserRewardRecordsAsync(string userId, int days = 30);
+    Task<TwitterApiResultDto<List<UserRewardRecordDto>>> GetUserRewardRecordsAsync(string userId, int days = 7);
+
+    /// <summary>
+    /// Get user rewards by user ID (returns dateKey and filtered UserRewardRecordDto list)
+    /// </summary>
+    Task<TwitterApiResultDto<Dictionary<string, List<UserRewardRecordDto>>>> GetUserRewardsByUserIdAsync(string userId);
 
     /// <summary>
     /// Get daily reward statistics

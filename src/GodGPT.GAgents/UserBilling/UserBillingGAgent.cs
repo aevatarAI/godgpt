@@ -1,74 +1,83 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
+using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
-using Aevatar.Application.Grains.ChatManager.UserQuota;
+using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Common.Constants;
-using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Helpers;
+using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserBilling.SEvents;
+using Aevatar.Application.Grains.UserQuota;
+using Aevatar.Core;
+using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Stripe;
 using Stripe.Checkout;
 using PaymentMethod = Aevatar.Application.Grains.Common.Constants.PaymentMethod;
-using System.Net.Http.Json;
-using System.Security.Cryptography;
-using Microsoft.IdentityModel.Tokens;
-using Aevatar.Application.Grains.Common;
-using System.Security.Cryptography.X509Certificates;
-using Aevatar.Application.Grains.Agents.ChatManager;
-using Aevatar.Application.Grains.Invitation;
-using Aevatar.Application.Grains.UserQuota;
-using Newtonsoft.Json.Linq;
 
-namespace Aevatar.Application.Grains.ChatManager.UserBilling;
+namespace Aevatar.Application.Grains.UserBilling;
 
-public interface IUserBillingGrain : IGrainWithStringKey
+public interface IUserBillingGAgent : IGAgent
 {
-    //ask<List<StripeProductDto>> GetStripeProductsAsync();
-    //Task<List<AppleProductDto>> GetAppleProductsAsync();
-    //Task<string> GetOrCreateStripeCustomerAsync(string userId = null);
-    //Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null);
-    //Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto);
-    //Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
-    //Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
-    //Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary);
-    //Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
-    //Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
-    //Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus);
-    //Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
-    //Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
-    //Task<object> RefundedSubscriptionAsync(object  obj);
-    //Task ClearAllAsync();
+    Task<List<StripeProductDto>> GetStripeProductsAsync();
+    Task<List<AppleProductDto>> GetAppleProductsAsync();
+    Task<string> GetOrCreateStripeCustomerAsync(string userId = null);
+    Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null);
+    /**
+     * web
+     */
+    Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto);
+    /**
+     * [app]
+     * platform:android/ios
+     */
+    Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
+    Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
+    Task<Guid> AddPaymentRecordAsync(ChatManager.UserBilling.PaymentSummary paymentSummary);
+    Task<ChatManager.UserBilling.PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
+    Task<List<ChatManager.UserBilling.PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
+    Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus);
+    Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
+    Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
+    Task<object> RefundedSubscriptionAsync(object  obj);
+    Task ClearAllAsync();
     
     // App Store related methods
-    //Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto, bool savePaymentEnabled);
-    //Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto);
-    //Task<bool> HandleAppStoreNotificationAsync(Guid userId, string jsonPayload);
-    //Task<GrainResultDto<AppStoreJWSTransactionDecodedPayload>> GetAppStoreTransactionInfoAsync(string transactionId, string environment);
+    Task<VerifyReceiptResponseDto> VerifyAppStoreReceiptAsync(VerifyReceiptRequestDto requestDto, bool savePaymentEnabled);
+    Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto);
+    Task<bool> HandleAppStoreNotificationAsync(Guid userId, string jsonPayload);
+    Task<GrainResultDto<AppStoreJWSTransactionDecodedPayload>> GetAppStoreTransactionInfoAsync(string transactionId, string environment);
     /// <summary>
     /// Determines whether there is an active (renewing) Apple subscription.
     /// An active Apple subscription is defined as a payment record with Platform=AppStore,
     /// InvoiceDetails is not null or empty, and all InvoiceDetail's Status are not Cancelled.
     /// </summary>
     /// <returns>True if there is an active Apple subscription; otherwise, false.</returns>
-    //Task<bool> HasActiveAppleSubscriptionAsync();
-
-    Task<UserBillingState> GetUserBillingGrainStateAsync();
+    Task<bool> HasActiveAppleSubscriptionAsync();
 }
 
-public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
+[GAgent(nameof(UserBillingGAgent))]
+public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingLogEvent>, IUserBillingGAgent
 {
     private readonly ILogger<UserBillingGrain> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
     private readonly IOptionsMonitor<ApplePayOptions> _appleOptions;
     private readonly IHttpClientFactory _httpClientFactory;
     
-    private IStripeClient _client; 
+    private readonly IStripeClient _client; 
     
-    public UserBillingGrain(
+    public UserBillingGAgent(
         ILogger<UserBillingGrain> logger, 
         IOptionsMonitor<StripeOptions> stripeOptions,
         IOptionsMonitor<ApplePayOptions> appleOptions,
@@ -78,25 +87,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         _stripeOptions = stripeOptions;
         _appleOptions = appleOptions;
         _httpClientFactory = httpClientFactory;
-    }
-
-    public override async Task OnActivateAsync(CancellationToken cancellationToken)
-    {
+        
         StripeConfiguration.ApiKey = _stripeOptions.CurrentValue.SecretKey;
         _client ??= new StripeClient(_stripeOptions.CurrentValue.SecretKey);
-        _logger.LogDebug("[UserBillingGrain][OnActivateAsync] Activating grain for user {UserId}",
-            this.GetPrimaryKeyString());
-        
-        await ReadStateAsync();
-        await base.OnActivateAsync(cancellationToken);
+        _logger.LogDebug("[UserBillingGAgent] Activating agent for user {UserId}", this.GetPrimaryKey().ToString());
     }
-
-    public override async Task OnDeactivateAsync(DeactivationReason reason, CancellationToken cancellationToken)
+    
+    public override Task<string> GetDescriptionAsync()
     {
-        _logger.LogDebug("[UserBillingGrain][OnDeactivateAsync] Deactivating grain for user {UserId}. Reason: {Reason}",
-            this.GetPrimaryKeyString(), reason);
-        await WriteStateAsync();
-        await base.OnDeactivateAsync(reason, cancellationToken);
+        return Task.FromResult($"UserBillingGAgent for user {this.GetPrimaryKey().ToString()}, CustomerId: {State.CustomerId}, PaymentHistory count: {State.PaymentHistory?.Count ?? 0}");
+        throw new NotImplementedException();
     }
 
     public async Task<List<StripeProductDto>> GetStripeProductsAsync()
@@ -104,11 +104,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var products = _stripeOptions.CurrentValue.Products;
         if (products.IsNullOrEmpty())
         {
-            _logger.LogWarning("[UserBillingGrain][GetStripeProductsAsync] No products configured in StripeOptions");
+            _logger.LogWarning("[UserBillingGAgent][GetStripeProductsAsync] No products configured in StripeOptions");
             return new List<StripeProductDto>();
         }
 
-        _logger.LogDebug("[UserBillingGrain][GetStripeProductsAsync] Found {Count} products in configuration",
+        _logger.LogDebug("[UserBillingGAgent][GetStripeProductsAsync] Found {Count} products in configuration",
             products.Count);
         var productDtos = new List<StripeProductDto>();
         foreach (var product in products)
@@ -135,7 +135,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             });
         }
         
-        _logger.LogDebug("[UserBillingGrain][GetStripeProductsAsync] Successfully retrieved {Count} products",
+        _logger.LogDebug("[UserBillingGAgent][GetStripeProductsAsync] Successfully retrieved {Count} products",
             productDtos.Count);
         return productDtos;
     }
@@ -145,11 +145,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var products = _appleOptions.CurrentValue.Products;
         if (products.IsNullOrEmpty())
         {
-            _logger.LogWarning("[UserBillingGrain][GetAppleProductsAsync] No products configured in ApplePayOptions");
+            _logger.LogWarning("[UserBillingGAgent][GetAppleProductsAsync] No products configured in ApplePayOptions");
             return new List<AppleProductDto>();
         }
 
-        _logger.LogDebug("[UserBillingGrain][GetAppleProductsAsync] Found {Count} products in configuration",
+        _logger.LogDebug("[UserBillingGAgent][GetAppleProductsAsync] Found {Count} products in configuration",
             products.Count);
         var productDtos = new List<AppleProductDto>();
         foreach (var product in products)
@@ -183,7 +183,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             });
         }
         
-        _logger.LogDebug("[UserBillingGrain][GetAppleProductsAsync] Successfully retrieved {Count} products",
+        _logger.LogDebug("[UserBillingGAgent][GetAppleProductsAsync] Successfully retrieved {Count} products",
             productDtos.Count);
         return productDtos;
     }
@@ -210,7 +210,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
             var customer = await customerService.CreateAsync(customerOptions);
             _logger.LogInformation(
-                "[UserBillingGrain][GetOrCreateStripeCustomerAsync] Created Stripe Customer for user {UserId}: {CustomerId}",
+                "[UserBillingGAgent][GetOrCreateStripeCustomerAsync] Created Stripe Customer for user {UserId}: {CustomerId}",
                 userId, customer.Id);
             customerId = customer.Id;
         }
@@ -223,13 +223,17 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
             var customer = await customerService.CreateAsync(customerOptions);
             _logger.LogInformation(
-                "[UserBillingGrain][GetOrCreateStripeCustomerAsync] Created temporary Stripe Customer: {CustomerId}",
+                "[UserBillingGAgent][GetOrCreateStripeCustomerAsync] Created temporary Stripe Customer: {CustomerId}",
                 customer.Id);
             customerId = customer.Id;
         }
 
-        State.CustomerId = customerId;
-        await WriteStateAsync();
+        RaiseEvent(new UpdateCustomerIdLogEvent
+        {
+            CustomerId = customerId
+        });
+        await ConfirmEvents();
+        
         return State.CustomerId;
     }
 
@@ -239,7 +243,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             var customerId = await GetOrCreateStripeCustomerAsync(userId);
             _logger.LogInformation(
-                "[UserBillingGrain][GetStripeCustomerAsync] {userId} Using customer: {CustomerId}",userId, customerId);
+                "[UserBillingGAgent][GetStripeCustomerAsync] {userId} Using customer: {CustomerId}",userId, customerId);
             
             var ephemeralKeyService = new EphemeralKeyService(_client);
             var ephemeralKeyOptions = new EphemeralKeyCreateOptions
@@ -250,7 +254,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             
             var ephemeralKey = await ephemeralKeyService.CreateAsync(ephemeralKeyOptions);
             _logger.LogInformation(
-                "[UserBillingGrain][GetStripeCustomerAsync] {userId} Created ephemeral key with ID: {EphemeralKeyId}",
+                "[UserBillingGAgent][GetStripeCustomerAsync] {userId} Created ephemeral key with ID: {EphemeralKeyId}",
                 userId, ephemeralKey.Id);
 
             var response = new GetCustomerResponseDto()
@@ -265,14 +269,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         catch (StripeException ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][GetStripeCustomerAsync] Stripe error: {ErrorMessage}",
+                "[UserBillingGAgent][GetStripeCustomerAsync] Stripe error: {ErrorMessage}",
                 ex.StripeError?.Message);
             throw new InvalidOperationException(ex.Message);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][GetStripeCustomerAsync] error: {ErrorMessage}",
+                "[UserBillingGAgent][GetStripeCustomerAsync] error: {ErrorMessage}",
                 ex.Message);
             throw;
         }
@@ -338,7 +342,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             options.PaymentMethodTypes = createCheckoutSessionDto.PaymentMethodTypes;
             _logger.LogInformation(
-                "[UserBillingGrain][CreateCheckoutSessionAsync] Using payment method types: {PaymentMethodTypes}",
+                "[UserBillingGAgent][CreateCheckoutSessionAsync] Using payment method types: {PaymentMethodTypes}",
                 string.Join(", ", createCheckoutSessionDto.PaymentMethodTypes));
         }
 
@@ -346,7 +350,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             options.PaymentMethodCollection = createCheckoutSessionDto.PaymentMethodCollection;
             _logger.LogInformation(
-                "[UserBillingGrain][CreateCheckoutSessionAsync] Using payment method collection mode: {Mode}",
+                "[UserBillingGAgent][CreateCheckoutSessionAsync] Using payment method collection mode: {Mode}",
                 createCheckoutSessionDto.PaymentMethodCollection);
         }
 
@@ -354,7 +358,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             options.PaymentMethodConfiguration = createCheckoutSessionDto.PaymentMethodConfiguration;
             _logger.LogInformation(
-                "[UserBillingGrain][CreateCheckoutSessionAsync] Using payment method configuration: {ConfigId}",
+                "[UserBillingGAgent][CreateCheckoutSessionAsync] Using payment method configuration: {ConfigId}",
                 createCheckoutSessionDto.PaymentMethodConfiguration);
         }
 
@@ -382,13 +386,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             options.Customer = await GetOrCreateStripeCustomerAsync(createCheckoutSessionDto.UserId);
             _logger.LogInformation(
-                "[UserBillingGrain][CreateCheckoutSessionAsync] Using existing Customer: {CustomerId} for {Mode} mode",
+                "[UserBillingGAgent][CreateCheckoutSessionAsync] Using existing Customer: {CustomerId} for {Mode} mode",
                 options.Customer, createCheckoutSessionDto.Mode);
         }
         catch (StripeException ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][CreateCheckoutSessionAsync] Failed to create or get Stripe Customer: {ErrorMessage}",
+                "[UserBillingGAgent][CreateCheckoutSessionAsync] Failed to create or get Stripe Customer: {ErrorMessage}",
                 ex.Message);
             throw new InvalidOperationException(ex.Message);
         }
@@ -401,20 +405,20 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 await InitializePaymentGrainAsync(orderId, createCheckoutSessionDto, productConfig, session);
             await CreateOrUpdatePaymentSummaryAsync(paymentDetails, session);
             _logger.LogInformation(
-                "[UserBillingGrain][CreateCheckoutSessionAsync] Created/Updated payment record with ID: {PaymentId} for session: {SessionId}",
+                "[UserBillingGAgent][CreateCheckoutSessionAsync] Created/Updated payment record with ID: {PaymentId} for session: {SessionId}",
                 paymentDetails.Id, session.Id);
 
             if (createCheckoutSessionDto.UiMode == StripeUiMode.EMBEDDED)
             {
                 _logger.LogInformation(
-                    "[UserBillingGrain][CreateCheckoutSessionAsync] Created embedded checkout session with ID: {SessionId}, returning ClientSecret",
+                    "[UserBillingGAgent][CreateCheckoutSessionAsync] Created embedded checkout session with ID: {SessionId}, returning ClientSecret",
                     session.Id);
                 return session.ClientSecret;
             }
             else
             {
                 _logger.LogInformation(
-                    "[UserBillingGrain][CreateCheckoutSessionAsync] Created hosted checkout session with ID: {SessionId}, returning URL",
+                    "[UserBillingGAgent][CreateCheckoutSessionAsync] Created hosted checkout session with ID: {SessionId}, returning URL",
                     session.Id);
             return session.Url;
             }
@@ -422,7 +426,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         catch (StripeException e)
         {
             _logger.LogError(e,
-                "[UserBillingGrain][CreateCheckoutSessionAsync] Failed to create checkout session: {ErrorMessage}",
+                "[UserBillingGAgent][CreateCheckoutSessionAsync] Failed to create checkout session: {ErrorMessage}",
                 e.StripeError.Message);
             throw new InvalidOperationException(e.Message);
         }
@@ -430,7 +434,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
     public async Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto)
     {
-        _logger.LogInformation("[UserBillingGrain][CreatePaymentSheetAsync] Creating payment sheet for user {UserId}",
+        _logger.LogInformation("[UserBillingGAgent][CreatePaymentSheetAsync] Creating payment sheet for user {UserId}",
             createPaymentSheetDto.UserId);
         
         long amount;
@@ -441,7 +445,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             amount = createPaymentSheetDto.Amount.Value;
             currency = createPaymentSheetDto.Currency;
             _logger.LogInformation(
-                "[UserBillingGrain][CreatePaymentSheetAsync] Using explicitly provided amount: {Amount} {Currency}",
+                "[UserBillingGAgent][CreatePaymentSheetAsync] Using explicitly provided amount: {Amount} {Currency}",
                 amount, currency);
         }
         else if (!string.IsNullOrEmpty(createPaymentSheetDto.PriceId))
@@ -450,13 +454,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             amount = (long)productConfig.Amount;
             currency = productConfig.Currency;
             _logger.LogInformation(
-                "[UserBillingGrain][CreatePaymentSheetAsync] Using amount from product config: {Amount} {Currency}, PriceId: {PriceId}",
+                "[UserBillingGAgent][CreatePaymentSheetAsync] Using amount from product config: {Amount} {Currency}, PriceId: {PriceId}",
                 amount, currency, createPaymentSheetDto.PriceId);
         }
         else
         {
             var message = "Either Amount+Currency or PriceId must be provided";
-            _logger.LogError("[UserBillingGrain][CreatePaymentSheetAsync] {Message}", message);
+            _logger.LogError("[UserBillingGAgent][CreatePaymentSheetAsync] {Message}", message);
             throw new ArgumentException(message);
         }
 
@@ -466,7 +470,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             var customerId = await GetOrCreateStripeCustomerAsync(createPaymentSheetDto.UserId.ToString());
             _logger.LogInformation(
-                "[UserBillingGrain][CreatePaymentSheetAsync] Using customer: {CustomerId}", customerId);
+                "[UserBillingGAgent][CreatePaymentSheetAsync] Using customer: {CustomerId}", customerId);
             
             var ephemeralKeyService = new EphemeralKeyService(_client);
             var ephemeralKeyOptions = new EphemeralKeyCreateOptions
@@ -477,7 +481,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             
             var ephemeralKey = await ephemeralKeyService.CreateAsync(ephemeralKeyOptions);
             _logger.LogInformation(
-                "[UserBillingGrain][CreatePaymentSheetAsync] Created ephemeral key with ID: {EphemeralKeyId}",
+                "[UserBillingGAgent][CreatePaymentSheetAsync] Created ephemeral key with ID: {EphemeralKeyId}",
                 ephemeralKey.Id);
             
             var paymentIntentService = new PaymentIntentService(_client);
@@ -504,13 +508,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             {
                 paymentIntentOptions.PaymentMethodTypes = createPaymentSheetDto.PaymentMethodTypes;
                 _logger.LogInformation(
-                    "[UserBillingGrain][CreatePaymentSheetAsync] Using payment method types: {PaymentMethodTypes}",
+                    "[UserBillingGAgent][CreatePaymentSheetAsync] Using payment method types: {PaymentMethodTypes}",
                     string.Join(", ", createPaymentSheetDto.PaymentMethodTypes));
             }
             
             var paymentIntent = await paymentIntentService.CreateAsync(paymentIntentOptions);
             _logger.LogInformation(
-                "[UserBillingGrain][CreatePaymentSheetAsync] Created payment intent with ID: {PaymentIntentId}",
+                "[UserBillingGAgent][CreatePaymentSheetAsync] Created payment intent with ID: {PaymentIntentId}",
                 paymentIntent.Id);
             
             if (!string.IsNullOrEmpty(createPaymentSheetDto.PriceId))
@@ -541,13 +545,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 if (!initResult.Success)
                 {
                     _logger.LogError(
-                        "[UserBillingGrain][CreatePaymentSheetAsync] Failed to initialize payment grain: {ErrorMessage}",
+                        "[UserBillingGAgent][CreatePaymentSheetAsync] Failed to initialize payment grain: {ErrorMessage}",
                         initResult.Message);
                     throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
                 }
                 
                 var paymentDetails = initResult.Data;
-                var paymentSummary = new PaymentSummary
+                var paymentSummary = new ChatManager.UserBilling.PaymentSummary
                 {
                     PaymentGrainId = paymentDetails.Id,
                     OrderId = orderId,
@@ -564,7 +568,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 
                 await AddPaymentRecordAsync(paymentSummary);
                 _logger.LogInformation(
-                    "[UserBillingGrain][CreatePaymentSheetAsync] Created payment record with ID: {PaymentId}",
+                    "[UserBillingGAgent][CreatePaymentSheetAsync] Created payment record with ID: {PaymentId}",
                     paymentDetails.Id);
             }
             
@@ -577,7 +581,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             };
             
             _logger.LogInformation(
-                "[UserBillingGrain][CreatePaymentSheetAsync] Successfully created payment sheet for order: {OrderId}",
+                "[UserBillingGAgent][CreatePaymentSheetAsync] Successfully created payment sheet for order: {OrderId}",
                 orderId);
             
             return response;
@@ -585,14 +589,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         catch (StripeException ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][CreatePaymentSheetAsync] Stripe error: {ErrorMessage}",
+                "[UserBillingGAgent][CreatePaymentSheetAsync] Stripe error: {ErrorMessage}",
                 ex.StripeError?.Message);
             throw new InvalidOperationException(ex.Message);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][CreatePaymentSheetAsync] Error creating payment sheet: {ErrorMessage}",
+                "[UserBillingGAgent][CreatePaymentSheetAsync] Error creating payment sheet: {ErrorMessage}",
                 ex.Message);
             throw;
         }
@@ -612,7 +616,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         _logger.LogInformation(
-            "[UserBillingGrain][CreateSubscriptionAsync] Creating subscription for user {UserId} with price {PriceId}",
+            "[UserBillingGAgent][CreateSubscriptionAsync] Creating subscription for user {UserId} with price {PriceId}",
             createSubscriptionDto.UserId, createSubscriptionDto.PriceId);
 
         try
@@ -623,7 +627,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
             var customerId = await GetOrCreateStripeCustomerAsync(createSubscriptionDto.UserId.ToString());
             _logger.LogInformation(
-                "[UserBillingGrain][CreateSubscriptionAsync] Using customer: {CustomerId}",
+                "[UserBillingGAgent][CreateSubscriptionAsync] Using customer: {CustomerId}",
                 customerId);
 
             var orderId = Guid.NewGuid().ToString();
@@ -674,9 +678,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var service = new SubscriptionService(_client);
             var subscription = await service.CreateAsync(options);
             _logger.LogInformation(
-                "[UserBillingGrain][CreateSubscriptionAsync] Created subscription with ID: {SubscriptionId}, status: {Status}",
+                "[UserBillingGAgent][CreateSubscriptionAsync] Created subscription with ID: {SubscriptionId}, status: {Status}",
                 subscription.Id, subscription.Status);
-            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] subscription {0}", JsonConvert.SerializeObject(subscription));
+            _logger.LogDebug("[UserBillingGAgent][CreateSubscriptionAsync] subscription {0}", JsonConvert.SerializeObject(subscription));
 
             var paymentGrainId = Guid.NewGuid();
             var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
@@ -700,30 +704,30 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 InvoiceId = subscription.LatestInvoiceId
             };
             
-            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] InitializePaymentAsync start.. {0}", subscription.Id);
+            _logger.LogDebug("[UserBillingGAgent][CreateSubscriptionAsync] InitializePaymentAsync start.. {0}", subscription.Id);
             var initResult = await paymentGrain.InitializePaymentAsync(paymentState);
-            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] InitializePaymentAsync end..{0}", subscription.Id);
+            _logger.LogDebug("[UserBillingGAgent][CreateSubscriptionAsync] InitializePaymentAsync end..{0}", subscription.Id);
             if (!initResult.Success)
             {
                 _logger.LogError(
-                    "[UserBillingGrain][CreateSubscriptionAsync] Failed to initialize payment grain: {ErrorMessage}",
+                    "[UserBillingGAgent][CreateSubscriptionAsync] Failed to initialize payment grain: {ErrorMessage}",
                     initResult.Message);
                 throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
             }
             var paymentDetails = initResult.Data;
-            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync start..{0}", subscription.Id);
+            _logger.LogDebug("[UserBillingGAgent][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync start..{0}", subscription.Id);
             try
             {
                 await CreateOrUpdatePaymentSummaryAsync(paymentDetails, null);
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "[UserBillingGrain][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync error..{0}, {1}", subscription.Id, e.Message);
+                _logger.LogError(e, "[UserBillingGAgent][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync error..{0}, {1}", subscription.Id, e.Message);
                 throw;
             }
-            _logger.LogDebug("[UserBillingGrain][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync end..{0}", subscription.Id);
+            _logger.LogDebug("[UserBillingGAgent][CreateSubscriptionAsync] CreateOrUpdatePaymentSummaryAsync end..{0}", subscription.Id);
             _logger.LogInformation(
-                "[UserBillingGrain][CreateSubscriptionAsync] Created/Updated payment record with ID: {PaymentId} for session: {subscription}",
+                "[UserBillingGAgent][CreateSubscriptionAsync] Created/Updated payment record with ID: {PaymentId} for session: {subscription}",
                 paymentDetails.Id, subscription.Id);
             
             var response = new SubscriptionResponseDto
@@ -738,14 +742,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         catch (StripeException ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][CreateSubscriptionAsync] Stripe error: {ErrorMessage}",
+                "[UserBillingGAgent][CreateSubscriptionAsync] Stripe error: {ErrorMessage}",
                 ex.StripeError?.Message);
             throw new InvalidOperationException(ex.Message);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][CreateSubscriptionAsync] Error creating subscription: {ErrorMessage}",
+                "[UserBillingGAgent][CreateSubscriptionAsync] Error creating subscription: {ErrorMessage}",
                 ex.Message);
             throw;
         }
@@ -756,7 +760,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (cancelSubscriptionDto.UserId == Guid.Empty)
         {
             _logger.LogWarning(
-                "[UserBillingGrain][CancelSubscriptionAsync] UserId is required. {SubscriptionId}",
+                "[UserBillingGAgent][CancelSubscriptionAsync] UserId is required. {SubscriptionId}",
                 cancelSubscriptionDto.SubscriptionId);
             return new CancelSubscriptionResponseDto
             {
@@ -769,7 +773,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (string.IsNullOrEmpty(cancelSubscriptionDto.SubscriptionId))
         {
             _logger.LogWarning(
-                "[UserBillingGrain][CancelSubscriptionAsync] SubscriptionId is required. {SubscriptionId}, {UserId}",
+                "[UserBillingGAgent][CancelSubscriptionAsync] SubscriptionId is required. {SubscriptionId}, {UserId}",
                 cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
             return new CancelSubscriptionResponseDto
             {
@@ -780,7 +784,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         
         _logger.LogDebug(
-            "[UserBillingGrain][CancelSubscriptionAsync] Cancelling subscription {SubscriptionId} for user {UserId}",
+            "[UserBillingGAgent][CancelSubscriptionAsync] Cancelling subscription {SubscriptionId} for user {UserId}",
             cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
 
         var paymentSummary = State.PaymentHistory
@@ -788,7 +792,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (paymentSummary == null)
         {
             _logger.LogWarning(
-                "[UserBillingGrain][CancelSubscriptionAsync] SubscriptionId not found {SubscriptionId} for user {UserId}",
+                "[UserBillingGAgent][CancelSubscriptionAsync] SubscriptionId not found {SubscriptionId} for user {UserId}",
                 cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
             return new CancelSubscriptionResponseDto
             {
@@ -801,7 +805,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (paymentSummary.Status is PaymentStatus.Cancelled_In_Processing or PaymentStatus.Cancelled or PaymentStatus.Refunded_In_Processing or PaymentStatus.Refunded)
         {
             _logger.LogWarning(
-                "[UserBillingGrain][CancelSubscriptionAsync] Subscription canceled {SubscriptionId} for user {UserId}",
+                "[UserBillingGAgent][CancelSubscriptionAsync] Subscription canceled {SubscriptionId} for user {UserId}",
                 cancelSubscriptionDto.SubscriptionId, cancelSubscriptionDto.UserId);
             return new CancelSubscriptionResponseDto
             {
@@ -822,14 +826,19 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var subscription = await service.UpdateAsync(cancelSubscriptionDto.SubscriptionId, options);
             
             _logger.LogInformation(
-                "[UserBillingGrain][CancelSubscriptionAsync] Successfully cancelled subscription {SubscriptionId}, status: {Status}",
+                "[UserBillingGAgent][CancelSubscriptionAsync] Successfully cancelled subscription {SubscriptionId}, status: {Status}",
                 subscription.Id, subscription.Status);
 
-            paymentSummary.Status = PaymentStatus.Cancelled_In_Processing;
+            RaiseEvent(new UpdatePaymentStatusLogEvent
+            {
+                PaymentId = paymentSummary.PaymentGrainId,
+                NewStatus = PaymentStatus.Cancelled_In_Processing
+            });
+            await ConfirmEvents();
+
             _logger.LogInformation(
-                "[UserBillingGrain][CancelSubscriptionAsync] Updated payment record {SubscriptionId} status to Cancelled",
+                "[UserBillingGAgent][CancelSubscriptionAsync] Updated payment record {SubscriptionId} status to Cancelled",
                 paymentSummary.SubscriptionId);
-            await WriteStateAsync();
 
             var response = new CancelSubscriptionResponseDto
             {
@@ -844,7 +853,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         catch (StripeException ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][CancelSubscriptionAsync] Stripe error: {ErrorMessage}",
+                "[UserBillingGAgent][CancelSubscriptionAsync] Stripe error: {ErrorMessage}",
                 ex.StripeError?.Message);
             
             return new CancelSubscriptionResponseDto
@@ -857,7 +866,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][CancelSubscriptionAsync] Error cancelling subscription: {ErrorMessage}",
+                "[UserBillingGAgent][CancelSubscriptionAsync] Error cancelling subscription: {ErrorMessage}",
                 ex.Message);
             
             return new CancelSubscriptionResponseDto
@@ -876,16 +885,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
     public async Task ClearAllAsync()
     {
-        State = new UserBillingState();
-        await WriteStateAsync();
+        RaiseEvent(new ClearAllLogEvent());
+        await ConfirmEvents();
     }
 
     public async Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature)
     {
-        _logger.LogInformation("[UserBillingGrain][HandleStripeWebhookEventAsync] Processing Stripe webhook event");
+        _logger.LogInformation("[UserBillingGAgent][HandleStripeWebhookEventAsync] Processing Stripe webhook event");
         if (string.IsNullOrEmpty(jsonPayload) || string.IsNullOrEmpty(stripeSignature))
         {
-            _logger.LogError("[UserBillingGrain][HandleStripeWebhookEventAsync] Invalid webhook parameters");
+            _logger.LogError("[UserBillingGAgent][HandleStripeWebhookEventAsync] Invalid webhook parameters");
             return false;
         }
 
@@ -901,13 +910,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         catch (StripeException ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][HandleStripeWebhookEventAsync] Error validating webhook: {Message}", ex.Message);
+                "[UserBillingGAgent][HandleStripeWebhookEventAsync] Error validating webhook: {Message}", ex.Message);
             return false;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGrain][HandleStripeWebhookEventAsync] Unexpected error processing webhook: {Message}",
+                "[UserBillingGAgent][HandleStripeWebhookEventAsync] Unexpected error processing webhook: {Message}",
                 ex.Message);
             return false;
         }
@@ -928,7 +937,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var detailsDto = grainResultDto.Data;
         if (!grainResultDto.Success || detailsDto == null)
         {
-            _logger.LogError("[UserBillingGrain][HandleStripeWebhookEventAsync] error. {0}, {1}",
+            _logger.LogError("[UserBillingGAgent][HandleStripeWebhookEventAsync] error. {0}, {1}",
                 this.GetPrimaryKey(), grainResultDto.Message);
             return false;
         }
@@ -938,7 +947,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var userId = detailsDto.UserId;
         var productConfig = await GetProductConfigAsync(detailsDto.PriceId);
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
-        _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] allocate resource {0}, {1}, {2}, {3})",
+        _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] allocate resource {0}, {1}, {2}, {3})",
             userId, detailsDto.OrderId, detailsDto.SubscriptionId, detailsDto.InvoiceId);
         var subscriptionInfoDto = await userQuotaGAgent.GetSubscriptionAsync(productConfig.IsUltimate);
 
@@ -947,7 +956,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var invoiceDetail = paymentSummary.InvoiceDetails.LastOrDefault();
         if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Completed && !invoiceIds.Contains(invoiceDetail.InvoiceId))
         {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Update for complete invoice {0}, {1}, {2}",
+            _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Update for complete invoice {0}, {1}, {2}",
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
             foreach (var subscriptionId in subscriptionIds.Where(subscriptionId => subscriptionId != paymentSummary.SubscriptionId))
             {
@@ -1015,12 +1024,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             
             //Invite users to pay rewards
             await ProcessInviteeSubscriptionAsync(userId, (PlanType) productConfig.PlanType, productConfig.IsUltimate, invoiceDetail.InvoiceId);
-            _logger.LogWarning("[UserBillingGrain][HandleStripeWebhookEventAsync] Process invitee subscription completed, user {UserId}",
+            _logger.LogWarning("[UserBillingGAgent][HandleStripeWebhookEventAsync] Process invitee subscription completed, user {UserId}",
                 userId);
             
         } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Cancel User subscription {0}, {1}, {2}",
+            _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Cancel User subscription {0}, {1}, {2}",
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
             subscriptionIds.Remove(paymentSummary.SubscriptionId);
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
@@ -1028,7 +1037,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Refunded && invoiceIds.Contains(invoiceDetail.InvoiceId))
         {
-            _logger.LogDebug("[UserBillingGrain][HandleStripeWebhookEventAsync] Refund User subscription {0}, {1}, {2}",
+            _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Refund User subscription {0}, {1}, {2}",
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
             
             var diff = GetDaysForPlanType(paymentSummary.PlanType);
@@ -1102,10 +1111,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         return new Tuple<DateTime, DateTime>(subscriptionStartDate, subscriptionEndDate);
     }
 
-    public async Task<Guid> AddPaymentRecordAsync(PaymentSummary paymentSummary)
+    public async Task<Guid> AddPaymentRecordAsync(ChatManager.UserBilling.PaymentSummary paymentSummary)
     {
         _logger.LogInformation(
-            "[UserBillingGrain][AddPaymentRecordAsync] Adding payment record with status {Status} for amount {Amount} {Currency}",
+            "[UserBillingGAgent][AddPaymentRecordAsync] Adding payment record with status {Status} for amount {Amount} {Currency}",
             paymentSummary.Status, paymentSummary.Amount, paymentSummary.Currency);
 
         // Ensure PaymentGrainId is generated if not set
@@ -1126,35 +1135,28 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             paymentSummary.CompletedAt = DateTime.UtcNow;
         }
 
-        // Add to payment history
-        State.PaymentHistory.Add(paymentSummary);
-
-        // Update counters
-        State.TotalPayments++;
-        if (paymentSummary.Status == PaymentStatus.Refunded)
+        RaiseEvent(new AddPaymentLogEvent
         {
-            State.RefundedPayments++;
-        }
+            PaymentSummary = paymentSummary
+        });
+        await ConfirmEvents();
 
-        // Save state
-        await WriteStateAsync();
-
-        _logger.LogInformation("[UserBillingGrain][AddPaymentRecordAsync] Payment record added with ID: {PaymentId}",
+        _logger.LogInformation("[UserBillingGAgent][AddPaymentRecordAsync] Payment record added with ID: {PaymentId}",
             paymentSummary.PaymentGrainId);
 
         return paymentSummary.PaymentGrainId;
     }
 
-    public async Task<PaymentSummary> GetPaymentSummaryAsync(Guid paymentId)
+    public async Task<ChatManager.UserBilling.PaymentSummary> GetPaymentSummaryAsync(Guid paymentId)
     {
         _logger.LogInformation(
-            "[UserBillingGrain][GetPaymentSummaryAsync] Getting payment summary for payment ID: {PaymentId}",
+            "[UserBillingGAgent][GetPaymentSummaryAsync] Getting payment summary for payment ID: {PaymentId}",
             paymentId);
 
         var payment = State.PaymentHistory.FirstOrDefault(p => p.PaymentGrainId == paymentId);
         if (payment == null)
         {
-            _logger.LogWarning("[UserBillingGrain][GetPaymentSummaryAsync] Payment with ID {PaymentId} not found",
+            _logger.LogWarning("[UserBillingGAgent][GetPaymentSummaryAsync] Payment with ID {PaymentId} not found",
                 paymentId);
             return null;
         }
@@ -1162,10 +1164,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         return payment;
     }
 
-    public async Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
+    public async Task<List<ChatManager.UserBilling.PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
     {
         _logger.LogInformation(
-            "[UserBillingGrain][GetPaymentHistoryAsync] Getting payment history page {Page} with size {PageSize}",
+            "[UserBillingGAgent][GetPaymentHistoryAsync] Getting payment history page {Page} with size {PageSize}",
             page, pageSize);
 
         // Ensure valid pagination parameters
@@ -1175,7 +1177,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
         if (State.PaymentHistory == null)
         {
-            State.PaymentHistory = new List<PaymentSummary>();
+            State.PaymentHistory = new List<ChatManager.UserBilling.PaymentSummary>();
         }
         
         //Filter unpaid orders
@@ -1187,23 +1189,22 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 payment.CreatedAt <= DateTime.UtcNow.AddDays(-1))
             .ToList();
             
-        foreach (var record in recordsToRemove)
-        {
-            State.PaymentHistory.Remove(record);
-        }
-
         if (recordsToRemove.Count > 0)
         {
             _logger.LogInformation(
-                "[UserBillingGrain][GetPaymentHistoryAsync] Removed {0} invalid records from payment history (original count: {1}, new count: {2})",
+                "[UserBillingGAgent][GetPaymentHistoryAsync] Removed {0} invalid records from payment history (original count: {1}, new count: {2})",
                 recordsToRemove.Count, originalCount, State.PaymentHistory.Count);
-            await WriteStateAsync();
+            RaiseEvent(new RemovePaymentHistoryLogEvent
+            {
+                RecordsToRemove = recordsToRemove
+            });
+            await ConfirmEvents();
         }
 
         // Calculate skip and take values
         int skip = (page - 1) * pageSize;
 
-        var paymentHistories = new List<PaymentSummary>();
+        var paymentHistories = new List<ChatManager.UserBilling.PaymentSummary>();
         var paymentSummaries = State.PaymentHistory;
         foreach (var paymentSummary in paymentSummaries)
         {
@@ -1225,7 +1226,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 }
                 catch (ArgumentException e)
                 {
-                    _logger.LogWarning("[UserBillingGrain][GetPaymentHistoryAsync] {0}. {1}", e.Message, paymentSummary.PriceId);
+                    _logger.LogWarning("[UserBillingGAgent][GetPaymentHistoryAsync] {0}. {1}", e.Message, paymentSummary.PriceId);
                 }
                 paymentSummary.MembershipLevel = membershipLevel;
             }
@@ -1236,7 +1237,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             }
             else
             {
-                paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail => new PaymentSummary
+                paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail => new ChatManager.UserBilling.PaymentSummary
                 {
                     PaymentGrainId = paymentSummary.PaymentGrainId,
                     OrderId = paymentSummary.OrderId,
@@ -1258,7 +1259,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         _logger.LogInformation(
-            "[UserBillingGrain][GetPaymentHistoryAsync] Returning {0} payment records after pagination",
+            "[UserBillingGAgent][GetPaymentHistoryAsync] Returning {0} payment records after pagination",
             Math.Min(pageSize, paymentHistories.Count - skip));
 
         // Return paginated results ordered by most recent first
@@ -1269,46 +1270,32 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             .ToList();
     }
 
-    public async Task<bool> UpdatePaymentStatusAsync(PaymentSummary payment, PaymentStatus newStatus)
+    public async Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus)
     {
         _logger.LogInformation(
-            "[UserBillingGrain][UpdatePaymentStatusAsync] Updating payment status for ID {PaymentId} to {NewStatus}",
+            "[UserBillingGAgent][UpdatePaymentStatusAsync] Updating payment status for ID {PaymentId} to {NewStatus}",
             payment.PaymentGrainId, newStatus);
 
         // Skip update if status is already the same
         if (payment.Status == newStatus)
         {
             _logger.LogInformation(
-                "[UserBillingGrain][UpdatePaymentStatusAsync] Payment {PaymentId} already has status {Status}",
+                "[UserBillingGAgent][UpdatePaymentStatusAsync] Payment {PaymentId} already has status {Status}",
                 payment.PaymentGrainId, newStatus);
             return true;
         }
 
-        // Update status
+        RaiseEvent(new UpdatePaymentStatusLogEvent
+        {
+            PaymentId = payment.PaymentGrainId,
+            NewStatus = newStatus
+        });
+        await ConfirmEvents();
+
         var oldStatus = payment.Status;
-        payment.Status = newStatus;
-
-        // Set completed time if status is being changed to Completed
-        if (newStatus == PaymentStatus.Completed && !payment.CompletedAt.HasValue)
-        {
-            payment.CompletedAt = DateTime.UtcNow;
-        }
-
-        // Update refunded count if status is being changed to Refunded
-        if (newStatus == PaymentStatus.Refunded && oldStatus != PaymentStatus.Refunded)
-        {
-            State.RefundedPayments++;
-        }
-        else if (oldStatus == PaymentStatus.Refunded && newStatus != PaymentStatus.Refunded)
-        {
-            State.RefundedPayments--;
-        }
-
-        // Save state
-        await WriteStateAsync();
-
+    
         _logger.LogInformation(
-            "[UserBillingGrain][UpdatePaymentStatusAsync] Payment status updated from {OldStatus} to {NewStatus} for ID {PaymentId}",
+            "[UserBillingGAgent][UpdatePaymentStatusAsync] Payment status updated from {OldStatus} to {NewStatus} for ID {PaymentId}",
             oldStatus, newStatus, payment.PaymentGrainId);
 
         return true;
@@ -1348,20 +1335,20 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (!initResult.Success)
         {
             _logger.LogError(
-                "[UserBillingGrain][InitializePaymentGrainAsync] Failed to initialize payment grain: {ErrorMessage}",
+                "[UserBillingGAgent][InitializePaymentGrainAsync] Failed to initialize payment grain: {ErrorMessage}",
                 initResult.Message);
             throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
         }
 
         var paymentDetails = initResult.Data;
         _logger.LogInformation(
-            "[UserBillingGrain][InitializePaymentGrainAsync] Initialized payment grain with ID: {PaymentId}",
+            "[UserBillingGAgent][InitializePaymentGrainAsync] Initialized payment grain with ID: {PaymentId}",
             paymentDetails.Id);
 
         return paymentDetails;
     }
     
-    private async Task<PaymentSummary> CreateOrUpdatePaymentSummaryAsync(PaymentDetailsDto paymentDetails, Session session = null)
+    private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdatePaymentSummaryAsync(PaymentDetailsDto paymentDetails, Session session = null)
     {
         var existingPaymentSummary = State.PaymentHistory.FirstOrDefault(p => p.PaymentGrainId == paymentDetails.Id);
         var productConfig = await GetProductConfigAsync(paymentDetails.PriceId);
@@ -1369,7 +1356,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (existingPaymentSummary != null)
         {
             _logger.LogInformation(
-                "[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Updating existing payment record with ID: {PaymentId}",
+                "[UserBillingGAgent][CreateOrUpdatePaymentSummaryAsync] Updating existing payment record with ID: {PaymentId}",
                 existingPaymentSummary.PaymentGrainId);
 
             existingPaymentSummary.PaymentGrainId = paymentDetails.Id;
@@ -1383,10 +1370,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             existingPaymentSummary.Status = paymentDetails.Status;
             existingPaymentSummary.SubscriptionId = paymentDetails.SubscriptionId;
             await CreateOrUpdateInvoiceDetailAsync(paymentDetails, productConfig, existingPaymentSummary);
-            await WriteStateAsync();
+            
+            RaiseEvent(new UpdatePaymentLogEvent
+            {
+                PaymentId = existingPaymentSummary.PaymentGrainId,
+                PaymentSummary = existingPaymentSummary
+            });
+            await ConfirmEvents();  
 
             _logger.LogInformation(
-                "[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Updated payment record with ID: {PaymentId}",
+                "[UserBillingGAgent][CreateOrUpdatePaymentSummaryAsync] Updated payment record with ID: {PaymentId}",
                 existingPaymentSummary.PaymentGrainId);
 
             return existingPaymentSummary;
@@ -1394,10 +1387,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         else
         {
             _logger.LogInformation(
-                "[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Creating new payment record for ID: {PaymentId}",
+                "[UserBillingGAgent][CreateOrUpdatePaymentSummaryAsync] Creating new payment record for ID: {PaymentId}",
                 paymentDetails.Id);
 
-            var newPaymentSummary = new PaymentSummary
+            var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
             {
                 PaymentGrainId = paymentDetails.Id,
                 OrderId = paymentDetails.OrderId,
@@ -1414,7 +1407,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             await CreateOrUpdateInvoiceDetailAsync(paymentDetails, productConfig, newPaymentSummary);
             await AddPaymentRecordAsync(newPaymentSummary);
             _logger.LogInformation(
-                "[UserBillingGrain][CreateOrUpdatePaymentSummaryAsync] Created new payment record with ID: {PaymentId}",
+                "[UserBillingGAgent][CreateOrUpdatePaymentSummaryAsync] Created new payment record with ID: {PaymentId}",
                 newPaymentSummary.PaymentGrainId);
 
             return newPaymentSummary;
@@ -1422,7 +1415,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     }
 
     private async Task CreateOrUpdateInvoiceDetailAsync(PaymentDetailsDto paymentDetails, StripeProduct productConfig,
-        PaymentSummary paymentSummary)
+        ChatManager.UserBilling.PaymentSummary paymentSummary)
     {
         if (paymentDetails.InvoiceId.IsNullOrWhiteSpace())
         { 
@@ -1431,13 +1424,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
         if (paymentSummary.InvoiceDetails == null)
         {
-            paymentSummary.InvoiceDetails = new List<UserBillingInvoiceDetail>();
+            paymentSummary.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail>();
         }
         var invoiceDetail =
             paymentSummary.InvoiceDetails.FirstOrDefault(t => t.InvoiceId == paymentDetails.InvoiceId);
         if (invoiceDetail == null)
         {
-            invoiceDetail = new UserBillingInvoiceDetail
+            invoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
             {
                 InvoiceId = paymentDetails.InvoiceId,
                 CreatedAt = paymentDetails.CreatedAt,
@@ -1475,7 +1468,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var parsedUserId))
         {
             _logger.LogWarning(
-                "[UserBillingGrain][ValidateSubscriptionUpgradePath] Invalid or missing UserId, skipping subscription path validation");
+                "[UserBillingGAgent][ValidateSubscriptionUpgradePath] Invalid or missing UserId, skipping subscription path validation");
             return;
         }
 
@@ -1485,7 +1478,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (!currentSubscription.IsActive)
         {
             _logger.LogInformation(
-                "[UserBillingGrain][ValidateSubscriptionUpgradePath] User has no active subscription, allowing purchase of any plan");
+                "[UserBillingGAgent][ValidateSubscriptionUpgradePath] User has no active subscription, allowing purchase of any plan");
             return;
         }
 
@@ -1493,7 +1486,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var targetPlanType = (PlanType)productConfig.PlanType;
 
         _logger.LogInformation(
-            "[UserBillingGrain][ValidateSubscriptionUpgradePath] Validating upgrade path: Current={CurrentPlan}, Target={TargetPlan}",
+            "[UserBillingGAgent][ValidateSubscriptionUpgradePath] Validating upgrade path: Current={CurrentPlan}, Target={TargetPlan}",
             currentPlanType, targetPlanType);
 
         // Use SubscriptionHelper to validate upgrade path
@@ -1503,7 +1496,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var targetPlanName = SubscriptionHelper.GetPlanDisplayName(targetPlanType);
             
             _logger.LogWarning(
-                "[UserBillingGrain][ValidateSubscriptionUpgradePath] Invalid upgrade path: {CurrentPlan} -> {TargetPlan}",
+                "[UserBillingGAgent][ValidateSubscriptionUpgradePath] Invalid upgrade path: {CurrentPlan} -> {TargetPlan}",
                 currentPlanName, targetPlanName);
             
             throw new InvalidOperationException(
@@ -1511,7 +1504,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
 
         _logger.LogInformation(
-            "[UserBillingGrain][ValidateSubscriptionUpgradePath] Valid upgrade path: {CurrentPlan} -> {NewPlan}",
+            "[UserBillingGAgent][ValidateSubscriptionUpgradePath] Valid upgrade path: {CurrentPlan} -> {NewPlan}",
             currentPlanType, targetPlanType);
     }
 
@@ -1521,13 +1514,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (productConfig == null)
         {
             _logger.LogError(
-                "[UserBillingGrain][GetProductConfigAsync] Invalid priceId: {PriceId}. Product not found in configuration.",
+                "[UserBillingGAgent][GetProductConfigAsync] Invalid priceId: {PriceId}. Product not found in configuration.",
                 priceId);
             throw new ArgumentException($"Invalid priceId: {priceId}. Product not found in configuration.");
         }
 
         _logger.LogInformation(
-            "[UserBillingGrain][GetProductConfigAsync] Found product with priceId: {PriceId}, planType: {PlanType}, amount: {Amount} {Currency}",
+            "[UserBillingGAgent][GetProductConfigAsync] Found product with priceId: {PriceId}, planType: {PlanType}, amount: {Amount} {Currency}",
             productConfig.PriceId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
 
         return productConfig;
@@ -1539,13 +1532,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (productConfig == null)
         {
             _logger.LogError(
-                "[UserBillingGrain][GetAppleProductConfigAsync] Invalid ProductId: {ProductId}. Product not found in configuration.",
+                "[UserBillingGAgent][GetAppleProductConfigAsync] Invalid ProductId: {ProductId}. Product not found in configuration.",
                 productId);
             throw new ArgumentException($"Invalid ProductId: {productId}. Product not found in configuration.");
         }
 
         _logger.LogInformation(
-            "[UserBillingGrain][GetAppleProductConfigAsync] Found product with ProductId: {ProductId}, planType: {PlanType}, amount: {Amount} {Currency}",
+            "[UserBillingGAgent][GetAppleProductConfigAsync] Found product with ProductId: {ProductId}, planType: {PlanType}, amount: {Amount} {Currency}",
             productConfig.ProductId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
 
         return productConfig;
@@ -1642,7 +1635,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (userId.IsNullOrWhiteSpace() || orderId.IsNullOrWhiteSpace() || priceId.IsNullOrWhiteSpace())
         {
             _logger.LogWarning(
-                "[UserBillingGrain][ExtractBusinessDataAsync] Type={0}-{1}, userId={2}, orderId={3}, priceId={4},",
+                "[UserBillingGAgent][ExtractBusinessDataAsync] Type={0}-{1}, userId={2}, orderId={3}, priceId={4},",
                 stripeEvent.Type, stripeEvent.Id, userId, orderId, priceId);
             throw new ArgumentException(
                 $"Business Data not found in StripeEvent. {stripeEvent.Type}, {stripeEvent.Id}");
@@ -1666,17 +1659,17 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         try
         {
             // 1. Parse V2 format notification
-            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Received notification payload: {Length} bytes", 
+            _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Received notification payload: {Length} bytes", 
                 jsonPayload?.Length ?? 0);
             
             var notificationV2 = JsonConvert.DeserializeObject<AppStoreServerNotificationV2>(jsonPayload);
             if (notificationV2?.SignedPayload == null)
             {
-                _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Invalid notification format - missing SignedPayload");
+                _logger.LogWarning("[UserBillingGAgent][HandleAppStoreNotificationAsync] Invalid notification format - missing SignedPayload");
                 return false;
             }
                 
-            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Received V2 format notification");
+            _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Received V2 format notification");
                 
             // 2. First decode the JWT payload (without verification) to get environment info
             ResponseBodyV2DecodedPayload decodedPayload = null;
@@ -1686,22 +1679,22 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             }
             catch (Exception e)
             {
-                _logger.LogError(e, "[UserBillingGrain][HandleAppStoreNotificationAsync] Error decoding payload: {Error}", e.Message);
+                _logger.LogError(e, "[UserBillingGAgent][HandleAppStoreNotificationAsync] Error decoding payload: {Error}", e.Message);
             }
             
             if (decodedPayload == null)
             {
-                _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Failed to decode V2 payload");
+                _logger.LogWarning("[UserBillingGAgent][HandleAppStoreNotificationAsync] Failed to decode V2 payload");
                 return false;
             }
             
             string environment = decodedPayload.Data.Environment;
-            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Notification environment: {Environment}", environment);
+            _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Notification environment: {Environment}", environment);
                 
             // 3. Verify JWT signature authenticity using the correct environment
             if (!VerifyJwtSignature(notificationV2.SignedPayload, environment))
             {
-                _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Invalid JWT signature for {Environment} environment", environment);
+                _logger.LogWarning("[UserBillingGAgent][HandleAppStoreNotificationAsync] Invalid JWT signature for {Environment} environment", environment);
                 return false;
             }
                 
@@ -1713,12 +1706,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var (appStoreTransactionInfo, signedTransactionInfo, signedRenewalInfo) = ExtractTransactionInfoFromV2(decodedPayload);
             if (appStoreTransactionInfo == null)
             {
-                _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Failed to extract transaction info from payload");
+                _logger.LogWarning("[UserBillingGAgent][HandleAppStoreNotificationAsync] Failed to extract transaction info from payload");
                 return false;
             }
 
             // 7. Log notification information
-            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Received notification type: {Type}, subtype: {Subtype}, environment: {Env}", 
+            _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Received notification type: {Type}, subtype: {Subtype}, environment: {Env}", 
                 notificationType, subtype, environment);
             
             // 8. Parse notification type and subtype to enums
@@ -1735,7 +1728,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 subtypeEnum = AppStoreNotificationSubtype.NONE;
             }
 
-            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Processing notification type: {Type}, subtype: {SubType}", notificationTypeEnum, subtypeEnum);
+            _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Processing notification type: {Type}, subtype: {SubType}", notificationTypeEnum, subtypeEnum);
 
             // 10. Process based on notification type and subtype
             switch (notificationTypeEnum)
@@ -1744,7 +1737,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     // Handle successful renewal
                     if (subtypeEnum == AppStoreNotificationSubtype.BILLING_RECOVERY)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
                     }
                     await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
                     break;
@@ -1752,13 +1745,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     // Handle auto-renewal status changes
                     if (subtypeEnum == AppStoreNotificationSubtype.AUTO_RENEW_ENABLED)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Auto-renewal enabled");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Auto-renewal enabled");
                         await HandleRenewalStatusChangeAsync(userId.ToString(), appStoreTransactionInfo);
                     }
                     else if (subtypeEnum == AppStoreNotificationSubtype.AUTO_RENEW_DISABLED)
                     {
                         //cancel subscription
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Auto-renewal disabled userId={0}, otxnId={1}, txnId={2}",
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Auto-renewal disabled userId={0}, otxnId={1}, txnId={2}",
                             userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
                         await HandleAppStoreSubscriptionCancellationAsync(userId, signedTransactionInfo, signedRenewalInfo);
                     }
@@ -1767,36 +1760,36 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     //cancel subscription
                     //subtypeEnum: AppStoreNotificationSubtype.VOLUNTARY/AppStoreNotificationSubtype.BILLING_RETRY
                     //             AppStoreNotificationSubtype.PRICE_INCREASE/AppStoreNotificationSubtype.PRODUCT_NOT_FOR_SALE
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription expired userId={0}, otxnId={1}, txnId={2}", 
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Subscription expired userId={0}, otxnId={1}, txnId={2}", 
                         userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
                     await HandleAppStoreSubscriptionCancellationAsync(userId, signedTransactionInfo, signedRenewalInfo);
                     break;
                 case AppStoreNotificationType.REVOKE:
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Family Sharing purchase revoked userId={0}, otxnId={1}, txnId={2}",
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Family Sharing purchase revoked userId={0}, otxnId={1}, txnId={2}",
                         userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
                     await HandleAppStoreSubscriptionCancellationAsync(userId, signedTransactionInfo, signedRenewalInfo);
                     break;
 
                 case AppStoreNotificationType.CONSUMPTION_REQUEST:
                     // Handle consumption data request for refund
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Received consumption data request for refund");
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Received consumption data request for refund");
                     break;
 
                 case AppStoreNotificationType.DID_CHANGE_RENEWAL_PREF:
                     // Handle subscription plan changes
                     if (subtypeEnum == AppStoreNotificationSubtype.UPGRADE)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] User upgraded subscription, effective immediately");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] User upgraded subscription, effective immediately");
                         await HandleInteractiveRenewalAsync(userId.ToString(), appStoreTransactionInfo);
                     }
                     else if (subtypeEnum == AppStoreNotificationSubtype.DOWNGRADE)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] User downgraded subscription, effective at next renewal");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] User downgraded subscription, effective at next renewal");
                         await HandleRenewalPreferenceChangeAsync(userId.ToString(), appStoreTransactionInfo);
                     }
                     else
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] User reverted to current subscription");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] User reverted to current subscription");
                         await HandleRenewalPreferenceChangeAsync(userId.ToString(), appStoreTransactionInfo);
                     }
                     break;
@@ -1805,14 +1798,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     // Handle renewal failure
                     if (subtypeEnum == AppStoreNotificationSubtype.GRACE_PERIOD)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription in grace period");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Subscription in grace period");
                         // Continue providing service through grace period
                     }
                     await HandleFailedRenewalAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
 
                 case AppStoreNotificationType.GRACE_PERIOD_EXPIRED:
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Grace period expired");
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Grace period expired");
                     await HandleGracePeriodExpiredAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
 
@@ -1820,11 +1813,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     // Handle offer redemption
                     if (subtypeEnum == AppStoreNotificationSubtype.UPGRADE)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Offer redeemed for upgrade");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Offer redeemed for upgrade");
                     }
                     else if (subtypeEnum == AppStoreNotificationSubtype.DOWNGRADE)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Offer redeemed for downgrade");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Offer redeemed for downgrade");
                     }
                     await HandleOfferRedeemedAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
@@ -1834,32 +1827,32 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     switch (subtypeEnum)
                     {
                         case AppStoreNotificationSubtype.PENDING:
-                            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Price increase pending customer consent");
+                            _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Price increase pending customer consent");
                             break;
                         case AppStoreNotificationSubtype.ACCEPTED:
-                            _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Price increase accepted");
+                            _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Price increase accepted");
                             break;
                     }
                     await HandlePriceIncreaseAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
 
                 case AppStoreNotificationType.REFUND:
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Purchase refunded");
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Purchase refunded");
                     await HandleRefundAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
 
                 case AppStoreNotificationType.REFUND_DECLINED:
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Refund request declined");
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Refund request declined");
                     await HandleRefundDeclinedAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
 
                 case AppStoreNotificationType.REFUND_REVERSED:
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Refund reversed");
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Refund reversed");
                     // Reinstate content or services that were revoked
                     break;
 
                 case AppStoreNotificationType.RENEWAL_EXTENDED:
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Subscription renewal date extended");
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Subscription renewal date extended");
                     await HandleRenewalExtendedAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
 
@@ -1867,11 +1860,11 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     // Handle renewal extension status
                     if (subtypeEnum == AppStoreNotificationSubtype.SUMMARY)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Renewal extension completed for all eligible subscribers");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Renewal extension completed for all eligible subscribers");
                     }
                     else if (subtypeEnum == AppStoreNotificationSubtype.FAILURE)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Renewal extension failed for specific subscription");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Renewal extension failed for specific subscription");
                     }
                     await HandleRenewalExtensionAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
@@ -1880,22 +1873,22 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                     // Handle new subscription
                     if (subtypeEnum == AppStoreNotificationSubtype.INITIAL_BUY)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Initial subscription purchase");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Initial subscription purchase");
                         await HandleInitialPurchaseAsync(userId.ToString(), appStoreTransactionInfo);
                     }
                     else if (subtypeEnum == AppStoreNotificationSubtype.RESUBSCRIBE)
                     {
-                        _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Resubscription to same or different subscription in group");
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Resubscription to same or different subscription in group");
                         await HandleRenewalAsync(userId.ToString(), appStoreTransactionInfo);
                     }
                     break;
 
                 case AppStoreNotificationType.TEST:
-                    _logger.LogInformation("[UserBillingGrain][HandleAppStoreNotificationAsync] Test notification received");
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Test notification received");
                     break;
 
                 default:
-                    _logger.LogWarning("[UserBillingGrain][HandleAppStoreNotificationAsync] Unknown notification type: {NotificationType}", notificationTypeEnum);
+                    _logger.LogWarning("[UserBillingGAgent][HandleAppStoreNotificationAsync] Unknown notification type: {NotificationType}", notificationTypeEnum);
                     break;
             }
             
@@ -1903,7 +1896,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[UserBillingGrain][HandleAppStoreNotificationAsync] Error processing notification");
+            _logger.LogError(ex, "[UserBillingGAgent][HandleAppStoreNotificationAsync] Error processing notification");
             return false;
         }
     }
@@ -1914,7 +1907,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(signedTransactionInfo.OriginalTransactionId);
         if (existingSubscription == null)
         {
-            _logger.LogError("[UserBillingGrain][HandleSubscriptionCancellationAsync] Subscription not found. userId={0}, otxnId={1}, txnId={2}", 
+            _logger.LogError("[UserBillingGAgent][HandleSubscriptionCancellationAsync] Subscription not found. userId={0}, otxnId={1}, txnId={2}", 
                 userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
             return;
         }
@@ -1929,8 +1922,15 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 invoiceDetail.Status = PaymentStatus.Cancelled;
             }
         }
-        await WriteStateAsync();
-        _logger.LogDebug("[UserBillingGrain][HandleSubscriptionCancellationAsync] Cancel subscription complated. userId={0}, otxnId={1}, txnId={2}", 
+
+        RaiseEvent(new UpdatePaymentBySubscriptionIdLogEvent
+        {
+            SubscriptionId = existingSubscription.SubscriptionId,
+            PaymentSummary = existingSubscription
+        });
+        await ConfirmEvents();
+
+        _logger.LogDebug("[UserBillingGAgent][HandleSubscriptionCancellationAsync] Cancel subscription complated. userId={0}, otxnId={1}, txnId={2}", 
             userId.ToString(), signedTransactionInfo.OriginalTransactionId, signedTransactionInfo.TransactionId);
     }
     
@@ -1943,7 +1943,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             if (decodedPayload?.Data == null)
             {
-                _logger.LogWarning("[UserBillingGrain][ExtractTransactionInfoFromV2] No data in payload");
+                _logger.LogWarning("[UserBillingGAgent][ExtractTransactionInfoFromV2] No data in payload");
                 return new Tuple<AppStoreSubscriptionInfo, AppStoreJWSTransactionDecodedPayload, JWSRenewalInfoDecodedPayload>(null, null, null);
             }
             
@@ -1960,7 +1960,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, "[UserBillingGrain][ExtractTransactionInfoFromV2] Error decoding SignedTransactionInfo  payload");
+                    _logger.LogError(e, "[UserBillingGAgent][ExtractTransactionInfoFromV2] Error decoding SignedTransactionInfo  payload");
                 }
                 if (transactionPayload != null)
                 {
@@ -1986,7 +1986,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 }
                 catch (Exception e)
                 {
-                    _logger.LogError(e, "[UserBillingGrain][ExtractTransactionInfoFromV2] Error decoding SignedRenewalInfo  payload");
+                    _logger.LogError(e, "[UserBillingGAgent][ExtractTransactionInfoFromV2] Error decoding SignedRenewalInfo  payload");
                 }
                 if (renewalPayload != null)
                 {
@@ -2014,7 +2014,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[UserBillingGrain][ExtractTransactionInfoFromV2] Error extracting transaction info: {Error}", ex.Message);
+            _logger.LogError(ex, "[UserBillingGAgent][ExtractTransactionInfoFromV2] Error extracting transaction info: {Error}", ex.Message);
             return null;
         }
     }
@@ -2023,12 +2023,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleInitialPurchaseAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleInitialPurchaseAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleInitialPurchaseAsync] Processing initial purchase for user: {UserId}", userId);
+        _logger.LogInformation("[UserBillingGAgent][HandleInitialPurchaseAsync] Processing initial purchase for user: {UserId}", userId);
         await UpdateSubscriptionStateAsync(userId, transactionInfo, "INITIAL_BUY");
     }
     
@@ -2036,12 +2036,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleRenewalAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleRenewalAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleRenewalAsync] Processing renewal for user: {UserId}", userId);
+        _logger.LogInformation("[UserBillingGAgent][HandleRenewalAsync] Processing renewal for user: {UserId}", userId);
         await UpdateSubscriptionStateAsync(userId, transactionInfo, "RENEWAL");
     }
     
@@ -2049,12 +2049,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleInteractiveRenewalAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleInteractiveRenewalAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleInteractiveRenewalAsync] Processing interactive renewal for user: {UserId}", userId);
+        _logger.LogInformation("[UserBillingGAgent][HandleInteractiveRenewalAsync] Processing interactive renewal for user: {UserId}", userId);
         await UpdateSubscriptionStateAsync(userId, transactionInfo, "INTERACTIVE_RENEWAL");
     }
     
@@ -2062,12 +2062,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleRefundAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleRefundAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleRefundAsync] Processing refund for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleRefundAsync] Processing refund for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Update subscription status to refunded and immediately revoke user rights
@@ -2079,7 +2079,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         // Find existing subscription record
         var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(subscriptionInfo.OriginalTransactionId);
         // Create invoice details
-        var invoiceDetail = new UserBillingInvoiceDetail
+        var invoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
         {
             InvoiceId = subscriptionInfo.TransactionId, 
             CreatedAt = subscriptionInfo.PurchaseDate,
@@ -2088,7 +2088,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         
         // Update PaymentSummary record
         var paymentStatus = MapToPaymentStatus(eventType, subscriptionInfo);
-        var paymentSummary = new PaymentSummary
+        var paymentSummary = new ChatManager.UserBilling.PaymentSummary
         {
             UserId = Guid.Parse(userId),
             // PaymentMethod attribute has been removed, no longer used
@@ -2108,7 +2108,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         if (existingSubscription != null)
         {
             // Get existing invoice details and add new record
-            var invoiceDetails = existingSubscription.InvoiceDetails ?? new List<UserBillingInvoiceDetail>();
+            var invoiceDetails = existingSubscription.InvoiceDetails ?? new List<ChatManager.UserBilling.UserBillingInvoiceDetail>();
             invoiceDetails.Add(invoiceDetail);
             paymentSummary.InvoiceDetails = invoiceDetails;
             
@@ -2118,7 +2118,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         else
         {
             // Add new record
-            paymentSummary.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
+            paymentSummary.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail> { invoiceDetail };
             await AddPaymentRecordAsync(paymentSummary);
         }
         
@@ -2182,7 +2182,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][UpdateUserQuotaAsync] UserId is null or empty");
+            _logger.LogWarning("[UserBillingGAgent][UpdateUserQuotaAsync] UserId is null or empty");
             return;
         }
         
@@ -2196,14 +2196,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 case "RENEWAL":
                 case "INTERACTIVE_RENEWAL":
                     // Grant or update user rights
-                    _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Updating user quota for {UserId} with product {ProductId}, expires on {ExpiresDate}",
+                    _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaAsync] Updating user quota for {UserId} with product {ProductId}, expires on {ExpiresDate}",
                         userId, subscriptionInfo.ProductId, subscriptionInfo.ExpiresDate);
                     await userQuotaGAgent.UpdateQuotaAsync(subscriptionInfo.ProductId, subscriptionInfo.ExpiresDate);
                     break;
                 
                 case "REFUND":
                     // For refund, immediately revoke user rights
-                    _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Resetting quota for {UserId} due to refund",
+                    _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaAsync] Resetting quota for {UserId} due to refund",
                         userId);
                     await userQuotaGAgent.ResetQuotaAsync();
                     break;
@@ -2211,19 +2211,19 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 case "DID_CHANGE_RENEWAL_PREF":
                 case "DID_CHANGE_RENEWAL_STATUS":
                     // These events do not affect the rights of the current subscription period, only record status changes
-                    _logger.LogInformation("[UserBillingGrain][UpdateUserQuotaAsync] Renewal preferences changed for {UserId}, no action needed",
+                    _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaAsync] Renewal preferences changed for {UserId}, no action needed",
                         userId);
                     break;
                 
                 default:
-                    _logger.LogWarning("[UserBillingGrain][UpdateUserQuotaAsync] Unknown event type: {EventType} for {UserId}",
+                    _logger.LogWarning("[UserBillingGAgent][UpdateUserQuotaAsync] Unknown event type: {EventType} for {UserId}",
                         eventType, userId);
                     break;
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[UserBillingGrain][UpdateUserQuotaAsync] Error updating user quota for {UserId}: {Message}",
+            _logger.LogError(ex, "[UserBillingGAgent][UpdateUserQuotaAsync] Error updating user quota for {UserId}: {Message}",
                 userId, ex.Message);
         }
     }
@@ -2235,24 +2235,23 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         await userQuotaGAgent.ResetQuotaAsync();
     }
     
-    private async Task<bool> UpdatePaymentRecordAsync(Guid paymentId, PaymentSummary newPaymentSummary)
+    private async Task<bool> UpdatePaymentRecordAsync(Guid paymentId, ChatManager.UserBilling.PaymentSummary newPaymentSummary)
     {
-        var paymentIndex = State.PaymentHistory.FindIndex(p => p.PaymentGrainId == paymentId);
-        if (paymentIndex >= 0)
+        RaiseEvent(new UpdatePaymentLogEvent
         {
-            State.PaymentHistory[paymentIndex] = newPaymentSummary;
-            await WriteStateAsync();
-            return true;
-        }
-        return false;
+            PaymentId = paymentId,
+            PaymentSummary = newPaymentSummary
+        });
+        await ConfirmEvents();
+        return true;
     }
 
     // Filter payment history by ultimate status
-    private List<PaymentSummary> GetFilteredPaymentHistoryByUltimate(bool isUltimate)
+    private List<ChatManager.UserBilling.PaymentSummary> GetFilteredPaymentHistoryByUltimate(bool isUltimate)
     {
         if (State.PaymentHistory == null || !State.PaymentHistory.Any())
         {
-            return new List<PaymentSummary>();
+            return new List<ChatManager.UserBilling.PaymentSummary>();
         }
         
         // Filter payments by Ultimate status
@@ -2314,7 +2313,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError("[UserBillingGrain][VerifyAppStoreReceiptAsync] Failed to verify receipt: {StatusCode}", response.StatusCode);
+                _logger.LogError("[UserBillingGAgent][VerifyAppStoreReceiptAsync] Failed to verify receipt: {StatusCode}", response.StatusCode);
                 return new VerifyReceiptResponseDto { IsValid = false, Error = $"HTTP Error: {response.StatusCode}" };
             }
             
@@ -2327,12 +2326,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 // If verification fails in production environment and status code is 21007, retry sandbox environment
                 if (!requestDto.SandboxMode && appleResponse.Status == 21007)
                 {
-                    _logger.LogInformation("[UserBillingGrain][VerifyAppStoreReceiptAsync] Receipt is from sandbox, retrying with sandbox URL");
+                    _logger.LogInformation("[UserBillingGAgent][VerifyAppStoreReceiptAsync] Receipt is from sandbox, retrying with sandbox URL");
                     requestDto.SandboxMode = true;
                     return await VerifyAppStoreReceiptAsync(requestDto, savePaymentEnabled);
                 }
                 
-                _logger.LogError("[UserBillingGrain][VerifyAppStoreReceiptAsync] Receipt validation failed with status: {Status}", appleResponse.Status);
+                _logger.LogError("[UserBillingGAgent][VerifyAppStoreReceiptAsync] Receipt validation failed with status: {Status}", appleResponse.Status);
                 return new VerifyReceiptResponseDto 
                 { 
                     IsValid = false, 
@@ -2346,7 +2345,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 
             if (latestReceiptInfo == null)
             {
-                _logger.LogError("[UserBillingGrain][VerifyAppStoreReceiptAsync] No receipt info found in response");
+                _logger.LogError("[UserBillingGAgent][VerifyAppStoreReceiptAsync] No receipt info found in response");
                 return new VerifyReceiptResponseDto { IsValid = false, Error = "No receipt information found" };
             }
             
@@ -2396,7 +2395,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[UserBillingGrain][VerifyAppStoreReceiptAsync] Error verifying receipt: {Message}", ex.Message);
+            _logger.LogError(ex, "[UserBillingGAgent][VerifyAppStoreReceiptAsync] Error verifying receipt: {Message}", ex.Message);
             return new VerifyReceiptResponseDto { IsValid = false, Error = ex.Message };
         }
     }
@@ -2411,20 +2410,20 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             // If transactionId is not provided, first validate the receipt to get it
             if (string.IsNullOrEmpty(transactionId))
             {
-                _logger.LogInformation("[UserBillingGrain][VerifyAppStoreTransactionAsync] No transactionId provided, verifying receipt first");
+                _logger.LogInformation("[UserBillingGAgent][VerifyAppStoreTransactionAsync] No transactionId provided, verifying receipt first");
                 
                 // Use the existing receipt verification method to get transaction details
                 return await VerifyAppStoreReceiptAsync(requestDto, savePaymentEnabled);
             }
             
             // Now we have a transactionId, verify it using App Store API
-            _logger.LogInformation("[UserBillingGrain][VerifyAppStoreTransactionAsync] Verifying transaction: {TransactionId}", transactionId);
+            _logger.LogInformation("[UserBillingGAgent][VerifyAppStoreTransactionAsync] Verifying transaction: {TransactionId}", transactionId);
             
             var transactionResult = await GetAppStoreTransactionInfoAsync(transactionId, environment);
             
             if (!transactionResult.Success || transactionResult.Data == null)
             {
-                _logger.LogError("[UserBillingGrain][VerifyAppStoreTransactionAsync] Failed to verify transaction: {Error}", 
+                _logger.LogError("[UserBillingGAgent][VerifyAppStoreTransactionAsync] Failed to verify transaction: {Error}", 
                     transactionResult.Message);
                 return new VerifyReceiptResponseDto 
                 { 
@@ -2440,7 +2439,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var paymentDetailsDto = await paymentGrain.GetPaymentDetailsAsync();
             if (paymentDetailsDto != null && paymentDetailsDto.UserId != Guid.Empty && paymentDetailsDto.UserId.ToString() != requestDto.UserId )
             {
-                _logger.LogError("[UserBillingGrain][VerifyAppStoreTransactionAsync] Failed to verify transaction: invalid user data. transaction: {0}, {1}, {2}", 
+                _logger.LogError("[UserBillingGAgent][VerifyAppStoreTransactionAsync] Failed to verify transaction: invalid user data. transaction: {0}, {1}, {2}", 
                     transactionInfo.OriginalTransactionId, paymentDetailsDto.UserId.ToString(), requestDto.UserId);
                 return new VerifyReceiptResponseDto 
                 { 
@@ -2459,7 +2458,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             if (!string.IsNullOrEmpty(requestDto.UserId) && Guid.TryParse(requestDto.UserId, out var userId) && savePaymentEnabled)
             {
                 // We need to create or update subscription record
-                _logger.LogInformation("[UserBillingGrain][VerifyAppStoreTransactionAsync] Creating subscription for user: {UserId}", userId);
+                _logger.LogInformation("[UserBillingGAgent][VerifyAppStoreTransactionAsync] Creating subscription for user: {UserId}", userId);
                 //await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
                 await HandleDidRenewAsync(userId, transactionInfo, null);
             }
@@ -2484,7 +2483,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[UserBillingGrain][VerifyAppStoreTransactionAsync] Error verifying transaction: {Message}", ex.Message);
+            _logger.LogError(ex, "[UserBillingGAgent][VerifyAppStoreTransactionAsync] Error verifying transaction: {Message}", ex.Message);
             return new VerifyReceiptResponseDto { IsValid = false, Error = ex.Message };
         }
     }
@@ -2525,7 +2524,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[UserBillingGrain][CreateAppStoreSubscriptionAsync] Error creating subscription: {Message}", ex.Message);
+            _logger.LogError(ex, "[UserBillingGAgent][CreateAppStoreSubscriptionAsync] Error creating subscription: {Message}", ex.Message);
             return new AppStoreSubscriptionResponseDto
             {
                 Success = false,
@@ -2540,7 +2539,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var existingPayment = await GetPaymentSummaryBySubscriptionIdAsync(appleResponse.OriginalTransactionId);
         if (existingPayment != null)
         {
-            _logger.LogWarning("[UserBillingGrain][VerifyAppStoreTransactionAsync] transaction exists {0}, {1}, {2})",
+            _logger.LogWarning("[UserBillingGAgent][VerifyAppStoreTransactionAsync] transaction exists {0}, {1}, {2})",
                 userId, appleResponse.OriginalTransactionId, appleResponse.TransactionId);
             return;
         }
@@ -2573,7 +2572,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         
         var (subscriptionStartDate, subscriptionEndDate) =
             await CalculateSubscriptionDurationAsync(userId, (PlanType)appleProduct.PlanType, appleProduct.IsUltimate);
-        var newPayment = new PaymentSummary
+        var newPayment = new ChatManager.UserBilling.PaymentSummary
         {
             PaymentGrainId = paymentGrainId,
             OrderId = appleResponse.OriginalTransactionId,
@@ -2594,7 +2593,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         };
 
         // Add invoice details
-        var invoiceDetail = new UserBillingInvoiceDetail
+        var invoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
         {
             InvoiceId = appleResponse.TransactionId,
             CreatedAt = purchaseDate,
@@ -2608,12 +2607,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             PlanType = (PlanType)appleProduct.PlanType
         };
 
-        newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
+        newPayment.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail> { invoiceDetail };
         await AddPaymentRecordAsync(newPayment);
         await UpdateUserQuotaOnApplePaySuccess(userId, appleResponse, appleProduct);
         //Invite users to pay rewards
         await ProcessInviteeSubscriptionAsync(userId, (PlanType) appleProduct.PlanType, appleProduct.IsUltimate, appleResponse.TransactionId);
-        _logger.LogWarning("[UserBillingGrain][CreateAppStoreSubscriptionAsync] Process invitee subscription completed, user {UserId}",
+        _logger.LogWarning("[UserBillingGAgent][CreateAppStoreSubscriptionAsync] Process invitee subscription completed, user {UserId}",
             userId);
     }
 
@@ -2625,13 +2624,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var subscriptionDto = appleProduct.IsUltimate
             ? await userQuotaGAgent.GetSubscriptionAsync(true)
             : await userQuotaGAgent.GetSubscriptionAsync();
-        _logger.LogDebug("[UserBillingGrain][VerifyAppStoreTransactionAsync] allocate resource {0}, {1}, {2})",
+        _logger.LogDebug("[UserBillingGAgent][VerifyAppStoreTransactionAsync] allocate resource {0}, {1}, {2})",
             userId, appleResponse.OriginalTransactionId, appleResponse.TransactionId);
         var subscriptionIds = subscriptionDto.SubscriptionIds;
         if (!subscriptionIds.IsNullOrEmpty())
         {
             _logger.LogDebug(
-                "[UserBillingGrain][VerifyAppStoreTransactionAsync] cancel stripe subscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
+                "[UserBillingGAgent][VerifyAppStoreTransactionAsync] cancel stripe subscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
                 userId, appleResponse.OriginalTransactionId, JsonConvert.SerializeObject(subscriptionIds));
             foreach (var subscriptionId in subscriptionIds)
             {
@@ -2676,7 +2675,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             if (!premiumSubscriptionDto.SubscriptionIds.IsNullOrEmpty())
             {
                 _logger.LogDebug(
-                    "[UserBillingGrain][VerifyAppStoreTransactionAsync] cancel stripe premiumSubscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
+                    "[UserBillingGAgent][VerifyAppStoreTransactionAsync] cancel stripe premiumSubscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
                     userId, appleResponse.OriginalTransactionId,
                     JsonConvert.SerializeObject(premiumSubscriptionDto.SubscriptionIds));
                 foreach (var subscriptionId in premiumSubscriptionDto.SubscriptionIds)
@@ -2736,7 +2735,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             await CalculateSubscriptionDurationAsync(userId, (PlanType)appleProduct.PlanType, appleProduct.IsUltimate);
         if (existingPayment == null)
         {
-            var newPayment = new PaymentSummary
+            var newPayment = new ChatManager.UserBilling.PaymentSummary
             {
                 PaymentGrainId = paymentGrainId,
                 OrderId = latestReceiptInfo.OriginalTransactionId,
@@ -2757,7 +2756,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             };
 
             // Add invoice details
-            var invoiceDetail = new UserBillingInvoiceDetail
+            var invoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
             {
                 InvoiceId = latestReceiptInfo.TransactionId,
                 CreatedAt = purchaseDate,
@@ -2767,12 +2766,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 SubscriptionEndDate = subscriptionEndDate
             };
 
-            newPayment.InvoiceDetails = new List<UserBillingInvoiceDetail> { invoiceDetail };
+            newPayment.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail> { invoiceDetail };
             await AddPaymentRecordAsync(newPayment);
         }
         else
         {
-            _logger.LogWarning("[UserBillingGrain][VerifyAppStoreReceiptAsync] transaction exists {0}, {1}, {2})",
+            _logger.LogWarning("[UserBillingGAgent][VerifyAppStoreReceiptAsync] transaction exists {0}, {1}, {2})",
                 userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
         }
 
@@ -2781,12 +2780,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         var subscriptionDto = appleProduct.IsUltimate
             ? await userQuotaGAgent.GetSubscriptionAsync(true)
             : await userQuotaGAgent.GetSubscriptionAsync();
-        _logger.LogDebug("[UserBillingGrain][VerifyAppStoreReceiptAsync] allocate resource {0}, {1}, {2})",
+        _logger.LogDebug("[UserBillingGAgent][VerifyAppStoreReceiptAsync] allocate resource {0}, {1}, {2})",
             userId, latestReceiptInfo.OriginalTransactionId, latestReceiptInfo.TransactionId);
         var subscriptionIds = subscriptionDto.SubscriptionIds;
         if (!subscriptionIds.IsNullOrEmpty())
         {
-            _logger.LogDebug("[UserBillingGrain][VerifyAppStoreReceiptAsync] cancel stripe subscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
+            _logger.LogDebug("[UserBillingGAgent][VerifyAppStoreReceiptAsync] cancel stripe subscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
                 userId, latestReceiptInfo.OriginalTransactionId, JsonConvert.SerializeObject(subscriptionIds));
             foreach (var subscriptionId in subscriptionIds)
             {
@@ -2828,7 +2827,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             var premiumSubscriptionDto = await userQuotaGAgent.GetSubscriptionAsync();
             if (!premiumSubscriptionDto.SubscriptionIds.IsNullOrEmpty())
             {
-                _logger.LogDebug("[UserBillingGrain][VerifyAppStoreReceiptAsync] cancel stripe premiumSubscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
+                _logger.LogDebug("[UserBillingGAgent][VerifyAppStoreReceiptAsync] cancel stripe premiumSubscription, userId: {0}, subscriptionId: {1}, cancel: {2}",
                     userId, latestReceiptInfo.OriginalTransactionId, JsonConvert.SerializeObject(premiumSubscriptionDto.SubscriptionIds));
                 foreach (var subscriptionId in premiumSubscriptionDto.SubscriptionIds)
                 {
@@ -2852,7 +2851,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         }
     }
 
-    private async Task<PaymentSummary> GetPaymentSummaryBySubscriptionIdAsync(string subscriptionId)
+    private async Task<ChatManager.UserBilling.PaymentSummary> GetPaymentSummaryBySubscriptionIdAsync(string subscriptionId)
     {
         if (string.IsNullOrEmpty(subscriptionId))
         {
@@ -2894,12 +2893,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleRenewalPreferenceChangeAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleRenewalPreferenceChangeAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleRenewalPreferenceChangeAsync] Processing renewal preference change for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleRenewalPreferenceChangeAsync] Processing renewal preference change for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Update subscription status but do not affect current user rights
@@ -2910,12 +2909,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleRenewalStatusChangeAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleRenewalStatusChangeAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleRenewalStatusChangeAsync] Processing renewal status change for user {UserId}, product {ProductId}, autoRenew: {AutoRenew}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleRenewalStatusChangeAsync] Processing renewal status change for user {UserId}, product {ProductId}, autoRenew: {AutoRenew}", 
             userId, transactionInfo.ProductId, transactionInfo.AutoRenewStatus);
         
         // Update subscription status but do not affect current user rights
@@ -2950,12 +2949,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleFailedRenewalAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleFailedRenewalAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleFailedRenewalAsync] Processing failed renewal for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleFailedRenewalAsync] Processing failed renewal for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Update subscription status - failed to renew
@@ -2972,29 +2971,29 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (userId == default)
         {
-            _logger.LogWarning("[UserBillingGrain][HandleDidRenewAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleDidRenewAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
 
-        _logger.LogInformation("[UserBillingGrain][HandleDidRenewAsync] Processing successful renewal for user {UserId}, product {ProductId}, OriginalTransaction: {Id}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleDidRenewAsync] Processing successful renewal for user {UserId}, product {ProductId}, OriginalTransaction: {Id}", 
             userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId);
         
         // Find existing subscription record
         var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(transactionInfo.OriginalTransactionId);
         if (existingSubscription == null)
         {
-            _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] PaymentSummary not exist.{0}, {1}, {2}", 
+            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] PaymentSummary not exist.{0}, {1}, {2}", 
                 userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
             await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
             return;
         }
 
-        var invoiceDetails = existingSubscription.InvoiceDetails ?? new List<UserBillingInvoiceDetail>();
+        var invoiceDetails = existingSubscription.InvoiceDetails ?? new List<ChatManager.UserBilling.UserBillingInvoiceDetail>();
         var invoiceDetail = invoiceDetails.FirstOrDefault(t => t.InvoiceId == transactionInfo.TransactionId);
         if (invoiceDetail != null)
         {
-            _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, originaltransaction: {Id}, trancaction: {trancactionId}",
+            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, originaltransaction: {Id}, trancaction: {trancactionId}",
                 userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
             return;
         }
@@ -3017,7 +3016,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         existingSubscription.AppStoreEnvironment = transactionInfo.Environment;
 
         // Add invoice details
-        invoiceDetail = new UserBillingInvoiceDetail
+        invoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
         {
             InvoiceId = transactionInfo.TransactionId,
             CreatedAt = purchaseDate,
@@ -3032,15 +3031,21 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         };
         invoiceDetails.Add(invoiceDetail);
         existingSubscription.InvoiceDetails = invoiceDetails;
-        await WriteStateAsync();
+
+        RaiseEvent(new UpdateExistingSubscriptionLogEvent
+        {
+            SubscriptionId = existingSubscription.SubscriptionId,
+            ExistingSubscription = existingSubscription
+        });
+        await ConfirmEvents();
         
         // Grant or revoke user rights
         await UpdateUserQuotaOnApplePaySuccess(userId, transactionInfo, appleProduct);
-        _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, product {ProductId}, originaltransaction: {Id}, trancaction: {trancactionId}",
+        _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, product {ProductId}, originaltransaction: {Id}, trancaction: {trancactionId}",
             userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
         //Invite users to pay rewards
         await ProcessInviteeSubscriptionAsync(userId, (PlanType) appleProduct.PlanType, appleProduct.IsUltimate, transactionInfo.TransactionId);
-        _logger.LogWarning("[UserBillingGrain][UpdateSubscriptionStateAsync] Process invitee subscription completed, user {UserId}, product {ProductId}, originaltransaction: {Id}, trancaction: {trancactionId}",
+        _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] Process invitee subscription completed, user {UserId}, product {ProductId}, originaltransaction: {Id}, trancaction: {trancactionId}",
             userId, transactionInfo.ProductId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
     }
 
@@ -3048,12 +3053,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleGracePeriodExpiredAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleGracePeriodExpiredAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleGracePeriodExpiredAsync] Processing grace period expiration for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleGracePeriodExpiredAsync] Processing grace period expiration for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Update subscription status - grace period expired
@@ -3067,12 +3072,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleOfferRedeemedAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleOfferRedeemedAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleOfferRedeemedAsync] Processing offer redemption for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleOfferRedeemedAsync] Processing offer redemption for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Update subscription status - offer redeemed
@@ -3083,12 +3088,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandlePriceIncreaseAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandlePriceIncreaseAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandlePriceIncreaseAsync] Processing price increase for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandlePriceIncreaseAsync] Processing price increase for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Just log the price increase event
@@ -3099,12 +3104,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleRefundDeclinedAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleRefundDeclinedAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleRefundDeclinedAsync] Processing refund decline for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleRefundDeclinedAsync] Processing refund decline for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Just log the refund decline event
@@ -3115,12 +3120,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleRenewalExtendedAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleRenewalExtendedAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleRenewalExtendedAsync] Processing renewal extension for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleRenewalExtendedAsync] Processing renewal extension for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Update subscription status with the extended renewal date
@@ -3131,12 +3136,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         if (string.IsNullOrEmpty(userId))
         {
-            _logger.LogWarning("[UserBillingGrain][HandleRenewalExtensionAsync] UserId is empty for transaction: {Id}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleRenewalExtensionAsync] UserId is empty for transaction: {Id}", 
                 transactionInfo.OriginalTransactionId);
             return;
         }
         
-        _logger.LogInformation("[UserBillingGrain][HandleRenewalExtensionAsync] Processing renewal extension attempt for user {UserId}, product {ProductId}", 
+        _logger.LogInformation("[UserBillingGAgent][HandleRenewalExtensionAsync] Processing renewal extension attempt for user {UserId}, product {ProductId}", 
             userId, transactionInfo.ProductId);
         
         // Just log the renewal extension attempt
@@ -3348,13 +3353,13 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     {
         try
         {
-            _logger.LogInformation("[UserBillingGrain][VerifyJwtSignature] Starting JWT signature verification using x5c certificate chain for environment: {Environment}", environment);
+            _logger.LogInformation("[UserBillingGAgent][VerifyJwtSignature] Starting JWT signature verification using x5c certificate chain for environment: {Environment}", environment);
             
             // Split the JWT into its components
             var parts = jwt.Split('.');
             if (parts.Length != 3)
             {
-                _logger.LogWarning("[UserBillingGrain][VerifyJwtSignature] Invalid JWT format: does not have three parts");
+                _logger.LogWarning("[UserBillingGAgent][VerifyJwtSignature] Invalid JWT format: does not have three parts");
                 return false;
             }
 
@@ -3365,14 +3370,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             // Validate algorithm
             if (!header.TryGetValue("alg", out var algorithm) || algorithm.ToString() != "ES256")
             {
-                _logger.LogWarning("[UserBillingGrain][VerifyJwtSignature] Invalid or missing algorithm: {Algorithm}", algorithm);
+                _logger.LogWarning("[UserBillingGAgent][VerifyJwtSignature] Invalid or missing algorithm: {Algorithm}", algorithm);
                 return false;
             }
 
             // Extract x5c certificate chain
             if (!header.TryGetValue("x5c", out var x5cObj) || x5cObj is not JArray x5cArray || x5cArray.Count == 0)
             {
-                _logger.LogWarning("[UserBillingGrain][VerifyJwtSignature] Missing or invalid x5c certificate chain");
+                _logger.LogWarning("[UserBillingGAgent][VerifyJwtSignature] Missing or invalid x5c certificate chain");
                 return false;
             }
 
@@ -3387,14 +3392,14 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "[UserBillingGrain][VerifyJwtSignature] Error decoding certificate from x5c chain");
+                    _logger.LogError(ex, "[UserBillingGAgent][VerifyJwtSignature] Error decoding certificate from x5c chain");
                     return false;
                 }
             }
 
             if (certificateChain.Count < 2)
             {
-                _logger.LogWarning("[UserBillingGrain][VerifyJwtSignature] Certificate chain too short: {Count} certificates", certificateChain.Count);
+                _logger.LogWarning("[UserBillingGAgent][VerifyJwtSignature] Certificate chain too short: {Count} certificates", certificateChain.Count);
                 return false;
             }
 
@@ -3403,12 +3408,12 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 "ChatManager", "UserBilling", "Certificates", "AppleRootCA-G3.cer");
             if (!System.IO.File.Exists(rootCertPath))
             {
-                _logger.LogError("[UserBillingGrain][VerifyJwtSignature] Apple Root CA certificate not found at: {Path}", rootCertPath);
+                _logger.LogError("[UserBillingGAgent][VerifyJwtSignature] Apple Root CA certificate not found at: {Path}", rootCertPath);
                 return false;
             }
 
             var rootCert = new X509Certificate2(rootCertPath);
-            _logger.LogInformation("[UserBillingGrain][VerifyJwtSignature] Loaded Apple Root CA: {Subject}", rootCert.Subject);
+            _logger.LogInformation("[UserBillingGAgent][VerifyJwtSignature] Loaded Apple Root CA: {Subject}", rootCert.Subject);
 
             // Build and validate the certificate chain
             var chain = new X509Chain();
@@ -3420,7 +3425,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
             // Create leaf certificate from the first certificate in the chain
             var leafCert = new X509Certificate2(certificateChain[0]);
-            _logger.LogInformation("[UserBillingGrain][VerifyJwtSignature] Validating leaf certificate: {Subject}", leafCert.Subject);
+            _logger.LogInformation("[UserBillingGAgent][VerifyJwtSignature] Validating leaf certificate: {Subject}", leafCert.Subject);
 
             // Validate the certificate chain
             var chainBuilt = chain.Build(leafCert);
@@ -3430,20 +3435,20 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
                 {
                     foreach (var status in element.ChainElementStatus)
                     {
-                        _logger.LogWarning("[UserBillingGrain][VerifyJwtSignature] Chain validation error: {Status} - {StatusInformation}",
+                        _logger.LogWarning("[UserBillingGAgent][VerifyJwtSignature] Chain validation error: {Status} - {StatusInformation}",
                             status.Status, status.StatusInformation);
                     }
                 }
                 return false;
             }
 
-            _logger.LogInformation("[UserBillingGrain][VerifyJwtSignature] Certificate chain validation successful");
+            _logger.LogInformation("[UserBillingGAgent][VerifyJwtSignature] Certificate chain validation successful");
 
             // Extract public key from leaf certificate for JWT verification
             var publicKey = leafCert.GetECDsaPublicKey();
             if (publicKey == null)
             {
-                _logger.LogWarning("[UserBillingGrain][VerifyJwtSignature] Failed to extract ECDsa public key from leaf certificate");
+                _logger.LogWarning("[UserBillingGAgent][VerifyJwtSignature] Failed to extract ECDsa public key from leaf certificate");
                 return false;
             }
 
@@ -3456,18 +3461,18 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
 
             if (isValid)
             {
-                _logger.LogInformation("[UserBillingGrain][VerifyJwtSignature] JWT signature verification successful");
+                _logger.LogInformation("[UserBillingGAgent][VerifyJwtSignature] JWT signature verification successful");
             }
             else
             {
-                _logger.LogWarning("[UserBillingGrain][VerifyJwtSignature] JWT signature verification failed");
+                _logger.LogWarning("[UserBillingGAgent][VerifyJwtSignature] JWT signature verification failed");
             }
 
             return isValid;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[UserBillingGrain][VerifyJwtSignature] Unexpected error during JWT signature verification");
+            _logger.LogError(ex, "[UserBillingGAgent][VerifyJwtSignature] Unexpected error during JWT signature verification");
             return false;
         }
         finally
@@ -3592,15 +3597,10 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             payment.InvoiceDetails != null && payment.InvoiceDetails.Any() &&
             payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled));
 
-        _logger.LogInformation("[UserBillingGrain][HasActiveAppleSubscriptionAsync] Has active Apple subscription: {HasActive}", hasActive);
+        _logger.LogInformation("[UserBillingGAgent][HasActiveAppleSubscriptionAsync] Has active Apple subscription: {HasActive}", hasActive);
         return hasActive;
     }
-
-    public Task<UserBillingState> GetUserBillingGrainStateAsync()
-    {
-        return Task.FromResult(State);
-    }
-
+    
     private async Task ProcessInviteeSubscriptionAsync(Guid userId, PlanType planType, bool isUltimate, string invoiceId)
     {
         var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(userId);
@@ -3609,6 +3609,134 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         {
             var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
             await invitationGAgent.ProcessInviteeSubscriptionAsync(userId.ToString(), planType, isUltimate, invoiceId);
+        }
+    }
+
+    protected sealed override void GAgentTransitionState(UserBillingGAgentState state, StateLogEventBase<UserBillingLogEvent> @event)
+    {
+        switch (@event)
+        {
+            case AddPaymentLogEvent addPayment:
+                State.PaymentHistory.Add(addPayment.PaymentSummary);
+                State.TotalPayments++;
+                if (addPayment.PaymentSummary.Status == PaymentStatus.Refunded)
+                {
+                    State.RefundedPayments++;
+                }
+                break;
+
+            case UpdatePaymentLogEvent updatePayment:
+                var paymentIndex = State.PaymentHistory.FindIndex(p => p.PaymentGrainId == updatePayment.PaymentId);
+                if (paymentIndex >= 0)
+                {
+                    State.PaymentHistory[paymentIndex] = updatePayment.PaymentSummary;
+                }
+                break;
+
+            case UpdatePaymentStatusLogEvent updateStatus:
+                var payment = State.PaymentHistory.FirstOrDefault(p => p.PaymentGrainId == updateStatus.PaymentId);
+
+                if (payment != null) {
+                    if (updateStatus.NewStatus == PaymentStatus.Completed && !payment.CompletedAt.HasValue)
+                    {
+                        payment.CompletedAt = DateTime.UtcNow;
+                    }
+                    if (updateStatus.NewStatus == PaymentStatus.Refunded && payment.Status != PaymentStatus.Refunded)
+                    {
+                        State.RefundedPayments++;
+                    }
+                    else if (payment.Status == PaymentStatus.Refunded && updateStatus.NewStatus != PaymentStatus.Refunded)
+                    {
+                        State.RefundedPayments--;
+                    }
+                    payment.Status = updateStatus.NewStatus;
+                }
+                break;
+
+            case ClearAllLogEvent:
+                State.PaymentHistory.Clear();
+                break;
+
+            case UpdateExistingSubscriptionLogEvent updateSubscription:
+                var subscription = State.PaymentHistory.FirstOrDefault(p => p.SubscriptionId == updateSubscription.SubscriptionId);
+                if (subscription != null)
+                {
+                    var index = State.PaymentHistory.IndexOf(subscription);
+                    State.PaymentHistory[index] = updateSubscription.ExistingSubscription;
+                }
+                break;
+
+            case UpdateCustomerIdLogEvent updateCustomerId:
+                State.CustomerId = updateCustomerId.CustomerId;
+                break;
+
+            case UpdatePaymentBySubscriptionIdLogEvent updatePaymentBySubscription:
+                var existingPayment = State.PaymentHistory.FirstOrDefault(p => p.SubscriptionId == updatePaymentBySubscription.SubscriptionId);
+                if (existingPayment != null)
+                {
+                    var index = State.PaymentHistory.IndexOf(existingPayment);
+                    State.PaymentHistory[index] = updatePaymentBySubscription.PaymentSummary;
+                }
+                break;
+
+            case RemovePaymentHistoryLogEvent removePayment:
+                foreach (var record in removePayment.RecordsToRemove)
+                {
+                    State.PaymentHistory.Remove(record);
+                }
+                break;
+
+            case InitializeFromGrainLogEvent initializeFromGrain:
+                State.UserId = this.GetPrimaryKey().ToString();
+                State.IsInitializedFromGrain = true;
+                State.CustomerId = initializeFromGrain.CustomerId;
+                State.PaymentHistory = initializeFromGrain.PaymentHistory;
+                State.TotalPayments = initializeFromGrain.TotalPayments;
+                State.RefundedPayments = initializeFromGrain.RefundedPayments;
+                break;
+
+            case MarkInitializedLogEvent:
+                State.UserId = this.GetPrimaryKey().ToString();
+                State.IsInitializedFromGrain = true;
+                break;
+        }
+    }
+    
+    protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
+    {
+        if (!State.IsInitializedFromGrain)
+        {
+            var userBilling =
+                GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(this.GetPrimaryKey()));
+            var userBillingState = await userBilling.GetUserBillingGrainStateAsync();
+            if (userBillingState != null)
+            {
+                _logger.LogInformation(
+                    "[UserBillingGAgent][OnGAgentActivateAsync] Initializing state from IUserBillingGrain for user {UserId}",
+                    this.GetPrimaryKey().ToString());
+
+                RaiseEvent(new InitializeFromGrainLogEvent
+                {
+                    CustomerId = userBillingState.CustomerId,
+                    PaymentHistory = userBillingState.PaymentHistory,
+                    TotalPayments = userBillingState.TotalPayments,
+                    RefundedPayments = userBillingState.RefundedPayments
+                });
+                await ConfirmEvents();
+
+                _logger.LogDebug(
+                    "[UserBillingGAgent][OnGAgentActivateAsync] State initialized from IUserBillingGrain for user {UserId}",
+                    this.GetPrimaryKey().ToString());
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "[UserBillingGAgent][OnGAgentActivateAsync] No state found in IUserBillingGrain for user {UserId}, marking as initialized",
+                    this.GetPrimaryKey().ToString());
+
+                RaiseEvent(new MarkInitializedLogEvent());
+                await ConfirmEvents();
+            }
         }
     }
 }

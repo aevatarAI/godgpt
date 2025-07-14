@@ -29,7 +29,7 @@ public class TestSiloConfigurator : ISiloConfigurator
         // Use MongoDB storage instead of in-memory storage to achieve data persistence
         var connectionString = configuration.GetConnectionString("Default") ?? "mongodb://127.0.0.1:27017/GodGPT_TwitterIntegration_Tests";
         siloBuilder.UseMongoDBClient(connectionString);
-        siloBuilder.AddMongoDBGrainStorage("DefaultGrainStorage", options =>
+                    siloBuilder.AddMongoDBGrainStorage("PubSubStore", options =>
         {
             options.DatabaseName = "GodGPT_TwitterIntegration_Tests";
         })

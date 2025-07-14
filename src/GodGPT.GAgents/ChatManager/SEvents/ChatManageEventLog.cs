@@ -9,6 +9,12 @@ public class ChatManageEventLog : StateLogEventBase<ChatManageEventLog>
 }
 
 [GenerateSerializer]
+public class CleanExpiredSessionsEventLog : ChatManageEventLog
+{
+    [Id(0)] public DateTime CleanBefore { get; set; }
+}
+
+[GenerateSerializer]
 public class CreateSessionInfoEventLog : ChatManageEventLog
 {
     [Id(0)] public Guid SessionId { get; set; }

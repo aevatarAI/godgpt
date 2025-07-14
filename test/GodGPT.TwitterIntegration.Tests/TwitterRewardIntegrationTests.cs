@@ -50,26 +50,26 @@ public class TwitterRewardIntegrationTests : TwitterIntegrationTestBase
         // Define time range for last 24 hours using simplified TimeRangeDto
         var timeRange = new TimeRangeDto
         {
-            StartTimeUtcSecond = 1751542200,
-            EndTimeUtcSecond = 1751542200 + 600
+            StartTimeUtcSecond = 1751945640,
+            EndTimeUtcSecond = 1751945640 + 600
         };
 
         // Act - refetch tweets by time range
         _logger.LogInformation("Starting refetch by time range test...");
         _logger.LogInformation("Time range: {StartTime} to {EndTime}", timeRange.StartTime, timeRange.EndTime);
 
-        //var resultPre = await tweetMonitor.RefetchTweetsByTimeRangeAsync(timeRange);
+        var resultPre = await tweetMonitor.RefetchTweetsByTimeRangeAsync(timeRange);
 
         // Assert - verify task started successfully
-        //resultPre.ShouldNotBeNull();
-        // if (resultPre.IsSuccess && resultPre.Data)
-        // {
-        //     _logger.LogInformation("✅ Refetch task started successfully: {Message}", resultPre.ErrorMessage);
-        // }
-        // else
-        // {
-        //     _logger.LogWarning("⚠️ Refetch task failed to start: {Message}", resultPre.ErrorMessage);
-        // }
+        resultPre.ShouldNotBeNull();
+         if (resultPre.IsSuccess && resultPre.Data)
+         {
+             _logger.LogInformation("✅ Refetch task started successfully: {Message}", resultPre.ErrorMessage);
+         }
+         else
+         {
+             _logger.LogWarning("⚠️ Refetch task failed to start: {Message}", resultPre.ErrorMessage);
+         }
         /***/
 
         // Get reward calculator instance using configuration

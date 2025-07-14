@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserBilling;
 using Shouldly;
 
 namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
@@ -15,12 +16,12 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing GetStripeCustomerAsync with valid user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // Act
         try
         {
-            var result = await userBillingGrain.GetStripeCustomerAsync(userId.ToString());
+            var result = await userBillingGAgent.GetStripeCustomerAsync(userId.ToString());
             
             // Assert
             result.ShouldNotBeNull();
@@ -31,7 +32,7 @@ public partial class UserBillingGrainTests
             _testOutputHelper.WriteLine($"GetStripeCustomerAsync succeeded, Customer: {result.Customer}");
             
             // Verify customer ID is stored in grain state
-            var customerInfo = await userBillingGrain.GetStripeCustomerAsync(userId.ToString());
+            var customerInfo = await userBillingGAgent.GetStripeCustomerAsync(userId.ToString());
             customerInfo.Customer.ShouldBe(result.Customer, "Customer ID should be consistent between calls");
         }
         catch (Exception ex)
@@ -49,13 +50,13 @@ public partial class UserBillingGrainTests
         // Arrange
         _testOutputHelper.WriteLine("Testing GetStripeCustomerAsync with null user ID");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(
-            CommonHelper.GetUserBillingGAgentId(Guid.NewGuid()));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(
+            Guid.NewGuid());
         
         // Act
         try
         {
-            var result = await userBillingGrain.GetStripeCustomerAsync(null);
+            var result = await userBillingGAgent.GetStripeCustomerAsync(null);
             
             // Assert
             result.ShouldNotBeNull();
@@ -81,17 +82,17 @@ public partial class UserBillingGrainTests
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing multiple calls to GetStripeCustomerAsync with the same user ID: {userId}");
         
-        var userBillingGrain = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId));
+        var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         
         // Act
         try
         {
             // First call
-            var result1 = await userBillingGrain.GetStripeCustomerAsync(userId.ToString());
+            var result1 = await userBillingGAgent.GetStripeCustomerAsync(userId.ToString());
             result1.ShouldNotBeNull();
             
             // Second call
-            var result2 = await userBillingGrain.GetStripeCustomerAsync(userId.ToString());
+            var result2 = await userBillingGAgent.GetStripeCustomerAsync(userId.ToString());
             result2.ShouldNotBeNull();
             
             // Assert
@@ -116,14 +117,14 @@ public partial class UserBillingGrainTests
         var userId2 = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing GetStripeCustomerAsync with different user IDs: {userId1} and {userId2}");
         
-        var userBillingGrain1 = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId1));
-        var userBillingGrain2 = Cluster.GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(userId2));
+        var userBillingGAgent1 = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId1);
+        var userBillingGAgent2 = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId2);
         
         // Act
         try
         {
-            var result1 = await userBillingGrain1.GetStripeCustomerAsync(userId1.ToString());
-            var result2 = await userBillingGrain2.GetStripeCustomerAsync(userId2.ToString());
+            var result1 = await userBillingGAgent1.GetStripeCustomerAsync(userId1.ToString());
+            var result2 = await userBillingGAgent2.GetStripeCustomerAsync(userId2.ToString());
             
             // Assert
             result1.ShouldNotBeNull();

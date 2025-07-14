@@ -64,22 +64,63 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             }
 
             _logger.LogDebug("Searching tweets with query: {Query}", request.Query);
-            // Validate EndTime: if not null, must be at least 10 seconds before current UTC time
+            
+            // Comprehensive time validation to prevent future time searches and unreasonable time ranges
+            var currentUtc = DateTime.UtcNow;
+            var maxPastDays = 7; // Twitter API recent search limit
+            var minPastTime = currentUtc.AddDays(-maxPastDays);
+            
+            // Validate StartTime
+            if (request.StartTime.HasValue)
+            {
+                if (request.StartTime.Value > currentUtc)
+                {
+                    _logger.LogWarning("StartTime {StartTime} is in the future (current: {CurrentTime}). Adjusting to 1 hour ago.", 
+                        request.StartTime.Value, currentUtc);
+                    request.StartTime = currentUtc.AddHours(-1);
+                }
+                else if (request.StartTime.Value < minPastTime)
+                {
+                    _logger.LogWarning("StartTime {StartTime} is too far in the past (limit: {MinTime}). Adjusting to {Days} days ago.", 
+                        request.StartTime.Value, minPastTime, maxPastDays);
+                    request.StartTime = minPastTime;
+                }
+            }
+            
+            // Validate EndTime: if not null, must be at least 30 seconds before current UTC time (increased buffer for API safety)
             if (request.EndTime.HasValue)
             {
-                var currentUtc = DateTime.UtcNow;
-                var minimumEndTime = currentUtc.AddSeconds(-10);
+                var minimumEndTime = currentUtc.AddSeconds(-30);
                 
                 if (request.EndTime.Value > minimumEndTime)
                 {
-                    request.EndTime = currentUtc;
+                    _logger.LogWarning("EndTime {EndTime} is too close to current time or in the future (current: {CurrentTime}). Adjusting to {MinimumEndTime}.", 
+                        request.EndTime.Value, currentUtc, minimumEndTime);
+                    request.EndTime = minimumEndTime;  
+                }
+                else if (request.EndTime.Value < minPastTime)
+                {
+                    _logger.LogWarning("EndTime {EndTime} is too far in the past (limit: {MinTime}). Adjusting to {Days} days ago.", 
+                        request.EndTime.Value, minPastTime, maxPastDays);
+                    request.EndTime = minPastTime;
                 }
             }
+            
+            // Validate time range consistency
+            if (request.StartTime.HasValue && request.EndTime.HasValue && request.StartTime.Value >= request.EndTime.Value)
+            {
+                _logger.LogWarning("StartTime {StartTime} is not before EndTime {EndTime}. Adjusting to 1-hour window ending at EndTime.", 
+                    request.StartTime.Value, request.EndTime.Value);
+                request.StartTime = request.EndTime.Value.AddHours(-1);
+            }
+            
+            _logger.LogInformation("Validated time range - StartTime: {StartTime}, EndTime: {EndTime}, Current: {CurrentTime}", 
+                request.StartTime, request.EndTime, currentUtc);
 
             // Build URL with encoded query parameter
             string encodedQuery = Uri.EscapeDataString(request.Query);
             string url = $"{TWITTER_API_BASE}{SEARCH_TWEETS_ENDPOINT}?query={encodedQuery}&max_results={request.MaxResults}" +
-                        "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
+                        "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations,entities" +
                         "&expansions=author_id&user.fields=id,username,name,public_metrics";
             // Add optional parameters
             if (request.StartTime.HasValue)
@@ -93,7 +134,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             var bearerToken = _options.CurrentValue.BearerToken;
             
             // Log for debugging
-            _logger.LogDebug($"SearchTweetsAsync url--->{url}");
+           _logger.LogInformation($"SearchTweetsAsync url--->{url}");
             //_logger.LogDebug($"SearchTweetsAsync bearerToken--->{bearerToken}");
             
             // Set authorization header using the reference code approach
@@ -102,8 +143,20 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             try
             {
                 var response = await _httpClient.GetAsync(url);
-                response.EnsureSuccessStatusCode();
                 var content = await response.Content.ReadAsStringAsync();
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("SearchTweetsAsync Error: StatusCode={StatusCode}, Content={Content}, url={url}", 
+                        response.StatusCode, content, url);
+                    return new TwitterApiResultDto<SearchTweetsResponseDto>
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = $"Twitter API error {response.StatusCode}: {content}",
+                        StatusCode = (int)response.StatusCode,
+                        Data = new SearchTweetsResponseDto()
+                    };
+                }
                 
                 //_logger.LogDebug("SearchTweetsAsync Response: {resp}", content);
 
@@ -118,8 +171,8 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 };
             }
             catch (HttpRequestException e)
-            {
-                _logger.LogError("SearchTweetsAsync Error: {err}, code: {code}", e.Message, e.Data);
+            { 
+                _logger.LogError("SearchTweetsAsync Error: {err}, code: {code} url: {url}", e.Message, e.Data, url);
                 return new TwitterApiResultDto<SearchTweetsResponseDto>
                 {
                     IsSuccess = false,
@@ -154,10 +207,10 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                 };
             }
 
-            _logger.LogDebug("Getting tweet details for ID: {TweetId}", tweetId);
+            _logger.LogDebug($"Getting tweet details for ID: {tweetId}");
 
             var url = $"{TWITTER_API_BASE}{string.Format(GET_TWEET_ENDPOINT, tweetId)}" +
-                     "?tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
+                     "?tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations,entities" +
                      "&expansions=author_id" +
                      "&user.fields=id,username,name,public_metrics";
 
@@ -380,55 +433,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             };
         }
     }
-
-    public async Task<TwitterApiResultDto<bool>> HasValidShareLinkAsync(string tweetText)
-    {
-        try
-        {
-            var urlsResult = await ExtractUrlsFromTweetAsync(tweetText);
-            if (!urlsResult.IsSuccess)
-            {
-                return new TwitterApiResultDto<bool>
-                {
-                    IsSuccess = false,
-                    ErrorMessage = urlsResult.ErrorMessage,
-                    Data = false
-                };
-            }
-
-            foreach (var url in urlsResult.Data)
-            {
-                var validationResult = await ValidateShareLinkAsync(url);
-                if (validationResult.IsSuccess && validationResult.Data.IsValid)
-                {
-                    return new TwitterApiResultDto<bool>
-                    {
-                        IsSuccess = true,
-                        ErrorMessage = "Valid share link found",
-                        Data = true
-                    };
-                }
-            }
-
-            return new TwitterApiResultDto<bool>
-            {
-                IsSuccess = true,
-                ErrorMessage = "No valid share link found",
-                Data = false
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error checking for valid share link in tweet text");
-            return new TwitterApiResultDto<bool>
-            {
-                IsSuccess = false,
-                ErrorMessage = $"Error checking share link: {ex.Message}",
-                Data = false
-            };
-        }
-    }
-
+    
     #endregion
 
     #region Helper Methods
@@ -648,38 +653,41 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
                     }
                 }
 
-                // Share link validation: Completed during parsing, no link content stored
-                if (!string.IsNullOrEmpty(tweetText))
+                // Share link validation: Extract URLs from entities and text, then filter by ShareLinkDomain
+                var extractedUrls = new List<string>();
+                
+                // Primary method: Extract from entities.urls (expanded URLs)
+                if (dataElement.TryGetProperty("entities", out var entitiesElement) &&
+                    entitiesElement.TryGetProperty("urls", out var urlsElement) &&
+                    urlsElement.ValueKind == JsonValueKind.Array)
                 {
-                    var shareLinksResult = await ExtractShareLinksAsync(tweetText);
-                    if (shareLinksResult.IsSuccess && shareLinksResult.Data.Any())
+                    foreach (var urlElement in urlsElement.EnumerateArray())
                     {
-                        // Validate first share link
-                        var firstShareLink = shareLinksResult.Data.First();
-                        var validationResult = await ValidateShareLinkAsync(firstShareLink);
-                        
-                        if (validationResult.IsSuccess && validationResult.Data.IsValid)
+                        if (urlElement.TryGetProperty("expanded_url", out var expandedUrlElement))
                         {
-                            tweetDetails.HasValidShareLink = true;
-                            // Keep ShareLinkUrl field as empty string, do not store content
-                            tweetDetails.ShareLinkUrl = string.Empty;
+                            var expandedUrl = expandedUrlElement.GetString();
+                            if (!string.IsNullOrEmpty(expandedUrl))
+                            {
+                                extractedUrls.Add(expandedUrl);
+                            }
                         }
-                        else
-                        {
-                            tweetDetails.HasValidShareLink = false;
-                            tweetDetails.ShareLinkUrl = string.Empty;
-                        }
-                    }
-                    else
-                    {
-                        tweetDetails.HasValidShareLink = false;
-                        tweetDetails.ShareLinkUrl = string.Empty;
                     }
                 }
-                else
+
+                // Store extracted URLs for reference
+                tweetDetails.ExtractedUrls = extractedUrls;
+
+                // Validate share links
+                tweetDetails.HasValidShareLink = false;
+                foreach (var url in extractedUrls)
                 {
-                    tweetDetails.HasValidShareLink = false;
-                    tweetDetails.ShareLinkUrl = string.Empty;
+                    if (url.StartsWith(_options.CurrentValue.ShareLinkDomain, StringComparison.OrdinalIgnoreCase))
+                    {
+                        tweetDetails.HasValidShareLink = true;
+                        // Keep ShareLinkUrl field as empty string, do not store content
+                        tweetDetails.ShareLinkUrl = string.Empty;
+                        break;
+                    }
                 }
             }
 
@@ -791,7 +799,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
 
             var url = $"{TWITTER_API_BASE}{GET_TWEETS_ENDPOINT}" +
                       $"?ids={tweetIdsString}" +
-                      "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations" +
+                      "&tweet.fields=id,text,author_id,created_at,public_metrics,referenced_tweets,context_annotations,entities" +
                       "&expansions=author_id" +
                       "&user.fields=id,username,name,public_metrics";
 
@@ -1317,14 +1325,13 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
     {
         try
         {
-            _logger.LogDebug("🔍 Starting lightweight tweet analysis: {TweetId}", tweetId);
+            _logger.LogDebug($"Starting lightweight tweet analysis: {tweetId}");
 
             // Only get detailed tweet information (no user info to reduce API calls)
-            _logger.LogDebug("📄 Getting tweet details: {TweetId}", tweetId);
             var tweetDetailsResult = await GetTweetDetailsAsync(tweetId);
             if (!tweetDetailsResult.IsSuccess)
             {
-                _logger.LogWarning("❌ Failed to get tweet details {TweetId}: {Error}", tweetId, tweetDetailsResult.ErrorMessage);
+                _logger.LogWarning($"❌ Failed to get tweet details {tweetId}: {tweetDetailsResult.ErrorMessage}");
                 return new TwitterApiResultDto<TweetProcessResultDto>
                 {
                     IsSuccess = false,
@@ -1334,8 +1341,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             }
 
             var tweetDetails = tweetDetailsResult.Data;
-            _logger.LogDebug("✅ Tweet details retrieved successfully {TweetId} - Author: @{AuthorHandle} ({AuthorId}), Type: {Type}", 
-                tweetId, tweetDetails.AuthorHandle, tweetDetails.AuthorId, tweetDetails.Type);
+            _logger.LogDebug($"✅ Tweet details retrieved successfully {tweetId} - Author: @{tweetDetails.AuthorHandle} ({ tweetDetails.AuthorId}), Type: {tweetDetails.Type}");
 
             // Create lightweight result (no follower count - will be populated later if needed)
             var result = new TweetProcessResultDto
