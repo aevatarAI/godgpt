@@ -414,7 +414,7 @@ public class JWSTransactionDecodedPayload
 }
 
 /// <summary>
-/// V1版本的App Store服务器通知
+/// V1 version app Store server time
 /// </summary>
 [GenerateSerializer]
 public class AppStoreServerNotification
