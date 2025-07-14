@@ -1,15 +1,7 @@
-using System;
-using System.IO;
-using System.Linq;
-using System.Threading.Tasks;
 using GodGPT.GAgents.SpeechChat;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Shouldly;
-using Xunit;
 using Xunit.Abstractions;
-using Aevatar.Application.Grains.Agents.ChatManager;
 
 namespace Aevatar.GodGPT.Tests.Speech;
 
