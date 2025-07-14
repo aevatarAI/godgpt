@@ -11,6 +11,8 @@ using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserBilling;
+using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -321,17 +323,18 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"[ChatGAgentManager][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
         
         sw.Reset();
-        var sysMessage = await configuration.GetPrompt();
+        //var sysMessage = await configuration.GetPrompt();
         //put user data into the user prompt
         //sysMessage = await AppendUserInfoToSystemPromptAsync(configuration, sysMessage, userProfile);
 
         // Add role-specific prompt if guider is provided
+        var sysMessage = string.Empty;
         if (!string.IsNullOrEmpty(guider))
         {
             var rolePrompt = GetRolePrompt(guider);
             if (!string.IsNullOrEmpty(rolePrompt))
             {
-                sysMessage += $"You should follow the rules below. 1. {rolePrompt}. 2. {sysMessage}";
+                sysMessage = rolePrompt;
                 Logger.LogDebug($"[ChatGAgentManager][CreateSessionAsync] Added role prompt for guider: {guider}");
             }
         }
@@ -416,8 +419,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
 
         // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        var actionResult = await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(),
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        var actionResult = await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(),
             CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         if (!actionResult.Success)
         {
@@ -459,9 +462,9 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"StreamChatWithSessionAsync - step1,time use:{sw.ElapsedMilliseconds}");
 
         // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGrain =
-            GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        var actionResult = await userQuotaGrain.ExecuteActionAsync(sessionId.ToString(),
+        var userQuotaGAgent =
+            GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        var actionResult = await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(),
             CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
         if (!actionResult.Success)
         {
@@ -504,8 +507,24 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         Logger.LogDebug($"StreamChatWithSessionAsync - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
-    public Task<List<SessionInfoDto>> GetSessionListAsync()
+    public async Task<List<SessionInfoDto>> GetSessionListAsync()
     {
+        // Clean expired sessions (7 days old and empty title)
+        var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
+        var hasExpiredSessions = State.SessionInfoList.Any(s => 
+            s.CreateAt <= sevenDaysAgo && 
+            string.IsNullOrEmpty(s.Title));
+
+        if (hasExpiredSessions)
+        {
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionListAsync] Cleaning sessions older than {sevenDaysAgo}");
+            RaiseEvent(new CleanExpiredSessionsEventLog
+            {
+                CleanBefore = sevenDaysAgo
+            });
+            await ConfirmEvents();
+        }
+
         var result = new List<SessionInfoDto>();
         
         foreach (var item in State.SessionInfoList)
@@ -524,7 +543,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             });
         }
 
-        return Task.FromResult(result);
+        return result;
     }
 
     public async Task<List<SessionInfoDto>> SearchSessionsAsync(string keyword, int maxResults = 1000)
@@ -805,11 +824,11 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         //Do not clear the content of ShareGrain. When querying, first determine whether the Session exists
         // Record the event to clear all sessions
-        var quotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        await quotaGrain.ClearAllAsync();
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        await userQuotaGAgent.ClearAllAsync();
 
-        var billingGrain = GrainFactory.GetGrain<IUserBillingGrain>(CommonHelper.GetUserBillingGAgentId(this.GetPrimaryKey()));
-        await billingGrain.ClearAllAsync();
+        var userBillingGAgent = GrainFactory.GetGrain<IUserBillingGAgent>(this.GetPrimaryKey());
+        await userBillingGAgent.ClearAllAsync();
 
         RaiseEvent(new ClearAllEventLog());
         await ConfirmEvents();
@@ -861,28 +880,31 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     public async Task<UserProfileDto> GetUserProfileAsync()
     {
         Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] userId: {this.GetPrimaryKey().ToString()}");
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        var credits = await userQuotaGrain.GetCreditsAsync();
-        var subscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync();
-        var ultimateSubscriptionInfo = await userQuotaGrain.GetAndSetSubscriptionAsync(true);
-
-        var utcNow = DateTime.UtcNow;
+        
         var invitationGrain = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
-        var scheduledRewards = (await invitationGrain.GetRewardHistoryAsync())
-            .Where(r => r.IsScheduled && 
-           r.ScheduledDate.HasValue && 
-           utcNow > r.ScheduledDate.Value && 
-           !string.IsNullOrEmpty(r.InvoiceId))
-            .ToList();
-            
-        foreach (var reward in scheduledRewards)
-        {
-            Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Processing scheduled reward for user {this.GetPrimaryKey()}, credits: {reward.Credits}");
-            await userQuotaGrain.AddCreditsAsync(reward.Credits);
-            await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
-            credits.Credits += reward.Credits;
-        }
+        await invitationGrain.ProcessScheduledRewardAsync();
+        
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+        var credits = await userQuotaGAgent.GetCreditsAsync();
+        var subscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync();
+        var ultimateSubscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync(true);
 
+        // var utcNow = DateTime.UtcNow;
+        // var scheduledRewards = (await invitationGrain.GetRewardHistoryAsync())
+        //     .Where(r => r.IsScheduled && 
+        //    r.ScheduledDate.HasValue && 
+        //    utcNow > r.ScheduledDate.Value && 
+        //    !string.IsNullOrEmpty(r.InvoiceId))
+        //     .ToList();
+        //     
+        // foreach (var reward in scheduledRewards)
+        // {
+        //     Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Processing scheduled reward for user {this.GetPrimaryKey()}, credits: {reward.Credits}");
+        //     await userQuotaGAgent.AddCreditsAsync(reward.Credits);
+        //     await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
+        //     credits.Credits += reward.Credits;
+        // }
+        
         return new UserProfileDto
         {
             Gender = State.Gender,
@@ -981,7 +1003,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
         
         // Step 1: First, check if the current user (invitee) is eligible for the reward.
-        var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
 
         if (State.RegisteredAtUtc == null && State.SessionInfoList.IsNullOrEmpty())
         {
@@ -1011,7 +1033,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Logger.LogWarning($"State.RegisteredAtUtc userId:{this.GetPrimaryKey().ToString()} RegisteredAtUtc={registeredAtUtc.Value} now={now} minutes={minutes}");
             //
             
-            redeemResult = await userQuotaGrain.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
+            redeemResult = await userQuotaGAgent.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
         }
 
         if (!redeemResult)
@@ -1088,6 +1110,24 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 }
                 State.SessionInfoList.RemoveAll(f => f.SessionId == @deleteSessionEventLog.SessionId);
                 break;
+            case CleanExpiredSessionsEventLog @cleanExpiredSessionsEventLog:
+                var expiredSessionIds = State.SessionInfoList
+                    .Where(s => s.CreateAt <= @cleanExpiredSessionsEventLog.CleanBefore && 
+                               string.IsNullOrEmpty(s.Title))
+                    .Select(s => s.SessionId)
+                    .ToList();
+                
+                foreach (var expiredSessionId in expiredSessionIds)
+                {
+                    var expiredSession = State.GetSession(expiredSessionId);
+                    if (expiredSession != null && !expiredSession.ShareIds.IsNullOrEmpty())
+                    {
+                        State.CurrentShareCount -= expiredSession.ShareIds.Count;
+                    }
+                }
+                
+                State.SessionInfoList.RemoveAll(s => expiredSessionIds.Contains(s.SessionId));
+                break;
             case RenameTitleEventLog @renameTitleEventLog:
                 Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] event:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
                 var sessionInfoList = State.SessionInfoList;
@@ -1140,23 +1180,23 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
     protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
     {
-        var configuration = GetConfiguration();
-        
-        var llm = await configuration.GetSystemLLM();
-        var streamingModeEnabled = false;
-        if (State.SystemLLM != llm || State.StreamingModeEnabled != streamingModeEnabled)
-        {
-            await InitializeAsync(new InitializeDto()
-            {
-                Instructions = "Please summarize the following content briefly, with no more than 8 words.",
-                LLMConfig = new LLMConfigDto() { SystemLLM = await configuration.GetSystemLLM(), },
-                StreamingModeEnabled = streamingModeEnabled,
-                StreamingConfig = new StreamingConfig()
-                {
-                    BufferingSize = 32,
-                }
-            });
-        }
+        // var configuration = GetConfiguration();
+        //
+        // var llm = await configuration.GetSystemLLM();
+        // var streamingModeEnabled = false;
+        // if (State.SystemLLM != llm || State.StreamingModeEnabled != streamingModeEnabled)
+        // {
+        //     await InitializeAsync(new InitializeDto()
+        //     {
+        //         Instructions = "Please summarize the following content briefly, with no more than 8 words.",
+        //         LLMConfig = new LLMConfigDto() { SystemLLM = await configuration.GetSystemLLM(), },
+        //         StreamingModeEnabled = streamingModeEnabled,
+        //         StreamingConfig = new StreamingConfig()
+        //         {
+        //             BufferingSize = 32,
+        //         }
+        //     });
+        // }
 
         if (State.MaxShareCount == 0)
         {

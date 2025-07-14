@@ -8,7 +8,6 @@ using Aevatar.Application.Grains.ChatManager.UserBilling;
 using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.Configuration;
 
-
 namespace Aevatar.Application.Grains;
 
 [DependsOn(
@@ -26,6 +25,9 @@ public class GodGPTGAgentModule : AbpModule
         Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"));
         Configure<ApplePayOptions>(configuration.GetSection("ApplePay"));
         Configure<AnonymousGodGPTOptions>(configuration.GetSection("AnonymousGodGPT"));
+        Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"));
+        Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
+
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
         // Register speech services
         context.Services.AddSingleton<ISpeechService, SpeechService>();

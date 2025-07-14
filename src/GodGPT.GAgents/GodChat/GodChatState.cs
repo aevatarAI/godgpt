@@ -11,12 +11,14 @@ public class GodChatState:ChatGAgentState
     [Obsolete("This class is deprecated and no longer in use.")]
     [Id(3)] public List<Guid> AIAgentIds { get; set; } = new List<Guid>();
     [Id(4)] public Dictionary<string, List<Guid>> RegionProxies = new ();
+    [Id(5)] public DateTime? FirstChatTime { get; set; }
+    [Id(6)] public DateTime? LastChatTime { get; set; }
     
     /// <summary>
     /// Metadata for chat messages including voice-related information
     /// Parallel list to ChatHistory from base class
     /// </summary>
-    [Id(5)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
+    [Id(7)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
 }
 
 [GenerateSerializer]

@@ -3,6 +3,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserQuota;
 using Shouldly;
 using Xunit.Abstractions;
 
@@ -199,7 +200,7 @@ public class UserInvitationsTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoud
             invitationStatsDto.TotalInvites.ShouldBe(1);
             invitationStatsDto.ValidInvites.ShouldBe(0);
             invitationStatsDto.InviteCode.ShouldBe(inviteCode);
-            var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(inviterId));
+            var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(inviterId);
             var creditsInfoDto = await userQuotaGrain.GetCreditsAsync();
             creditsInfoDto.Credits.ShouldBe(420);
         }
@@ -234,7 +235,7 @@ public class UserInvitationsTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoud
             invitationStatsDto.TotalInvites.ShouldBe(1);
             invitationStatsDto.ValidInvites.ShouldBe(0);
             invitationStatsDto.InviteCode.ShouldBe(inviteCode);
-            var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGrain>(CommonHelper.GetUserQuotaGAgentId(inviterId));
+            var userQuotaGrain = Cluster.GrainFactory.GetGrain<IUserQuotaGAgent>(inviterId);
             var creditsInfoDto = await userQuotaGrain.GetCreditsAsync();
             creditsInfoDto.Credits.ShouldBe(320);
             var userProfileDto = await chatManagerGAgent.GetUserProfileAsync();
@@ -386,5 +387,31 @@ public class UserInvitationsTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoud
             _testOutputHelper.WriteLine($"Stack trace: {ex.StackTrace}");
             _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
         }
+    }
+
+    [Fact]
+    public async Task ProcessTwitterRewardAsyncTest()
+    {
+        var inviterId = Guid.NewGuid();
+        var invitationGAgent = Cluster.GrainFactory.GetGrain<IInvitationGAgent>(inviterId);
+        var chatManagerGAgent = Cluster.GrainFactory.GetGrain<IChatManagerGAgent>(inviterId);
+            
+        var inviteCode = await chatManagerGAgent.GenerateInviteCodeAsync();
+        inviteCode.ShouldNotBeEmpty();
+
+        var twitterUserId = Guid.NewGuid().ToString();
+        await invitationGAgent.ProcessTwitterRewardAsync(twitterUserId, 100);
+
+        var invitationStatsDto = await invitationGAgent.GetInvitationStatsAsync();
+        invitationStatsDto.TotalCreditsFromX.ShouldBe(100);
+        invitationStatsDto.TotalCreditsEarned.ShouldBe(0);
+
+        var pagedResultDto = await invitationGAgent.GetRewardHistoryAsync(new GetRewardHistoryRequestDto
+        {
+            PageNo = 1,
+            PageSize = 10,
+            RewardType = null
+        });
+        pagedResultDto.TotalCount.ShouldBe(1);
     }
 }

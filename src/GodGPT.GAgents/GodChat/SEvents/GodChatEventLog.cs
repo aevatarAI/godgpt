@@ -43,6 +43,12 @@ public class UpdateRegionProxiesLogEvent : GodChatEventLog
 }
 
 [GenerateSerializer]
+public class UpdateChatTimeEventLog : GodChatEventLog
+{
+    [Id(0)] public DateTime ChatTime { get; set; }
+}
+
+[GenerateSerializer]
 public class AddChatMessageMetasLogEvent : GodChatEventLog
 {
     [Id(0)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<ChatMessageMeta>();

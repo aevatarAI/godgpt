@@ -16,6 +16,9 @@ public class AevatarGodGPTTestsMoudle : AbpModule
         base.ConfigureServices(context);
         var configuration = context.Services.GetConfiguration();
         Configure<StripeOptions>(configuration.GetSection("Stripe"));
+        
+        //TwitterRewardOptions
+        Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
     }
 }
