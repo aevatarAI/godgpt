@@ -933,16 +933,20 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 var accumulatedText = textAccumulator.ToString();
                 var completeSentence = ExtractCompleteSentence(accumulatedText, textAccumulator, chatContent.IsLastChunk);
                 
+                Logger.LogDebug($"[ChatMessageCallbackAsync] ExtractCompleteSentence result: '{completeSentence}'");
+                
                 if (!string.IsNullOrEmpty(completeSentence))
                 {
                     try
                     {
                         // Clean text for speech synthesis (remove markdown and math formulas)
                         var cleanedText = CleanTextForSpeech(completeSentence, voiceLanguage);
+                        Logger.LogDebug($"[ChatMessageCallbackAsync] CleanedText: '{cleanedText}'");
                         
                         // Skip synthesis if cleaned text has no meaningful content
                         if (HasMeaningfulContent(cleanedText))
                         {
+                            Logger.LogDebug($"[ChatMessageCallbackAsync] Starting voice synthesis for: '{cleanedText}'");
                             // Synthesize voice for cleaned sentence
                             var voiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
                             partialMessage.AudioData = voiceResult.AudioData;
@@ -953,8 +957,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                         }
                         else
                         {
-                            Logger.LogDebug(
-                                $"[GodChatGAgent][ChatMessageCallbackAsync] Skipped voice synthesis for sentence too short after cleaning: {cleanedText}");
+                            Logger.LogDebug($"[ChatMessageCallbackAsync] Skipped voice synthesis - no meaningful content in: '{cleanedText}'");
                         }
                     }
                     catch (Exception ex)
@@ -962,6 +965,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                         Logger.LogError(ex,
                             $"[GodChatGAgent][ChatMessageCallbackAsync] Voice synthesis failed for sentence: {completeSentence}");
                     }
+                }
+                else
+                {
+                    Logger.LogDebug($"[ChatMessageCallbackAsync] No complete sentence extracted from accumulated text: '{textAccumulator.ToString()}'");
                 }
                 
                 // Clean up accumulator if this is the last chunk
@@ -1165,7 +1172,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         // Remove all punctuation and check if there's actual content
         var cleanText = System.Text.RegularExpressions.Regex.Replace(text, @"[^\w\u4e00-\u9fff]", "");
-        return cleanText.Length > 0; // At least one letter or Chinese character
+        var result = cleanText.Length > 0; // At least one letter or Chinese character
+        
+        // Add debug logging for troubleshooting
+        Console.WriteLine($"[HasMeaningfulContent] Input: '{text}' -> Clean: '{cleanText}' -> Length: {cleanText.Length} -> Result: {result}");
+        
+        return result;
     }
 
     /// <summary>
@@ -1177,14 +1189,23 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     /// <returns>Complete sentence if found, otherwise null</returns>
     private string ExtractCompleteSentence(string accumulatedText, StringBuilder textAccumulator, bool isLastChunk = false)
     {
+        Logger.LogDebug($"[ExtractCompleteSentence] Input: '{accumulatedText}', isLastChunk: {isLastChunk}");
+        
         if (string.IsNullOrEmpty(accumulatedText))
+        {
+            Logger.LogDebug("[ExtractCompleteSentence] Returning null - empty input");
             return null;
+        }
+
+        var hasMeaningfulContent = HasMeaningfulContent(accumulatedText);
+        Logger.LogDebug($"[ExtractCompleteSentence] HasMeaningfulContent: {hasMeaningfulContent}");
 
         // If this is the last chunk and has meaningful content, return all remaining text
-        if (isLastChunk && HasMeaningfulContent(accumulatedText))
+        if (isLastChunk && hasMeaningfulContent)
         {
             var finalSentence = accumulatedText.Trim();
             textAccumulator.Clear();
+            Logger.LogDebug($"[ExtractCompleteSentence] Returning final sentence: '{finalSentence}'");
             return finalSentence;
         }
 
