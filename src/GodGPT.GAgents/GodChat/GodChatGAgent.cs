@@ -959,24 +959,35 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     {
                         // Clean text for speech synthesis (remove markdown and math formulas)
                         var cleanedText = CleanTextForSpeech(completeSentence, voiceLanguage);
-                        Logger.LogDebug($"[ChatMessageCallbackAsync] CleanedText: '{cleanedText}'");
+                        Logger.LogInformation($"[VOICE_DEBUG] CompleteSentence: '{completeSentence}' -> CleanedText: '{cleanedText}'");
                         
                         // Skip synthesis if cleaned text has no meaningful content
-                        if (HasMeaningfulContent(cleanedText))
+                        var hasMeaningful = HasMeaningfulContent(cleanedText);
+                        Logger.LogInformation($"[VOICE_DEBUG] HasMeaningfulContent('{cleanedText}') = {hasMeaningful}");
+                        
+                        if (hasMeaningful)
                         {
-                            Logger.LogDebug($"[ChatMessageCallbackAsync] Starting voice synthesis for: '{cleanedText}'");
+                            Logger.LogInformation($"[VOICE_DEBUG] Starting voice synthesis for: '{cleanedText}', language: {voiceLanguage}");
                             
-                            // Synthesize voice for cleaned sentence
-                            var voiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
-                            partialMessage.AudioData = voiceResult.AudioData;
-                            partialMessage.AudioMetadata = voiceResult.Metadata;
-                            
-                            Logger.LogDebug(
-                                $"[GodChatGAgent][ChatMessageCallbackAsync] Synthesized voice for cleaned sentence: {cleanedText}");
+                            try
+                            {
+                                // Synthesize voice for cleaned sentence
+                                var voiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
+                                Logger.LogInformation($"[VOICE_DEBUG] Voice synthesis completed. AudioData null? {voiceResult.AudioData == null}, AudioData length: {voiceResult.AudioData?.Length ?? 0}");
+                                
+                                partialMessage.AudioData = voiceResult.AudioData;
+                                partialMessage.AudioMetadata = voiceResult.Metadata;
+                                
+                                Logger.LogInformation($"[VOICE_DEBUG] AudioData and metadata assigned to partialMessage");
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.LogError(ex, $"[VOICE_DEBUG] Voice synthesis failed for text: '{cleanedText}'");
+                            }
                         }
                         else
                         {
-                            Logger.LogDebug($"[ChatMessageCallbackAsync] Skipped voice synthesis - no meaningful content in: '{cleanedText}'");
+                            Logger.LogInformation($"[VOICE_DEBUG] Skipped voice synthesis - no meaningful content in: '{cleanedText}'");
                         }
                     }
                     catch (Exception ex)
@@ -999,6 +1010,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 }
             }
         }
+
+        // Final debug log before sending to client
+        Logger.LogInformation($"[VOICE_DEBUG] Final message before sending: AudioData null? {partialMessage.AudioData == null}, AudioData length: {partialMessage.AudioData?.Length ?? 0}, Response: '{partialMessage.Response}', IsLastChunk: {partialMessage.IsLastChunk}");
 
         if (contextDto.MessageId.IsNullOrWhiteSpace())
         {
