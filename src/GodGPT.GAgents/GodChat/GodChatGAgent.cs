@@ -45,7 +45,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     // Key: chatId, Value: accumulated text buffer for sentence detection
     private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new Dictionary<string, StringBuilder>();
     // Voice synthesis sentence detection
-    private static readonly List<char> SentenceEnders = new List<char> { '.', '?', '!', '。', '？', '！' };
+    // Extended sentence ending characters including punctuation marks for semantic pauses
+    private static readonly List<char> SentenceEnders = new List<char> 
+    { 
+        '.', '?', '!', '。', '？', '！',  // Complete sentence endings
+        ',', ';', ':', '，', '；', '：', // Semantic pause markers
+        '\n', '\r'  // Line breaks also indicate pauses
+    };
     private static readonly int MinSentenceLength = 10;
     
     // Regular expressions for cleaning text before speech synthesis
@@ -925,7 +931,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 
                 // Check for complete sentences in accumulated text
                 var accumulatedText = textAccumulator.ToString();
-                var completeSentence = ExtractCompleteSentence(accumulatedText, textAccumulator);
+                var completeSentence = ExtractCompleteSentence(accumulatedText, textAccumulator, chatContent.IsLastChunk);
                 
                 if (!string.IsNullOrEmpty(completeSentence))
                 {
@@ -934,8 +940,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                         // Clean text for speech synthesis (remove markdown and math formulas)
                         var cleanedText = CleanTextForSpeech(completeSentence, voiceLanguage);
                         
-                        // Skip synthesis if cleaned text is too short or empty
-                        if (!string.IsNullOrWhiteSpace(cleanedText) && cleanedText.Length >= MinSentenceLength)
+                        // Skip synthesis if cleaned text has no meaningful content
+                        if (HasMeaningfulContent(cleanedText))
                         {
                             // Synthesize voice for cleaned sentence
                             var voiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
@@ -961,42 +967,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 // Clean up accumulator if this is the last chunk
                 if (chatContent.IsLastChunk)
                 {
-                    // Process any remaining text as final sentence if long enough
-                    var remainingText = textAccumulator.ToString().Trim();
-                    if (!string.IsNullOrEmpty(remainingText) && remainingText.Length >= MinSentenceLength)
-                    {
-                        try
-                        {
-                            // Clean remaining text for speech synthesis
-                            var cleanedRemainingText = CleanTextForSpeech(remainingText, voiceLanguage);
-                            
-                            if (!string.IsNullOrWhiteSpace(cleanedRemainingText) && cleanedRemainingText.Length >= MinSentenceLength)
-                            {
-                                var finalVoiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedRemainingText, voiceLanguage);
-                                // If current message doesn't have audio data, use final synthesis
-                                if (partialMessage.AudioData == null || partialMessage.AudioData.Length == 0)
-                                {
-                                    partialMessage.AudioData = finalVoiceResult.AudioData;
-                                    partialMessage.AudioMetadata = finalVoiceResult.Metadata;
-                                }
-                                
-                                Logger.LogDebug(
-                                    $"[GodChatGAgent][ChatMessageCallbackAsync] Final voice synthesis for cleaned remaining text: {cleanedRemainingText}");
-                            }
-                            else
-                            {
-                                Logger.LogDebug(
-                                    $"[GodChatGAgent][ChatMessageCallbackAsync] Skipped final voice synthesis - remaining text too short after cleaning: {cleanedRemainingText}");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.LogError(ex,
-                                $"[GodChatGAgent][ChatMessageCallbackAsync] Final voice synthesis failed for: {remainingText}");
-                        }
-                    }
-                    
                     // Clean up accumulator for this chat session
+                    // Note: Final sentence processing is already handled in ExtractCompleteSentence method
                     VoiceTextAccumulators.Remove(contextDto.ChatId);
                 }
             }
@@ -1168,17 +1140,32 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     /// Check if the text chunk contains a complete sentence
     /// </summary>
     /// <param name="text">Text to check</param>
-    /// <returns>True if text ends with sentence punctuation</returns>
+    /// <returns>True if text ends with sentence punctuation and has meaningful content</returns>
     private bool IsSentenceComplete(string text)
     {
         if (string.IsNullOrEmpty(text))
             return false;
 
         var trimmedText = text.Trim();
-        if (trimmedText.Length < MinSentenceLength)
+        if (!HasMeaningfulContent(trimmedText))
             return false;
 
         return SentenceEnders.Any(ending => trimmedText.EndsWith(ending));
+    }
+
+    /// <summary>
+    /// Checks if the text contains meaningful content (letters or Chinese characters)
+    /// </summary>
+    /// <param name="text">Text to check</param>
+    /// <returns>True if text contains meaningful content, false otherwise</returns>
+    private static bool HasMeaningfulContent(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return false;
+        
+        // Remove all punctuation and check if there's actual content
+        var cleanText = System.Text.RegularExpressions.Regex.Replace(text, @"[^\w\u4e00-\u9fff]", "");
+        return cleanText.Length > 0; // At least one letter or Chinese character
     }
 
     /// <summary>
@@ -1186,11 +1173,20 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     /// </summary>
     /// <param name="accumulatedText">The full accumulated text</param>
     /// <param name="textAccumulator">The accumulator to update</param>
+    /// <param name="isLastChunk">Whether this is the last chunk of the stream</param>
     /// <returns>Complete sentence if found, otherwise null</returns>
-    private string ExtractCompleteSentence(string accumulatedText, StringBuilder textAccumulator)
+    private string ExtractCompleteSentence(string accumulatedText, StringBuilder textAccumulator, bool isLastChunk = false)
     {
         if (string.IsNullOrEmpty(accumulatedText))
             return null;
+
+        // If this is the last chunk and has meaningful content, return all remaining text
+        if (isLastChunk && HasMeaningfulContent(accumulatedText))
+        {
+            var finalSentence = accumulatedText.Trim();
+            textAccumulator.Clear();
+            return finalSentence;
+        }
 
         int extractIndex = -1;
         
@@ -1199,8 +1195,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             if (SentenceEnders.Contains(accumulatedText[i]))
             {
-                // Check if this creates a sentence of minimum length
-                if (i + 1 >= MinSentenceLength)
+                // Only check if there's meaningful content, no length restriction
+                var potentialSentence = accumulatedText.Substring(0, i + 1);
+                if (HasMeaningfulContent(potentialSentence))
                 {
                     extractIndex = i;
                     break;
