@@ -909,28 +909,45 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         };
 
         // Check if this is a voice chat and handle real-time voice synthesis
+        Logger.LogDebug($"[ChatMessageCallbackAsync] MessageId: '{contextDto.MessageId}', ResponseContent: '{chatContent.ResponseContent}'");
+        
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
         {
             var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
             bool isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+            
+            Logger.LogDebug($"[ChatMessageCallbackAsync] IsVoiceChat: {isVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
 
             if (isVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
             {
+                Logger.LogDebug($"[ChatMessageCallbackAsync] Entering voice chat processing logic");
+                
                 // Safe type conversion to handle both int and long from JSON deserialization
                 var voiceLanguageValue = messageData.GetValueOrDefault("VoiceLanguage", 0);
                 var voiceLanguage = (VoiceLanguageEnum)Convert.ToInt32(voiceLanguageValue);
+                
+                Logger.LogDebug($"[ChatMessageCallbackAsync] VoiceLanguage: {voiceLanguage}, ChatId: {contextDto.ChatId}");
                 
                 // Get or create text accumulator for this chat session
                 if (!VoiceTextAccumulators.ContainsKey(contextDto.ChatId))
                 {
                     VoiceTextAccumulators[contextDto.ChatId] = new StringBuilder();
+                    Logger.LogDebug($"[ChatMessageCallbackAsync] Created new text accumulator for chat: {contextDto.ChatId}");
+                }
+                else
+                {
+                    Logger.LogDebug($"[ChatMessageCallbackAsync] Using existing text accumulator for chat: {contextDto.ChatId}");
                 }
                 
                 var textAccumulator = VoiceTextAccumulators[contextDto.ChatId];
                 textAccumulator.Append(chatContent.ResponseContent);
                 
+                Logger.LogDebug($"[ChatMessageCallbackAsync] Appended text: '{chatContent.ResponseContent}', IsLastChunk: {chatContent.IsLastChunk}");
+                
                 // Check for complete sentences in accumulated text
                 var accumulatedText = textAccumulator.ToString();
+                Logger.LogDebug($"[ChatMessageCallbackAsync] Total accumulated text: '{accumulatedText}'");
+                
                 var completeSentence = ExtractCompleteSentence(accumulatedText, textAccumulator, chatContent.IsLastChunk);
                 
                 Logger.LogDebug($"[ChatMessageCallbackAsync] ExtractCompleteSentence result: '{completeSentence}'");
