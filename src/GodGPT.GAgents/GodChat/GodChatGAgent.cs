@@ -862,8 +862,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
         Logger.LogDebug(
             $"[GodChatGAgent][ChatMessageCallbackAsync] sessionId {contextDto.RequestId.ToString()}, chatId {contextDto.ChatId}, messageId {contextDto.MessageId}, {JsonConvert.SerializeObject(chatContent)}");
+        
+        // Trace execution flow for debugging voice processing issues
+        Logger.LogInformation($"[EXECUTION_TRACE] Step 1: IsAggregationMsg = {chatContent.IsAggregationMsg}");
+        
         if (chatContent.IsAggregationMsg)
         {
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 2: Starting aggregation message processing");
+            
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 3: Raising chat history event");
             RaiseEvent(new AddChatHistoryLogEvent
             {
                 ChatList = new List<ChatMessage>()
@@ -876,27 +883,43 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 }
             });
 
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 4: Raising time update event");
             RaiseEvent(new UpdateChatTimeEventLog
             {
                 ChatTime = DateTime.UtcNow
             });
             
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 5: Raising message meta event");
             RaiseEvent(new AddChatMessageMetasLogEvent
             {
                 ChatMessageMetas = new List<ChatMessageMeta>()
             });
 
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 6: Before ConfirmEvents");
             await ConfirmEvents();
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 7: After ConfirmEvents");
 
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 8: Before invitation processing");
             var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
             var inviterId = await chatManagerGAgent.GetInviterAsync();
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 9: Retrieved inviterId: {inviterId}");
+            
             if (inviterId != null && inviterId != Guid.Empty)
             {
+                Logger.LogInformation($"[EXECUTION_TRACE] Step 10: Processing invitation completion");
                 var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
                 await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                Logger.LogInformation($"[EXECUTION_TRACE] Step 11: Invitation processing completed");
             }
+            else
+            {
+                Logger.LogInformation($"[EXECUTION_TRACE] Step 10-11: Skipped invitation processing (no inviter)");
+            }
+            
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 12: Aggregation processing completed");
         }
 
+        Logger.LogInformation($"[EXECUTION_TRACE] Step 13: Creating partialMessage");
         var partialMessage = new ResponseStreamGodChat()
         {
             Response = chatContent.ResponseContent,
@@ -906,18 +929,24 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             SessionId = contextDto.RequestId
         };
 
+        Logger.LogInformation($"[EXECUTION_TRACE] Step 14: About to check voice processing conditions");
         // Check if this is a voice chat and handle real-time voice synthesis
         Logger.LogDebug($"[ChatMessageCallbackAsync] MessageId: '{contextDto.MessageId}', ResponseContent: '{chatContent.ResponseContent}'");
         
+        Logger.LogInformation($"[EXECUTION_TRACE] Step 15: Checking MessageId null/empty: {contextDto.MessageId.IsNullOrWhiteSpace()}");
+        
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
         {
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 16: Parsing MessageId JSON");
             var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
             var isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
             
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 17: IsVoiceChat = {isVoiceChat}, HasResponseContent = {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
             Logger.LogDebug($"[ChatMessageCallbackAsync] IsVoiceChat: {isVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
 
             if (isVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
             {
+                Logger.LogInformation($"[EXECUTION_TRACE] Step 18: Entering voice processing logic");
                 Logger.LogDebug($"[ChatMessageCallbackAsync] Entering voice chat processing logic");
                 
                 // Safe type conversion to handle both int and long from JSON deserialization
@@ -1011,13 +1040,19 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // Final debug log before sending to client
         Logger.LogInformation($"[VOICE_DEBUG] Final message before sending: AudioData null? {partialMessage.AudioData == null}, AudioData length: {partialMessage.AudioData?.Length ?? 0}, Response: '{partialMessage.Response}', IsLastChunk: {partialMessage.IsLastChunk}");
 
+        Logger.LogInformation($"[EXECUTION_TRACE] Step 19: Preparing to send message to client");
+        
         if (contextDto.MessageId.IsNullOrWhiteSpace())
         {
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 20: Publishing message via SignalR");
             await PublishAsync(partialMessage);
+            Logger.LogInformation($"[EXECUTION_TRACE] Step 21: Message published successfully");
             return;
         }
 
+        Logger.LogInformation($"[EXECUTION_TRACE] Step 20: Pushing message to HTTP client");
         await PushMessageToClientAsync(partialMessage);
+        Logger.LogInformation($"[EXECUTION_TRACE] Step 21: Message pushed successfully");
     }
 
     public async Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content, string chatId,
