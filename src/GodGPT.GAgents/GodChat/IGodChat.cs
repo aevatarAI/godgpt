@@ -1,5 +1,6 @@
 using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
+using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -19,6 +20,9 @@ public interface IGodChat : IGAgent
 
     [ReadOnly]
     Task<List<ChatMessage>> GetChatMessageAsync();
+    
+    [ReadOnly]
+    Task<List<ChatMessageWithMetaDto>> GetChatMessageWithMetaAsync();
 
     Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);

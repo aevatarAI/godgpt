@@ -4,6 +4,7 @@ using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
@@ -762,6 +763,24 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
         var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
         return await godChat.GetChatMessageAsync();
+    }
+
+    public async Task<List<ChatMessageWithMetaDto>> GetSessionMessageListWithMetaAsync(Guid sessionId)
+    {
+        Logger.LogDebug($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}");
+        var sessionInfo = State.GetSession(sessionId);
+        
+        if (sessionInfo == null)
+        {
+            Logger.LogWarning($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - Session not found: {sessionId}");
+            throw new UserFriendlyException($"Unable to load conversation {sessionId}");
+        }
+
+        var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
+        var result = await godChat.GetChatMessageWithMetaAsync();
+        
+        Logger.LogDebug($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}, returned {result.Count} messages with audio metadata");
+        return result;
     }
 
     public async Task<SessionCreationInfoDto?> GetSessionCreationInfoAsync(Guid sessionId)
