@@ -43,16 +43,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
-    private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new Dictionary<string, StringBuilder>();
+    private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new();
     // Voice synthesis sentence detection
     // Extended sentence ending characters including punctuation marks for semantic pauses
-    private static readonly List<char> SentenceEnders = new List<char> 
-    { 
-        '.', '?', '!', '。', '？', '！',  // Complete sentence endings
+    private static readonly List<char> SentenceEnders =
+    [
+        '.', '?', '!', '。', '？', '！', // Complete sentence endings
         ',', ';', ':', '，', '；', '：', // Semantic pause markers
-        '\n', '\r'  // Line breaks also indicate pauses
-    };
-    private static readonly int MinSentenceLength = 10;
+        '\n', '\r'
+    ];
     
     // Regular expressions for cleaning text before speech synthesis
     private static readonly Regex MarkdownLinkRegex = new Regex(@"\[([^\]]+)\]\([^\)]+\)", RegexOptions.Compiled);
@@ -465,13 +464,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
     private async Task SetSessionTitleAsync(Guid sessionId, string content)
     {
-        var title = "";
-
         if (State.Title.IsNullOrEmpty())
         {
             var sw = Stopwatch.StartNew();
             // Take first 4 words and limit total length to 100 characters
-            title = string.Join(" ", content.Split(" ").Take(4));
+            var title = string.Join(" ", content.Split(" ").Take(4));
             if (title.Length > 100)
             {
                 title = title.Substring(0, 100);
@@ -485,8 +482,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             await ConfirmEvents();
 
             sw.Stop();
-            IChatManagerGAgent chatManagerGAgent =
-                GrainFactory.GetGrain<IChatManagerGAgent>((Guid)State.ChatManagerGuid);
+            var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>((Guid)State.ChatManagerGuid);
             await chatManagerGAgent.RenameChatTitleAsync(new RenameChatTitleEvent()
             {
                 SessionId = sessionId,
@@ -808,7 +804,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 false);
             return;
         }
-        else if (aiExceptionEnum != AIExceptionEnum.None)
+
+        if (aiExceptionEnum != AIExceptionEnum.None)
         {
             Logger.LogError(
                 $"[GodChatGAgent][ChatMessageCallbackAsync] DETAILED ERROR - sessionId {contextDto?.RequestId.ToString()}, chatId {contextDto?.ChatId}, aiExceptionEnum: {aiExceptionEnum}, errorMessage: '{errorMessage}', MessageId: '{contextDto?.MessageId}'");
@@ -915,7 +912,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
         {
             var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-            bool isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+            var isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
             
             Logger.LogDebug($"[ChatMessageCallbackAsync] IsVoiceChat: {isVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
 
@@ -1177,23 +1174,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     }
 
     /// <summary>
-    /// Check if the text chunk contains a complete sentence
-    /// </summary>
-    /// <param name="text">Text to check</param>
-    /// <returns>True if text ends with sentence punctuation and has meaningful content</returns>
-    private bool IsSentenceComplete(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-            return false;
-
-        var trimmedText = text.Trim();
-        if (!HasMeaningfulContent(trimmedText))
-            return false;
-
-        return SentenceEnders.Any(ending => trimmedText.EndsWith(ending));
-    }
-
-    /// <summary>
     /// Checks if the text contains meaningful content (letters or Chinese characters)
     /// </summary>
     /// <param name="text">Text to check</param>
@@ -1249,10 +1229,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return shortText;
         }
 
-        int extractIndex = -1;
+        var extractIndex = -1;
         
         // Look for complete sentence endings
-        for (int i = accumulatedText.Length - 1; i >= 0; i--)
+        for (var i = accumulatedText.Length - 1; i >= 0; i--)
         {
             if (SentenceEnders.Contains(accumulatedText[i]))
             {
@@ -1419,36 +1399,38 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 Logger.LogError($"[GodChatGAgent][GodVoiceStreamChatAsync] Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
             }
 
-            if (addToHistory)
+            if (!addToHistory)
             {
-                var userVoiceMeta = new ChatMessageMeta
-                {
-                    IsVoiceMessage = true,
-                    VoiceLanguage = voiceLanguage,
-                    VoiceParseSuccess = true,
-                    VoiceParseErrorMessage = null,
-                    VoiceDurationSeconds = voiceDurationSeconds
-                };
-
-                RaiseEvent(new AddChatHistoryLogEvent
-                {
-                    ChatList = new List<ChatMessage>()
-                    {
-                        new ChatMessage
-                        {
-                            ChatRole = ChatRole.User,
-                            Content = message
-                        }
-                    }
-                });
-                
-                RaiseEvent(new AddChatMessageMetasLogEvent
-                {
-                    ChatMessageMetas = new List<ChatMessageMeta> { userVoiceMeta }
-                });
-
-                await ConfirmEvents();
+                return string.Empty;
             }
+
+            var userVoiceMeta = new ChatMessageMeta
+            {
+                IsVoiceMessage = true,
+                VoiceLanguage = voiceLanguage,
+                VoiceParseSuccess = true,
+                VoiceParseErrorMessage = null,
+                VoiceDurationSeconds = voiceDurationSeconds
+            };
+
+            RaiseEvent(new AddChatHistoryLogEvent
+            {
+                ChatList = new List<ChatMessage>()
+                {
+                    new ChatMessage
+                    {
+                        ChatRole = ChatRole.User,
+                        Content = message
+                    }
+                }
+            });
+                
+            RaiseEvent(new AddChatMessageMetasLogEvent
+            {
+                ChatMessageMetas = new List<ChatMessageMeta> { userVoiceMeta }
+            });
+
+            await ConfirmEvents();
         }
         else
         {
