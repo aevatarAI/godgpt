@@ -784,12 +784,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         await ConfirmEvents();
     }
 
-    public async Task ChatMessageCallbackAsync(AIChatContextDto contextDto,
+        public async Task ChatMessageCallbackAsync(AIChatContextDto contextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage, AIStreamChatContent? chatContent)
-          {
-
-        if (aiExceptionEnum == AIExceptionEnum.RequestLimitError && !contextDto.MessageId.IsNullOrWhiteSpace())
+    {
+        try
         {
+            Logger.LogError($"[DIAGNOSIS] ChatMessageCallbackAsync started for SessionId: {contextDto.RequestId}, ChatId: {contextDto.ChatId}");
+
+            if (aiExceptionEnum == AIExceptionEnum.RequestLimitError && !contextDto.MessageId.IsNullOrWhiteSpace())
+            {
             Logger.LogError(
                 $"[GodChatGAgent][ChatMessageCallbackAsync] RequestLimitError retry. contextDto {JsonConvert.SerializeObject(contextDto)}");
             var configuration = GetConfiguration();
@@ -1056,6 +1059,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogWarning($"[EXECUTION_TRACE] Step 20: Pushing message to HTTP client");
         await PushMessageToClientAsync(partialMessage);
         Logger.LogWarning($"[EXECUTION_TRACE] Step 21: Message pushed successfully");
+        
+        Logger.LogError($"[DIAGNOSIS] ChatMessageCallbackAsync completed successfully for SessionId: {contextDto.RequestId}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"[DIAGNOSIS] UNCAUGHT EXCEPTION in ChatMessageCallbackAsync for SessionId: {contextDto.RequestId}, ChatId: {contextDto.ChatId}");
+            throw; // Re-throw to maintain original behavior
+        }
     }
 
     public async Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content, string chatId,
