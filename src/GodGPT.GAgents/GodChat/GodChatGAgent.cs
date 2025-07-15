@@ -5,6 +5,7 @@ using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
+using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
@@ -1111,6 +1112,28 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogDebug(
             $"[ChatGAgentManager][GetSessionMessageListAsync] - session:ID {this.GetPrimaryKey().ToString()} ,message={JsonConvert.SerializeObject(State.ChatHistory)}");
         return Task.FromResult(State.ChatHistory);
+    }
+
+    public Task<List<ChatMessageWithMetaDto>> GetChatMessageWithMetaAsync()
+    {
+        Logger.LogDebug(
+            $"[GodChatGAgent][GetChatMessageWithMetaAsync] - sessionId: {this.GetPrimaryKey()}, messageCount: {State.ChatHistory.Count}, metaCount: {State.ChatMessageMetas.Count}");
+        
+        var result = new List<ChatMessageWithMetaDto>();
+        
+        // Combine ChatHistory with ChatMessageMetas
+        for (int i = 0; i < State.ChatHistory.Count; i++)
+        {
+            var message = State.ChatHistory[i];
+            var meta = i < State.ChatMessageMetas.Count ? State.ChatMessageMetas[i] : null;
+            
+            result.Add(ChatMessageWithMetaDto.Create(message, meta));
+        }
+        
+        Logger.LogDebug(
+            $"[GodChatGAgent][GetChatMessageWithMetaAsync] - sessionId: {this.GetPrimaryKey()}, returned {result.Count} messages with metadata");
+        
+        return Task.FromResult(result);
     }
 
     public Task<DateTime?> GetFirstChatTimeAsync()
