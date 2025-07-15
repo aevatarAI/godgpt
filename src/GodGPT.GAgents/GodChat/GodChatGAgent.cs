@@ -790,7 +790,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
     public async Task ChatMessageCallbackAsync(AIChatContextDto contextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage, AIStreamChatContent? chatContent)
-    {
+          {
+
         if (aiExceptionEnum == AIExceptionEnum.RequestLimitError && !contextDto.MessageId.IsNullOrWhiteSpace())
         {
             Logger.LogError(
@@ -964,6 +965,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                         if (HasMeaningfulContent(cleanedText))
                         {
                             Logger.LogDebug($"[ChatMessageCallbackAsync] Starting voice synthesis for: '{cleanedText}'");
+                            
                             // Synthesize voice for cleaned sentence
                             var voiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
                             partialMessage.AudioData = voiceResult.AudioData;
@@ -1191,9 +1193,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var cleanText = System.Text.RegularExpressions.Regex.Replace(text, @"[^\w\u4e00-\u9fff]", "");
         var result = cleanText.Length > 0; // At least one letter or Chinese character
         
-        // Add debug logging for troubleshooting
-        Console.WriteLine($"[HasMeaningfulContent] Input: '{text}' -> Clean: '{cleanText}' -> Length: {cleanText.Length} -> Result: {result}");
-        
         return result;
     }
 
@@ -1217,13 +1216,23 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var hasMeaningfulContent = HasMeaningfulContent(accumulatedText);
         Logger.LogDebug($"[ExtractCompleteSentence] HasMeaningfulContent: {hasMeaningfulContent}");
 
-        // If this is the last chunk and has meaningful content, return all remaining text
-        if (isLastChunk && hasMeaningfulContent)
+        // Enhanced logic: return any non-empty text when isLastChunk = true
+        if (isLastChunk)
         {
-            var finalSentence = accumulatedText.Trim();
+            var trimmedText = accumulatedText.Trim();
+            if (!string.IsNullOrEmpty(trimmedText))
+            {
+                textAccumulator.Clear();
+                return trimmedText;
+            }
+        }
+
+        // Special handling for short text: return directly if meaningful and <= 6 characters
+        if (accumulatedText.Length <= 6 && hasMeaningfulContent)
+        {
+            var shortText = accumulatedText.Trim();
             textAccumulator.Clear();
-            Logger.LogDebug($"[ExtractCompleteSentence] Returning final sentence: '{finalSentence}'");
-            return finalSentence;
+            return shortText;
         }
 
         int extractIndex = -1;
