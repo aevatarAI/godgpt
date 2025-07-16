@@ -36,3 +36,10 @@ public class RateLimitInfo
     [Id(0)] public int Count { get; set; }
     [Id(1)] public DateTime LastTime { get; set; }
 }
+
+[GenerateSerializer]
+public class DailyImageConversationInfo
+{
+    [Id(0)] public int Count { get; set; } = 0;
+    [Id(1)] public DateTime LastConversationTime { get; set; } = DateTime.MinValue;
+}
