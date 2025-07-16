@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
+using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
@@ -18,6 +19,8 @@ public interface IChatManagerGAgent : IGAgent
     Task<bool> IsUserSessionAsync(Guid sessionId);
     [ReadOnly]
     Task<List<ChatMessage>> GetSessionMessageListAsync(Guid sessionId);
+    [ReadOnly]
+    Task<List<ChatMessageWithMetaDto>> GetSessionMessageListWithMetaAsync(Guid sessionId);
     [ReadOnly]
     Task<SessionCreationInfoDto?> GetSessionCreationInfoAsync(Guid sessionId);
     Task<Guid> DeleteSessionAsync(Guid sessionId);
