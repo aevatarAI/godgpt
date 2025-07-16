@@ -1,7 +1,8 @@
 namespace Aevatar.Application.Grains.Common.Constants;
 
-public static class ActionType
+public enum ActionType
 {
-    public const string Conversation = "conversation";
-    public const string ConversationWithImage = "imageContent";
+    Conversation,
+    VoiceConversation,
+    ImageConversation
 }

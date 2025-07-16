@@ -26,7 +26,7 @@ public interface IUserQuotaGAgent : IGAgent
     Task CancelSubscriptionAsync();
 
     Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
-        string actionType = "conversation");
+        ActionType actionType = ActionType.Conversation);
 
     Task<ExecuteActionResultDto> CanUploadImageAsync();
 
@@ -266,9 +266,9 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     #region Rate Limiting with Ultimate Support
 
     public async Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
-        string actionType = ActionType.Conversation)
+        ActionType actionType = ActionType.Conversation)
     {
-        if (actionType == ActionType.ConversationWithImage)
+        if (actionType == ActionType.ImageConversation)
         {
             // For non-subscribed users, check daily limit
             var today = DateTime.UtcNow.Date;
@@ -310,6 +310,8 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             _logger.LogDebug(
                 "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Image conversation allowed. New count={Count}",
                 chatManagerGuid, sessionId, dailyInfo.Count);
+            
+            return await ExecuteStandardActionAsync(sessionId, chatManagerGuid, ActionType.Conversation);
         }
         // Apply standard execution logic with rate limiting and credits
         return await ExecuteStandardActionAsync(sessionId, chatManagerGuid, actionType);
@@ -362,10 +364,12 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     }
 
     private async Task<ExecuteActionResultDto> ExecuteStandardActionAsync(string sessionId, string chatManagerGuid,
-        string actionType)
+        ActionType actionTypeEnum)
     {
         var now = DateTime.UtcNow;
-
+        
+        var actionType = actionTypeEnum.ToString().ToLowerInvariant();
+        
         if (await IsSubscribedAsync(true))
         {
             return new ExecuteActionResultDto
