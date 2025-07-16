@@ -14,13 +14,15 @@ public interface IGodChat : IGAgent
     Task InitAsync(Guid ChatManagerGuid);
 
     Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
-        string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false, string? region = null, bool addToHistory = true);
+        string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false, string? region = null,
+        bool addToHistory = true, List<string>? images = null);
 
     [ReadOnly]
     Task<List<ChatMessage>> GetChatMessageAsync();
 
     Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
-        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null,
+        List<string>? images = null);
     Task SetUserProfileAsync(UserProfileDto? userProfileDto);
     Task<UserProfileDto?> GetUserProfileAsync();
 

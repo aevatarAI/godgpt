@@ -6,6 +6,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
@@ -116,12 +117,16 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     }
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
-        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
+        List<string>? images = null)
     {
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start.");
+        var actionType = images == null || images.IsNullOrEmpty()
+            ? ActionType.Conversation
+            : ActionType.ConversationWithImage;
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
         var actionResultDto =
-            await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
+            await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString(), actionType);
         if (!actionResultDto.Success)
         {
             Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} Access restricted");
@@ -178,7 +183,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var configuration = GetConfiguration();
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
-            content, chatId, promptSettings, isHttpRequest, region);
+            content, chatId, promptSettings, isHttpRequest, region, images: images);
         sw.Stop();
         Logger.LogDebug($"StreamChatWithSessionAsync {sessionId.ToString()} - step4,time use:{sw.ElapsedMilliseconds}");
     }
@@ -219,7 +224,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
-        string? region = null, bool addToHistory = true)
+        string? region = null, bool addToHistory = true, List<string>? images = null)
     {
         var configuration = GetConfiguration();
         var sysMessage = await configuration.GetPrompt();
@@ -227,7 +232,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         await LLMInitializedAsync(llm, streamingModeEnabled, sysMessage);
 
         var aiChatContextDto =
-            CreateAIChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings, isHttpRequest, region);
+            CreateAIChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings, isHttpRequest, region, images);
 
         var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
         if (aiAgentStatusProxy != null)
@@ -237,7 +242,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var settings = promptSettings ?? new ExecutionPromptSettings();
             settings.Temperature = "0.9";
             var result = await aiAgentStatusProxy.PromptWithStreamAsync(message, State.ChatHistory, settings,
-                context: aiChatContextDto);
+                context: aiChatContextDto, imageKeys: images);
             if (!result)
             {
                 Logger.LogError($"Failed to initiate streaming response. {this.GetPrimaryKey().ToString()}");
@@ -252,7 +257,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                         new ChatMessage
                         {
                             ChatRole = ChatRole.User,
-                            Content = message
+                            Content = message,
+                            ImageKeys = images
                         }
                     }
                 });
@@ -296,7 +302,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
     private AIChatContextDto CreateAIChatContext(Guid sessionId, string llm, bool streamingModeEnabled,
         string message, string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
-        string? region = null)
+        string? region = null, List<string>? images = null)
     {
         var aiChatContextDto = new AIChatContextDto()
         {
@@ -308,7 +314,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             aiChatContextDto.MessageId = JsonConvert.SerializeObject(new Dictionary<string, object>()
             {
                 { "IsHttpRequest", true }, { "LLM", llm }, { "StreamingModeEnabled", streamingModeEnabled },
-                { "Message", message }, {"Region", region}
+                { "Message", message }, {"Region", region}, {"Images", images}
             });
         }
 
@@ -484,7 +490,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 (string)dictionary.GetValueOrDefault("Message", string.Empty),
                 contextDto.ChatId, null, (bool)dictionary.GetValueOrDefault("IsHttpRequest", true),
                 (string)dictionary.GetValueOrDefault("Region", null),
-                false);
+                false, (List<string>?)dictionary.GetValueOrDefault("Images"));
             return;
         }
         else if (aiExceptionEnum != AIExceptionEnum.None)

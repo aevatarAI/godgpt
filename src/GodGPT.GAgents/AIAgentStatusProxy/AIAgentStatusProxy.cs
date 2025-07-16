@@ -56,7 +56,7 @@ public class AIAgentStatusProxy :
     }
 
     public async Task<bool> PromptWithStreamAsync(string prompt, List<ChatMessage>? history = null,
-        ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null)
+        ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null, List<string>? imageKeys = null)
     {
         // Get system prompt
         var systemPrompt = State.PromptTemplate;
@@ -67,7 +67,7 @@ public class AIAgentStatusProxy :
         Logger.LogDebug($"[AIAgentStatusProxy][PromptWithStreamAsync] Original history count: {history?.Count ?? 0}, Selected history count: {selectedHistory.Count}");
         
         // Call base method with filtered history messages
-        return await base.PromptWithStreamAsync(prompt, selectedHistory, promptSettings, context);
+        return await base.PromptWithStreamAsync(prompt, selectedHistory, promptSettings, context, imageKeys: imageKeys);
     }
 
     protected override async Task AIChatHandleStreamAsync(AIChatContextDto context, AIExceptionEnum errorEnum,
@@ -157,5 +157,5 @@ public interface IAIAgentStatusProxy : IGAgent, IAIGAgent
         ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null);
 
     Task<bool> PromptWithStreamAsync(string prompt, List<ChatMessage>? history = null,
-        ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null);
+        ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null, List<string>? imageKeys = null);
 }

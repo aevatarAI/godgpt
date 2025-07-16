@@ -28,6 +28,8 @@ public interface IUserQuotaGAgent : IGAgent
     Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
         string actionType = "conversation");
 
+    Task<ExecuteActionResultDto> CanUploadImageAsync();
+
     Task ResetRateLimitsAsync(string actionType = "conversation");
 
     Task ClearAllAsync();
@@ -264,10 +266,99 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     #region Rate Limiting with Ultimate Support
 
     public async Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
-        string actionType = "conversation")
+        string actionType = ActionType.Conversation)
     {
+        if (actionType == ActionType.ConversationWithImage)
+        {
+            // For non-subscribed users, check daily limit
+            var today = DateTime.UtcNow.Date;
+            var dailyInfo = State.DailyImageConversation;
+            
+            // Check if user is subscribed (subscribers have no daily limit)
+            if (!await IsSubscribedAsync(true) && !await IsSubscribedAsync(false) && dailyInfo.Count >= 1)
+            {
+                _logger.LogDebug(
+                    "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Daily image conversation limit exceeded for non-subscriber. Count={Count}",
+                    chatManagerGuid, sessionId, dailyInfo.Count);
+                    
+                return new ExecuteActionResultDto
+                {
+                    Code = ExecuteActionStatus.RateLimitExceeded,
+                    Message = "Daily upload limit reached. Upgrade to premium to continue."
+                };
+            }
+
+            // Check if it's a new day, reset count if so
+            if (dailyInfo.LastConversationTime.Date != today)
+            {
+                dailyInfo.LastConversationTime = DateTime.UtcNow;
+                dailyInfo.Count = 1;
+            }
+            else
+            {
+                // Increment daily count and update last conversation time
+                dailyInfo.Count++;
+                dailyInfo.LastConversationTime = DateTime.UtcNow;
+            }
+
+            RaiseEvent(new UpdateDailyImageConversationLogEvent
+            {
+                DailyImageConversation = dailyInfo
+            });
+            await ConfirmEvents();
+
+            _logger.LogDebug(
+                "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Image conversation allowed. New count={Count}",
+                chatManagerGuid, sessionId, dailyInfo.Count);
+        }
         // Apply standard execution logic with rate limiting and credits
         return await ExecuteStandardActionAsync(sessionId, chatManagerGuid, actionType);
+    }
+
+    public async Task<ExecuteActionResultDto> CanUploadImageAsync()
+    {
+        // Check if user is subscribed (subscribers have no daily limit)
+        if (await IsSubscribedAsync(true) || await IsSubscribedAsync(false))
+        {
+            return new ExecuteActionResultDto
+            {
+                Success = true
+            };
+        }
+
+        // For non-subscribed users, check daily limit
+        var today = DateTime.UtcNow.Date;
+        var dailyInfo = State.DailyImageConversation;
+
+        // Check if it's a new day (if so, user can upload)
+        if (dailyInfo.LastConversationTime.Date != today)
+        {
+            return new ExecuteActionResultDto
+            {
+                Success = true
+            };
+        }
+
+        // Check if daily limit exceeded (non-subscribers can only use once per day)
+        if (dailyInfo.Count >= 1)
+        {
+            _logger.LogDebug(
+                "[UserQuotaGAgent][CanUploadImageAsync] UserId={UserId} Daily image upload limit exceeded for non-subscriber. Count={Count}",
+                this.GetPrimaryKeyString(), dailyInfo.Count);
+                
+            return new ExecuteActionResultDto
+            {
+                Success = false,
+                Code = ExecuteActionStatus.RateLimitExceeded,
+                Message = "Daily upload limit reached. Upgrade to premium to continue."
+            };
+        }
+
+        // User can still upload image today
+        return new ExecuteActionResultDto
+        {
+            Success = true
+        };
     }
 
     private async Task<ExecuteActionResultDto> ExecuteStandardActionAsync(string sessionId, string chatManagerGuid,
@@ -681,6 +772,11 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             case UpdateCanReceiveInviteRewardLogEvent updateCanReceiveInviteReward:
                 State.CanReceiveInviteReward = updateCanReceiveInviteReward.CanReceiveInviteReward;
                 break;
+            
+            case UpdateDailyImageConversationLogEvent updateDailyImageConversation:
+                State.DailyImageConversation = updateDailyImageConversation.DailyImageConversation;
+                break;
+                
             case ClearAllLogEvent clearAll:
                 var canReceiveInviteReward = State.CanReceiveInviteReward;
                 State.Credits = 0;
