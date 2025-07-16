@@ -141,7 +141,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             chatMessages.Add(new ChatMessage
             {
                 ChatRole = ChatRole.User,
-                Content = content
+                Content = content,
+                ImageKeys = images
             });
             chatMessages.Add(new ChatMessage
             {
