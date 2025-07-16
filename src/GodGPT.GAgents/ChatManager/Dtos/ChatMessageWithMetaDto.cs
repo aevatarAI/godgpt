@@ -45,6 +45,11 @@ public class ChatMessageWithMetaDto
     [Id(6)] public double VoiceDurationSeconds { get; set; }
     
     /// <summary>
+    /// List of uploaded image keys for this message
+    /// </summary>
+    [Id(7)] public List<string> ImageKeys { get; set; } = new List<string>();
+    
+    /// <summary>
     /// Create from ChatMessage and optional ChatMessageMeta
     /// </summary>
     public static ChatMessageWithMetaDto Create(ChatMessage message, ChatMessageMeta? meta = null)
@@ -57,7 +62,8 @@ public class ChatMessageWithMetaDto
             VoiceLanguage = meta?.VoiceLanguage ?? VoiceLanguageEnum.English,
             VoiceParseSuccess = meta?.VoiceParseSuccess ?? true,
             VoiceParseErrorMessage = meta?.VoiceParseErrorMessage,
-            VoiceDurationSeconds = meta?.VoiceDurationSeconds ?? 0.0
+            VoiceDurationSeconds = meta?.VoiceDurationSeconds ?? 0.0,
+            ImageKeys = message.ImageKeys ?? new List<string>()
         };
     }
 } 
