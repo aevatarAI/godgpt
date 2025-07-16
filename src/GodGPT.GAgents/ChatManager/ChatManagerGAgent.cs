@@ -1163,6 +1163,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 State.FullName = string.Empty;
                 State.CurrentShareCount = 0;
                 State.InviterId = null;
+                State.VoiceLanguage = VoiceLanguageEnum.English;
                 break;
             case SetUserProfileEventLog @setFortuneInfoEventLog:
                 State.Gender = @setFortuneInfoEventLog.Gender;
