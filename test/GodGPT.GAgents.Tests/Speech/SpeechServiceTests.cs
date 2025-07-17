@@ -31,7 +31,9 @@ public class SpeechServiceTests : AevatarGodGPTTestsBase
         // Log the result for debugging
         Console.WriteLine($"Speech recognition result: '{result}'");
             
-        result.ShouldContain("123456");
+        // Normalize the result by removing punctuation and spaces for comparison
+        var normalizedResult = result.Replace("。", "").Replace("，", "").Replace(" ", "").Replace(".", "").Replace(",", "");
+        normalizedResult.ShouldContain("123456");
     }
     [Fact]
     public async Task SpeechToTextByLanguageAsync_Should_Initialize_Without_Error()
@@ -43,7 +45,10 @@ public class SpeechServiceTests : AevatarGodGPTTestsBase
         // Act
         var result = await speechService.SpeechToTextAsync(wavData, VoiceLanguageEnum.Chinese);
         Assert.NotNull(result);
-        result.ShouldContain("123456");
+        
+        // Normalize the result by removing punctuation and spaces for comparison
+        var normalizedResult = result.Replace("。", "").Replace("，", "").Replace(" ", "").Replace(".", "").Replace(",", "");
+        normalizedResult.ShouldContain("123456");
     }
 
     [Fact]

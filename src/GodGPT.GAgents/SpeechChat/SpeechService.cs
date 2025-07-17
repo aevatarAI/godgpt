@@ -132,7 +132,8 @@ public class SpeechService : ISpeechService
             }
 
             // If we reach here, all attempts failed
-            throw new InvalidOperationException($"Unable to process audio data. Format: {audioFormat?.ToString() ?? "Unknown"}. " +
+            var formatName = audioFormat?.ToString() ?? (DetectAudioFormat(audioData)?.ToString() ?? "WAV/PCM");
+            throw new InvalidOperationException($"Unable to process audio data. Format: {formatName}. " +
                                               "Consider converting to WAV format for better compatibility.");
         }
         catch (Exception ex)
@@ -322,32 +323,85 @@ public class SpeechService : ISpeechService
         using (audioConfig)
         using (var recognizer = new SpeechRecognizer(speechConfig, audioConfig))
         {
-            // Write audio data to stream
+            var recognitionResults = new List<string>();
+            var recognitionCompleted = new TaskCompletionSource<bool>();
+            var sessionStopped = new TaskCompletionSource<bool>();
+
+            recognizer.Recognized += (s, e) =>
+            {
+                if (e.Result.Reason == ResultReason.RecognizedSpeech)
+                {
+                    recognitionResults.Add(e.Result.Text);
+                }
+            };
+            recognizer.Recognizing += (s, e) => { };
+            recognizer.Canceled += (s, e) =>
+            {
+                if (e.Reason == CancellationReason.Error)
+                    recognitionCompleted.TrySetException(new InvalidOperationException($"Speech recognition failed: {e.ErrorCode} - {e.ErrorDetails}"));
+                else
+                    recognitionCompleted.TrySetException(new OperationCanceledException("Speech recognition was canceled"));
+            };
+            recognizer.SessionStopped += (s, e) => sessionStopped.TrySetResult(true);
+
+            await recognizer.StartContinuousRecognitionAsync();
             pushStream.Write(audioData);
             pushStream.Close();
-
-            // Perform recognition
-            var result = await recognizer.RecognizeOnceAsync();
-
-            // Handle recognition results
-            switch (result.Reason)
+            
+            try
             {
-                case ResultReason.RecognizedSpeech:
-                    return result.Text;
-                    
-                case ResultReason.NoMatch:
-                    throw new InvalidOperationException("No speech could be recognized from the audio data");
-                    
-                case ResultReason.Canceled:
-                    var cancellation = CancellationDetails.FromResult(result);
-                    if (cancellation.Reason == CancellationReason.Error)
-                    {
-                        throw new InvalidOperationException($"Speech recognition failed: {cancellation.ErrorCode} - {cancellation.ErrorDetails}");
-                    }
-                    throw new OperationCanceledException("Speech recognition was canceled");
-                    
-                default:
-                    throw new InvalidOperationException($"Unexpected recognition result: {result.Reason}");
+                await Task.WhenAny(sessionStopped.Task, Task.Delay(TimeSpan.FromSeconds(10)));
+            }
+            catch (Exception ex)
+            {
+            }
+            
+            await recognizer.StopContinuousRecognitionAsync();
+
+            if (recognitionResults.Count > 0)
+            {
+                return string.Join(" ", recognitionResults);
+            }
+
+            // 2. fallback: RecognizeOnceAsync
+            using var pushStream2 = containerFormat.HasValue
+                ? AudioInputStream.CreatePushStream(AudioStreamFormat.GetCompressedFormat(containerFormat.Value))
+                : AudioInputStream.CreatePushStream();
+            using var audioConfig2 = AudioConfig.FromStreamInput(pushStream2);
+            using var recognizer2 = new SpeechRecognizer(speechConfig, audioConfig2);
+            pushStream2.Write(audioData);
+            pushStream2.Close();
+            var result = await recognizer2.RecognizeOnceAsync();
+            if (result.Reason == ResultReason.RecognizedSpeech)
+            {
+                return result.Text;
+            }
+            else if (result.Reason == ResultReason.NoMatch)
+            {
+                using var pushStream3 = AudioInputStream.CreatePushStream();
+                using var audioConfig3 = AudioConfig.FromStreamInput(pushStream3);
+                using var recognizer3 = new SpeechRecognizer(SpeechConfig.FromSubscription(speechConfig.SubscriptionKey, speechConfig.Region), audioConfig3);
+                pushStream3.Write(audioData);
+                pushStream3.Close();
+                var result3 = await recognizer3.RecognizeOnceAsync();
+                if (result3.Reason == ResultReason.RecognizedSpeech)
+                {
+                    return result3.Text;
+                }
+                throw new InvalidOperationException("No speech could be recognized from the audio data");
+            }
+            else if (result.Reason == ResultReason.Canceled)
+            {
+                var cancellation = CancellationDetails.FromResult(result);
+                if (cancellation.Reason == CancellationReason.Error)
+                {
+                    throw new InvalidOperationException($"Speech recognition failed: {cancellation.ErrorCode} - {cancellation.ErrorDetails}");
+                }
+                throw new OperationCanceledException("Speech recognition was canceled");
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unexpected recognition result: {result.Reason}");
             }
         }
     }
