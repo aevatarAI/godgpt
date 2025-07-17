@@ -1408,7 +1408,26 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             settings.Temperature = "0.9";
             
             // Start streaming with voice context
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(message, State.ChatHistory, settings,
+            var promptMsg = message;
+            switch (voiceLanguage)
+            {
+                case  VoiceLanguageEnum.English:
+                    promptMsg += ".Requirement: Please reply in English.";
+                    break;
+                case VoiceLanguageEnum.Chinese:
+                    promptMsg += ".Requirement: Please reply in Chinese.";
+                    break;
+                case VoiceLanguageEnum.Spanish:
+                    promptMsg += ".Requirement: Please reply in Spanish.";
+                    break;
+                case VoiceLanguageEnum.Unset:
+                    break;
+                default:
+                    break;
+            }
+            Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] promptMsg: {promptMsg}");
+
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMsg, State.ChatHistory, settings,
                 context: aiChatContextDto);
             if (!result)
             {
