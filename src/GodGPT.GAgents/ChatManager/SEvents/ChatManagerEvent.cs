@@ -7,6 +7,22 @@ using GodGPT.GAgents.SpeechChat;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
+/// <summary>
+/// Voice content type enum for voice chat responses
+/// </summary>
+public enum VoiceContentType
+{
+    /// <summary>
+    /// Voice input converted to text content
+    /// </summary>
+    VoiceToText = 0,
+    
+    /// <summary>
+    /// Voice response content (corresponding to response text)
+    /// </summary>
+    VoiceResponse = 1
+}
+
 [GenerateSerializer]
 public class RequestCreateGodChatEvent : EventBase
 {
@@ -71,6 +87,7 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
     /// </summary>
     [Id(8)] public AudioMetadata? AudioMetadata { get; set; }
     [Id(9)] public ChatErrorCode ErrorCode { get; set; }
+    [Id(10)] public VoiceContentType VoiceContentType { get; set; } = VoiceContentType.VoiceResponse;
 
     public ResponseStreamGodChatForHttp ConvertToHttpResponse()
     {
@@ -83,7 +100,8 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
             SessionId = SessionId,
             AudioData = AudioData,
             AudioMetadata = AudioMetadata,
-            ErrorCode = ErrorCode
+            ErrorCode = ErrorCode,
+            VoiceContentType = VoiceContentType
         };
     }
 }
@@ -108,6 +126,7 @@ public class ResponseStreamGodChatForHttp
     /// </summary>
     public AudioMetadata? AudioMetadata { get; set; } 
     public ChatErrorCode ErrorCode { get; set; }
+    public VoiceContentType VoiceContentType { get; set; } = VoiceContentType.VoiceResponse;
 
 }
 

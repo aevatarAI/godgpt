@@ -194,7 +194,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 ChatId = chatId,
                 IsLastChunk = true,
                 SerialNumber = -99,
-                SessionId = sessionId
+                SessionId = sessionId,
+                // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
+                VoiceContentType = VoiceContentType.VoiceResponse
             };
 
             if (isHttpRequest)
@@ -247,7 +249,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 IsLastChunk = true,
                 SerialNumber = -99,
                 SessionId = sessionId,
-                ErrorCode = ChatErrorCode.ParamInvalid
+                ErrorCode = ChatErrorCode.ParamInvalid,
+                // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
+                VoiceContentType = VoiceContentType.VoiceResponse
             };
 
             if (isHttpRequest)
@@ -347,8 +351,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 IsLastChunk = true,
                 SerialNumber = -99,
                 SessionId = sessionId,
-                ErrorCode = ChatErrorCode.VoiceParsingFailed
-
+                ErrorCode = ChatErrorCode.VoiceParsingFailed,
+                // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
+                VoiceContentType = VoiceContentType.VoiceResponse
             };
 
             if (isHttpRequest)
@@ -437,7 +442,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 IsLastChunk = true,
                 SerialNumber = -99,
                 SessionId = sessionId,
-                ErrorCode = errorCode
+                ErrorCode = errorCode,
+                // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
+                VoiceContentType = VoiceContentType.VoiceResponse
             };
 
             if (isHttpRequest)
@@ -911,7 +918,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             ChatId = contextDto.ChatId,
             IsLastChunk = chatContent.IsLastChunk,
             SerialNumber = chatContent.SerialNumber,
-            SessionId = contextDto.RequestId
+            SessionId = contextDto.RequestId,
+            // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
+            VoiceContentType = VoiceContentType.VoiceResponse
         };
 
         // Check if this is a voice chat and handle real-time voice synthesis
