@@ -342,7 +342,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // Send error response
             var errorResponse = new ResponseStreamGodChat()
             {
-                Response = $"Voice message processing failed: {voiceParseErrorMessage}",
+                Response = "Language not recognised. Please try again in the selected language.",
                 ChatId = chatId,
                 IsLastChunk = true,
                 SerialNumber = -99,
