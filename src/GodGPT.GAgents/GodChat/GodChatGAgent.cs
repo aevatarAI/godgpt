@@ -955,9 +955,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 }
                 
                 var textAccumulator = VoiceTextAccumulators[contextDto.ChatId];
-                textAccumulator.Append(chatContent.ResponseContent);
                 
-                Logger.LogDebug($"[ChatMessageCallbackAsync] Appended text: '{chatContent.ResponseContent}', IsLastChunk: {chatContent.IsLastChunk}");
+                // Filter out empty or whitespace-only content to avoid unnecessary accumulation
+                if (!string.IsNullOrWhiteSpace(chatContent.ResponseContent))
+                {
+                    textAccumulator.Append(chatContent.ResponseContent);
+                    Logger.LogDebug($"[ChatMessageCallbackAsync] Appended text: '{chatContent.ResponseContent}', IsLastChunk: {chatContent.IsLastChunk}");
+                }
+                else
+                {
+                    Logger.LogDebug($"[ChatMessageCallbackAsync] Skipped whitespace content, IsLastChunk: {chatContent.IsLastChunk}");
+                }
                 
                 // Check for complete sentences in accumulated text
                 var accumulatedText = textAccumulator.ToString();
