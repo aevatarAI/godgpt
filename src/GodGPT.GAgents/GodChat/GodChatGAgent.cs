@@ -231,12 +231,18 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogInformation($"[PERF][VoiceChat] {sessionId} START - file: {fileName}, size: {voiceData?.Length ?? 0} chars, language: {voiceLanguage}, duration: {voiceDurationSeconds}s");
 
         // Validate voiceData
-        if (string.IsNullOrEmpty(voiceData))
+        if (string.IsNullOrEmpty(voiceData) || voiceLanguage == VoiceLanguageEnum.Unset)
         {
             Logger.LogError($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Invalid voice data");
+            var errMsg = "Invalid voice message. Please try again.";
+            if (voiceLanguage == VoiceLanguageEnum.Unset)
+            {
+                errMsg = "Please set voice language.";
+            }
+
             var errorMessage = new ResponseStreamGodChat()
             {
-                Response = "Invalid voice message. Please try again.",
+                Response = errMsg,
                 ChatId = chatId,
                 IsLastChunk = true,
                 SerialNumber = -99,
