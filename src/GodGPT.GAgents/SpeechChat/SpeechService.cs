@@ -69,15 +69,18 @@ public class SpeechService : ISpeechService
                 throw new ArgumentException("Audio data cannot be null or empty", nameof(audioData));
             }
 
+            // Enhanced WAV processing for paused recordings
+            var processedAudioData = await PreprocessWavAudioAsync(audioData);
+            
             // Detect audio format
-            var audioFormat = DetectAudioFormat(audioData);
+            var audioFormat = DetectAudioFormat(processedAudioData);
             var tempSpeechConfig = SpeechConfig.FromSubscription(_speechConfig.SubscriptionKey, _speechConfig.Region);
             tempSpeechConfig.SpeechRecognitionLanguage = GetLanguageCode(language);
 
             // Special handling for WebM/Opus format
-            if (IsWebMFormat(audioData))
+            if (IsWebMFormat(processedAudioData))
             {
-                return await HandleWebMOpusFormat(audioData, tempSpeechConfig);
+                return await HandleWebMOpusFormat(processedAudioData, tempSpeechConfig);
             }
 
             // For compressed formats (Opus, MP3, etc.), try compressed format first
@@ -86,7 +89,7 @@ public class SpeechService : ISpeechService
                 try
                 {
                     _logger.LogDebug("[SpeechService][SpeechToTextAsync-language] - Attempting recognition with compressed format:{0}",audioFormat.Value);
-                    var result = await TryRecognizeWithFormat(audioData, tempSpeechConfig, audioFormat.Value);
+                    var result = await TryRecognizeWithFormat(processedAudioData, tempSpeechConfig, audioFormat.Value);
                     if (!string.IsNullOrEmpty(result))
                     {
                         _logger.LogDebug("[SpeechService][SpeechToTextAsync-language] - Successfully recognition with audioFormat:{0},format:{1}",audioFormat.Value, result);
@@ -119,7 +122,7 @@ public class SpeechService : ISpeechService
             {
                 _logger.LogDebug("[SpeechService][SpeechToTextAsync-language] -Attempting recognition with default format (fallback)...");
 
-                var result = await TryRecognizeWithFormat(audioData, tempSpeechConfig, null);
+                var result = await TryRecognizeWithFormat(processedAudioData, tempSpeechConfig, null);
                 if (!string.IsNullOrEmpty(result))
                 {
                     _logger.LogDebug("[SpeechService][SpeechToTextAsync-language] -Successfully recognized with default format:{0}", result);
@@ -494,6 +497,339 @@ public class SpeechService : ISpeechService
             var errorMessage = $"Exception during FFmpeg conversion: {ex.Message}";
             _logger.LogError(ex, "[SpeechService][ConvertWebMToWavAsync] - FFmpeg conversion exception:{0}",errorMessage);
             return (false, errorMessage);
+        }
+    }
+
+    /// <summary>
+    /// Preprocesses WAV audio data to handle paused recordings and audio discontinuities
+    /// </summary>
+    /// <param name="audioData">Raw audio data</param>
+    /// <returns>Processed audio data</returns>
+    private async Task<byte[]> PreprocessWavAudioAsync(byte[] audioData)
+    {
+        try
+        {
+            // Check if this is a WAV file
+            if (!IsWavFormat(audioData))
+            {
+                _logger.LogDebug("[SpeechService][PreprocessWavAudioAsync] - Not a WAV file, returning original data");
+                return audioData;
+            }
+
+            _logger.LogDebug("[SpeechService][PreprocessWavAudioAsync] - Processing WAV file, original size: {0} bytes", audioData.Length);
+
+            // Parse WAV header to get audio format information
+            var wavInfo = ParseWavHeader(audioData);
+            if (wavInfo == null)
+            {
+                _logger.LogWarning("[SpeechService][PreprocessWavAudioAsync] - Failed to parse WAV header, returning original data");
+                return audioData;
+            }
+
+            _logger.LogDebug("[SpeechService][PreprocessWavAudioAsync] - WAV Info: SampleRate={0}, Channels={1}, BitsPerSample={2}, DataSize={3}",
+                wavInfo.SampleRate, wavInfo.Channels, wavInfo.BitsPerSample, wavInfo.DataSize);
+
+            // Extract audio samples
+            var audioSamples = ExtractAudioSamples(audioData, wavInfo);
+            if (audioSamples == null || audioSamples.Length == 0)
+            {
+                _logger.LogWarning("[SpeechService][PreprocessWavAudioAsync] - No audio samples extracted, returning original data");
+                return audioData;
+            }
+
+            // Detect and handle audio discontinuities (paused recordings)
+            var processedSamples = await ProcessAudioDiscontinuitiesAsync(audioSamples, wavInfo);
+            
+            // Reconstruct WAV file with processed samples
+            var processedWavData = ReconstructWavFile(processedSamples, wavInfo);
+            
+            _logger.LogDebug("[SpeechService][PreprocessWavAudioAsync] - Processing complete, new size: {0} bytes", processedWavData.Length);
+            
+            return processedWavData;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SpeechService][PreprocessWavAudioAsync] - Error preprocessing WAV audio: {0}", ex.Message);
+            // Return original data if preprocessing fails
+            return audioData;
+        }
+    }
+
+    /// <summary>
+    /// Checks if the audio data is in WAV format
+    /// </summary>
+    /// <param name="audioData">Audio data bytes</param>
+    /// <returns>True if WAV format is detected</returns>
+    private static bool IsWavFormat(byte[] audioData)
+    {
+        if (audioData == null || audioData.Length < 12)
+            return false;
+
+        // WAV format: starts with "RIFF" (0x52, 0x49, 0x46, 0x46) and contains "WAVE"
+        return audioData[0] == 0x52 && audioData[1] == 0x49 && audioData[2] == 0x46 && audioData[3] == 0x46 &&
+               audioData[8] == 0x57 && audioData[9] == 0x41 && audioData[10] == 0x56 && audioData[11] == 0x45;
+    }
+
+    /// <summary>
+    /// WAV file information structure
+    /// </summary>
+    private class WavInfo
+    {
+        public int SampleRate { get; set; }
+        public short Channels { get; set; }
+        public short BitsPerSample { get; set; }
+        public int DataSize { get; set; }
+        public int DataOffset { get; set; }
+    }
+
+    /// <summary>
+    /// Parses WAV file header to extract audio format information
+    /// </summary>
+    /// <param name="audioData">WAV audio data</param>
+    /// <returns>WAV information or null if parsing fails</returns>
+    private static WavInfo ParseWavHeader(byte[] audioData)
+    {
+        try
+        {
+            if (audioData.Length < 44) // Minimum WAV header size
+                return null;
+
+            var wavInfo = new WavInfo();
+            
+            // Parse sample rate (bytes 24-27)
+            wavInfo.SampleRate = BitConverter.ToInt32(audioData, 24);
+            
+            // Parse channels (bytes 22-23)
+            wavInfo.Channels = BitConverter.ToInt16(audioData, 22);
+            
+            // Parse bits per sample (bytes 34-35)
+            wavInfo.BitsPerSample = BitConverter.ToInt16(audioData, 34);
+            
+            // Find data chunk
+            int dataOffset = 12; // Skip RIFF header
+            while (dataOffset < audioData.Length - 8)
+            {
+                var chunkId = System.Text.Encoding.ASCII.GetString(audioData, dataOffset, 4);
+                var chunkSize = BitConverter.ToInt32(audioData, dataOffset + 4);
+                
+                if (chunkId == "data")
+                {
+                    wavInfo.DataOffset = dataOffset + 8;
+                    wavInfo.DataSize = chunkSize;
+                    return wavInfo;
+                }
+                
+                dataOffset += 8 + chunkSize;
+            }
+            
+            return null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extracts audio samples from WAV data
+    /// </summary>
+    /// <param name="audioData">WAV audio data</param>
+    /// <param name="wavInfo">WAV information</param>
+    /// <returns>Audio samples as short array</returns>
+    private static short[] ExtractAudioSamples(byte[] audioData, WavInfo wavInfo)
+    {
+        try
+        {
+            var sampleCount = wavInfo.DataSize / (wavInfo.BitsPerSample / 8);
+            var samples = new short[sampleCount];
+            
+            for (int i = 0; i < sampleCount; i++)
+            {
+                var byteOffset = wavInfo.DataOffset + (i * wavInfo.BitsPerSample / 8);
+                if (byteOffset + 1 < audioData.Length)
+                {
+                    samples[i] = BitConverter.ToInt16(audioData, byteOffset);
+                }
+            }
+            
+            return samples;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Processes audio discontinuities caused by paused recordings
+    /// </summary>
+    /// <param name="samples">Audio samples</param>
+    /// <param name="wavInfo">WAV information</param>
+    /// <returns>Processed audio samples</returns>
+    private async Task<short[]> ProcessAudioDiscontinuitiesAsync(short[] samples, WavInfo wavInfo)
+    {
+        if (samples == null || samples.Length == 0)
+            return samples;
+
+        var processedSamples = new List<short>();
+        var silenceThreshold = 100; // Adjust based on your audio characteristics
+        var minSilenceDuration = wavInfo.SampleRate / 10; // 100ms minimum silence
+        var maxSilenceDuration = wavInfo.SampleRate * 2; // 2 seconds maximum silence
+        
+        int silenceStart = -1;
+        int silenceDuration = 0;
+        
+        for (int i = 0; i < samples.Length; i++)
+        {
+            var amplitude = Math.Abs(samples[i]);
+            
+            if (amplitude <= silenceThreshold)
+            {
+                // Potential silence detected
+                if (silenceStart == -1)
+                {
+                    silenceStart = i;
+                    silenceDuration = 0;
+                }
+                silenceDuration++;
+            }
+            else
+            {
+                // Non-silence detected
+                if (silenceStart != -1)
+                {
+                    // Check if this was a significant silence (pause in recording)
+                    if (silenceDuration >= minSilenceDuration && silenceDuration <= maxSilenceDuration)
+                    {
+                        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Detected pause at sample {0}, duration: {1} samples ({2}ms)",
+                            silenceStart, silenceDuration, (double)silenceDuration / wavInfo.SampleRate * 1000);
+                        
+                        // Add a shorter silence gap instead of the long pause
+                        var reducedSilence = Math.Min(silenceDuration / 4, wavInfo.SampleRate / 20); // 50ms maximum
+                        for (int j = 0; j < reducedSilence; j++)
+                        {
+                            processedSamples.Add(0); // Add silence
+                        }
+                    }
+                    else if (silenceDuration < minSilenceDuration)
+                    {
+                        // Short silence, keep as is
+                        for (int j = silenceStart; j < i; j++)
+                        {
+                            processedSamples.Add(samples[j]);
+                        }
+                    }
+                    else
+                    {
+                        // Very long silence, skip it
+                        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Skipping long silence at sample {0}, duration: {1} samples",
+                            silenceStart, silenceDuration);
+                    }
+                    
+                    silenceStart = -1;
+                    silenceDuration = 0;
+                }
+                
+                processedSamples.Add(samples[i]);
+            }
+        }
+        
+        // Handle any remaining silence at the end
+        if (silenceStart != -1 && silenceDuration < minSilenceDuration)
+        {
+            for (int j = silenceStart; j < samples.Length; j++)
+            {
+                processedSamples.Add(samples[j]);
+            }
+        }
+        
+        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Processed {0} samples, original: {1} samples",
+            processedSamples.Count, samples.Length);
+        
+        return processedSamples.ToArray();
+    }
+
+    /// <summary>
+    /// Reconstructs WAV file from processed audio samples
+    /// </summary>
+    /// <param name="samples">Processed audio samples</param>
+    /// <param name="wavInfo">Original WAV information</param>
+    /// <returns>Reconstructed WAV data</returns>
+    private static byte[] ReconstructWavFile(short[] samples, WavInfo wavInfo)
+    {
+        try
+        {
+            var newDataSize = samples.Length * (wavInfo.BitsPerSample / 8);
+            var newFileSize = 44 + newDataSize; // 44 bytes header + data
+            
+            var wavData = new byte[newFileSize];
+            
+            // Write RIFF header
+            var riffHeader = System.Text.Encoding.ASCII.GetBytes("RIFF");
+            Array.Copy(riffHeader, 0, wavData, 0, 4);
+            
+            // Write file size
+            var fileSizeBytes = BitConverter.GetBytes(newFileSize - 8);
+            Array.Copy(fileSizeBytes, 0, wavData, 4, 4);
+            
+            // Write WAVE identifier
+            var waveHeader = System.Text.Encoding.ASCII.GetBytes("WAVE");
+            Array.Copy(waveHeader, 0, wavData, 8, 4);
+            
+            // Write format chunk
+            var fmtHeader = System.Text.Encoding.ASCII.GetBytes("fmt ");
+            Array.Copy(fmtHeader, 0, wavData, 12, 4);
+            
+            // Write format chunk size (16 for PCM)
+            var fmtSizeBytes = BitConverter.GetBytes(16);
+            Array.Copy(fmtSizeBytes, 0, wavData, 16, 4);
+            
+            // Write audio format (1 for PCM)
+            var audioFormatBytes = BitConverter.GetBytes((short)1);
+            Array.Copy(audioFormatBytes, 0, wavData, 20, 2);
+            
+            // Write channels
+            var channelsBytes = BitConverter.GetBytes(wavInfo.Channels);
+            Array.Copy(channelsBytes, 0, wavData, 22, 2);
+            
+            // Write sample rate
+            var sampleRateBytes = BitConverter.GetBytes(wavInfo.SampleRate);
+            Array.Copy(sampleRateBytes, 0, wavData, 24, 4);
+            
+            // Write byte rate
+            var byteRate = wavInfo.SampleRate * wavInfo.Channels * wavInfo.BitsPerSample / 8;
+            var byteRateBytes = BitConverter.GetBytes(byteRate);
+            Array.Copy(byteRateBytes, 0, wavData, 28, 4);
+            
+            // Write block align
+            var blockAlign = wavInfo.Channels * wavInfo.BitsPerSample / 8;
+            var blockAlignBytes = BitConverter.GetBytes((short)blockAlign);
+            Array.Copy(blockAlignBytes, 0, wavData, 32, 2);
+            
+            // Write bits per sample
+            var bitsPerSampleBytes = BitConverter.GetBytes(wavInfo.BitsPerSample);
+            Array.Copy(bitsPerSampleBytes, 0, wavData, 34, 2);
+            
+            // Write data chunk header
+            var dataHeader = System.Text.Encoding.ASCII.GetBytes("data");
+            Array.Copy(dataHeader, 0, wavData, 36, 4);
+            
+            // Write data size
+            var dataSizeBytes = BitConverter.GetBytes(newDataSize);
+            Array.Copy(dataSizeBytes, 0, wavData, 40, 4);
+            
+            // Write audio data
+            for (int i = 0; i < samples.Length; i++)
+            {
+                var sampleBytes = BitConverter.GetBytes(samples[i]);
+                Array.Copy(sampleBytes, 0, wavData, 44 + (i * 2), 2);
+            }
+            
+            return wavData;
+        }
+        catch (Exception)
+        {
+            return null;
         }
     }
 }
