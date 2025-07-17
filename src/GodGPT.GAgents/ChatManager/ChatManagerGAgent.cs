@@ -513,6 +513,14 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         var hasExpiredSessions = State.SessionInfoList.Any(s => 
             s.CreateAt <= sevenDaysAgo && 
             string.IsNullOrEmpty(s.Title));
+        if (State.SessionInfoList.Count > 0)
+        {
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionListAsync] GetSessionListAsync SessionInfoList count {State.SessionInfoList.Count} list:{JsonConvert.SerializeObject(State.SessionInfoList)}");
+        }
+        else
+        {
+            Logger.LogDebug($"[ChatGAgentManager][GetSessionListAsync] GetSessionListAsync SessionInfoList count 0");
+        }
 
         if (hasExpiredSessions)
         {
