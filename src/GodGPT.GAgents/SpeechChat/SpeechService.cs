@@ -672,12 +672,13 @@ public class SpeechService : ISpeechService
             return samples;
 
         var processedSamples = new List<short>();
-        var silenceThreshold = 100; // Adjust based on your audio characteristics
-        var minSilenceDuration = wavInfo.SampleRate / 10; // 100ms minimum silence
-        var maxSilenceDuration = wavInfo.SampleRate * 2; // 2 seconds maximum silence
+        var silenceThreshold = 150; 
+        var minSilenceDuration = wavInfo.SampleRate / 20; 
+        var maxSilenceDuration = wavInfo.SampleRate * 3; 
         
         int silenceStart = -1;
         int silenceDuration = 0;
+        int totalProcessedSilence = 0;
         
         for (int i = 0; i < samples.Length; i++)
         {
@@ -701,19 +702,24 @@ public class SpeechService : ISpeechService
                     // Check if this was a significant silence (pause in recording)
                     if (silenceDuration >= minSilenceDuration && silenceDuration <= maxSilenceDuration)
                     {
-                        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Detected pause at sample {0}, duration: {1} samples ({2}ms)",
-                            silenceStart, silenceDuration, (double)silenceDuration / wavInfo.SampleRate * 1000);
+                        var originalSilenceMs = (double)silenceDuration / wavInfo.SampleRate * 1000;
+                        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Detected pause at sample {0}, duration: {1} samples ({2:F1}ms)",
+                            silenceStart, silenceDuration, originalSilenceMs);
                         
-                        // Add a shorter silence gap instead of the long pause
-                        var reducedSilence = Math.Min(silenceDuration / 4, wavInfo.SampleRate / 20); // 50ms maximum
+                        var reducedSilence = Math.Min(silenceDuration / 6, wavInfo.SampleRate / 33); // 30ms最大
+                        totalProcessedSilence += (int)reducedSilence;
+                        
                         for (int j = 0; j < reducedSilence; j++)
                         {
                             processedSamples.Add(0); // Add silence
                         }
+                        
+                        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Reduced silence from {0:F1}ms to {1:F1}ms",
+                            originalSilenceMs, (double)reducedSilence / wavInfo.SampleRate * 1000);
                     }
                     else if (silenceDuration < minSilenceDuration)
                     {
-                        // Short silence, keep as is
+                        // Short silence, keep as is (normal speech pauses)
                         for (int j = silenceStart; j < i; j++)
                         {
                             processedSamples.Add(samples[j]);
@@ -721,9 +727,9 @@ public class SpeechService : ISpeechService
                     }
                     else
                     {
-                        // Very long silence, skip it
-                        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Skipping long silence at sample {0}, duration: {1} samples",
-                            silenceStart, silenceDuration);
+                        // Very long silence (>3s), skip it completely
+                        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Skipping very long silence at sample {0}, duration: {1} samples ({2:F1}ms)",
+                            silenceStart, silenceDuration, (double)silenceDuration / wavInfo.SampleRate * 1000);
                     }
                     
                     silenceStart = -1;
@@ -743,8 +749,12 @@ public class SpeechService : ISpeechService
             }
         }
         
-        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Processed {0} samples, original: {1} samples",
-            processedSamples.Count, samples.Length);
+        var originalDuration = (double)samples.Length / wavInfo.SampleRate;
+        var processedDuration = (double)processedSamples.Count / wavInfo.SampleRate;
+        var timeReduction = originalDuration - processedDuration;
+        
+        _logger.LogDebug("[SpeechService][ProcessAudioDiscontinuitiesAsync] - Processing complete: {0} samples -> {1} samples, duration: {2:F2}s -> {3:F2}s (reduced by {4:F2}s)",
+            samples.Length, processedSamples.Count, originalDuration, processedDuration, timeReduction);
         
         return processedSamples.ToArray();
     }
