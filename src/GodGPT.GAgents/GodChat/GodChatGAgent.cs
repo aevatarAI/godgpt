@@ -20,8 +20,11 @@ using Aevatar.GAgents.ChatAgent.GAgent;
 using GodGPT.GAgents.SpeechChat;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
+using Aevatar.Application.Grains.Agents.ChatManager.Options;
+using Aevatar.Application.Grains.Common.Options;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -30,17 +33,11 @@ namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 [Reentrant]
 public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, EventBase, ChatConfigDto>, IGodChat
 {
-    private static readonly Dictionary<string, List<string>> RegionToLLMsMap = new Dictionary<string, List<string>>()
-    {
-        //"SkyLark-Pro-250415"
-        { "CN", new List<string> { "BytePlusDeepSeekV3" } },
-        { "DEFAULT", new List<string>() { "OpenAILast", "OpenAI" } }
-    };
-
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
     private const string ProxyGPTModelName = "HyperEcho";
     private readonly ISpeechService _speechService;
+    private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
     
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
@@ -65,14 +62,16 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     private static readonly Regex MarkdownStrikethroughRegex = new Regex(@"~~([^~]+)~~", RegexOptions.Compiled);
     private static readonly Regex EmojiRegex = new Regex(@"[\u2600-\u26FF]|[\u2700-\u27BF]", RegexOptions.Compiled);
 
-    public GodChatGAgent(ISpeechService speechService)
+    public GodChatGAgent(ISpeechService speechService, IOptionsMonitor<LLMRegionOptions> llmRegionOptions)
     {
         _speechService = speechService;
+        _llmRegionOptions = llmRegionOptions;
     }
 
     protected override async Task ChatPerformConfigAsync(ChatConfigDto configuration)
     {
-        if (RegionToLLMsMap.IsNullOrEmpty())
+        var regionToLLMsMap = _llmRegionOptions.CurrentValue.RegionToLLMsMap;
+        if (regionToLLMsMap.IsNullOrEmpty())
         {
             Logger.LogDebug($"[GodChatGAgent][ChatPerformConfigAsync] LLMConfigs is null or empty.");
             return;
@@ -732,7 +731,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
     private List<string> GetLLMsForRegion(string region)
     {
-        return RegionToLLMsMap.TryGetValue(region, out var llms) ? llms : new List<string>();
+        var regionToLLMsMap = _llmRegionOptions.CurrentValue.RegionToLLMsMap;
+        return regionToLLMsMap.TryGetValue(region, out var llms) ? llms : new List<string>();
     }
 
     public async Task SetUserProfileAsync(UserProfileDto? userProfileDto)
