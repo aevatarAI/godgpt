@@ -27,6 +27,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<AnonymousGodGPTOptions>(configuration.GetSection("AnonymousGodGPT"));
         Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"));
         Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
+        Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
 
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
         // Register speech services
