@@ -379,21 +379,21 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         switch (@event)
         {
             case SetInviteCodeLogEvent setInviteCode:
-                State.InviterId = setInviteCode.InviterId;
-                State.CurrentInviteCode = setInviteCode.InviteCode;
+                state.InviterId = setInviteCode.InviterId;
+                state.CurrentInviteCode = setInviteCode.InviteCode;
                 break;
 
             case AddInviteeLogEvent addInvitee:
-                State.Invitees[addInvitee.InviteeId] = new InviteeInfo
+                state.Invitees[addInvitee.InviteeId] = new InviteeInfo
                 {
                     InviteeId = addInvitee.InviteeId,
                     InvitedAt = addInvitee.InvitedAt
                 };
-                State.TotalInvites++;
+                state.TotalInvites++;
                 break;
 
             case UpdateInviteeStatusLogEvent updateStatus:
-                if (State.Invitees.TryGetValue(updateStatus.InviteeId, out var invitee))
+                if (state.Invitees.TryGetValue(updateStatus.InviteeId, out var invitee))
                 {
                     invitee.HasCompletedChat = updateStatus.HasCompletedChat;
                     invitee.HasPaid = updateStatus.HasPaid;
@@ -421,27 +421,27 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                     rewardRecord.IssuedAt = DefaultIssueAt;
                 }
 
-                State.RewardHistory.Add(rewardRecord);
+                state.RewardHistory.Add(rewardRecord);
                 if (!addReward.IsScheduled)
                 {
                     if (addReward.RewardType == RewardTypeEnum.TwitterReward)
                     {
-                        State.TotalCreditsFromX += addReward.Credits;
+                        state.TotalCreditsFromX += addReward.Credits;
                     }
                     else
                     {
-                        State.TotalCreditsEarned += addReward.Credits;
+                        state.TotalCreditsEarned += addReward.Credits;
                     }
                 }
 
                 break;
 
             case UpdateValidInvitesLogEvent updateValidInvites:
-                State.ValidInvites = updateValidInvites.ValidInvites;
+                state.ValidInvites = updateValidInvites.ValidInvites;
                 break;
 
             case MarkRewardIssuedLogEvent markIssued:
-                var reward = State.RewardHistory.FirstOrDefault(r =>
+                var reward = state.RewardHistory.FirstOrDefault(r =>
                     r.InviteeId == markIssued.InviteeId &&
                     r.InvoiceId == markIssued.InvoiceId &&
                     r.IsScheduled);
@@ -449,7 +449,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
                 if (reward != null)
                 {
                     reward.IsScheduled = false;
-                    State.TotalCreditsEarned += reward.Credits;
+                    state.TotalCreditsEarned += reward.Credits;
                 }
 
                 break;

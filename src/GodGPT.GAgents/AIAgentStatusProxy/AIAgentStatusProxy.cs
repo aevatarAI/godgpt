@@ -127,22 +127,22 @@ public class AIAgentStatusProxy :
             case SetStatusProxyConfigLogEvent setStatusProxyConfigLogEvent:
                 if (setStatusProxyConfigLogEvent.RecoveryDelay != null)
                 {
-                    State.RecoveryDelay = (TimeSpan)setStatusProxyConfigLogEvent.RecoveryDelay;
+                    state.RecoveryDelay = (TimeSpan)setStatusProxyConfigLogEvent.RecoveryDelay;
                 }
 
-                State.ParentId = setStatusProxyConfigLogEvent.ParentId;
+                state.ParentId = setStatusProxyConfigLogEvent.ParentId;
                 break;
             case SetAvailableLogEvent setAvailableLogEvent:
-                State.IsAvailable = setAvailableLogEvent.IsAvailable;
-                if (State.IsAvailable)
+                state.IsAvailable = setAvailableLogEvent.IsAvailable;
+                if (state.IsAvailable)
                 {
-                    State.UnavailableSince = null;
+                    state.UnavailableSince = null;
                 }
                 else
                 {
-                    State.UnavailableSince = DateTime.UtcNow;
-                    State.UnavailableCount += 1;
-                    State.ExceptionCount += setAvailableLogEvent.ExceptionCount;
+                    state.UnavailableSince = DateTime.UtcNow;
+                    state.UnavailableCount += 1;
+                    state.ExceptionCount += setAvailableLogEvent.ExceptionCount;
                 }
                 break;
         }

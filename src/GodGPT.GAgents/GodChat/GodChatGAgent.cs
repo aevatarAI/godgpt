@@ -632,41 +632,41 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         switch (@event)
         {
             case UpdateUserProfileGodChatEventLog updateUserProfileGodChatEventLog:
-                if (State.UserProfile == null)
+                if (state.UserProfile == null)
                 {
-                    State.UserProfile = new UserProfile();
+                    state.UserProfile = new UserProfile();
                 }
 
-                State.UserProfile.Gender = updateUserProfileGodChatEventLog.Gender;
-                State.UserProfile.BirthDate = updateUserProfileGodChatEventLog.BirthDate;
-                State.UserProfile.BirthPlace = updateUserProfileGodChatEventLog.BirthPlace;
-                State.UserProfile.FullName = updateUserProfileGodChatEventLog.FullName;
+                state.UserProfile.Gender = updateUserProfileGodChatEventLog.Gender;
+                state.UserProfile.BirthDate = updateUserProfileGodChatEventLog.BirthDate;
+                state.UserProfile.BirthPlace = updateUserProfileGodChatEventLog.BirthPlace;
+                state.UserProfile.FullName = updateUserProfileGodChatEventLog.FullName;
                 break;
             case RenameChatTitleEventLog renameChatTitleEventLog:
-                State.Title = renameChatTitleEventLog.Title;
+                state.Title = renameChatTitleEventLog.Title;
                 break;
             case SetChatManagerGuidEventLog setChatManagerGuidEventLog:
-                State.ChatManagerGuid = setChatManagerGuidEventLog.ChatManagerGuid;
+                state.ChatManagerGuid = setChatManagerGuidEventLog.ChatManagerGuid;
                 break;
             case SetAIAgentIdLogEvent setAiAgentIdLogEvent:
-                State.AIAgentIds = setAiAgentIdLogEvent.AIAgentIds;
+                state.AIAgentIds = setAiAgentIdLogEvent.AIAgentIds;
                 break;
             case UpdateRegionProxiesLogEvent updateRegionProxiesLogEvent:
                 foreach (var regionProxy in updateRegionProxiesLogEvent.RegionProxies)
                 {
-                    if (State.RegionProxies == null)
+                    if (state.RegionProxies == null)
                     {
-                        State.RegionProxies = new Dictionary<string, List<Guid>>();
+                        state.RegionProxies = new Dictionary<string, List<Guid>>();
                     }
-                    State.RegionProxies[regionProxy.Key] = regionProxy.Value;
+                    state.RegionProxies[regionProxy.Key] = regionProxy.Value;
                 }
                 break;
             case UpdateChatTimeEventLog updateChatTimeEventLog:
-                if (State.FirstChatTime == null)
+                if (state.FirstChatTime == null)
                 {
-                    State.FirstChatTime = updateChatTimeEventLog.ChatTime;
+                    state.FirstChatTime = updateChatTimeEventLog.ChatTime;
                 }
-                State.LastChatTime = updateChatTimeEventLog.ChatTime;
+                state.LastChatTime = updateChatTimeEventLog.ChatTime;
                 break;
         }
     }

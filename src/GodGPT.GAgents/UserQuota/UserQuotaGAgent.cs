@@ -599,56 +599,56 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         switch (@event)
         {
             case MarkInitializedLogEvent:
-                State.UserId = this.GetPrimaryKey().ToString();
-                State.IsInitializedFromGrain = true;
+                state.UserId = this.GetPrimaryKey().ToString();
+                state.IsInitializedFromGrain = true;
                 break;
 
             case InitializeFromGrainLogEvent initializeFromGrain:
-                State.UserId = this.GetPrimaryKey().ToString();
-                State.Credits = initializeFromGrain.Credits;
-                State.HasInitialCredits = initializeFromGrain.HasInitialCredits;
-                State.HasShownInitialCreditsToast = initializeFromGrain.HasShownInitialCreditsToast;
-                State.Subscription = initializeFromGrain.Subscription;
-                State.RateLimits = initializeFromGrain.RateLimits;
-                State.UltimateSubscription = initializeFromGrain.UltimateSubscription;
-                State.CreatedAt = initializeFromGrain.CreatedAt;
-                State.CanReceiveInviteReward = initializeFromGrain.CanReceiveInviteReward;
-                State.IsInitializedFromGrain = true;
+                state.UserId = this.GetPrimaryKey().ToString();
+                state.Credits = initializeFromGrain.Credits;
+                state.HasInitialCredits = initializeFromGrain.HasInitialCredits;
+                state.HasShownInitialCreditsToast = initializeFromGrain.HasShownInitialCreditsToast;
+                state.Subscription = initializeFromGrain.Subscription;
+                state.RateLimits = initializeFromGrain.RateLimits;
+                state.UltimateSubscription = initializeFromGrain.UltimateSubscription;
+                state.CreatedAt = initializeFromGrain.CreatedAt;
+                state.CanReceiveInviteReward = initializeFromGrain.CanReceiveInviteReward;
+                state.IsInitializedFromGrain = true;
                 break;
 
             case InitializeCreditsLogEvent initializeCredits:
-                State.Credits = initializeCredits.InitialCredits;
-                State.HasInitialCredits = true;
+                state.Credits = initializeCredits.InitialCredits;
+                state.HasInitialCredits = true;
                 break;
 
             case SetShownCreditsToastLogEvent setShownCreditsToast:
-                State.HasShownInitialCreditsToast = setShownCreditsToast.HasShownInitialCreditsToast;
+                state.HasShownInitialCreditsToast = setShownCreditsToast.HasShownInitialCreditsToast;
                 break;
 
             case UpdateRateLimitLogEvent updateRateLimit:
-                State.RateLimits[updateRateLimit.ActionType] = updateRateLimit.RateLimitInfo;
+                state.RateLimits[updateRateLimit.ActionType] = updateRateLimit.RateLimitInfo;
                 break;
 
             case ClearRateLimitLogEvent clearRateLimit:
-                if (State.RateLimits.ContainsKey(clearRateLimit.ActionType))
+                if (state.RateLimits.ContainsKey(clearRateLimit.ActionType))
                 {
-                    State.RateLimits.Remove(clearRateLimit.ActionType);
+                    state.RateLimits.Remove(clearRateLimit.ActionType);
                 }
 
                 break;
 
             case UpdateSubscriptionLogEvent updateSubscription:
-                var subscription = updateSubscription.IsUltimate ? State.UltimateSubscription : State.Subscription;
+                var subscription = updateSubscription.IsUltimate ? state.UltimateSubscription : state.Subscription;
                 if (subscription == null)
                 {
                     subscription = new SubscriptionInfo();
                     if (updateSubscription.IsUltimate)
                     {
-                        State.UltimateSubscription = subscription;
+                        state.UltimateSubscription = subscription;
                     }
                     else
                     {
-                        State.Subscription = subscription;
+                        state.Subscription = subscription;
                     }
                 }
 
@@ -662,7 +662,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 break;
 
             case CancelSubscriptionLogEvent cancelSubscription:
-                var sub = cancelSubscription.IsUltimate ? State.UltimateSubscription : State.Subscription;
+                var sub = cancelSubscription.IsUltimate ? state.UltimateSubscription : state.Subscription;
                 if (sub != null)
                 {
                     sub.IsActive = false;
@@ -675,22 +675,22 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 break;
 
             case UpdateCreditsLogEvent updateCredits:
-                State.Credits = updateCredits.NewCredits;
+                state.Credits = updateCredits.NewCredits;
                 break;
 
             case UpdateCanReceiveInviteRewardLogEvent updateCanReceiveInviteReward:
-                State.CanReceiveInviteReward = updateCanReceiveInviteReward.CanReceiveInviteReward;
+                state.CanReceiveInviteReward = updateCanReceiveInviteReward.CanReceiveInviteReward;
                 break;
             case ClearAllLogEvent clearAll:
-                var canReceiveInviteReward = State.CanReceiveInviteReward;
-                State.Credits = 0;
-                State.HasInitialCredits = false;
-                State.HasShownInitialCreditsToast = false;
-                State.Subscription = new SubscriptionInfo();
-                State.RateLimits = new Dictionary<string, RateLimitInfo>();
-                State.UltimateSubscription = new SubscriptionInfo();
-                State.CreatedAt = default;
-                State.CanReceiveInviteReward = canReceiveInviteReward;
+                var canReceiveInviteReward = state.CanReceiveInviteReward;
+                state.Credits = 0;
+                state.HasInitialCredits = false;
+                state.HasShownInitialCreditsToast = false;
+                state.Subscription = new SubscriptionInfo();
+                state.RateLimits = new Dictionary<string, RateLimitInfo>();
+                state.UltimateSubscription = new SubscriptionInfo();
+                state.CreatedAt = default;
+                state.CanReceiveInviteReward = canReceiveInviteReward;
                 break;
         }
     }

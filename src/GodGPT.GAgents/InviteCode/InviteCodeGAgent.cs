@@ -72,18 +72,18 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
         switch (@event)
         {
             case InitializeInviteCodeLogEvent initEvent:
-                State.InviterId = initEvent.InviterId;
-                State.CreatedAt = initEvent.CreatedAt;
-                State.IsActive = true;
-                State.UsageCount = 0;
+                state.InviterId = initEvent.InviterId;
+                state.CreatedAt = initEvent.CreatedAt;
+                state.IsActive = true;
+                state.UsageCount = 0;
                 break;
 
             case DeactivateInviteCodeLogEvent:
-                State.IsActive = false;
+                state.IsActive = false;
                 break;
             
             case IncrementUsageCountLogEvent:
-                State.UsageCount++;
+                state.UsageCount++;
                 break;
         }
     }
