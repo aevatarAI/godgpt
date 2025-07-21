@@ -28,8 +28,9 @@ public interface IUserQuotaGAgent : IGAgent
     Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
         ActionType actionType = ActionType.Conversation);
     Task<ExecuteActionResultDto> ExecuteVoiceActionAsync(string sessionId, string chatManagerGuid);
+
     Task<ExecuteActionResultDto> CanUploadImageAsync();
-    
+
     Task ResetRateLimitsAsync(string actionType = "conversation");
 
     Task ClearAllAsync();
