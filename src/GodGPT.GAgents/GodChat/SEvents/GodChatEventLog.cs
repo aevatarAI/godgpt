@@ -1,4 +1,5 @@
 using Aevatar.Core.Abstractions;
+using Aevatar.GAgents.AI.Common;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -45,4 +46,10 @@ public class UpdateRegionProxiesLogEvent : GodChatEventLog
 public class UpdateChatTimeEventLog : GodChatEventLog
 {
     [Id(0)] public DateTime ChatTime { get; set; }
+}
+
+[GenerateSerializer]
+public class AddChatMessageMetasLogEvent : GodChatEventLog
+{
+    [Id(0)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<ChatMessageMeta>();
 }

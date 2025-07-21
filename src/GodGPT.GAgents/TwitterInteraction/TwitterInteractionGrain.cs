@@ -90,7 +90,7 @@ public class TwitterInteractionGrain : Grain, ITwitterInteractionGrain
             // Validate EndTime: if not null, must be at least 30 seconds before current UTC time (increased buffer for API safety)
             if (request.EndTime.HasValue)
             {
-                var minimumEndTime = currentUtc.AddSeconds(-30);  // 增加到30秒缓冲
+                var minimumEndTime = currentUtc.AddSeconds(-30);
                 
                 if (request.EndTime.Value > minimumEndTime)
                 {

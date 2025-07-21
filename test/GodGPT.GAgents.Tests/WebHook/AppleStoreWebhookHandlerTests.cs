@@ -85,7 +85,7 @@ public class AppleStoreWebhookHandlerTests : AevatarOrleansTestBase<AevatarGodGP
     public async Task CreateAppStoreSubscriptionAsyncTest()
     {
         var transactionId = "2000000939299589";
-        transactionId = "2000000939700961"; //异常ID
+        transactionId = "2000000939700961";
         var userId = Guid.NewGuid();
         await CreateAppStoreSubscriptionAsync(userId, transactionId);
         

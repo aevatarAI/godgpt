@@ -1,5 +1,6 @@
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AIGAgent.State;
+using GodGPT.GAgents.SpeechChat;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
@@ -18,6 +19,7 @@ public class ChatManagerGAgentState : AIGAgentStateBase
     [Id(9)] public bool? IsFirstConversation { get; set; }
     [Id(10)] public DateTime? RegisteredAtUtc { get; set; }
     [Id(11)] public Guid? InviterId { get; set; }
+    [Id(12)] public VoiceLanguageEnum VoiceLanguage { get; set; } = VoiceLanguageEnum.Unset;
 
     public SessionInfo? GetSession(Guid sessionId)
     {
