@@ -17,6 +17,7 @@ public class UserQuotaGAgentState : StateBase
     [Id(7)] public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     [Id(8)] public bool CanReceiveInviteReward { get; set; } = true;
     [Id(9)] public bool IsInitializedFromGrain { get; set; } = false;
+    [Id(10)] public DailyImageConversationInfo DailyImageConversation { get; set; } = new DailyImageConversationInfo();
 }
 
 // [GenerateSerializer]

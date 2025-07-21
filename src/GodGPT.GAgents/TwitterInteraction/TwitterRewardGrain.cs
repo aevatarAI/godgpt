@@ -1432,8 +1432,10 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 
                 var invitationAgent = GrainFactory.GetGrain<IInvitationGAgent>(userId.Value);
                 
-                await invitationAgent.ProcessTwitterRewardAsync(reward.TweetId, reward.FinalCredits);
-                
+                if (reward.FinalCredits > 0)
+                {
+                    await invitationAgent.ProcessTwitterRewardAsync(reward.TweetId, reward.FinalCredits);
+                }                
                 _logger.LogInformation($"SendRewardsToUsersAsync ProcessTwitterRewardAsync FinalCredits={reward.FinalCredits} credits to twitter_userId={reward.UserId} for tweetId={reward.TweetId} userId={userId} result={invitationAgent}");
 
                 

@@ -145,6 +145,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
 
         // Apply pagination
         var items = query
+            .OrderByDescending(r => r.IssuedAt)
             .Skip((request.PageNo - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(r => new RewardHistoryDto

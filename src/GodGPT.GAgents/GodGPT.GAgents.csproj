@@ -41,6 +41,7 @@
         <PackageReference Include="Microsoft.Orleans.Streaming" />
         <PackageReference Include="Microsoft.Orleans.Runtime" />
         <PackageReference Include="Microsoft.Orleans.EventSourcing" />
+        <PackageReference Include="Microsoft.CognitiveServices.Speech" />
     </ItemGroup>
 
     <ItemGroup>

@@ -4,6 +4,7 @@ using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
@@ -20,6 +21,7 @@ using Aevatar.GAgents.AIGAgent.Agent;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
+using GodGPT.GAgents.SpeechChat;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -763,6 +765,24 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return await godChat.GetChatMessageAsync();
     }
 
+    public async Task<List<ChatMessageWithMetaDto>> GetSessionMessageListWithMetaAsync(Guid sessionId)
+    {
+        Logger.LogDebug($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}");
+        var sessionInfo = State.GetSession(sessionId);
+        
+        if (sessionInfo == null)
+        {
+            Logger.LogWarning($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - Session not found: {sessionId}");
+            throw new UserFriendlyException($"Unable to load conversation {sessionId}");
+        }
+
+        var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
+        var result = await godChat.GetChatMessageWithMetaAsync();
+        
+        Logger.LogDebug($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}, returned {result.Count} messages with audio metadata");
+        return result;
+    }
+
     public async Task<SessionCreationInfoDto?> GetSessionCreationInfoAsync(Guid sessionId)
     {
         Logger.LogDebug($"[ChatGAgentManager][GetSessionCreationInfoAsync] - session:ID {sessionId.ToString()}");
@@ -848,6 +868,34 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return this.GetPrimaryKey();
     }
 
+    /// <summary>
+    /// Sets the voice language preference for the user.
+    /// Validates that the user exists before updating the voice language setting.
+    /// </summary>
+    /// <param name="voiceLanguage">The voice language to set for the user</param>
+    /// <returns>The user ID if successful</returns>
+    /// <exception cref="UserFriendlyException">Thrown when user is not found or initialized</exception>
+    public async Task<Guid> SetVoiceLanguageAsync(VoiceLanguageEnum voiceLanguage)
+    {
+        // Check if user is properly initialized (has at least one session or profile data)
+        var userId = this.GetPrimaryKey();
+        if (userId == Guid.Empty)
+        {
+            Logger.LogWarning("[ChatGAgentManager][SetVoiceLanguageAsync] Invalid user ID");
+            throw new UserFriendlyException("Invalid user. Please ensure you are properly logged in.");
+        }
+        // Raise event to update voice language
+        RaiseEvent(new SetVoiceLanguageEventLog()
+        {
+            VoiceLanguage = voiceLanguage
+        });
+
+        await ConfirmEvents();
+        
+        Logger.LogDebug($"[ChatGAgentManager][SetVoiceLanguageAsync] Successfully set voice language to {voiceLanguage} for user {userId}");
+        return userId;
+    }
+
     public async Task<UserProfileDto> GetUserProfileAsync()
     {
         Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] userId: {this.GetPrimaryKey().ToString()}");
@@ -886,7 +934,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Subscription = subscriptionInfo,
             UltimateSubscription = ultimateSubscriptionInfo,
             Id = this.GetPrimaryKey(),
-            InviterId = State.InviterId
+            InviterId = State.InviterId,
+            VoiceLanguage = State.VoiceLanguage
         };
     }
     
@@ -1114,12 +1163,17 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 state.FullName = string.Empty;
                 state.CurrentShareCount = 0;
                 state.InviterId = null;
+                state.VoiceLanguage = VoiceLanguageEnum.Unset;
                 break;
             case SetUserProfileEventLog @setFortuneInfoEventLog:
                 state.Gender = @setFortuneInfoEventLog.Gender;
                 state.BirthDate = @setFortuneInfoEventLog.BirthDate;
                 state.BirthPlace = @setFortuneInfoEventLog.BirthPlace;
                 state.FullName = @setFortuneInfoEventLog.FullName;
+                break;
+            case SetVoiceLanguageEventLog @setVoiceLanguageEventLog:
+                // Update the voice language preference for the user
+                state.VoiceLanguage = @setVoiceLanguageEventLog.VoiceLanguage;
                 break;
             case GenerateChatShareContentLogEvent generateChatShareContentLogEvent:
                 var session = state.GetSession(generateChatShareContentLogEvent.SessionId);

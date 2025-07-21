@@ -4,12 +4,13 @@
     <AbpVersion>9.0.3</AbpVersion>
     <OrleansVerion>9.0.1</OrleansVerion>
 <!--    <AevatarVerion>1.4.13</AevatarVerion>-->
-<!--    <AevatarGAgentVerion>1.4.16</AevatarGAgentVerion>-->
+<!--    <AevatarGAgentVerion>1.4.17</AevatarGAgentVerion>-->
     <AevatarVerion>1.5.2</AevatarVerion>
     <AevatarGAgentVerion>1.5.1-stream-2</AevatarGAgentVerion>
   </PropertyGroup>
   <ItemGroup>
     <!-- GodGPT -->
+    <PackageVersion Include="Microsoft.CognitiveServices.Speech" Version="1.40.0" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.12.0" />
     <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.12.0" />
     <PackageVersion Include="Stripe.net" Version="48.1.0" />

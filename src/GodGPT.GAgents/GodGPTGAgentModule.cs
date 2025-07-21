@@ -4,14 +4,14 @@ using Aevatar.Application.Grains.Agents.Anonymous.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
-
-
+using Aevatar.Application.Grains.ChatManager.UserBilling;
+using GodGPT.GAgents.SpeechChat;
+using Microsoft.Extensions.Configuration;
 
 namespace Aevatar.Application.Grains;
 
 [DependsOn(
-    typeof(AbpAutoMapperModule)
-)]
+    typeof(AbpAutoMapperModule))]
 public class GodGPTGAgentModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)
@@ -27,7 +27,11 @@ public class GodGPTGAgentModule : AbpModule
         Configure<AnonymousGodGPTOptions>(configuration.GetSection("AnonymousGodGPT"));
         Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"));
         Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
+        Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
 
+        Configure<SpeechOptions>(configuration.GetSection("Speech"));
+        // Register speech services
+        context.Services.AddSingleton<ISpeechService, SpeechService>();
         context.Services.AddHttpClient();
     }
 }

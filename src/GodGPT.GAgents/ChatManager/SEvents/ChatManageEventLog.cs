@@ -1,4 +1,5 @@
 using Aevatar.Core.Abstractions;
+using GodGPT.GAgents.SpeechChat;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
@@ -47,6 +48,12 @@ public class SetUserProfileEventLog : ChatManageEventLog
     [Id(1)] public DateTime BirthDate { get; set; }
     [Id(2)] public string BirthPlace { get; set; }
     [Id(3)] public string FullName { get; set; }
+}
+
+[GenerateSerializer]
+public class SetVoiceLanguageEventLog : ChatManageEventLog
+{
+    [Id(0)] public VoiceLanguageEnum VoiceLanguage { get; set; }
 }
 
 [GenerateSerializer]
