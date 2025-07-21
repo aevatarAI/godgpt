@@ -71,6 +71,7 @@ public abstract class AevatarTestBase<TStartupModule> : AbpIntegratedTest<TStart
         };
         
         builder.AddInMemoryCollection(testConfiguration);
+        builder.AddJsonFile("appsettings.json", false);
         builder.AddJsonFile("appsettings.secrets.json", true);
         services.ReplaceConfiguration(builder.Build());
     }

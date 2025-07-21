@@ -14,6 +14,7 @@ using Aevatar.GAgents.SemanticKernel.Extensions;
 using Aevatar.Mock;
 using Aevatar.PermissionManagement.Extensions;
 using AutoMapper;
+using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -117,7 +118,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                         configuration.GetSection("AIServices:AzureOpenAIEmbeddings"));
                     services.Configure<RagConfig>(configuration.GetSection("Rag"));
                     services.Configure<SystemLLMConfigOptions>(configuration);
-
+                    services.Configure<SpeechOptions>(configuration.GetSection("Speech"));
+                    services.AddSingleton<ISpeechService, SpeechService>();
                     services.AddSemanticKernel()
                         .AddQdrantVectorStore()
                         .AddAzureOpenAITextEmbedding()
@@ -126,6 +128,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .AddMemoryStreams("Aevatar")
                 .AddMemoryGrainStorage("PubSubStore")
                 .AddMemoryGrainStorageAsDefault()
+                .AddMemoryGrainStorage("DefaultGrainStorage")
                 .UseAevatar()
                 .AddLogStorageBasedLogConsistencyProvider("LogStorage")
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))

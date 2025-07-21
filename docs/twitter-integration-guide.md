@@ -12,8 +12,8 @@ var tweetMonitor = ClusterClient.GetGrain<ITweetMonitorGrain>("test-monitor");
 // 方式1: 直接使用UTC秒数（推荐）
 var timeRange = new TimeRangeDto
 {
-    StartTimeUtcSecond = ((DateTimeOffset)DateTime.UtcNow.AddHours(-24)).ToUnixTimeSeconds(),
-    EndTimeUtcSecond = ((DateTimeOffset)DateTime.UtcNow.AddMinutes(-30)).ToUnixTimeSeconds()
+StartTimeUtcSecond = ((DateTimeOffset)DateTime.UtcNow.AddHours(-24)).ToUnixTimeSeconds(),
+EndTimeUtcSecond = ((DateTimeOffset)DateTime.UtcNow.AddMinutes(-30)).ToUnixTimeSeconds()
 };
 
 // 方式2: 使用便利方法
@@ -76,8 +76,8 @@ _logger.LogInformation("Start result: {IsSuccess}, Message: {Message}", startRes
 
 // 查询状态
 var statusResult1 = await rewardGrain.GetRewardCalculationStatusAsync();
-_logger.LogInformation("Status after start: IsRunning={IsRunning}, NextCalculation={NextTime}", 
-    statusResult1.Data.IsRunning, statusResult1.Data.NextScheduledCalculation);
+_logger.LogInformation("Status after start: IsRunning={IsRunning}, NextCalculation={NextTime}",
+statusResult1.Data.IsRunning, statusResult1.Data.NextScheduledCalculation);
 
 // 停止奖励定时任务
 var stopResult = await rewardGrain.StopRewardCalculationAsync();

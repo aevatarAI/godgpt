@@ -68,7 +68,8 @@ public class GodGPTSerializationBinder : DefaultSerializationBinder
         "Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos.AIAgentStatusProxyConfig",
         "Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.ProxySEvents.AIAgentStatusProxyLogEvent",
         "Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.ProxySEvents.SetAvailableLogEvent",
-        "Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.ProxySEvents.SetStatusProxyConfigLogEvent"
+        "Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.ProxySEvents.SetStatusProxyConfigLogEvent",
+        "Aevatar.Application.Grains.Agents.ChatManager.SetVoiceLanguageEventLog"
     };
     
     private const string OldAssemblyName = "Aevatar.Application.Grains";
