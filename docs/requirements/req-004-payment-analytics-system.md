@@ -265,19 +265,65 @@ if (paymentDetailsDto?.UserId != Guid.Empty)
 }
 ```
 
-## 8. Configuration
+## 8. Google Analytics 4 Integration Details
 
-### 8.1 Analytics Options
+### 8.1 GA4 Measurement Protocol Configuration
+
 ```csharp
-public class PaymentAnalyticsOptions
+public class GoogleAnalyticsOptions
 {
     public bool EnableAnalytics { get; set; } = true;
-    public string AnalyticsServiceUrl { get; set; }
+    public string MeasurementId { get; set; } // G-XXXXXXXXXX
+    public string ApiSecret { get; set; } // Generated in GA4 Admin
+    public string ApiEndpoint { get; set; } = "https://www.google-analytics.com/mp/collect";
+    public string DebugEndpoint { get; set; } = "https://www.google-analytics.com/debug/mp/collect";
     public int TimeoutSeconds { get; set; } = 5;
     public bool EnableStripeReporting { get; set; } = true;
     public bool EnableAppleReporting { get; set; } = true;
+    public bool UseEuRegion { get; set; } = false; // Set to true for EU data processing
 }
 ```
+
+### 8.2 Payment Event Schema for GA4
+
+```json
+{
+  "client_id": "CLIENT_ID_FROM_PAYMENT_CONTEXT",
+  "events": [
+    {
+      "name": "payment_success",
+      "params": {
+        "currency": "USD",
+        "value": 29.99,
+        "transaction_id": "stripe_pi_xxxxx",
+        "payment_type": "stripe",
+        "payment_method": "card",
+        "plan_type": "premium_monthly",
+        "session_id": "SESSION_ID",
+        "engagement_time_msec": 100,
+        "user_id": "USER_GUID",
+        "custom_payment_platform": "stripe"
+      }
+    }
+  ]
+}
+```
+
+### 8.3 GA4 Setup Requirements
+
+**Step 1: Create API Secret**
+1. Navigate to GA4 Admin → Data Streams → Select Stream
+2. Go to "Measurement Protocol API secrets"
+3. Click "Create" and generate secret key
+
+**Step 2: Get Measurement ID**
+1. In the same Data Stream details
+2. Copy the Measurement ID (G-XXXXXXXXXX format)
+
+**Step 3: Configure Events**
+- Custom event: `payment_success`
+- Custom parameters: `payment_type`, `payment_method`, `plan_type`
+- Standard parameters: `currency`, `value`, `transaction_id`
 
 ## 9. Dependencies
 
@@ -297,3 +343,157 @@ public class PaymentAnalyticsOptions
 - Analytics service client
 - Event data models
 - Configuration classes
+
+## 10. Implementation Code Examples
+
+### 10.1 PaymentAnalyticsGrain Implementation
+
+```csharp
+public interface IPaymentAnalyticsGrain : IGrainWithIntegerKey
+{
+    Task ReportStripePaymentAsync(PaymentEventDto paymentData);
+    Task ReportApplePaymentAsync(PaymentEventDto paymentData);
+}
+
+[StatelessWorker]
+[Reentrant]
+public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
+{
+    private readonly ILogger<PaymentAnalyticsGrain> _logger;
+    private readonly HttpClient _httpClient;
+    private readonly GoogleAnalyticsOptions _options;
+
+    public PaymentAnalyticsGrain(
+        ILogger<PaymentAnalyticsGrain> logger,
+        HttpClient httpClient,
+        IOptionsMonitor<GoogleAnalyticsOptions> options)
+    {
+        _logger = logger;
+        _httpClient = httpClient;
+        _options = options.CurrentValue;
+    }
+
+    public async Task ReportStripePaymentAsync(PaymentEventDto paymentData)
+    {
+        if (!_options.EnableStripeReporting) return;
+        
+        await SendPaymentEventAsync(paymentData, "stripe");
+    }
+
+    public async Task ReportApplePaymentAsync(PaymentEventDto paymentData)
+    {
+        if (!_options.EnableAppleReporting) return;
+        
+        await SendPaymentEventAsync(paymentData, "apple");
+    }
+
+    private async Task SendPaymentEventAsync(PaymentEventDto paymentData, string platform)
+    {
+        try
+        {
+            var eventPayload = CreateGA4Payload(paymentData, platform);
+            var url = $"{_options.ApiEndpoint}?measurement_id={_options.MeasurementId}&api_secret={_options.ApiSecret}";
+            
+            var jsonContent = JsonContent.Create(eventPayload);
+            
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+            var response = await _httpClient.PostAsync(url, jsonContent, cts.Token);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("[PaymentAnalytics] Successfully reported {Platform} payment: {TransactionId}", 
+                    platform, paymentData.TransactionId);
+            }
+            else
+            {
+                _logger.LogWarning("[PaymentAnalytics] Failed to report {Platform} payment: {StatusCode}", 
+                    platform, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[PaymentAnalytics] Error reporting {Platform} payment: {TransactionId}", 
+                platform, paymentData.TransactionId);
+        }
+    }
+
+    private object CreateGA4Payload(PaymentEventDto paymentData, string platform)
+    {
+        return new
+        {
+            client_id = paymentData.ClientId ?? $"user_{paymentData.UserId}",
+            events = new[]
+            {
+                new
+                {
+                    name = "payment_success",
+                    @params = new
+                    {
+                        currency = paymentData.Currency,
+                        value = paymentData.Amount,
+                        transaction_id = paymentData.TransactionId,
+                        payment_type = platform,
+                        payment_method = paymentData.PaymentMethod ?? "unknown",
+                        plan_type = paymentData.PlanType,
+                        session_id = paymentData.SessionId,
+                        engagement_time_msec = 100,
+                        user_id = paymentData.UserId.ToString(),
+                        custom_payment_platform = platform
+                    }
+                }
+            }
+        };
+    }
+}
+```
+
+### 10.2 PaymentEventDto Definition
+
+```csharp
+public class PaymentEventDto
+{
+    public Guid UserId { get; set; }
+    public string TransactionId { get; set; }
+    public decimal Amount { get; set; }
+    public string Currency { get; set; } = "USD";
+    public string PlanType { get; set; }
+    public string PaymentMethod { get; set; }
+    public string ClientId { get; set; }
+    public string SessionId { get; set; }
+    public DateTime Timestamp { get; set; }
+}
+```
+
+### 10.3 Configuration Example (appsettings.json)
+
+```json
+{
+  "GoogleAnalytics": {
+    "EnableAnalytics": true,
+    "MeasurementId": "G-XXXXXXXXXX",
+    "ApiSecret": "YOUR_API_SECRET_HERE",
+    "ApiEndpoint": "https://www.google-analytics.com/mp/collect",
+    "DebugEndpoint": "https://www.google-analytics.com/debug/mp/collect",
+    "TimeoutSeconds": 5,
+    "EnableStripeReporting": true,
+    "EnableAppleReporting": true,
+    "UseEuRegion": false
+  }
+}
+```
+
+## 11. Testing and Validation
+
+### 11.1 GA4 Event Validation
+Use the debug endpoint to validate events before production:
+```csharp
+// Replace the API endpoint with debug endpoint for testing
+var debugUrl = $"{_options.DebugEndpoint}?measurement_id={_options.MeasurementId}&api_secret={_options.ApiSecret}";
+```
+
+### 11.2 Key Testing Points
+- ✅ Verify events appear in GA4 Real-time reports
+- ✅ Check custom parameters are captured correctly
+- ✅ Validate payment type categorization
+- ✅ Test both Stripe and Apple payment flows
+- ✅ Confirm no impact on payment processing performance
