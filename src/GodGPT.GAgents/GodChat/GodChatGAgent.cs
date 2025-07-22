@@ -1100,7 +1100,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         settings.Temperature = "0.9";
         
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId, promptSettings, isHttpRequest, region);
-        var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
+        //var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
+        //mock ai response
+        var response = new List<ChatMessage>();
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(800));
+            response.Add(new ChatMessage()
+            {
+                ChatRole = ChatRole.Assistant,
+                Content = "this is mock ai response"
+            });
+        }
         sw.Stop();
         Logger.LogDebug($"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
         return response;
