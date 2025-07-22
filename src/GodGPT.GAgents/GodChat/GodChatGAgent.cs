@@ -842,13 +842,37 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var configuration = GetConfiguration();
             var systemLlm = await configuration.GetSystemLLM();
             var dictionary = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-            GodStreamChatAsync(contextDto.RequestId,
-                (string)dictionary.GetValueOrDefault("LLM", systemLlm),
-                (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
-                (string)dictionary.GetValueOrDefault("Message", string.Empty),
-                contextDto.ChatId, null, (bool)dictionary.GetValueOrDefault("IsHttpRequest", true),
-                (string)dictionary.GetValueOrDefault("Region", null),
-                false, (List<string>?)dictionary.GetValueOrDefault("Images"));
+            
+            // Check if this is a voice chat retry to call the appropriate method
+            var isVoiceChat = dictionary.ContainsKey("IsVoiceChat") && (bool)dictionary["IsVoiceChat"];
+            
+            if (isVoiceChat)
+            {
+                // Voice chat retry: call GodVoiceStreamChatAsync with voice parameters
+                var voiceLanguageValue = dictionary.GetValueOrDefault("VoiceLanguage", 0);
+                var voiceLanguage = (VoiceLanguageEnum)Convert.ToInt32(voiceLanguageValue);
+                var voiceDurationSeconds = Convert.ToDouble(dictionary.GetValueOrDefault("VoiceDurationSeconds", 0.0));
+                
+                await GodVoiceStreamChatAsync(contextDto.RequestId,
+                    (string)dictionary.GetValueOrDefault("LLM", systemLlm),
+                    (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
+                    (string)dictionary.GetValueOrDefault("Message", string.Empty),
+                    contextDto.ChatId, null, (bool)dictionary.GetValueOrDefault("IsHttpRequest", true),
+                    (string)dictionary.GetValueOrDefault("Region", null),
+                    voiceLanguage, voiceDurationSeconds, false);
+            }
+            else
+            {
+                // Regular chat retry: call GodStreamChatAsync
+                GodStreamChatAsync(contextDto.RequestId,
+                    (string)dictionary.GetValueOrDefault("LLM", systemLlm),
+                    (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
+                    (string)dictionary.GetValueOrDefault("Message", string.Empty),
+                    contextDto.ChatId, null, (bool)dictionary.GetValueOrDefault("IsHttpRequest", true),
+                    (string)dictionary.GetValueOrDefault("Region", null),
+                    false, (List<string>?)dictionary.GetValueOrDefault("Images"));
+            }
+            
             return;
         }
 
