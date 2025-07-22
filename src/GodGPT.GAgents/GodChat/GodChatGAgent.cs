@@ -516,6 +516,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
         string? region = null, bool addToHistory = true, List<string>? images = null)
     {
+        Logger.LogDebug(
+            $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}");
         var configuration = GetConfiguration();
         var sysMessage = await configuration.GetPrompt();
 
