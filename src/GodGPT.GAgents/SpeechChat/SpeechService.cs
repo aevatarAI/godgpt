@@ -61,6 +61,8 @@ public class SpeechService : ISpeechService
 
     public async Task<string> SpeechToTextAsync(byte[] audioData, VoiceLanguageEnum language)
     {
+        //Mock
+        return "123456";
         try
         {
             // Validate audio data

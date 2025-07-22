@@ -578,7 +578,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             Logger.LogDebug(
                 $"[GodChatGAgent][GodStreamChatAsync] history agent, session {sessionId.ToString()}, chat {chatId}");
-            await ChatAsync(message, promptSettings, aiChatContextDto);
+            //await ChatAsync(message, promptSettings, aiChatContextDto);
         }
 
         return string.Empty;
@@ -1503,13 +1503,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             }
             Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] promptMsg: {promptMsg}");
 
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMsg, State.ChatHistory, settings,
+            /*var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMsg, State.ChatHistory, settings,
                 context: aiChatContextDto);
+
             if (!result)
             {
                 Logger.LogError($"[GodChatGAgent][GodVoiceStreamChatAsync] Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
-            }
-
+            }*/
+            MockCallBackAsync(sessionId, llm, message, chatId, promptSettings, isHttpRequest);
             if (!addToHistory)
             {
                 return string.Empty;
@@ -1548,7 +1549,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             Logger.LogDebug(
                 $"[GodChatGAgent][GodVoiceStreamChatAsync] fallback to history agent, session {sessionId.ToString()}, chat {chatId}");
             // Fallback to non-streaming chat if no proxy available
-            await ChatAsync(message, promptSettings, aiChatContextDto);
+            //await ChatAsync(message, promptSettings, aiChatContextDto);
         }
 
         // Voice synthesis and streaming handled in ChatMessageCallbackAsync
