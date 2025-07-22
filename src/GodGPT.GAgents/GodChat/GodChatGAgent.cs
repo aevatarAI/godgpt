@@ -378,6 +378,33 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogDebug(
             $"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Voice parsed successfully: {voiceContent}");
 
+        // Send STT result immediately to frontend via VoiceToText message
+        var sttResultMessage = new ResponseStreamGodChat()
+        {
+            Response = voiceContent,  // STT converted text
+            ChatId = chatId,
+            IsLastChunk = false,
+            SerialNumber = 0,  // Mark as first message (STT result)
+            SessionId = sessionId,
+            VoiceContentType = VoiceContentType.VoiceToText,  // Critical: indicate this is STT result
+            ErrorCode = ChatErrorCode.Success,
+            NewTitle = string.Empty,
+            AudioData = null,  // No audio data for STT result
+            AudioMetadata = null
+        };
+
+        // Send STT result using the same streaming mechanism
+        if (isHttpRequest)
+        {
+            await PushMessageToClientAsync(sttResultMessage);
+        }
+        else
+        {
+            await PublishAsync(sttResultMessage);
+        }
+
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} STT result sent to frontend: '{voiceContent}'");
+
         var quotaStopwatch = Stopwatch.StartNew();
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
         var actionResultDto = await userQuotaGAgent.ExecuteVoiceActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
