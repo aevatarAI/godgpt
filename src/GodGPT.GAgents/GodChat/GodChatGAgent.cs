@@ -152,6 +152,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         List<string>? images = null)
     {
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start.");
+        
+        // Get language from RequestContext with error handling
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Language from context: {language}");
+        
         var actionType = images == null || images.IsNullOrEmpty()
             ? ActionType.Conversation
             : ActionType.ImageConversation;
