@@ -155,7 +155,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Language from context: {language}");
+        var tmpLanguage = RequestContext.Get("GodGPTLanguage");
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Language from context: {language} tmpLanguage:{JsonConvert.SerializeObject(tmpLanguage)}");
         
         var actionType = images == null || images.IsNullOrEmpty()
             ? ActionType.Conversation
@@ -567,6 +568,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
             var promptMessage = message;
             promptMessage = GodGPTLanguageHelper.AppendLanguagePrompt(message, language);
+            Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] build promptMessage. {promptMessage}");
 
             var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMessage, State.ChatHistory, settings,
                 context: aiChatContextDto, imageKeys: images);
