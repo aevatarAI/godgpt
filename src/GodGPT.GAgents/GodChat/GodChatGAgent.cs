@@ -564,7 +564,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 $"[GodChatGAgent][GodStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
             var settings = promptSettings ?? new ExecutionPromptSettings();
             settings.Temperature = "0.9";
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(message, State.ChatHistory, settings,
+            var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+            var promptMessage = message;
+            promptMessage = GodGPTLanguageHelper.AppendLanguagePrompt(message, language);
+
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMessage, State.ChatHistory, settings,
                 context: aiChatContextDto, imageKeys: images);
             if (!result)
             {

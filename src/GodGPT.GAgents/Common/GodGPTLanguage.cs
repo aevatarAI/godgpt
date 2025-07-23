@@ -71,4 +71,18 @@ public static class GodGPTLanguageHelper
             // Handle exception if needed
         }
     }
+    public static string AppendLanguagePrompt(this string message, GodGPTLanguage language)
+    {
+        var promptMsg = message;
+
+        promptMsg += language switch
+        {
+            GodGPTLanguage.English => ".Requirement: Please reply in English.",
+            GodGPTLanguage.TraditionalChinese => ".Requirement: Please reply in Chinese.",
+            GodGPTLanguage.Spanish => ".Requirement: Please reply in Spanish.",
+            _ => ".Requirement: Please reply in English."
+        };
+
+        return promptMsg;
+    }
 } 
