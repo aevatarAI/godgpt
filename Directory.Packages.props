@@ -6,7 +6,7 @@
 <!--    <AevatarVerion>1.4.13</AevatarVerion>-->
 <!--    <AevatarGAgentVerion>1.4.17</AevatarGAgentVerion>-->
     <AevatarVerion>1.5.2</AevatarVerion>
-    <AevatarGAgentVerion>1.5.1-stream-2</AevatarGAgentVerion>
+    <AevatarGAgentVerion>1.5.1-chat-image-0</AevatarGAgentVerion>
   </PropertyGroup>
   <ItemGroup>
     <!-- GodGPT -->
