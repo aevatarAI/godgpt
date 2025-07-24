@@ -75,13 +75,13 @@ public static class GodGPTLanguageHelper
     {
         var promptMsg = message;
 
-        promptMsg += language switch
+        /*promptMsg += language switch
         {
             GodGPTLanguage.English => ".Requirement: Please reply in English.",
             GodGPTLanguage.TraditionalChinese => ".Requirement: Please reply in Chinese.",
             GodGPTLanguage.Spanish => ".Requirement: Please reply in Spanish.",
             _ => ".Requirement: Please reply in English."
-        };
+        };*/
 
         return promptMsg;
     }
