@@ -2,19 +2,19 @@
 
 ## 1. System Overview
 
-GodGPT支付分析系统旨在实现对所有支付成功事件的实时上报。系统将在现有的StripeEventProcessingGrain和AppleEventProcessingGrain基础上，增加支付成功事件的上报功能，支持按支付类型和汇总统计的数据收集。
+GodGPT支付分析系统旨在实现对所有支付成功事件的简单计数上报。系统将在现有的StripeEventProcessingGrain和AppleEventProcessingGrain基础上，增加支付成功事件的上报功能，每次支付成功时上报一次计数事件到Google Analytics。
 
 ### Core Features
 
-**1. Real-time Payment Event Reporting**
-- Monitor successful payment events from Stripe and Apple
-- Real-time reporting on payment completion
-- Categorized by payment platform (Stripe/Apple)
+**1. Simple Payment Count Reporting**
+- Monitor successful payment events from all payment platforms
+- Real-time count reporting on payment completion
+- Unified event reporting without platform distinction
 
-**2. Simple Data Collection**
-- Individual payment transaction reporting  
-- Categorized statistics by payment type
-- Aggregated statistics across all payment types
+**2. Minimal Data Collection**
+- Individual payment success count reporting
+- Unified payment success events
+- No payment type categorization required
 
 **3. Minimal Integration**
 - StripeEventProcessingGrain integration
@@ -33,22 +33,19 @@ GodGPT支付分析系统旨在实现对所有支付成功事件的实时上报�
 - **Trigger**: Immediately after payment success confirmation
 
 #### R2: Event Data Collection
-- **Description**: Collect essential payment information for each transaction
+- **Description**: Collect minimal payment information for count tracking
 - **Required Data**:
-  - Payment Type (Stripe/Apple)
-  - User ID
-  - Transaction ID  
-  - Payment Amount
-  - Currency
-  - Payment Date/Time
-  - Plan Type
+  - Event Type: "payment_success"
+  - Timestamp
+  - Session ID (optional)
+  - Engagement time
 
-#### R3: Categorized Reporting
-- **Description**: Report payment events with proper categorization
+#### R3: Unified Reporting
+- **Description**: Report payment success events as simple count events
 - **Categories**:
-  - By Payment Type: Stripe, Apple
-  - Aggregated: All payments combined
-- **Reporting**: Real-time per transaction
+  - Single event type: "payment_success"
+  - No platform distinction required
+- **Reporting**: Real-time per transaction count
 
 ### 2.2 Technical Requirements
 
@@ -77,9 +74,9 @@ Payment Processing Grains
 
 Analytics System
 ├── PaymentAnalyticsGrain [NEW]
-│   ├── ReportStripePaymentAsync()
-│   ├── ReportApplePaymentAsync()
-│   └── ReportAggregatedPaymentAsync()
+│   ├── ReportPaymentSuccessAsync()
+│   ├── TestConnectionAsync()
+│   └── GetServiceStatusAsync()
 └── External Analytics Service
     └── Google Analytics Integration
 ```
@@ -160,29 +157,26 @@ graph TD
 
 ```json
 {
-  "eventType": "payment_success",
-  "paymentType": "stripe|apple", 
-  "userId": "guid",
-  "transactionId": "string",
-  "amount": "decimal",
-  "currency": "string",
-  "planType": "string",
-  "timestamp": "datetime",
-  "platform": "stripe|apple"
+  "client_id": "CLIENT_ID",
+  "events": [
+    {
+      "name": "payment_success",
+      "params": {
+        "session_id": "SESSION_ID",
+        "engagement_time_msec": 100
+      }
+    }
+  ]
 }
 ```
 
 ### 4.2 Statistics Categories
 
-**By Payment Type:**
-- Stripe: count, total_amount, average_amount
-- Apple: count, total_amount, average_amount
-
-**Aggregated (All Payments):**
-- Total count across all platforms
-- Total amount across all platforms  
-- Average transaction amount
-- Platform distribution percentage
+**Unified Payment Events:**
+- Single event type: "payment_success"
+- Simple count tracking in GA4
+- No payment type distinction
+- Total payment success count across all platforms
 
 ## 5. Implementation Plan
 
@@ -278,8 +272,6 @@ public class GoogleAnalyticsOptions
     public string ApiEndpoint { get; set; } = "https://www.google-analytics.com/mp/collect";
     public string DebugEndpoint { get; set; } = "https://www.google-analytics.com/debug/mp/collect";
     public int TimeoutSeconds { get; set; } = 5;
-    public bool EnableStripeReporting { get; set; } = true;
-    public bool EnableAppleReporting { get; set; } = true;
     public bool UseEuRegion { get; set; } = false; // Set to true for EU data processing
 }
 ```
@@ -349,10 +341,11 @@ public class GoogleAnalyticsOptions
 ### 10.1 PaymentAnalyticsGrain Implementation
 
 ```csharp
-public interface IPaymentAnalyticsGrain : IGrainWithIntegerKey
+public interface IPaymentAnalyticsGrain : IGrainWithStringKey
 {
-    Task ReportStripePaymentAsync(PaymentEventDto paymentData);
-    Task ReportApplePaymentAsync(PaymentEventDto paymentData);
+    Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync();
+    Task<PaymentAnalyticsResultDto> TestConnectionAsync();
+    Task<PaymentAnalyticsResultDto<string>> GetServiceStatusAsync();
 }
 
 [StatelessWorker]
@@ -373,25 +366,20 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
         _options = options.CurrentValue;
     }
 
-    public async Task ReportStripePaymentAsync(PaymentEventDto paymentData)
-    {
-        if (!_options.EnableStripeReporting) return;
-        
-        await SendPaymentEventAsync(paymentData, "stripe");
-    }
-
-    public async Task ReportApplePaymentAsync(PaymentEventDto paymentData)
-    {
-        if (!_options.EnableAppleReporting) return;
-        
-        await SendPaymentEventAsync(paymentData, "apple");
-    }
-
-    private async Task SendPaymentEventAsync(PaymentEventDto paymentData, string platform)
+    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync()
     {
         try
         {
-            var eventPayload = CreateGA4Payload(paymentData, platform);
+            if (!_options.EnableAnalytics)
+            {
+                return new PaymentAnalyticsResultDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Analytics reporting is disabled"
+                };
+            }
+
+            var eventPayload = CreateGA4Payload();
             var url = $"{_options.ApiEndpoint}?measurement_id={_options.MeasurementId}&api_secret={_options.ApiSecret}";
             
             var jsonContent = JsonContent.Create(eventPayload);
@@ -401,27 +389,41 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
             
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("[PaymentAnalytics] Successfully reported {Platform} payment: {TransactionId}", 
-                    platform, paymentData.TransactionId);
+                _logger.LogInformation("[PaymentAnalytics] Successfully reported payment success event");
+                return new PaymentAnalyticsResultDto
+                {
+                    IsSuccess = true,
+                    StatusCode = (int)response.StatusCode
+                };
             }
             else
             {
-                _logger.LogWarning("[PaymentAnalytics] Failed to report {Platform} payment: {StatusCode}", 
-                    platform, response.StatusCode);
+                _logger.LogWarning("[PaymentAnalytics] Failed to report payment success: {StatusCode}", 
+                    response.StatusCode);
+                return new PaymentAnalyticsResultDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = $"GA4 API error: {response.StatusCode}",
+                    StatusCode = (int)response.StatusCode
+                };
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[PaymentAnalytics] Error reporting {Platform} payment: {TransactionId}", 
-                platform, paymentData.TransactionId);
+            _logger.LogError(ex, "[PaymentAnalytics] Error reporting payment success");
+            return new PaymentAnalyticsResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message
+            };
         }
     }
 
-    private object CreateGA4Payload(PaymentEventDto paymentData, string platform)
+    private object CreateGA4Payload()
     {
         return new
         {
-            client_id = paymentData.ClientId ?? $"user_{paymentData.UserId}",
+            client_id = $"payment_analytics_{DateTime.UtcNow.Ticks}",
             events = new[]
             {
                 new
@@ -429,38 +431,69 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
                     name = "payment_success",
                     @params = new
                     {
-                        currency = paymentData.Currency,
-                        value = paymentData.Amount,
-                        transaction_id = paymentData.TransactionId,
-                        payment_type = platform,
-                        payment_method = paymentData.PaymentMethod ?? "unknown",
-                        plan_type = paymentData.PlanType,
-                        session_id = paymentData.SessionId,
-                        engagement_time_msec = 100,
-                        user_id = paymentData.UserId.ToString(),
-                        custom_payment_platform = platform
+                        session_id = Guid.NewGuid().ToString(),
+                        engagement_time_msec = 100
                     }
                 }
             }
         };
     }
+
+    public async Task<PaymentAnalyticsResultDto> TestConnectionAsync()
+    {
+        try
+        {
+            // Use debug endpoint for testing
+            var testPayload = CreateGA4Payload();
+            var url = $"{_options.DebugEndpoint}?measurement_id={_options.MeasurementId}&api_secret={_options.ApiSecret}";
+            
+            var jsonContent = JsonContent.Create(testPayload);
+            
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(_options.TimeoutSeconds));
+            var response = await _httpClient.PostAsync(url, jsonContent, cts.Token);
+            
+            return new PaymentAnalyticsResultDto
+            {
+                IsSuccess = response.IsSuccessStatusCode,
+                StatusCode = (int)response.StatusCode,
+                ErrorMessage = response.IsSuccessStatusCode ? "Connection test successful" : $"Connection test failed: {response.StatusCode}"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error testing GA4 connection");
+            return new PaymentAnalyticsResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    public async Task<PaymentAnalyticsResultDto<string>> GetServiceStatusAsync()
+    {
+        return await Task.FromResult(new PaymentAnalyticsResultDto<string>
+        {
+            IsSuccess = true,
+            Data = "PaymentAnalyticsGrain is operational"
+        });
+    }
 }
 ```
 
-### 10.2 PaymentEventDto Definition
+### 10.2 PaymentAnalyticsResultDto Definition
 
 ```csharp
-public class PaymentEventDto
+public class PaymentAnalyticsResultDto
 {
-    public Guid UserId { get; set; }
-    public string TransactionId { get; set; }
-    public decimal Amount { get; set; }
-    public string Currency { get; set; } = "USD";
-    public string PlanType { get; set; }
-    public string PaymentMethod { get; set; }
-    public string ClientId { get; set; }
-    public string SessionId { get; set; }
-    public DateTime Timestamp { get; set; }
+    public bool IsSuccess { get; set; }
+    public string ErrorMessage { get; set; } = string.Empty;
+    public int StatusCode { get; set; }
+}
+
+public class PaymentAnalyticsResultDto<T> : PaymentAnalyticsResultDto
+{
+    public T Data { get; set; }
 }
 ```
 
@@ -475,8 +508,6 @@ public class PaymentEventDto
     "ApiEndpoint": "https://www.google-analytics.com/mp/collect",
     "DebugEndpoint": "https://www.google-analytics.com/debug/mp/collect",
     "TimeoutSeconds": 5,
-    "EnableStripeReporting": true,
-    "EnableAppleReporting": true,
     "UseEuRegion": false
   }
 }
