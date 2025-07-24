@@ -651,7 +651,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 SubscriptionHelper.GetSubscriptionEndDate(planType, subscriptionInfoDto.EndDate);
 
             await UpdateSubscriptionAsync(subscriptionInfoDto, ultimate);
-            await ConfirmEvents();
             _logger.LogWarning("[UserQuotaGrain][UpdateSubscriptionAsync] true, Update subscription for user {UserId} by operator {OperatorId}", 
                 this.GetPrimaryKey().ToString(), operatorUserId);
         }
@@ -669,10 +668,24 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 InvoiceIds = null
             };
             await UpdateSubscriptionAsync(subscriptionInfoDto, ultimate);
-            await ConfirmEvents();
+            
             _logger.LogWarning("[UserQuotaGrain][UpdateSubscriptionAsync] false, Update subscription for user {UserId} by operator {OperatorId}", 
                 this.GetPrimaryKey().ToString(), operatorUserId);
         }
+        
+        if (ultimate && await IsSubscribedAsync(false))
+        {
+            var premiumSubscription = await GetSubscriptionAsync(false);
+            premiumSubscription.StartDate =
+                SubscriptionHelper.GetSubscriptionEndDate(planType, premiumSubscription.StartDate);
+            premiumSubscription.EndDate =
+                SubscriptionHelper.GetSubscriptionEndDate(planType, premiumSubscription.EndDate);
+            await UpdateSubscriptionAsync(premiumSubscription, false);
+            _logger.LogWarning("[UserQuotaGrain][UpdateSubscriptionAsync] premium, Update subscription for user {UserId} by operator {OperatorId}", 
+                this.GetPrimaryKey().ToString(), operatorUserId);
+            
+        }
+        await ConfirmEvents();
 
         var currentSubscriptionInfoDto = await GetSubscriptionAsync(ultimate);
         return new GrainResultDto<List<SubscriptionInfoDto>>
