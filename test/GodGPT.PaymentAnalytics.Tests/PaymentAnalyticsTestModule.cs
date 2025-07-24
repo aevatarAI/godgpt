@@ -23,6 +23,7 @@ public class PaymentAnalyticsTestModule : AbpModule
             options.EnableAnalytics = true;
             options.MeasurementId = "G-TEST123456789";
             options.ApiSecret = "test-api-secret";
+            options.ApiEndpoint = "https://www.google-analytics.com/mp/collect";
             options.TimeoutSeconds = 5;
         });
 

@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -43,8 +44,20 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
         return base.OnActivateAsync(cancellationToken);
     }
 
-    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync()
+    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId, 
+        string userId)
     {
+        if (string.IsNullOrWhiteSpace(transactionId))
+        {
+            return new PaymentAnalyticsResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = "Transaction ID is required for idempotent reporting"
+            };
+        }
+
         try
         {
             var currentOptions = _options.CurrentValue;
@@ -70,29 +83,32 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
                 };
             }
 
-            _logger.LogDebug("Reporting payment success event to Google Analytics");
+            _logger.LogDebug("Reporting payment success event to Google Analytics with transaction ID: {TransactionId}", transactionId);
 
-            var eventPayload = CreateGA4PaymentSuccessPayload();
+            // Create unique transaction ID by combining user, platform and original transaction ID
+            var uniqueTransactionId = userId + "^" + paymentPlatform + "^" + transactionId;
+            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId);
             var url = BuildGA4ApiUrl(currentOptions.ApiEndpoint, currentOptions.MeasurementId, currentOptions.ApiSecret);
             
-            _logger.LogInformation("PaymentAnalyticsGrain reporting payment success to: {Url}", url);
+            _logger.LogInformation("PaymentAnalyticsGrain reporting purchase event for transaction {TransactionId} to: {Url}", uniqueTransactionId, url);
             
             var result = await SendEventToGA4Async(url, eventPayload, currentOptions.TimeoutSeconds);
             
             if (result.IsSuccess)
             {
-                _logger.LogInformation("[PaymentAnalytics] Successfully reported payment success event");
+                _logger.LogInformation("[PaymentAnalytics] Successfully reported purchase event for transaction {TransactionId}", uniqueTransactionId);
             }
             else
             {
-                _logger.LogWarning("[PaymentAnalytics] Failed to report payment success: {ErrorMessage}", result.ErrorMessage);
+                _logger.LogWarning("[PaymentAnalytics] Failed to report purchase event for transaction {TransactionId}: {ErrorMessage}", 
+                    uniqueTransactionId, result.ErrorMessage);
             }
             
             return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error reporting payment success event");
+            _logger.LogError(ex, "Error reporting payment success event for transaction {TransactionId}", transactionId);
             return new PaymentAnalyticsResultDto
             {
                 IsSuccess = false,
@@ -102,14 +118,15 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     }
 
     #region Helper Methods
+    
 
     /// <summary>
-    /// Create Google Analytics 4 payload for payment success event
+    /// Create Google Analytics 4 payload for purchase event with idempotency support
+    /// Uses GA4's built-in transaction_id deduplication mechanism
     /// </summary>
-    private object CreateGA4PaymentSuccessPayload()
+    private object CreateGA4PurchasePayload(string transactionId)
     {
-        var clientId = $"payment_analytics_{DateTime.UtcNow.Ticks}";
-        var sessionId = Guid.NewGuid().ToString();
+        var clientId = transactionId;
         
         return new
         {
@@ -118,11 +135,10 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
             {
                 new
                 {
-                    name = "payment_success",
+                    name = "purchase",  // Using standard purchase event for GA4 auto-deduplication
                     @params = new
                     {
-                        session_id = sessionId,
-                        engagement_time_msec = 100
+                        transaction_id = transactionId
                     }
                 }
             }
@@ -138,70 +154,121 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     }
 
     /// <summary>
-    /// Send event to Google Analytics 4 API
+    /// Send event to Google Analytics 4 API with retry mechanism
     /// </summary>
     private async Task<PaymentAnalyticsResultDto> SendEventToGA4Async(string url, object payload, int timeoutSeconds)
     {
-        try
+        var options = _options.CurrentValue;
+        var maxRetries = options.RetryCount;
+        var delayMs = options.ApiCallDelayMs;
+        
+        var jsonPayload = JsonSerializer.Serialize(payload);
+        
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
         {
-            var jsonPayload = JsonSerializer.Serialize(payload);
-            var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
-            
-            _logger.LogDebug("Sending GA4 event payload: {Payload}", jsonPayload);
-            
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
-            var response = await _httpClient.PostAsync(url, content, cts.Token);
-            
-            var responseContent = await response.Content.ReadAsStringAsync();
-            
-            if (response.IsSuccessStatusCode)
+            try
             {
-                _logger.LogDebug("GA4 API response successful: {StatusCode}", response.StatusCode);
-                return new PaymentAnalyticsResultDto
+                var content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+                
+                _logger.LogDebug("Sending GA4 event payload (attempt {Attempt}/{MaxAttempts}): {Payload}", 
+                    attempt + 1, maxRetries + 1, jsonPayload);
+                
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+                var response = await _httpClient.PostAsync(url, content, cts.Token);
+                
+                var responseContent = await response.Content.ReadAsStringAsync();
+                
+                if (response.IsSuccessStatusCode)
                 {
-                    IsSuccess = true,
-                    StatusCode = (int)response.StatusCode
-                };
+                    _logger.LogDebug("GA4 API response successful: {StatusCode} (attempt {Attempt})", 
+                        response.StatusCode, attempt + 1);
+                    return new PaymentAnalyticsResultDto
+                    {
+                        IsSuccess = true,
+                        StatusCode = (int)response.StatusCode
+                    };
+                }
+                else
+                {
+                    _logger.LogWarning("GA4 API error on attempt {Attempt}: StatusCode={StatusCode}, Content={Content}", 
+                        attempt + 1, response.StatusCode, responseContent);
+                    
+                    // For non-retriable errors (4xx), don't retry
+                    if ((int)response.StatusCode >= 400 && (int)response.StatusCode < 500)
+                    {
+                        _logger.LogError("GA4 API client error (4xx): {StatusCode}. Not retrying.", response.StatusCode);
+                        return new PaymentAnalyticsResultDto
+                        {
+                            IsSuccess = false,
+                            ErrorMessage = $"GA4 API client error {response.StatusCode}: {responseContent}",
+                            StatusCode = (int)response.StatusCode
+                        };
+                    }
+                    
+                    // If this is the last attempt, return the error
+                    if (attempt == maxRetries)
+                    {
+                        return new PaymentAnalyticsResultDto
+                        {
+                            IsSuccess = false,
+                            ErrorMessage = $"GA4 API error {response.StatusCode} after {maxRetries + 1} attempts: {responseContent}",
+                            StatusCode = (int)response.StatusCode
+                        };
+                    }
+                }
             }
-            else
+            catch (HttpRequestException ex)
             {
-                _logger.LogError("GA4 API error: StatusCode={StatusCode}, Content={Content}", 
-                    response.StatusCode, responseContent);
+                _logger.LogWarning(ex, "HTTP request failed on attempt {Attempt}: {Message}", attempt + 1, ex.Message);
+                
+                if (attempt == maxRetries)
+                {
+                    _logger.LogError(ex, "HTTP request failed after {MaxAttempts} attempts", maxRetries + 1);
+                    return new PaymentAnalyticsResultDto
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = $"HTTP request failed after {maxRetries + 1} attempts: {ex.Message}"
+                    };
+                }
+            }
+            catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+            {
+                _logger.LogWarning(ex, "Request timeout on attempt {Attempt}", attempt + 1);
+                
+                if (attempt == maxRetries)
+                {
+                    _logger.LogError(ex, "Request timeout after {MaxAttempts} attempts", maxRetries + 1);
+                    return new PaymentAnalyticsResultDto
+                    {
+                        IsSuccess = false,
+                        ErrorMessage = $"Request timeout after {maxRetries + 1} attempts"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error on attempt {Attempt}: {Message}", attempt + 1, ex.Message);
                 return new PaymentAnalyticsResultDto
                 {
                     IsSuccess = false,
-                    ErrorMessage = $"GA4 API error {response.StatusCode}: {responseContent}",
-                    StatusCode = (int)response.StatusCode
+                    ErrorMessage = $"Unexpected error: {ex.Message}"
                 };
             }
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger.LogError(ex, "HTTP request failed when sending to GA4");
-            return new PaymentAnalyticsResultDto
+            
+            // Wait before retrying (except on the last attempt)
+            if (attempt < maxRetries && delayMs > 0)
             {
-                IsSuccess = false,
-                ErrorMessage = $"HTTP request failed: {ex.Message}"
-            };
+                _logger.LogDebug("Waiting {DelayMs}ms before retry attempt {NextAttempt}", delayMs, attempt + 2);
+                await Task.Delay(delayMs);
+            }
         }
-        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        
+        // This should never be reached, but add as safety
+        return new PaymentAnalyticsResultDto
         {
-            _logger.LogError(ex, "Request timeout when sending to GA4");
-            return new PaymentAnalyticsResultDto
-            {
-                IsSuccess = false,
-                ErrorMessage = "Request timeout"
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Unexpected error when sending to GA4");
-            return new PaymentAnalyticsResultDto
-            {
-                IsSuccess = false,
-                ErrorMessage = $"Unexpected error: {ex.Message}"
-            };
-        }
+            IsSuccess = false,
+            ErrorMessage = "Unknown error in retry logic"
+        };
     }
 
     #endregion
