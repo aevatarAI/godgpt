@@ -1,6 +1,7 @@
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.Anonymous.Options;
+using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
@@ -28,6 +29,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"));
         Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
         Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
+        Configure<GoogleAnalyticsOptions>(configuration.GetSection("GoogleAnalytics"));
 
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
         // Register speech services

@@ -13,6 +13,7 @@ using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.PaymentAnalytics;
 using Aevatar.Application.Grains.UserBilling.SEvents;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
@@ -940,6 +941,33 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             _logger.LogError("[UserBillingGAgent][HandleStripeWebhookEventAsync] error. {0}, {1}",
                 this.GetPrimaryKey(), grainResultDto.Message);
             return false;
+        }
+
+        try
+        {
+            // Report payment success to Google Analytics
+            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics"+PaymentPlatform.Stripe);
+            var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
+                PaymentPlatform.Stripe,
+                detailsDto.InvoiceId,
+                detailsDto.UserId.ToString()
+            );
+
+            if (analyticsResult.IsSuccess)
+            {
+                _logger.LogInformation($"[UserBillingGAgent][HandleStripeWebhookEventAsync] Successfully reported payment analytics for order {detailsDto.InvoiceId}, user {detailsDto.UserId}");
+            }
+            else
+            {
+                _logger.LogWarning($"[UserBillingGAgent][HandleStripeWebhookEventAsync] Failed to report payment analytics for order {detailsDto.InvoiceId}, user {detailsDto.UserId}: {analyticsResult.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGAgent][HandleStripeWebhookEventAsync] Exception while reporting payment analytics for order {A}, user {B}",
+                detailsDto.InvoiceId, detailsDto.UserId);
+            // Don't throw - analytics reporting shouldn't block payment processing
         }
         
         var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null);
@@ -2120,6 +2148,35 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // Add new record
             paymentSummary.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail> { invoiceDetail };
             await AddPaymentRecordAsync(paymentSummary);
+        }
+        
+        // Report payment success to Google Analytics for completed payments
+        if (paymentStatus == PaymentStatus.Completed)
+        {
+            try
+            {
+                var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics" + PaymentPlatform.AppStore);
+                var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
+                    PaymentPlatform.AppStore,
+                    subscriptionInfo.TransactionId,
+                    userId
+                );
+
+                if (analyticsResult.IsSuccess)
+                {
+                    _logger.LogInformation($"[UserBillingGAgent][UpdateSubscriptionStateAsync] Successfully reported AppStore payment analytics for user {userId}, TransactionId {subscriptionInfo.TransactionId}, event {eventType}");
+                }
+                else
+                {
+                    _logger.LogWarning($"[UserBillingGAgent][UpdateSubscriptionStateAsync] Failed to report AppStore payment analytics for user {userId}, TransactionId {subscriptionInfo.TransactionId}, event {eventType}: {analyticsResult.ErrorMessage}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[UserBillingGAgent][UpdateSubscriptionStateAsync] Exception while reporting AppStore payment analytics for user {UserId}, product {ProductId}, event {EventType}", 
+                    userId, subscriptionInfo.ProductId, eventType);
+                // Don't throw - analytics reporting shouldn't block payment processing
+            }
         }
         
         // Grant or revoke user rights

@@ -8,6 +8,7 @@ using Aevatar;
 using Aevatar.Application.Grains;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.SemanticKernel.Extensions;
@@ -135,6 +136,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<RateLimitOptions>(configuration.GetSection("RateLimit"))
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
                 .Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"))
+                .Configure<GoogleAnalyticsOptions>(configuration.GetSection("GoogleAnalytics"))
                 .Configure<TwitterRewardOptions>(options =>
                 {
                     options.BearerToken = "test-bearer-token";
