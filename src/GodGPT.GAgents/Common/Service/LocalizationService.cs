@@ -135,11 +135,20 @@ public class LocalizationService : ILocalizationService
             ["exceptions"] = new Dictionary<string, string>
             {
                 // English translations
-                ["en.Unauthorized"] = "Unauthorized: User is not authenticated.",
+                ["en.SharesReached"] = "Max {MaxShareCount} shares reached. Delete some to continue!",
+                ["en.InvalidSession"] = "Invalid session to generate a share link.", 
+                ["en.ConversationDeleted"] = "Sorry, this conversation has been deleted by the owner.",
+
+                //chinese
+                ["zh-tw.SharesReached"] = "已達到最大分享次數 {MaxShareCount}。請刪除一些以繼續！",
+                ["zh-tw.InvalidSession"] = "無效的會話無法生成分享連結。  ",
+                ["zh-tw.ConversationDeleted"] = "抱歉，此對話已被擁有者刪除。",
 
                 // Spanish translations
-                ["es.Unauthorized"] = "No autorizado: El usuario no está autenticado. ",
-     
+                ["es.SharesReached"] = "Se alcanzó el máximo de {MaxShareCount} compartidos. ¡Elimina algunos para continuar! ",
+                ["es.InvalidSession"] = "Sesión inválida para generar un enlace de compartido.  ",
+                ["es.ConversationDeleted"] = "Lo siento, esta conversación ha sido eliminada por el propietario. ",
+
             },
             
             ["validation"] = new Dictionary<string, string>
