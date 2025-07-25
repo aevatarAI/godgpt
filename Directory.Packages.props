@@ -5,7 +5,7 @@
     <OrleansVerion>9.0.1</OrleansVerion>
 <!--    <AevatarVerion>1.4.13</AevatarVerion>-->
 <!--    <AevatarGAgentVerion>1.4.17</AevatarGAgentVerion>-->
-    <AevatarVerion>1.5.2</AevatarVerion>
+    <AevatarVerion>1.5.3</AevatarVerion>
     <AevatarGAgentVerion>1.5.3</AevatarGAgentVerion>
   </PropertyGroup>
   <ItemGroup>
