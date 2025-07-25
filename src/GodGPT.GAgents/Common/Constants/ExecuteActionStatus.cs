@@ -9,4 +9,8 @@ public static class ExecuteActionStatus
     
     // Rate limiting status codes
     public const int RateLimitExceeded = 20002;
+    
+    // Share related status codes
+    public const int MaxShareCountReached = 20003;
+    public const int InvalidSessionForShare = 20004;
 }

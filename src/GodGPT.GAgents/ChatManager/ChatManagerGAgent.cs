@@ -946,14 +946,23 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         if (State.CurrentShareCount >= State.MaxShareCount)
         {
             Logger.LogDebug($"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}, Exceed the maximum sharing limit. {State.CurrentShareCount}");
-            throw new UserFriendlyException($"Max {State.MaxShareCount} shares reached. Delete some to continue!");
+            var exception = new InvalidOperationException($"Max {State.MaxShareCount} shares reached. Delete some to continue!");
+            exception.Data["Code"] = ExecuteActionStatus.MaxShareCountReached.ToString();
+            exception.Data["ContextData"] = new Dictionary<string, object>
+            {
+                { "CurrentShareCount", State.CurrentShareCount },
+                { "MaxShareCount", State.MaxShareCount }
+            };
+            throw exception;
         }
 
         var chatMessages = await GetSessionMessageListAsync(sessionId);
         if (chatMessages.IsNullOrEmpty())
         {
             Logger.LogDebug($"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}, chatMessages is null");
-            throw new UserFriendlyException("Invalid session to generate a share link.");
+            var exception = new InvalidOperationException("Invalid session to generate a share link.");
+            exception.Data["Code"] = ExecuteActionStatus.InvalidSessionForShare.ToString();
+            throw exception;
         }
         
         var shareId = Guid.NewGuid();
