@@ -278,20 +278,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             var today = DateTime.UtcNow.Date;
             var dailyInfo = State.DailyImageConversation;
             
-            // Check if user is subscribed (subscribers have no daily limit)
-            if (!await IsSubscribedAsync(true) && !await IsSubscribedAsync(false) && dailyInfo.Count >= 1)
-            {
-                _logger.LogDebug(
-                    "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Daily image conversation limit exceeded for non-subscriber. Count={Count}",
-                    chatManagerGuid, sessionId, dailyInfo.Count);
-                    
-                return new ExecuteActionResultDto
-                {
-                    Code = ExecuteActionStatus.RateLimitExceeded,
-                    Message = "Daily upload limit reached. Upgrade to premium to continue."
-                };
-            }
-
             // Check if it's a new day, reset count if so
             if (dailyInfo.LastConversationTime.Date != today)
             {
@@ -303,6 +289,20 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 // Increment daily count and update last conversation time
                 dailyInfo.Count++;
                 dailyInfo.LastConversationTime = DateTime.UtcNow;
+            }
+            
+            // Check if user is subscribed (subscribers have no daily limit)
+            if (!await IsSubscribedAsync(true) && !await IsSubscribedAsync(false) && dailyInfo.Count > 1)
+            {
+                _logger.LogDebug(
+                    "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Daily image conversation limit exceeded for non-subscriber. Count={Count}",
+                    chatManagerGuid, sessionId, dailyInfo.Count);
+                    
+                return new ExecuteActionResultDto
+                {
+                    Code = ExecuteActionStatus.RateLimitExceeded,
+                    Message = "Daily upload limit reached. Upgrade to premium to continue."
+                };
             }
 
             RaiseEvent(new UpdateDailyImageConversationLogEvent
