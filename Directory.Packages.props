@@ -5,8 +5,8 @@
     <OrleansVerion>9.0.1</OrleansVerion>
 <!--    <AevatarVerion>1.4.13</AevatarVerion>-->
 <!--    <AevatarGAgentVerion>1.4.17</AevatarGAgentVerion>-->
-    <AevatarVerion>1.5.2-tool.2</AevatarVerion>
-    <AevatarGAgentVerion>1.5.3</AevatarGAgentVerion>
+    <AevatarVerion>1.5.2</AevatarVerion>
+    <AevatarGAgentVerion>1.5.1-chat-image-1</AevatarGAgentVerion>
   </PropertyGroup>
   <ItemGroup>
     <!-- GodGPT -->
