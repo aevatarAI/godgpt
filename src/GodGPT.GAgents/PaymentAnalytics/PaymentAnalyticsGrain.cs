@@ -47,7 +47,8 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
         PaymentPlatform paymentPlatform,
         string transactionId, 
-        string userId)
+        string userId
+        )
     {
         if (string.IsNullOrWhiteSpace(transactionId))
         {
@@ -87,7 +88,7 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
 
             // Create unique transaction ID by combining user, platform and original transaction ID
             var uniqueTransactionId = userId + "^" + paymentPlatform + "^" + transactionId;
-            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId);
+            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId, userId);
             var url = BuildGA4ApiUrl(currentOptions.ApiEndpoint, currentOptions.MeasurementId, currentOptions.ApiSecret);
             
             _logger.LogInformation("PaymentAnalyticsGrain reporting purchase event for transaction {TransactionId} to: {Url}", uniqueTransactionId, url);
@@ -124,9 +125,9 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     /// Create Google Analytics 4 payload for purchase event with idempotency support
     /// Uses GA4's built-in transaction_id deduplication mechanism
     /// </summary>
-    private object CreateGA4PurchasePayload(string transactionId)
+    private object CreateGA4PurchasePayload(string transactionId, string userId, decimal? paymentValue = 0)
     {
-        var clientId = transactionId;
+        var clientId = userId;
         
         return new
         {
@@ -138,7 +139,10 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
                     name = "purchase",  // Using standard purchase event for GA4 auto-deduplication
                     @params = new
                     {
-                        transaction_id = transactionId
+                        transaction_id = transactionId,
+                        currency = "USD",
+                        value = paymentValue,
+                        engagement_time_msec = 1000
                     }
                 }
             }
