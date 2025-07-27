@@ -771,11 +771,16 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         Logger.LogDebug($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}");
         var sessionInfo = State.GetSession(sessionId);
-        
         if (sessionInfo == null)
         {
+            var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+            var parameters = new Dictionary<string, string>
+            {
+                ["SessionId"] = sessionId.ToString()
+            };
+            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.InvalidConversation,language, parameters);
             Logger.LogWarning($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - Session not found: {sessionId}");
-            throw new UserFriendlyException($"Unable to load conversation {sessionId}");
+            throw new UserFriendlyException(localizedMessage);
         }
 
         var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
