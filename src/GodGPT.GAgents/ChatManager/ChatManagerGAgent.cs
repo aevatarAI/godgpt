@@ -776,7 +776,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
             var parameters = new Dictionary<string, string>
             {
-                ["sessionId"] = sessionId.ToString()
+                ["SessionId"] = sessionId.ToString()
             };
             var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.InvalidConversation,language, parameters);
             Logger.LogWarning($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - Session not found: {sessionId} ,language:{language}");
