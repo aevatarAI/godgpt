@@ -946,6 +946,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             // Parse conversation suggestions for text chat only (skip voice chat)
             List<string>? conversationSuggestions = null;
+            string cleanMainContent = chatContent.AggregationMsg; // Default to original content
             bool isVoiceChat = false;
             
             // Check if this is a voice chat by examining the message context
@@ -969,7 +970,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 if (suggestions.Any())
                 {
                     conversationSuggestions = suggestions;
+                    cleanMainContent = mainContent; // Use clean content without suggestions
                     Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Parsed {suggestions.Count} conversation suggestions for text chat");
+                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned main content length: {cleanMainContent?.Length ?? 0}");
                 }
             }
             
@@ -980,7 +983,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     new ChatMessage
                     {
                         ChatRole = ChatRole.Assistant,
-                        Content = chatContent?.AggregationMsg
+                        Content = cleanMainContent // Store clean content without suggestions
                     }
                 }
             });
@@ -1006,13 +1009,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
             }
             
-            // Store suggestions in a field for later use in partialMessage
+            // Store suggestions and clean content for later use in partialMessage
             if (conversationSuggestions != null)
             {
-                // We'll add this to partialMessage later in the method
-                // Store it temporarily in the context for now
                 RequestContext.Set("ConversationSuggestions", conversationSuggestions);
             }
+            // Store clean content to replace the response content
+            RequestContext.Set("CleanMainContent", cleanMainContent);
         }
 
         var partialMessage = new ResponseStreamGodChat()
@@ -1026,9 +1029,18 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             VoiceContentType = VoiceContentType.VoiceResponse
         };
 
-        // Add conversation suggestions to the last chunk if available
+        // For the last chunk, use clean content and add conversation suggestions if available
         if (chatContent.IsLastChunk)
         {
+            // Use clean main content (without suggestions) for the final response
+            var cleanMainContent = RequestContext.Get("CleanMainContent") as string;
+            if (!string.IsNullOrEmpty(cleanMainContent))
+            {
+                partialMessage.Response = cleanMainContent;
+                Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Using clean main content for final response, length: {cleanMainContent.Length}");
+            }
+            
+            // Add conversation suggestions to the last chunk if available
             var storedSuggestions = RequestContext.Get("ConversationSuggestions") as List<string>;
             if (storedSuggestions?.Any() == true)
             {
