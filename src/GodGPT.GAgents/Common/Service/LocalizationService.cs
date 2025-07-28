@@ -139,18 +139,21 @@ public class LocalizationService : ILocalizationService
                 ["en.InvalidSession"] = "Invalid session to generate a share link.", 
                 ["en.ConversationDeleted"] = "Sorry, this conversation has been deleted by the owner.",
                 ["en.InvalidConversation"] = "Unable to load conversation {SessionId}",
+                ["en.DailyUpdateLimit"] = "Daily upload limit reached. Upgrade to premium to continue.",
 
                 //chinese
                 ["zh-tw.SharesReached"] = "已達到最大分享次數 {MaxShareCount}。請刪除一些以繼續！",
                 ["zh-tw.InvalidSession"] = "無效的會話無法生成分享連結。  ",
                 ["zh-tw.ConversationDeleted"] = "抱歉，此對話已被擁有者刪除。",
                 ["zh-tw.InvalidConversation"] = "無法載入對話 {SessionId} ",
+                ["zh-tw.DailyUpdateLimit"] = "已達到每日上傳限制。 陞級到高級版以繼續。",
 
                 // Spanish translations
                 ["es.SharesReached"] = "Se alcanzó el máximo de {MaxShareCount} compartidos. ¡Elimina algunos para continuar! ",
                 ["es.InvalidSession"] = "Sesión inválida para generar un enlace de compartido.  ",
                 ["es.ConversationDeleted"] = "Lo siento, esta conversación ha sido eliminada por el propietario. ",
-                ["es.InvalidConversation"] = "No se pudo cargar la conversación {SessionId} "
+                ["es.InvalidConversation"] = "No se pudo cargar la conversación {SessionId} ",
+                ["es.DailyUpdateLimit"] = "Se ha alcanzado el límite de carga diaria. Actualiza a Premium para continuar.",
 
             },
             

@@ -7,5 +7,6 @@ public static class ExceptionMessageKeys
     public const string InvalidSession = "InvalidSession";
     public const string ConversationDeleted = "ConversationDeleted";
     public const string InvalidConversation = "InvalidConversation";
+    public const string DailyUpdateLimit = "DailyUpdateLimit";
 
 } 
