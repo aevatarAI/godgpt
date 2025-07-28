@@ -861,7 +861,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 var voiceLanguage = (VoiceLanguageEnum)Convert.ToInt32(voiceLanguageValue);
                 var voiceDurationSeconds = Convert.ToDouble(dictionary.GetValueOrDefault("VoiceDurationSeconds", 0.0));
                 
-                await GodVoiceStreamChatAsync(contextDto.RequestId,
+                GodVoiceStreamChatAsync(contextDto.RequestId,
                     (string)dictionary.GetValueOrDefault("LLM", systemLlm),
                     (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
                     (string)dictionary.GetValueOrDefault("Message", string.Empty),
