@@ -2,7 +2,7 @@
 
 ## 1. System Overview
 
-GodGPT支付分析系统旨在实现对所有支付成功事件的简单计数上报。系统将在现有的StripeEventProcessingGrain和AppleEventProcessingGrain基础上，增加支付成功事件的上报功能，每次支付成功时上报一次计数事件到Google Analytics。
+The GodGPT Payment Analytics System is designed to implement simple count reporting for all successful payment events. The system will build upon the existing StripeEventProcessingGrain and AppleEventProcessingGrain to add payment success event reporting functionality, reporting count events to Google Analytics each time a payment succeeds.
 
 ### Core Features
 
