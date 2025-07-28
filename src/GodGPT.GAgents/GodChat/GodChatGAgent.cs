@@ -378,6 +378,33 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogDebug(
             $"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Voice parsed successfully: {voiceContent}");
 
+        // Send STT result immediately to frontend via VoiceToText message
+        var sttResultMessage = new ResponseStreamGodChat()
+        {
+            Response = voiceContent,  // STT converted text
+            ChatId = chatId,
+            IsLastChunk = false,
+            SerialNumber = 0,  // Mark as first message (STT result)
+            SessionId = sessionId,
+            VoiceContentType = VoiceContentType.VoiceToText,  // Critical: indicate this is STT result
+            ErrorCode = ChatErrorCode.Success,
+            NewTitle = string.Empty,
+            AudioData = null,  // No audio data for STT result
+            AudioMetadata = null
+        };
+
+        // Send STT result using the same streaming mechanism
+        if (isHttpRequest)
+        {
+            await PushMessageToClientAsync(sttResultMessage);
+        }
+        else
+        {
+            await PublishAsync(sttResultMessage);
+        }
+
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} STT result sent to frontend: '{voiceContent}'");
+
         var quotaStopwatch = Stopwatch.StartNew();
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
         var actionResultDto = await userQuotaGAgent.ExecuteVoiceActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
@@ -857,13 +884,37 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var configuration = GetConfiguration();
             var systemLlm = await configuration.GetSystemLLM();
             var dictionary = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-            GodStreamChatAsync(contextDto.RequestId,
-                (string)dictionary.GetValueOrDefault("LLM", systemLlm),
-                (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
-                (string)dictionary.GetValueOrDefault("Message", string.Empty),
-                contextDto.ChatId, null, (bool)dictionary.GetValueOrDefault("IsHttpRequest", true),
-                (string)dictionary.GetValueOrDefault("Region", null),
-                false, (List<string>?)dictionary.GetValueOrDefault("Images"));
+            
+            // Check if this is a voice chat retry to call the appropriate method
+            var isVoiceChat = dictionary.ContainsKey("IsVoiceChat") && (bool)dictionary["IsVoiceChat"];
+            
+            if (isVoiceChat)
+            {
+                // Voice chat retry: call GodVoiceStreamChatAsync with voice parameters
+                var voiceLanguageValue = dictionary.GetValueOrDefault("VoiceLanguage", 0);
+                var voiceLanguage = (VoiceLanguageEnum)Convert.ToInt32(voiceLanguageValue);
+                var voiceDurationSeconds = Convert.ToDouble(dictionary.GetValueOrDefault("VoiceDurationSeconds", 0.0));
+                
+                GodVoiceStreamChatAsync(contextDto.RequestId,
+                    (string)dictionary.GetValueOrDefault("LLM", systemLlm),
+                    (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
+                    (string)dictionary.GetValueOrDefault("Message", string.Empty),
+                    contextDto.ChatId, null, (bool)dictionary.GetValueOrDefault("IsHttpRequest", true),
+                    (string)dictionary.GetValueOrDefault("Region", null),
+                    voiceLanguage, voiceDurationSeconds, false);
+            }
+            else
+            {
+                // Regular chat retry: call GodStreamChatAsync
+                GodStreamChatAsync(contextDto.RequestId,
+                    (string)dictionary.GetValueOrDefault("LLM", systemLlm),
+                    (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
+                    (string)dictionary.GetValueOrDefault("Message", string.Empty),
+                    contextDto.ChatId, null, (bool)dictionary.GetValueOrDefault("IsHttpRequest", true),
+                    (string)dictionary.GetValueOrDefault("Region", null),
+                    false, (List<string>?)dictionary.GetValueOrDefault("Images"));
+            }
+            
             return;
         }
 

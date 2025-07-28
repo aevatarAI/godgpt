@@ -13,6 +13,7 @@ using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.PaymentAnalytics;
 using Aevatar.Application.Grains.UserBilling.SEvents;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
@@ -941,6 +942,33 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 this.GetPrimaryKey(), grainResultDto.Message);
             return false;
         }
+
+        try
+        {
+            // Report payment success to Google Analytics
+            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics"+PaymentPlatform.Stripe);
+            var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
+                PaymentPlatform.Stripe,
+                detailsDto.InvoiceId,
+                detailsDto.UserId.ToString()
+            );
+
+            if (analyticsResult.IsSuccess)
+            {
+                _logger.LogInformation($"[UserBillingGAgent][HandleStripeWebhookEventAsync] Successfully reported payment analytics for order {detailsDto.InvoiceId}, user {detailsDto.UserId}");
+            }
+            else
+            {
+                _logger.LogWarning($"[UserBillingGAgent][HandleStripeWebhookEventAsync] Failed to report payment analytics for order {detailsDto.InvoiceId}, user {detailsDto.UserId}: {analyticsResult.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGAgent][HandleStripeWebhookEventAsync] Exception while reporting payment analytics for order {A}, user {B}",
+                detailsDto.InvoiceId, detailsDto.UserId);
+            // Don't throw - analytics reporting shouldn't block payment processing
+        }
         
         var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null);
         
@@ -1737,9 +1765,40 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     // Handle successful renewal
                     if (subtypeEnum == AppStoreNotificationSubtype.BILLING_RECOVERY)
                     {
-                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
+                        _logger.LogInformation(
+                            "[UserBillingGAgent][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
                     }
+
                     await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
+
+                    //Report payment success to Google Analytics for completed payments
+                    {
+                        try
+                        {
+                            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics" + PaymentPlatform.AppStore);
+                            var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
+                                PaymentPlatform.AppStore,
+                                signedTransactionInfo.TransactionId,
+                                userId.ToString()
+                            );
+
+                            if (analyticsResult.IsSuccess)
+                            {
+                                _logger.LogInformation($"[UserBillingGAgent][UpdateSubscriptionStateAsync] Successfully reported AppStore payment analytics for user {userId}, TransactionId {signedTransactionInfo.TransactionId}, event {AppStoreNotificationType.DID_RENEW}");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"[UserBillingGAgent][UpdateSubscriptionStateAsync] Failed to report AppStore payment analytics for user {userId}, TransactionId {signedTransactionInfo.TransactionId}, event {AppStoreNotificationType.DID_RENEW}: {analyticsResult.ErrorMessage}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "[UserBillingGAgent][UpdateSubscriptionStateAsync] Exception while reporting AppStore payment analytics for user {UserId}, product {ProductId}, event {EventType}", 
+                                userId, signedTransactionInfo.ProductId, AppStoreNotificationType.DID_RENEW);
+                            // Don't throw - analytics reporting shouldn't block payment processing
+                        }
+                    }
+
                     break;
                 case AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS:
                     // Handle auto-renewal status changes
@@ -2121,7 +2180,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             paymentSummary.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail> { invoiceDetail };
             await AddPaymentRecordAsync(paymentSummary);
         }
-        
+
         // Grant or revoke user rights
         await UpdateUserQuotaAsync(userId, subscriptionInfo, eventType);
     }
