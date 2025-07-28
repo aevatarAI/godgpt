@@ -56,7 +56,7 @@ public class AIAgentStatusProxy :
     }
 
     public async Task<bool> PromptWithStreamAsync(string prompt, List<ChatMessage>? history = null,
-        ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null)
+        ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null, List<string>? imageKeys = null)
     {
         // Get system prompt
         var systemPrompt = State.PromptTemplate;
@@ -67,7 +67,7 @@ public class AIAgentStatusProxy :
         Logger.LogDebug($"[AIAgentStatusProxy][PromptWithStreamAsync] Original history count: {history?.Count ?? 0}, Selected history count: {selectedHistory.Count}");
         
         // Call base method with filtered history messages
-        return await base.PromptWithStreamAsync(prompt, selectedHistory, promptSettings, context);
+        return await base.PromptWithStreamAsync(prompt, selectedHistory, promptSettings, context, imageKeys: imageKeys);
     }
 
     protected override async Task AIChatHandleStreamAsync(AIChatContextDto context, AIExceptionEnum errorEnum,
@@ -127,22 +127,22 @@ public class AIAgentStatusProxy :
             case SetStatusProxyConfigLogEvent setStatusProxyConfigLogEvent:
                 if (setStatusProxyConfigLogEvent.RecoveryDelay != null)
                 {
-                    State.RecoveryDelay = (TimeSpan)setStatusProxyConfigLogEvent.RecoveryDelay;
+                    state.RecoveryDelay = (TimeSpan)setStatusProxyConfigLogEvent.RecoveryDelay;
                 }
 
-                State.ParentId = setStatusProxyConfigLogEvent.ParentId;
+                state.ParentId = setStatusProxyConfigLogEvent.ParentId;
                 break;
             case SetAvailableLogEvent setAvailableLogEvent:
-                State.IsAvailable = setAvailableLogEvent.IsAvailable;
-                if (State.IsAvailable)
+                state.IsAvailable = setAvailableLogEvent.IsAvailable;
+                if (state.IsAvailable)
                 {
-                    State.UnavailableSince = null;
+                    state.UnavailableSince = null;
                 }
                 else
                 {
-                    State.UnavailableSince = DateTime.UtcNow;
-                    State.UnavailableCount += 1;
-                    State.ExceptionCount += setAvailableLogEvent.ExceptionCount;
+                    state.UnavailableSince = DateTime.UtcNow;
+                    state.UnavailableCount += 1;
+                    state.ExceptionCount += setAvailableLogEvent.ExceptionCount;
                 }
                 break;
         }
@@ -157,5 +157,5 @@ public interface IAIAgentStatusProxy : IGAgent, IAIGAgent
         ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null);
 
     Task<bool> PromptWithStreamAsync(string prompt, List<ChatMessage>? history = null,
-        ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null);
+        ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null, List<string>? imageKeys = null);
 }

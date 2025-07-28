@@ -109,16 +109,16 @@ public class ConfigurationGAgent : GAgentBase<ConfigurationState, ConfigurationL
         switch (@event)
         {
             case SetSystemLLMLogEvent @systemLlmLogEvent:
-                State.SystemLLM = @systemLlmLogEvent.SystemLLM;
+                state.SystemLLM = @systemLlmLogEvent.SystemLLM;
                 break;
             case SetPromptLogEvent @setPromptLogEvent:
-                State.Prompt = @setPromptLogEvent.Prompt;
+                state.Prompt = @setPromptLogEvent.Prompt;
                 break;
             case SetStreamingModeEnabledLogEvent @setStreamingModeEnabledLogEvent:
-                State.StreamingModeEnabled = @setStreamingModeEnabledLogEvent.StreamingModeEnabled;
+                state.StreamingModeEnabled = @setStreamingModeEnabledLogEvent.StreamingModeEnabled;
                 break;
             case SetUserProfilePromptLogEvent @setUserProfilePromptLogEvent:
-                State.UserProfilePrompt = @setUserProfilePromptLogEvent.UserProfilePrompt;
+                state.UserProfilePrompt = @setUserProfilePromptLogEvent.UserProfilePrompt;
                 break;
         }
     }

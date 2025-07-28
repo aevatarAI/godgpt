@@ -82,3 +82,9 @@ public class InitializeFromGrainLogEvent : UserQuotaLogEvent
 public class MarkInitializedLogEvent : UserQuotaLogEvent
 {
 }
+
+[GenerateSerializer]
+public class UpdateDailyImageConversationLogEvent : UserQuotaLogEvent
+{
+    [Id(0)] public DailyImageConversationInfo DailyImageConversation { get; set; }
+}
