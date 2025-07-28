@@ -80,6 +80,12 @@ public class SpeechService : ISpeechService
                 return await HandleWebMOpusFormat(audioData, tempSpeechConfig);
             }
 
+            // Special handling for M4A format
+            if (IsM4AFormat(audioData))
+            {
+                return await HandleM4AFormat(audioData, tempSpeechConfig);
+            }
+
             // For compressed formats (Opus, MP3, etc.), try compressed format first
             if (audioFormat.HasValue)
             {
@@ -286,6 +292,16 @@ public class SpeechService : ISpeechService
 
             return AudioStreamContainerFormat.FLAC;
         }
+
+        // M4A format: MPEG-4 container with "ftyp" box
+        // M4A files start with a 4-byte size followed by "ftyp"
+        if (header.Length >= 8 && 
+            header[4] == 0x66 && header[5] == 0x74 && header[6] == 0x79 && header[7] == 0x70) // "ftyp"
+        {
+            _logger.LogDebug("[SpeechService][DetectAudioFormat] - M4A format detected");
+            return AudioStreamContainerFormat.ALAW; // Use ALAW as closest match for M4A
+        }
+
         _logger.LogDebug("[SpeechService][DetectAudioFormat] - Unknown audio format, will try as PCM/WAV");
 
         // Default to null for unknown formats (will be treated as PCM/WAV)
@@ -421,6 +437,21 @@ public class SpeechService : ISpeechService
     }
 
     /// <summary>
+    /// Checks if the audio data is in M4A format
+    /// </summary>
+    /// <param name="audioData">Audio data bytes</param>
+    /// <returns>True if M4A format is detected</returns>
+    private static bool IsM4AFormat(byte[] audioData)
+    {
+        if (audioData == null || audioData.Length < 8)
+            return false;
+
+        // M4A format: MPEG-4 container with "ftyp" box
+        // M4A files start with a 4-byte size followed by "ftyp"
+        return audioData[4] == 0x66 && audioData[5] == 0x74 && audioData[6] == 0x79 && audioData[7] == 0x70; // "ftyp"
+    }
+
+    /// <summary>
     /// Handles WebM/Opus format audio processing
     /// </summary>
     /// <param name="audioData">WebM audio data</param>
@@ -547,6 +578,137 @@ public class SpeechService : ISpeechService
         {
             var errorMessage = $"Exception during FFmpeg conversion: {ex.Message}";
             _logger.LogError(ex, "[SpeechService][ConvertWebMToWavAsync] - FFmpeg conversion exception:{0}",errorMessage);
+            return (false, errorMessage);
+        }
+    }
+
+    /// <summary>
+    /// Handles M4A format audio processing
+    /// </summary>
+    /// <param name="audioData">M4A audio data</param>
+    /// <param name="speechConfig">Speech configuration</param>
+    /// <returns>Recognition result or error message</returns>
+    private async Task<string> HandleM4AFormat(byte[] audioData, SpeechConfig speechConfig)
+    {
+        string tempM4AFile = null;
+        string tempWavFile = null;
+        
+        try
+        {
+            _logger.LogDebug("[SpeechService][HandleM4AFormat] - Processing M4A format - converting to WAV using FFmpeg..");
+            // Create temporary files
+            tempM4AFile = Path.GetTempFileName() + ".m4a";
+            tempWavFile = Path.GetTempFileName() + ".wav";
+            
+            // Write M4A data to temporary file
+            await File.WriteAllBytesAsync(tempM4AFile, audioData);
+            _logger.LogDebug("[SpeechService][HandleM4AFormat] - M4A data written to temporary file:{0}", tempM4AFile);
+
+            // Convert M4A to WAV using FFmpeg
+            var ffmpegResult = await ConvertM4AToWavAsync(tempM4AFile, tempWavFile);
+            if (!ffmpegResult.Success)
+            {
+                throw new InvalidOperationException($"FFmpeg conversion failed: {ffmpegResult.Error}");
+            }
+            
+            _logger.LogDebug("[SpeechService][HandleM4AFormat] - M4A successfully converted to WAV:{0}", tempWavFile);
+
+            // Read converted WAV data
+            var wavData = await File.ReadAllBytesAsync(tempWavFile);
+            _logger.LogDebug("[SpeechService][HandleM4AFormat] - WAV data size:{0} bytes", wavData.Length);
+
+            // Use converted WAV data for speech recognition
+            var result = await TryRecognizeWithFormat(wavData, speechConfig, null);
+            
+            if (!string.IsNullOrEmpty(result))
+            {
+                _logger.LogDebug("[SpeechService][HandleM4AFormat] - M4A recognition successful:{0}", result);
+                return result;
+            }
+            else
+            {
+                throw new InvalidOperationException("No speech could be recognized from the converted WAV audio data");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[SpeechService][HandleM4AFormat] - M4A processing error:{0}", ex.Message);
+            throw new InvalidOperationException($"Failed to process M4A audio: {ex.Message}", ex);
+        }
+        finally
+        {
+            // Clean up temporary files
+            try
+            {
+                if (!string.IsNullOrEmpty(tempM4AFile) && File.Exists(tempM4AFile))
+                {
+                    File.Delete(tempM4AFile);
+                    _logger.LogDebug("[SpeechService][HandleM4AFormat] - Cleaned up temporary M4A file:{0}", tempM4AFile);
+                }
+                if (!string.IsNullOrEmpty(tempWavFile) && File.Exists(tempWavFile))
+                {
+                    File.Delete(tempWavFile);
+                    _logger.LogDebug("[SpeechService][HandleM4AFormat] - Cleaned up temporary WAV file:{0}", tempWavFile);
+                }
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogError(cleanupEx, "[SpeechService][HandleM4AFormat] - Warning: Failed to clean up temporary files:{0}", cleanupEx.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Converts M4A file to WAV format using FFmpeg
+    /// </summary>
+    /// <param name="inputM4APath">Input M4A file path</param>
+    /// <param name="outputWavPath">Output WAV file path</param>
+    /// <returns>Conversion result</returns>
+    private async Task<(bool Success, string Error)> ConvertM4AToWavAsync(string inputM4APath, string outputWavPath)
+    {
+        try
+        {
+            _logger.LogDebug("[SpeechService][ConvertM4AToWavAsync] - Starting FFmpeg conversion:{0},inputM4APath:{1}", inputM4APath, inputM4APath);
+            // FFmpeg command to convert M4A to WAV
+            // -i: input file
+            // -ar 16000: set audio sample rate to 16kHz (required by many speech services)
+            // -ac 1: set audio channels to mono
+            // -f wav: output format WAV
+            // -y: overwrite output file if exists
+            var processInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "ffmpeg",
+                Arguments = $"-i \"{inputM4APath}\" -ar 16000 -ac 1 -f wav -y \"{outputWavPath}\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new System.Diagnostics.Process { StartInfo = processInfo };
+            process.Start();
+
+            var output = await process.StandardOutput.ReadToEndAsync();
+            var error = await process.StandardError.ReadToEndAsync();
+
+            await process.WaitForExitAsync();
+
+            if (process.ExitCode == 0 && File.Exists(outputWavPath))
+            {
+                _logger.LogDebug("[SpeechService][ConvertM4AToWavAsync] - FFmpeg conversion successful. Output file size:{0} bytes", new FileInfo(outputWavPath).Length);
+                return (true, null);
+            }
+            else
+            {
+                var errorMessage = $"FFmpeg failed with exit code {process.ExitCode}. Error: {error}";
+                _logger.LogDebug("[SpeechService][ConvertM4AToWavAsync] - FFmpeg conversion failed:{0}", errorMessage);
+                return (false, errorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            var errorMessage = $"Exception during FFmpeg conversion: {ex.Message}";
+            _logger.LogError(ex, "[SpeechService][ConvertM4AToWavAsync] - FFmpeg conversion exception:{0}", errorMessage);
             return (false, errorMessage);
         }
     }
