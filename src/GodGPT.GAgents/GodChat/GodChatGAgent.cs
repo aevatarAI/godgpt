@@ -25,6 +25,7 @@ using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
 using Aevatar.Application.Grains.Common.Options;
+using GodGPT.GAgents.Common.Constants;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -42,25 +43,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
     private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new();
-    // Voice synthesis sentence detection
-    // Extended sentence ending characters including punctuation marks for semantic pauses
-    private static readonly List<char> SentenceEnders =
-    [
-        '.', '?', '!', '。', '？', '！', // Complete sentence endings
-        ',', ';', ':', '，', '；', '：', // Semantic pause markers
-        '\n', '\r'
-    ];
-    
-    // Regular expressions for cleaning text before speech synthesis
-    private static readonly Regex MarkdownLinkRegex = new Regex(@"\[([^\]]+)\]\([^\)]+\)", RegexOptions.Compiled);
-    private static readonly Regex MarkdownBoldRegex = new Regex(@"\*\*([^*]+)\*\*", RegexOptions.Compiled);
-    private static readonly Regex MarkdownItalicRegex = new Regex(@"\*([^*]+)\*", RegexOptions.Compiled);
-    private static readonly Regex MarkdownHeaderRegex = new Regex(@"^#+\s*(.+)$", RegexOptions.Compiled | RegexOptions.Multiline);
-    private static readonly Regex MarkdownCodeBlockRegex = new Regex(@"```[\s\S]*?```", RegexOptions.Compiled);
-    private static readonly Regex MarkdownInlineCodeRegex = new Regex(@"`([^`]+)`", RegexOptions.Compiled);
-    private static readonly Regex MarkdownTableRegex = new Regex(@"\|.*?\|", RegexOptions.Compiled);
-    private static readonly Regex MarkdownStrikethroughRegex = new Regex(@"~~([^~]+)~~", RegexOptions.Compiled);
-    private static readonly Regex EmojiRegex = new Regex(@"[\u2600-\u26FF]|[\u2700-\u27BF]", RegexOptions.Compiled);
 
     public GodChatGAgent(ISpeechService speechService, IOptionsMonitor<LLMRegionOptions> llmRegionOptions)
     {
@@ -1339,7 +1321,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return false;
         
         // Remove all punctuation and check if there's actual content
-        var cleanText = System.Text.RegularExpressions.Regex.Replace(text, @"[^\w\u4e00-\u9fff]", "");
+        var cleanText = ChatRegexPatterns.NonWordChars.Replace(text, "");
         var result = cleanText.Length > 0; // At least one letter or Chinese character
         
         return result;
@@ -1389,7 +1371,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // Look for complete sentence endings
         for (var i = accumulatedText.Length - 1; i >= 0; i--)
         {
-            if (SentenceEnders.Contains(accumulatedText[i]))
+            if (VoiceChatConstants.SentenceEnders.Contains(accumulatedText[i]))
             {
                 // Only check if there's meaningful content, no length restriction
                 var potentialSentence = accumulatedText.Substring(0, i + 1);
@@ -1431,29 +1413,29 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var cleanText = text;
 
         // Remove markdown links but keep link text
-        cleanText = MarkdownLinkRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownLink.Replace(cleanText, "$1");
 
         // Remove bold and italic formatting
-        cleanText = MarkdownBoldRegex.Replace(cleanText, "$1");
-        cleanText = MarkdownItalicRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownBold.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownItalic.Replace(cleanText, "$1");
 
         // Remove strikethrough formatting
-        cleanText = MarkdownStrikethroughRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownStrikethrough.Replace(cleanText, "$1");
 
         // Remove header formatting
-        cleanText = MarkdownHeaderRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownHeader.Replace(cleanText, "$1");
 
         // Replace code blocks with speech-friendly text
-        cleanText = MarkdownCodeBlockRegex.Replace(cleanText, language == VoiceLanguageEnum.Chinese ? "代码块" : "code block");
+        cleanText = ChatRegexPatterns.MarkdownCodeBlock.Replace(cleanText, language == VoiceLanguageEnum.Chinese ? "代码块" : "code block");
 
         // Remove inline code formatting but keep content
-        cleanText = MarkdownInlineCodeRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownInlineCode.Replace(cleanText, "$1");
 
         // Remove table formatting
-        cleanText = MarkdownTableRegex.Replace(cleanText, " ");
+        cleanText = ChatRegexPatterns.MarkdownTable.Replace(cleanText, " ");
 
         // Remove emojis completely (they don't speech-synthesize well)
-        cleanText = EmojiRegex.Replace(cleanText, "");
+        cleanText = ChatRegexPatterns.Emoji.Replace(cleanText, "");
 
         // Remove multiple spaces and special markdown symbols
         cleanText = cleanText.Replace("**", "")
@@ -1467,7 +1449,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                              .Replace("<<<", "");
 
         // Remove excessive whitespace
-        cleanText = Regex.Replace(cleanText, @"\s+", " ").Trim();
+        cleanText = ChatRegexPatterns.WhitespaceNormalize.Replace(cleanText, " ").Trim();
 
         return cleanText;
     }
@@ -1630,9 +1612,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return (fullResponse, new List<string>());
         }
 
-        // Pattern to match conversation suggestions block
-        var pattern = @"---CONVERSATION_SUGGESTIONS---(.*?)---END_SUGGESTIONS---";
-        var match = Regex.Match(fullResponse, pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        // Pattern to match conversation suggestions block using precompiled regex
+        var match = ChatRegexPatterns.ConversationSuggestionsBlock.Match(fullResponse);
         
         if (match.Success)
         {
@@ -1667,8 +1648,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         foreach (var line in lines)
         {
             var trimmedLine = line.Trim();
-            // Match numbered items like "1. content" or "1) content"
-            var match = Regex.Match(trimmedLine, @"^\d+[\.\)]\s*(.+)$");
+            // Match numbered items like "1. content" or "1) content" using precompiled regex
+            var match = ChatRegexPatterns.NumberedItem.Match(trimmedLine);
             if (match.Success)
             {
                 var item = match.Groups[1].Value.Trim();
