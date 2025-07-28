@@ -944,6 +944,35 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         if (chatContent.IsAggregationMsg)
         {
+            // Parse conversation suggestions for text chat only (skip voice chat)
+            List<string>? conversationSuggestions = null;
+            bool isVoiceChat = false;
+            
+            // Check if this is a voice chat by examining the message context
+            if (!contextDto.MessageId.IsNullOrWhiteSpace())
+            {
+                try
+                {
+                    var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
+                    isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "[GodChatGAgent][ChatMessageCallbackAsync] Failed to parse MessageId for voice chat detection");
+                }
+            }
+            
+            // Parse conversation suggestions only for text chat
+            if (!isVoiceChat && !string.IsNullOrEmpty(chatContent.AggregationMsg))
+            {
+                var (mainContent, suggestions) = ParseResponseWithSuggestions(chatContent.AggregationMsg);
+                if (suggestions.Any())
+                {
+                    conversationSuggestions = suggestions;
+                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Parsed {suggestions.Count} conversation suggestions for text chat");
+                }
+            }
+            
             RaiseEvent(new AddChatHistoryLogEvent
             {
                 ChatList = new List<ChatMessage>()
@@ -976,6 +1005,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
                 await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
             }
+            
+            // Store suggestions in a field for later use in partialMessage
+            if (conversationSuggestions != null)
+            {
+                // We'll add this to partialMessage later in the method
+                // Store it temporarily in the context for now
+                RequestContext.Set("ConversationSuggestions", conversationSuggestions);
+            }
         }
 
         var partialMessage = new ResponseStreamGodChat()
@@ -988,6 +1025,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
             VoiceContentType = VoiceContentType.VoiceResponse
         };
+
+        // Add conversation suggestions to the last chunk if available
+        if (chatContent.IsLastChunk)
+        {
+            var storedSuggestions = RequestContext.Get("ConversationSuggestions") as List<string>;
+            if (storedSuggestions?.Any() == true)
+            {
+                partialMessage.SuggestedItems = storedSuggestions;
+                Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Added {storedSuggestions.Count} suggestions to last chunk");
+            }
+        }
 
         // Check if this is a voice chat and handle real-time voice synthesis
         Logger.LogDebug($"[ChatMessageCallbackAsync] MessageId: '{contextDto.MessageId}', ResponseContent: '{chatContent.ResponseContent}'");
@@ -1560,5 +1608,70 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
         // Voice synthesis and streaming handled in ChatMessageCallbackAsync
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Parse AI response to extract main content and conversation suggestions
+    /// </summary>
+    /// <param name="fullResponse">Complete AI response text</param>
+    /// <returns>Tuple of (main content, list of suggestions)</returns>
+    private (string mainContent, List<string> suggestions) ParseResponseWithSuggestions(string fullResponse)
+    {
+        if (string.IsNullOrEmpty(fullResponse))
+        {
+            return (fullResponse, new List<string>());
+        }
+
+        // Pattern to match conversation suggestions block
+        var pattern = @"---CONVERSATION_SUGGESTIONS---(.*?)---END_SUGGESTIONS---";
+        var match = Regex.Match(fullResponse, pattern, RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        
+        if (match.Success)
+        {
+            // Extract main content by removing the suggestions section
+            var mainContent = fullResponse.Replace(match.Value, "").Trim();
+            var suggestionSection = match.Groups[1].Value;
+            var suggestions = ExtractNumberedItems(suggestionSection);
+            
+            Logger.LogDebug($"[GodChatGAgent][ParseResponseWithSuggestions] Extracted {suggestions.Count} suggestions from response");
+            return (mainContent, suggestions);
+        }
+        
+        Logger.LogDebug("[GodChatGAgent][ParseResponseWithSuggestions] No suggestions found in response");
+        return (fullResponse, new List<string>());
+    }
+
+    /// <summary>
+    /// Extract numbered items from text (e.g., "1. item", "2. item", etc.)
+    /// </summary>
+    /// <param name="text">Text containing numbered items</param>
+    /// <returns>List of extracted items</returns>
+    private List<string> ExtractNumberedItems(string text)
+    {
+        var items = new List<string>();
+        if (string.IsNullOrEmpty(text))
+        {
+            return items;
+        }
+        
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.Trim();
+            // Match numbered items like "1. content" or "1) content"
+            var match = Regex.Match(trimmedLine, @"^\d+[\.\)]\s*(.+)$");
+            if (match.Success)
+            {
+                var item = match.Groups[1].Value.Trim();
+                if (!string.IsNullOrEmpty(item))
+                {
+                    items.Add(item);
+                }
+            }
+        }
+        
+        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} numbered items");
+        return items;
     }
 }

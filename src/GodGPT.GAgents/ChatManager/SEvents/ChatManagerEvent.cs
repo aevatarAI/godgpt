@@ -88,6 +88,11 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
     [Id(8)] public AudioMetadata? AudioMetadata { get; set; }
     [Id(9)] public ChatErrorCode ErrorCode { get; set; }
     [Id(10)] public VoiceContentType VoiceContentType { get; set; } = VoiceContentType.VoiceResponse;
+    
+    /// <summary>
+    /// AI-generated conversation suggestions (text chat only, present in last chunk if generated)
+    /// </summary>
+    [Id(11)] public List<string>? SuggestedItems { get; set; }
 
     public ResponseStreamGodChatForHttp ConvertToHttpResponse()
     {
@@ -101,7 +106,8 @@ public class ResponseStreamGodChat : ResponseToPublisherEventBase
             AudioData = AudioData,
             AudioMetadata = AudioMetadata,
             ErrorCode = ErrorCode,
-            VoiceContentType = VoiceContentType
+            VoiceContentType = VoiceContentType,
+            SuggestedItems = SuggestedItems
         };
     }
 }
@@ -127,6 +133,11 @@ public class ResponseStreamGodChatForHttp
     public AudioMetadata? AudioMetadata { get; set; } 
     public ChatErrorCode ErrorCode { get; set; }
     public VoiceContentType VoiceContentType { get; set; } = VoiceContentType.VoiceResponse;
+    
+    /// <summary>
+    /// AI-generated conversation suggestions (text chat only, present in last chunk if generated)
+    /// </summary>
+    public List<string>? SuggestedItems { get; set; }
 
 }
 
