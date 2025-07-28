@@ -39,10 +39,11 @@ public interface IUserQuotaGAgent : IGAgent
     Task UpdateQuotaAsync(string productId, DateTime expiresDate);
     Task ResetQuotaAsync();
     Task<GrainResultDto<int>> UpdateCreditsAsync(string operatorUserId, int creditsChange);
+    Task<GrainResultDto<List<SubscriptionInfoDto>>> UpdateSubscriptionAsync(string operatorUserId, PlanType planType,
+        bool ultimate = false);
     Task AddCreditsAsync(int credits);
     Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime);
     Task<UserQuotaGAgentState> GetUserQuotaStateAsync();
-
 }
 
 [GAgent(nameof(UserQuotaGAgent))]
@@ -277,20 +278,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             var today = DateTime.UtcNow.Date;
             var dailyInfo = State.DailyImageConversation;
             
-            // Check if user is subscribed (subscribers have no daily limit)
-            if (!await IsSubscribedAsync(true) && !await IsSubscribedAsync(false) && dailyInfo.Count >= 1)
-            {
-                _logger.LogDebug(
-                    "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Daily image conversation limit exceeded for non-subscriber. Count={Count}",
-                    chatManagerGuid, sessionId, dailyInfo.Count);
-                    
-                return new ExecuteActionResultDto
-                {
-                    Code = ExecuteActionStatus.RateLimitExceeded,
-                    Message = "Daily upload limit reached. Upgrade to premium to continue."
-                };
-            }
-
             // Check if it's a new day, reset count if so
             if (dailyInfo.LastConversationTime.Date != today)
             {
@@ -302,6 +289,20 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 // Increment daily count and update last conversation time
                 dailyInfo.Count++;
                 dailyInfo.LastConversationTime = DateTime.UtcNow;
+            }
+            
+            // Check if user is subscribed (subscribers have no daily limit)
+            if (!await IsSubscribedAsync(true) && !await IsSubscribedAsync(false) && dailyInfo.Count > 1)
+            {
+                _logger.LogDebug(
+                    "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Daily image conversation limit exceeded for non-subscriber. Count={Count}",
+                    chatManagerGuid, sessionId, dailyInfo.Count);
+                    
+                return new ExecuteActionResultDto
+                {
+                    Code = ExecuteActionStatus.RateLimitExceeded,
+                    Message = "Daily upload limit reached. Upgrade to premium to continue."
+                };
             }
 
             RaiseEvent(new UpdateDailyImageConversationLogEvent
@@ -587,7 +588,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         {
             _logger.LogWarning(
                 "[UserQuotaGrain][UpdateCreditsAsync] Unauthorized attempt to update credits for user {UserId} by operator {OperatorId}",
-                this.GetPrimaryKeyString(), operatorUserId);
+                this.GetPrimaryKey().ToString(), operatorUserId);
 
             return new GrainResultDto<int>
             {
@@ -612,13 +613,87 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
 
         _logger.LogInformation(
             "[UserQuotaGrain][UpdateCreditsAsync] Credits updated for user {UserId} by operator {OperatorId}: {OldCredits} -> {NewCredits} (change: {Change})",
-            this.GetPrimaryKeyString(), operatorUserId, oldCredits, State.Credits, creditsChange);
+            this.GetPrimaryKey().ToString(), operatorUserId, oldCredits, State.Credits, creditsChange);
 
         return new GrainResultDto<int>
         {
             Success = true,
             Message = $"Credits successfully updated by {creditsChange}",
             Data = State.Credits
+        };
+    }
+
+    public async Task<GrainResultDto<List<SubscriptionInfoDto>>> UpdateSubscriptionAsync(string operatorUserId, PlanType planType, bool ultimate = false)
+    {
+        if (!IsUserAuthorizedToUpdateCredits(operatorUserId))
+        {
+            _logger.LogWarning(
+                "[UserQuotaGrain][UpdateSubscriptionAsync] Unauthorized attempt to update subscription for user {UserId} by operator {OperatorId}",
+                this.GetPrimaryKey().ToString(), operatorUserId);
+
+            return new GrainResultDto<List<SubscriptionInfoDto>>
+            {
+                Success = false,
+                Message = "Unauthorized: User does not have permission to update subscription",
+                Data = new List<SubscriptionInfoDto>()
+            };
+        }
+
+        var oldSubscriptionInfoDto = await GetSubscriptionAsync(ultimate);
+        if (await IsSubscribedAsync(ultimate))
+        {
+            var subscriptionInfoDto = await GetSubscriptionAsync(ultimate);
+            if (SubscriptionHelper.IsUpgradeOrSameLevel(subscriptionInfoDto.PlanType, planType))
+            {
+                subscriptionInfoDto.PlanType = planType;
+            }
+            subscriptionInfoDto.EndDate =
+                SubscriptionHelper.GetSubscriptionEndDate(planType, subscriptionInfoDto.EndDate);
+
+            await UpdateSubscriptionAsync(subscriptionInfoDto, ultimate);
+            _logger.LogWarning("[UserQuotaGrain][UpdateSubscriptionAsync] true, Update subscription for user {UserId} by operator {OperatorId}", 
+                this.GetPrimaryKey().ToString(), operatorUserId);
+        }
+        else
+        {
+            var startDate = DateTime.UtcNow;
+            var subscriptionInfoDto = new SubscriptionInfoDto
+            {
+                IsActive = true,
+                PlanType = planType,
+                Status = PaymentStatus.Completed,
+                StartDate = startDate,
+                EndDate = SubscriptionHelper.GetSubscriptionEndDate(planType, startDate),
+                SubscriptionIds = null,
+                InvoiceIds = null
+            };
+            await UpdateSubscriptionAsync(subscriptionInfoDto, ultimate);
+            
+            _logger.LogWarning("[UserQuotaGrain][UpdateSubscriptionAsync] false, Update subscription for user {UserId} by operator {OperatorId}", 
+                this.GetPrimaryKey().ToString(), operatorUserId);
+        }
+        
+        if (ultimate && await IsSubscribedAsync(false))
+        {
+            var premiumSubscription = await GetSubscriptionAsync(false);
+            premiumSubscription.StartDate =
+                SubscriptionHelper.GetSubscriptionEndDate(planType, premiumSubscription.StartDate);
+            premiumSubscription.EndDate =
+                SubscriptionHelper.GetSubscriptionEndDate(planType, premiumSubscription.EndDate);
+            await UpdateSubscriptionAsync(premiumSubscription, false);
+            _logger.LogWarning("[UserQuotaGrain][UpdateSubscriptionAsync] premium, Update subscription for user {UserId} by operator {OperatorId}", 
+                this.GetPrimaryKey().ToString(), operatorUserId);
+            
+        }
+        await ConfirmEvents();
+
+        var currentSubscriptionInfoDto = await GetSubscriptionAsync(ultimate);
+        return new GrainResultDto<List<SubscriptionInfoDto>>
+        {
+            Data = new List<SubscriptionInfoDto>()
+            {
+                oldSubscriptionInfoDto, currentSubscriptionInfoDto
+            }
         };
     }
 
