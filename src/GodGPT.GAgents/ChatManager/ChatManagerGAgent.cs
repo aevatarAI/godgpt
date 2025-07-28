@@ -99,23 +99,23 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     }
     
     
-    [EventHandler]
-    public async Task HandleEventAsync(AIOldStreamingResponseGEvent @event)
-    {
-        Logger.LogDebug($"[ChatGAgentManager][AIStreamingResponseGEvent] start:{JsonConvert.SerializeObject(@event)}");
-    
-        await PublishAsync(new ResponseStreamGodChat()
-        {
-            Response = @event.ResponseContent,
-            ChatId = @event.Context.ChatId,
-            IsLastChunk = @event.IsLastChunk,
-            SerialNumber = @event.SerialNumber,
-            SessionId = @event.Context.RequestId
-        });
-        
-        Logger.LogDebug($"[ChatGAgentManager][AIStreamingResponseGEvent] end:{JsonConvert.SerializeObject(@event)}");
-    
-    }
+    // [EventHandler]
+    // public async Task HandleEventAsync(AIOldStreamingResponseGEvent @event)
+    // {
+    //     Logger.LogDebug($"[ChatGAgentManager][AIStreamingResponseGEvent] start:{JsonConvert.SerializeObject(@event)}");
+    //
+    //     await PublishAsync(new ResponseStreamGodChat()
+    //     {
+    //         Response = @event.ResponseContent,
+    //         ChatId = @event.Context.ChatId,
+    //         IsLastChunk = @event.IsLastChunk,
+    //         SerialNumber = @event.SerialNumber,
+    //         SessionId = @event.Context.RequestId
+    //     });
+    //     
+    //     Logger.LogDebug($"[ChatGAgentManager][AIStreamingResponseGEvent] end:{JsonConvert.SerializeObject(@event)}");
+    //
+    // }
     
     public async Task RenameChatTitleAsync(RenameChatTitleEvent @event)
     {
@@ -1106,14 +1106,14 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         switch (@event)
         {
             case SetRegisteredAtUtcEventLog @setRegisteredAtUtcEventLog:
-                State.RegisteredAtUtc = setRegisteredAtUtcEventLog.RegisteredAtUtc;
+                state.RegisteredAtUtc = setRegisteredAtUtcEventLog.RegisteredAtUtc;
                 break;
             case CreateSessionInfoEventLog @createSessionInfo:
-                if (State.SessionInfoList.IsNullOrEmpty() && State.RegisteredAtUtc == null)
+                if (state.SessionInfoList.IsNullOrEmpty() && state.RegisteredAtUtc == null)
                 {
-                    State.RegisteredAtUtc = DateTime.UtcNow;
+                    state.RegisteredAtUtc = DateTime.UtcNow;
                 }
-                State.SessionInfoList.Add(new SessionInfo()
+                state.SessionInfoList.Add(new SessionInfo()
                 {
                     SessionId = @createSessionInfo.SessionId,
                     Title = @createSessionInfo.Title,
@@ -1122,15 +1122,15 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 });
                 break;
             case DeleteSessionEventLog @deleteSessionEventLog:
-                var deleteSession = State.GetSession(@deleteSessionEventLog.SessionId);
+                var deleteSession = state.GetSession(@deleteSessionEventLog.SessionId);
                 if (deleteSession != null && !deleteSession.ShareIds.IsNullOrEmpty())
                 {
-                    State.CurrentShareCount -= deleteSession.ShareIds.Count;
+                    state.CurrentShareCount -= deleteSession.ShareIds.Count;
                 }
-                State.SessionInfoList.RemoveAll(f => f.SessionId == @deleteSessionEventLog.SessionId);
+                state.SessionInfoList.RemoveAll(f => f.SessionId == @deleteSessionEventLog.SessionId);
                 break;
             case CleanExpiredSessionsEventLog @cleanExpiredSessionsEventLog:
-                var expiredSessionIds = State.SessionInfoList
+                var expiredSessionIds = state.SessionInfoList
                     .Where(s => s.CreateAt <= @cleanExpiredSessionsEventLog.CleanBefore && 
                                string.IsNullOrEmpty(s.Title))
                     .Select(s => s.SessionId)
@@ -1138,51 +1138,51 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 
                 foreach (var expiredSessionId in expiredSessionIds)
                 {
-                    var expiredSession = State.GetSession(expiredSessionId);
+                    var expiredSession = state.GetSession(expiredSessionId);
                     if (expiredSession != null && !expiredSession.ShareIds.IsNullOrEmpty())
                     {
-                        State.CurrentShareCount -= expiredSession.ShareIds.Count;
+                        state.CurrentShareCount -= expiredSession.ShareIds.Count;
                     }
                 }
                 
-                State.SessionInfoList.RemoveAll(s => expiredSessionIds.Contains(s.SessionId));
+                state.SessionInfoList.RemoveAll(s => expiredSessionIds.Contains(s.SessionId));
                 break;
             case RenameTitleEventLog @renameTitleEventLog:
                 Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] event:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
-                var sessionInfoList = State.SessionInfoList;
+                var sessionInfoList = state.SessionInfoList;
                 var sessionInfo = sessionInfoList.First(f => f.SessionId == @renameTitleEventLog.SessionId);
                 Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] event exist:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
                 sessionInfo.Title = @renameTitleEventLog.Title;
-                State.SessionInfoList = sessionInfoList;
+                state.SessionInfoList = sessionInfoList;
                 break;
             case ClearAllEventLog:
-                State.SessionInfoList.Clear();
-                State.Gender = string.Empty;
-                State.BirthDate = default;
-                State.BirthPlace = string.Empty;
-                State.FullName = string.Empty;
-                State.CurrentShareCount = 0;
-                State.InviterId = null;
-                State.VoiceLanguage = VoiceLanguageEnum.Unset;
+                state.SessionInfoList.Clear();
+                state.Gender = string.Empty;
+                state.BirthDate = default;
+                state.BirthPlace = string.Empty;
+                state.FullName = string.Empty;
+                state.CurrentShareCount = 0;
+                state.InviterId = null;
+                state.VoiceLanguage = VoiceLanguageEnum.Unset;
                 break;
             case SetUserProfileEventLog @setFortuneInfoEventLog:
-                State.Gender = @setFortuneInfoEventLog.Gender;
-                State.BirthDate = @setFortuneInfoEventLog.BirthDate;
-                State.BirthPlace = @setFortuneInfoEventLog.BirthPlace;
-                State.FullName = @setFortuneInfoEventLog.FullName;
+                state.Gender = @setFortuneInfoEventLog.Gender;
+                state.BirthDate = @setFortuneInfoEventLog.BirthDate;
+                state.BirthPlace = @setFortuneInfoEventLog.BirthPlace;
+                state.FullName = @setFortuneInfoEventLog.FullName;
                 break;
             case SetVoiceLanguageEventLog @setVoiceLanguageEventLog:
                 // Update the voice language preference for the user
-                State.VoiceLanguage = @setVoiceLanguageEventLog.VoiceLanguage;
+                state.VoiceLanguage = @setVoiceLanguageEventLog.VoiceLanguage;
                 break;
             case GenerateChatShareContentLogEvent generateChatShareContentLogEvent:
-                var session = State.GetSession(generateChatShareContentLogEvent.SessionId);
+                var session = state.GetSession(generateChatShareContentLogEvent.SessionId);
                 if (session == null)
                 {
                     Logger.LogDebug($"[ChatGAgentManager][GenerateChatShareContentLogEvent] session not fuound: {generateChatShareContentLogEvent.SessionId.ToString()}");
                     break;
                 }
-                State.CurrentShareCount += 1;
+                state.CurrentShareCount += 1;
                 if (session.ShareIds == null)
                 {
                     session.ShareIds = new List<Guid>();
@@ -1190,10 +1190,10 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
                 session.ShareIds.Add(generateChatShareContentLogEvent.ShareId);
                 break;
             case SetMaxShareCountLogEvent setMaxShareCountLogEvent:
-                State.MaxShareCount = setMaxShareCountLogEvent.MaxShareCount;
+                state.MaxShareCount = setMaxShareCountLogEvent.MaxShareCount;
                 break;
             case SetInviterEventLog setInviterEventLog:
-                State.InviterId = setInviterEventLog.InviterId;
+                state.InviterId = setInviterEventLog.InviterId;
                 break;
         }   
     }

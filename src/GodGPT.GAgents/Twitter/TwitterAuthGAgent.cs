@@ -295,17 +295,17 @@ public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEven
         switch (@event)
         {
             case SetCodeVerifierLogEvent setCodeVerifier:
-                State.CodeVerifier = setCodeVerifier.CodeVerifier;
+                state.CodeVerifier = setCodeVerifier.CodeVerifier;
                 break;
             case TwitterAccountBoundLogEvent accountBound:
-                State.UserId = accountBound.UserId;
-                State.TwitterUserId = accountBound.TwitterId;
-                State.Username = accountBound.Username;
-                State.IsBound = true;
-                State.AccessToken = accountBound.AccessToken;
-                State.RefreshToken = accountBound.RefreshToken;
-                State.TokenExpiresAt = accountBound.TokenExpiresAt;
-                State.ProfileImageUrl = accountBound.ProfileImageUrl;
+                state.UserId = accountBound.UserId;
+                state.TwitterUserId = accountBound.TwitterId;
+                state.Username = accountBound.Username;
+                state.IsBound = true;
+                state.AccessToken = accountBound.AccessToken;
+                state.RefreshToken = accountBound.RefreshToken;
+                state.TokenExpiresAt = accountBound.TokenExpiresAt;
+                state.ProfileImageUrl = accountBound.ProfileImageUrl;
                 break;
         }
     }

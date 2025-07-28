@@ -13,6 +13,7 @@ using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.PaymentAnalytics;
 using Aevatar.Application.Grains.UserBilling.SEvents;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
@@ -941,6 +942,33 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 this.GetPrimaryKey(), grainResultDto.Message);
             return false;
         }
+
+        try
+        {
+            // Report payment success to Google Analytics
+            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics"+PaymentPlatform.Stripe);
+            var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
+                PaymentPlatform.Stripe,
+                detailsDto.InvoiceId,
+                detailsDto.UserId.ToString()
+            );
+
+            if (analyticsResult.IsSuccess)
+            {
+                _logger.LogInformation($"[UserBillingGAgent][HandleStripeWebhookEventAsync] Successfully reported payment analytics for order {detailsDto.InvoiceId}, user {detailsDto.UserId}");
+            }
+            else
+            {
+                _logger.LogWarning($"[UserBillingGAgent][HandleStripeWebhookEventAsync] Failed to report payment analytics for order {detailsDto.InvoiceId}, user {detailsDto.UserId}: {analyticsResult.ErrorMessage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGAgent][HandleStripeWebhookEventAsync] Exception while reporting payment analytics for order {A}, user {B}",
+                detailsDto.InvoiceId, detailsDto.UserId);
+            // Don't throw - analytics reporting shouldn't block payment processing
+        }
         
         var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null);
         
@@ -1737,9 +1765,40 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     // Handle successful renewal
                     if (subtypeEnum == AppStoreNotificationSubtype.BILLING_RECOVERY)
                     {
-                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
+                        _logger.LogInformation(
+                            "[UserBillingGAgent][HandleAppStoreNotificationAsync] Subscription recovered after billing failure");
                     }
+
                     await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
+
+                    //Report payment success to Google Analytics for completed payments
+                    {
+                        try
+                        {
+                            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics" + PaymentPlatform.AppStore);
+                            var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
+                                PaymentPlatform.AppStore,
+                                signedTransactionInfo.TransactionId,
+                                userId.ToString()
+                            );
+
+                            if (analyticsResult.IsSuccess)
+                            {
+                                _logger.LogInformation($"[UserBillingGAgent][UpdateSubscriptionStateAsync] Successfully reported AppStore payment analytics for user {userId}, TransactionId {signedTransactionInfo.TransactionId}, event {AppStoreNotificationType.DID_RENEW}");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"[UserBillingGAgent][UpdateSubscriptionStateAsync] Failed to report AppStore payment analytics for user {userId}, TransactionId {signedTransactionInfo.TransactionId}, event {AppStoreNotificationType.DID_RENEW}: {analyticsResult.ErrorMessage}");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "[UserBillingGAgent][UpdateSubscriptionStateAsync] Exception while reporting AppStore payment analytics for user {UserId}, product {ProductId}, event {EventType}", 
+                                userId, signedTransactionInfo.ProductId, AppStoreNotificationType.DID_RENEW);
+                            // Don't throw - analytics reporting shouldn't block payment processing
+                        }
+                    }
+
                     break;
                 case AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS:
                     // Handle auto-renewal status changes
@@ -2121,7 +2180,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             paymentSummary.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail> { invoiceDetail };
             await AddPaymentRecordAsync(paymentSummary);
         }
-        
+
         // Grant or revoke user rights
         await UpdateUserQuotaAsync(userId, subscriptionInfo, eventType);
     }
@@ -3617,24 +3676,24 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         switch (@event)
         {
             case AddPaymentLogEvent addPayment:
-                State.PaymentHistory.Add(addPayment.PaymentSummary);
-                State.TotalPayments++;
+                state.PaymentHistory.Add(addPayment.PaymentSummary);
+                state.TotalPayments++;
                 if (addPayment.PaymentSummary.Status == PaymentStatus.Refunded)
                 {
-                    State.RefundedPayments++;
+                    state.RefundedPayments++;
                 }
                 break;
 
             case UpdatePaymentLogEvent updatePayment:
-                var paymentIndex = State.PaymentHistory.FindIndex(p => p.PaymentGrainId == updatePayment.PaymentId);
+                var paymentIndex = state.PaymentHistory.FindIndex(p => p.PaymentGrainId == updatePayment.PaymentId);
                 if (paymentIndex >= 0)
                 {
-                    State.PaymentHistory[paymentIndex] = updatePayment.PaymentSummary;
+                    state.PaymentHistory[paymentIndex] = updatePayment.PaymentSummary;
                 }
                 break;
 
             case UpdatePaymentStatusLogEvent updateStatus:
-                var payment = State.PaymentHistory.FirstOrDefault(p => p.PaymentGrainId == updateStatus.PaymentId);
+                var payment = state.PaymentHistory.FirstOrDefault(p => p.PaymentGrainId == updateStatus.PaymentId);
 
                 if (payment != null) {
                     if (updateStatus.NewStatus == PaymentStatus.Completed && !payment.CompletedAt.HasValue)
@@ -3643,61 +3702,61 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     }
                     if (updateStatus.NewStatus == PaymentStatus.Refunded && payment.Status != PaymentStatus.Refunded)
                     {
-                        State.RefundedPayments++;
+                        state.RefundedPayments++;
                     }
                     else if (payment.Status == PaymentStatus.Refunded && updateStatus.NewStatus != PaymentStatus.Refunded)
                     {
-                        State.RefundedPayments--;
+                        state.RefundedPayments--;
                     }
                     payment.Status = updateStatus.NewStatus;
                 }
                 break;
 
             case ClearAllLogEvent:
-                State.PaymentHistory.Clear();
+                state.PaymentHistory.Clear();
                 break;
 
             case UpdateExistingSubscriptionLogEvent updateSubscription:
-                var subscription = State.PaymentHistory.FirstOrDefault(p => p.SubscriptionId == updateSubscription.SubscriptionId);
+                var subscription = state.PaymentHistory.FirstOrDefault(p => p.SubscriptionId == updateSubscription.SubscriptionId);
                 if (subscription != null)
                 {
-                    var index = State.PaymentHistory.IndexOf(subscription);
-                    State.PaymentHistory[index] = updateSubscription.ExistingSubscription;
+                    var index = state.PaymentHistory.IndexOf(subscription);
+                    state.PaymentHistory[index] = updateSubscription.ExistingSubscription;
                 }
                 break;
 
             case UpdateCustomerIdLogEvent updateCustomerId:
-                State.CustomerId = updateCustomerId.CustomerId;
+                state.CustomerId = updateCustomerId.CustomerId;
                 break;
 
             case UpdatePaymentBySubscriptionIdLogEvent updatePaymentBySubscription:
-                var existingPayment = State.PaymentHistory.FirstOrDefault(p => p.SubscriptionId == updatePaymentBySubscription.SubscriptionId);
+                var existingPayment = state.PaymentHistory.FirstOrDefault(p => p.SubscriptionId == updatePaymentBySubscription.SubscriptionId);
                 if (existingPayment != null)
                 {
-                    var index = State.PaymentHistory.IndexOf(existingPayment);
-                    State.PaymentHistory[index] = updatePaymentBySubscription.PaymentSummary;
+                    var index = state.PaymentHistory.IndexOf(existingPayment);
+                    state.PaymentHistory[index] = updatePaymentBySubscription.PaymentSummary;
                 }
                 break;
 
             case RemovePaymentHistoryLogEvent removePayment:
                 foreach (var record in removePayment.RecordsToRemove)
                 {
-                    State.PaymentHistory.Remove(record);
+                    state.PaymentHistory.Remove(record);
                 }
                 break;
 
             case InitializeFromGrainLogEvent initializeFromGrain:
-                State.UserId = this.GetPrimaryKey().ToString();
-                State.IsInitializedFromGrain = true;
-                State.CustomerId = initializeFromGrain.CustomerId;
-                State.PaymentHistory = initializeFromGrain.PaymentHistory;
-                State.TotalPayments = initializeFromGrain.TotalPayments;
-                State.RefundedPayments = initializeFromGrain.RefundedPayments;
+                state.UserId = this.GetPrimaryKey().ToString();
+                state.IsInitializedFromGrain = true;
+                state.CustomerId = initializeFromGrain.CustomerId;
+                state.PaymentHistory = initializeFromGrain.PaymentHistory;
+                state.TotalPayments = initializeFromGrain.TotalPayments;
+                state.RefundedPayments = initializeFromGrain.RefundedPayments;
                 break;
 
             case MarkInitializedLogEvent:
-                State.UserId = this.GetPrimaryKey().ToString();
-                State.IsInitializedFromGrain = true;
+                state.UserId = this.GetPrimaryKey().ToString();
+                state.IsInitializedFromGrain = true;
                 break;
         }
     }

@@ -298,22 +298,22 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         switch (@event)
         {
             case InitializeAnonymousUserEventLog initEvent:
-                State.UserHashId = initEvent.UserHashId;
-                State.CreatedAt = initEvent.CreatedAt;
-                State.ChatCount = 0;
+                state.UserHashId = initEvent.UserHashId;
+                state.CreatedAt = initEvent.CreatedAt;
+                state.ChatCount = 0;
                 break;
                 
             case CreateGuestSessionEventLog createSessionEvent:
-                State.CurrentSessionId = createSessionEvent.SessionId;
-                State.CurrentGuider = createSessionEvent.Guider;
-                State.CurrentSessionUsed = false; // Reset session used flag for new session
+                state.CurrentSessionId = createSessionEvent.SessionId;
+                state.CurrentGuider = createSessionEvent.Guider;
+                state.CurrentSessionUsed = false; // Reset session used flag for new session
                 // Note: Don't increment chat count on session creation, only on actual chat
                 break;
                 
             case GuestChatEventLog chatEvent:
-                State.ChatCount = chatEvent.ChatCount;
-                State.LastChatTime = chatEvent.ChatAt;
-                State.CurrentSessionUsed = chatEvent.SessionUsed;
+                state.ChatCount = chatEvent.ChatCount;
+                state.LastChatTime = chatEvent.ChatAt;
+                state.CurrentSessionUsed = chatEvent.SessionUsed;
                 break;
         }
     }
