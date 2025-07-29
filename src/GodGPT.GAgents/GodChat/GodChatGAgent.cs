@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Collections.Concurrent;
 using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
@@ -42,6 +43,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
     private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new();
+
+    /// <summary>
+    /// Dictionary to track conversation suggestion processing state for each chat session
+    /// Key: ChatId, Value: (isInSuggestionBlock, accumulatedSuggestions)
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, (bool isInSuggestionBlock, StringBuilder accumulatedSuggestions)> 
+        SuggestionProcessingStates = new();
 
     public GodChatGAgent(ISpeechService speechService, IOptionsMonitor<LLMRegionOptions> llmRegionOptions)
     {
@@ -1041,8 +1049,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         }
 
         // Clean partial streaming content to prevent conversation suggestions from being streamed to frontend
-        // This ensures that suggestion markers are removed from all chunks, not just the final one
-        var cleanedPartialContent = CleanPartialStreamingContent(chatContent.ResponseContent);
+        // Use new stateful cleaning that handles suggestion blocks spanning multiple chunks
+        var cleanedPartialContent = CleanPartialStreamingContentWithState(chatContent.ResponseContent, chatId);
         
         // DIAGNOSTIC: Log content details to identify duplication
         Logger.LogDebug($"[CONTENT_ANALYSIS] RequestId: {requestId}, ChatId: {chatId}, SerialNumber: {serialNumber}");
@@ -1237,7 +1245,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             RequestContext.Remove("CleanMainContent");
             RequestContext.Remove("ConversationSuggestions");
-            Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] CLEANUP - RequestId: {requestId}, ChatId: {chatId} - RequestContext cleared for last chunk");
+            
+            // Clean up suggestion processing state for this chat session
+            SuggestionProcessingStates.TryRemove(chatId, out _);
+            
+            Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] CLEANUP - RequestId: {requestId}, ChatId: {chatId} - RequestContext and suggestion state cleared for last chunk");
         }
         
         Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] END - RequestId: {requestId}, ChatId: {chatId}, SerialNumber: {serialNumber}");
@@ -1571,37 +1583,118 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     }
 
     /// <summary>
-    /// Clean partial streaming content to remove conversation suggestions markers
-    /// This ensures streaming responses don't leak suggestion content to frontend
-    /// Updated to handle incomplete suggestion blocks more robustly
+    /// Clean partial streaming content with cross-chunk suggestion block handling
     /// </summary>
-    /// <param name="partialContent">Partial response content from streaming</param>
-    /// <returns>Cleaned partial content without suggestion markers</returns>
-    private string CleanPartialStreamingContent(string partialContent)
+    /// <param name="partialContent">Current chunk content</param>
+    /// <param name="chatId">Chat session ID for state tracking</param>
+    /// <returns>Cleaned content without suggestion markers or content</returns>
+    private string CleanPartialStreamingContentWithState(string partialContent, string chatId)
     {
         if (string.IsNullOrEmpty(partialContent))
         {
             return partialContent;
         }
 
-        // ROBUST FIX: Remove any conversation suggestions content (complete or incomplete)
-        // First, try to remove complete blocks with end markers
-        var cleanedContent = ChatRegexPatterns.ConversationSuggestionsRemoval.Replace(partialContent, "");
+        // Get or create processing state for this chat session
+        var state = SuggestionProcessingStates.GetOrAdd(chatId, _ => (false, new StringBuilder()));
         
-        // ADDITIONAL FIX: If we still find the start marker without end marker, truncate everything after it
-        // This handles cases where LLM didn't generate the end marker yet
-        var suggestionStartIndex = cleanedContent.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
-        if (suggestionStartIndex >= 0)
+        var cleanedContent = partialContent;
+        var currentAccumulated = new StringBuilder(state.accumulatedSuggestions.ToString());
+        var isInBlock = state.isInSuggestionBlock;
+
+        Logger.LogDebug($"[STREAMING_STATE] ChatId: {chatId}, IsInBlock: {isInBlock}, Input: [{partialContent}]");
+
+        // Case 1: We're already in a suggestion block
+        if (isInBlock)
         {
-            cleanedContent = cleanedContent.Substring(0, suggestionStartIndex).TrimEnd();
-            Logger.LogDebug($"[CONTENT_ANALYSIS] TRUNCATED incomplete suggestion block at position {suggestionStartIndex}");
+            Logger.LogDebug($"[STREAMING_STATE] Already in suggestion block, checking for end marker...");
+            
+            // Check if this chunk contains the end marker
+            var endMarkerIndex = partialContent.IndexOf("---END_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+            if (endMarkerIndex >= 0)
+            {
+                // Found end marker - extract final suggestion content and exit block
+                var finalSuggestionPart = partialContent.Substring(0, endMarkerIndex);
+                currentAccumulated.Append(finalSuggestionPart);
+                
+                Logger.LogDebug($"[STREAMING_STATE] Found end marker at position {endMarkerIndex}");
+                Logger.LogDebug($"[STREAMING_STATE] Complete accumulated suggestions: [{currentAccumulated.ToString()}]");
+                
+                // Parse complete suggestions and store in RequestContext
+                var suggestions = ExtractNumberedItems(currentAccumulated.ToString());
+                if (suggestions.Any())
+                {
+                    RequestContext.Set("ConversationSuggestions", suggestions);
+                    Logger.LogDebug($"[STREAMING_STATE] Stored {suggestions.Count} suggestions in RequestContext");
+                }
+                
+                // Clean up state and return content after end marker
+                SuggestionProcessingStates.TryRemove(chatId, out _);
+                cleanedContent = partialContent.Substring(endMarkerIndex + "---END_SUGGESTIONS---".Length).TrimStart();
+                Logger.LogDebug($"[STREAMING_STATE] Exited suggestion block, remaining content: [{cleanedContent}]");
+            }
+            else
+            {
+                // Still in block, accumulate this chunk's content and return empty
+                currentAccumulated.Append(partialContent);
+                SuggestionProcessingStates.TryUpdate(chatId, (true, currentAccumulated), state);
+                cleanedContent = "";
+                Logger.LogDebug($"[STREAMING_STATE] Accumulated chunk content, current total: [{currentAccumulated.ToString()}]");
+            }
         }
-        
-        // SAFETY CHECK: Remove any remaining suggestion markers that might have been missed
-        cleanedContent = cleanedContent.Replace("---CONVERSATION_SUGGESTIONS---", "", StringComparison.OrdinalIgnoreCase);
-        cleanedContent = cleanedContent.Replace("---END_SUGGESTIONS---", "", StringComparison.OrdinalIgnoreCase);
-        
-        return cleanedContent.Trim();
+        else
+        {
+            // Case 2: Check if this chunk starts a suggestion block
+            var startMarkerIndex = partialContent.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+            if (startMarkerIndex >= 0)
+            {
+                Logger.LogDebug($"[STREAMING_STATE] Found start marker at position {startMarkerIndex}");
+                
+                // Extract content before the start marker
+                var contentBeforeMarker = partialContent.Substring(0, startMarkerIndex).TrimEnd();
+                
+                // Check if end marker is also in this chunk (complete block in one chunk)
+                var endMarkerIndex = partialContent.IndexOf("---END_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+                if (endMarkerIndex >= 0 && endMarkerIndex > startMarkerIndex)
+                {
+                    Logger.LogDebug($"[STREAMING_STATE] Complete suggestion block in single chunk");
+                    
+                    // Complete block in one chunk - extract suggestions
+                    var startPos = startMarkerIndex + "---CONVERSATION_SUGGESTIONS---".Length;
+                    var suggestionContent = partialContent.Substring(startPos, endMarkerIndex - startPos);
+                    
+                    var suggestions = ExtractNumberedItems(suggestionContent);
+                    if (suggestions.Any())
+                    {
+                        RequestContext.Set("ConversationSuggestions", suggestions);
+                        Logger.LogDebug($"[STREAMING_STATE] Stored {suggestions.Count} suggestions from single chunk");
+                    }
+                    
+                    // Return content before marker + content after end marker
+                    var contentAfterMarker = partialContent.Substring(endMarkerIndex + "---END_SUGGESTIONS---".Length).TrimStart();
+                    cleanedContent = (contentBeforeMarker + contentAfterMarker).Trim();
+                }
+                else
+                {
+                    // Start of multi-chunk block - enter tracking state
+                    var suggestionStart = partialContent.Substring(startMarkerIndex + "---CONVERSATION_SUGGESTIONS---".Length);
+                    currentAccumulated.Clear();
+                    currentAccumulated.Append(suggestionStart);
+                    
+                    SuggestionProcessingStates.TryUpdate(chatId, (true, currentAccumulated), state);
+                    cleanedContent = contentBeforeMarker;
+                    Logger.LogDebug($"[STREAMING_STATE] Entered suggestion block, initial content: [{suggestionStart}]");
+                }
+            }
+            else
+            {
+                // No suggestion markers - return as-is  
+                Logger.LogDebug($"[STREAMING_STATE] No suggestion markers found, content unchanged");
+            }
+        }
+
+        Logger.LogDebug($"[STREAMING_STATE] Final cleaned content: [{cleanedContent}]");
+        return cleanedContent;
     }
 
     /// <summary>
