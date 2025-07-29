@@ -1052,20 +1052,20 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         if (!isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
         {
-            // Check for complete or partial [SUGGESTIONS] marker to handle ALL possible cross-chunk splits
-            // Including extreme cases like chunk ending with just "["
+            // Check for complete or partial [SUGGESTIONS] marker to handle cross-chunk splits
+            // Use more conservative detection to avoid false positives
             bool contains_suggestions = streamingContent.Contains("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
             bool contains_sugges = streamingContent.Contains("[SUGGES", StringComparison.OrdinalIgnoreCase);
             bool contains_suggest = streamingContent.Contains("[SUGGEST", StringComparison.OrdinalIgnoreCase);
             bool contains_suggestion = streamingContent.Contains("[SUGGESTION", StringComparison.OrdinalIgnoreCase);
-            bool contains_s = streamingContent.Contains("[S", StringComparison.OrdinalIgnoreCase);
+            // Remove overly aggressive detection patterns that may cause false positives
             bool contains_quote = streamingContent.Contains("[\"", StringComparison.OrdinalIgnoreCase);
             bool ends_bracket = streamingContent.EndsWith("[") && streamingContent.Length > 10;
             
             shouldStartAccumulating = contains_suggestions || contains_sugges || contains_suggest || 
-                                     contains_suggestion || contains_s || contains_quote || ends_bracket;
+                                     contains_suggestion || contains_quote || ends_bracket;
             
-            Logger.LogInformation($"[DETECTION_DEBUG] Detection results - Full:[SUGGESTIONS]: {contains_suggestions}, [SUGGES: {contains_sugges}, [SUGGEST: {contains_suggest}, [SUGGESTION: {contains_suggestion}, [S: {contains_s}, [\": {contains_quote}, ends[: {ends_bracket} => ShouldStart: {shouldStartAccumulating}");
+            Logger.LogInformation($"[DETECTION_DEBUG] Detection results - Full:[SUGGESTIONS]: {contains_suggestions}, [SUGGES: {contains_sugges}, [SUGGEST: {contains_suggest}, [SUGGESTION: {contains_suggestion}, [\": {contains_quote}, ends[: {ends_bracket} => ShouldStart: {shouldStartAccumulating}");
             
             if (shouldStartAccumulating && !isAlreadyAccumulating)
             {
@@ -1129,7 +1129,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             Response = streamingContent, // Use filtered content for streaming
             ChatId = contextDto.ChatId,
             SerialNumber = chatContent.SerialNumber,
-            IsLastChunk = chatContent.IsLastChunk
+            IsLastChunk = chatContent.IsLastChunk,
+            SessionId = contextDto.RequestId,
+            // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
+            VoiceContentType = VoiceContentType.VoiceResponse
         };
         
         // Log final content being sent to frontend
