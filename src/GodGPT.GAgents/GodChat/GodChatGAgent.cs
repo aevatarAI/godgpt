@@ -42,6 +42,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
     private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new();
+    
+    // Instance variables for suggestion filtering state management
+    // These persist across chunk processing within the same grain instance
+    private bool _isAccumulatingForSuggestions = false;
+    private string _accumulatedSuggestionContent = "";
 
     public GodChatGAgent(ISpeechService speechService, IOptionsMonitor<LLMRegionOptions> llmRegionOptions)
     {
@@ -1038,8 +1043,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             }
         }
         
-        // Get current accumulation state
-        bool isAlreadyAccumulating = RequestContext.Get("IsAccumulatingForSuggestions") as bool? ?? false;
+        // Get current accumulation state from instance variables (reliable across chunks)
         bool shouldStartAccumulating = false;
         
         // Apply conversation suggestions filtering (text chat only)
@@ -1056,19 +1060,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             
             shouldStartAccumulating = contains_suggestions || contains_partial_marker || ends_with_bracket;
             
-            if (shouldStartAccumulating && !isAlreadyAccumulating)
+            if (shouldStartAccumulating && !_isAccumulatingForSuggestions)
             {
                 // Start accumulation - block all subsequent chunks from frontend
-                isAlreadyAccumulating = true;
-                RequestContext.Set("IsAccumulatingForSuggestions", true);
-                RequestContext.Set("AccumulatedSuggestionContent", streamingContent);
+                _isAccumulatingForSuggestions = true;
+                _accumulatedSuggestionContent = streamingContent;
                 streamingContent = ""; // Block current chunk
             }
-            else if (isAlreadyAccumulating)
+            else if (_isAccumulatingForSuggestions)
             {
                 // Continue accumulation - block this chunk from frontend
-                var existingContent = RequestContext.Get("AccumulatedSuggestionContent") as string ?? "";
-                RequestContext.Set("AccumulatedSuggestionContent", existingContent + streamingContent);
+                _accumulatedSuggestionContent += streamingContent;
                 streamingContent = ""; // Block current chunk
             }
         }
@@ -1080,10 +1082,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         }
 
         // Process accumulated content on final chunk
-        if (isAlreadyAccumulating && chatContent.IsLastChunk)
+        if (_isAccumulatingForSuggestions && chatContent.IsLastChunk)
         {
-            var accumulatedContent = RequestContext.Get("AccumulatedSuggestionContent") as string ?? "";
-            var (cleanContent, suggestions) = ParseResponseWithSuggestions(accumulatedContent);
+            var (cleanContent, suggestions) = ParseResponseWithSuggestions(_accumulatedSuggestionContent);
             
             // Store suggestions for response
             if (suggestions?.Any() == true)
@@ -1095,8 +1096,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             streamingContent = cleanContent;
             
             // Reset accumulation state
-            RequestContext.Set("IsAccumulatingForSuggestions", false);
-            RequestContext.Remove("AccumulatedSuggestionContent");
+            _isAccumulatingForSuggestions = false;
+            _accumulatedSuggestionContent = "";
         }
 
         var partialMessage = new ResponseStreamGodChat()
