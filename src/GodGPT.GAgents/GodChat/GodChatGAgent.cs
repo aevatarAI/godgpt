@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.RegularExpressions;
 using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
@@ -10,6 +9,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
@@ -18,14 +18,13 @@ using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.GAgent;
+using GodGPT.GAgents.Common.Constants;
 using GodGPT.GAgents.SpeechChat;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
-using Aevatar.Application.Grains.Common.Options;
-using GodGPT.GAgents.Common.Constants;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -545,13 +544,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 $"[GodChatGAgent][GodStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
             
             // Check if this is a voice chat from context
-            bool isVoiceChat = false;
+            bool isPromptVoiceChat = false;
             if (aiChatContextDto.MessageId != null)
             {
                 try
                 {
                     var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiChatContextDto.MessageId);
-                    isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                    isPromptVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
                 }
                 catch (Exception ex)
                 {
@@ -561,7 +560,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             
             // Add conversation suggestions prompt for text chat only
             string enhancedMessage = message;
-            if (!isVoiceChat)
+            if (!isPromptVoiceChat)
             {
                 enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Added conversation suggestions prompt for text chat");
@@ -854,9 +853,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var dictionary = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
             
             // Check if this is a voice chat retry to call the appropriate method
-            var isVoiceChat = dictionary.ContainsKey("IsVoiceChat") && (bool)dictionary["IsVoiceChat"];
+            var isRetryVoiceChat = dictionary.ContainsKey("IsVoiceChat") && (bool)dictionary["IsVoiceChat"];
             
-            if (isVoiceChat)
+            if (isRetryVoiceChat)
             {
                 // Voice chat retry: call GodVoiceStreamChatAsync with voice parameters
                 var voiceLanguageValue = dictionary.GetValueOrDefault("VoiceLanguage", 0);
@@ -898,8 +897,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 try
                 {
                     var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-                    bool isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
-                    if (isVoiceChat)
+                    bool isErrorVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                    if (isErrorVoiceChat)
                     {
                         // Safe type conversion for voice language
                         var voiceLanguageValue = messageData.GetValueOrDefault("VoiceLanguage", 0);
@@ -949,7 +948,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // Parse conversation suggestions for text chat only (skip voice chat)
             List<string>? conversationSuggestions = null;
             string cleanMainContent = chatContent.AggregationMsg; // Default to original content
-            bool isVoiceChat = false;
+            bool isAggregationVoiceChat = false;
             
             // Check if this is a voice chat by examining the message context
             if (!contextDto.MessageId.IsNullOrWhiteSpace())
@@ -957,7 +956,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 try
                 {
                     var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-                    isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                    isAggregationVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
                 }
                 catch (Exception ex)
                 {
@@ -966,7 +965,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             }
             
             // Parse conversation suggestions only for text chat
-            if (!isVoiceChat && !string.IsNullOrEmpty(chatContent.AggregationMsg))
+            if (!isAggregationVoiceChat && !string.IsNullOrEmpty(chatContent.AggregationMsg))
             {
                 var (mainContent, suggestions) = ParseResponseWithSuggestions(chatContent.AggregationMsg);
                 if (suggestions.Any())
@@ -1025,13 +1024,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         bool shouldFilterStream = false;
         
         // Check if this is a text chat (not voice chat)
-        bool isVoiceChat = false;
+        bool isFilteringVoiceChat = false;
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
         {
             try
             {
                 var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-                isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                isFilteringVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
             }
             catch (Exception ex)
             {
@@ -1040,7 +1039,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         }
         
         // For text chat, implement suggestion filtering logic
-        if (!isVoiceChat && !string.IsNullOrEmpty(streamingContent))
+        if (!isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
         {
             // Check if we're already in filtering mode or if this chunk starts filtering
             bool isAlreadyFiltering = RequestContext.Get("IsFilteringSuggestions") as bool? ?? false;
@@ -1119,11 +1118,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
         {
             var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-            var isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+            var isStreamingVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
             
-            Logger.LogDebug($"[ChatMessageCallbackAsync] IsVoiceChat: {isVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
+            Logger.LogDebug($"[ChatMessageCallbackAsync] IsVoiceChat: {isStreamingVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
 
-            if (isVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
+            if (isStreamingVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
             {
                 Logger.LogDebug($"[ChatMessageCallbackAsync] Entering voice chat processing logic");
                 
