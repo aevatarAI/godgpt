@@ -19,6 +19,11 @@ public class GodChatState:ChatGAgentState
     /// Parallel list to ChatHistory from base class
     /// </summary>
     [Id(7)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
+    
+    /// <summary>
+    /// Temporary storage for accumulated content during suggestion filtering
+    /// </summary>
+    [Id(8)] public string AccumulatedSuggestionContent { get; set; } = "";
 }
 
 [GenerateSerializer]
