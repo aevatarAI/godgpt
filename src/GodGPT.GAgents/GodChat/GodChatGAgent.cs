@@ -1052,11 +1052,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // Use new stateful cleaning that handles suggestion blocks spanning multiple chunks
         var cleanedPartialContent = CleanPartialStreamingContentWithState(chatContent.ResponseContent, chatId);
         
-        // DIAGNOSTIC: Log content details to identify duplication
-        Logger.LogDebug($"[CONTENT_ANALYSIS] RequestId: {requestId}, ChatId: {chatId}, SerialNumber: {serialNumber}");
-        Logger.LogDebug($"[CONTENT_ANALYSIS] Original ResponseContent length: {chatContent.ResponseContent?.Length ?? 0}");
-        Logger.LogDebug($"[CONTENT_ANALYSIS] Cleaned partial content length: {cleanedPartialContent?.Length ?? 0}");
-
         var partialMessage = new ResponseStreamGodChat()
         {
             Response = cleanedPartialContent, // Use cleaned content for all chunks
@@ -1075,10 +1070,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var cleanMainContent = RequestContext.Get("CleanMainContent") as string;
             if (!string.IsNullOrEmpty(cleanMainContent))
             {
-                // DIAGNOSTIC: Log the replacement operation that might cause duplication
-                Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - Before: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
-                Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - CleanMainContent length: {cleanMainContent.Length}");
-                
                 // SMART FIX: Detect potential duplication scenario
                 // If last chunk is very small but cleanMainContent is much larger,
                 // it means previous chunks already contain most content - don't replace to avoid duplication
@@ -1090,7 +1081,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 // If last chunk is small and clean content is much larger (>10x), likely duplication scenario
                 if (isSmallLastChunk && isLargeCleanContent && sizeDifferenceRatio > 10)
                 {
-                    Logger.LogWarning($"[CONTENT_ANALYSIS] DUPLICATION_PREVENTION - Skipping replacement to prevent duplication. LastChunk: {currentChunkLength}, CleanContent: {cleanMainContent.Length}, Ratio: {sizeDifferenceRatio:F1}x");
+                    Logger.LogWarning($"DUPLICATION_PREVENTION - Skipping replacement to prevent duplication. LastChunk: {currentChunkLength}, CleanContent: {cleanMainContent.Length}, Ratio: {sizeDifferenceRatio:F1}x");
                     // Don't replace - keep the small last chunk to avoid duplication
                 }
                 else
@@ -1101,12 +1092,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                         !cleanMainContent.Equals(partialMessage.Response, StringComparison.Ordinal))
                     {
                         partialMessage.Response = cleanMainContent;
-                        Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - After: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
                         Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Using clean main content for final response, length: {cleanMainContent.Length}");
-                    }
-                    else
-                    {
-                        Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - SKIPPED: Content already clean, no replacement needed");
                     }
                 }
             }
@@ -1742,42 +1728,33 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             return items;
         }
-
-        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] INPUT TEXT: [{text}]");
         
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] SPLIT INTO {lines.Length} LINES");
 
         foreach (var line in lines)
         {
             var trimmedLine = line.Trim();
-            Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] PROCESSING LINE: [{trimmedLine}]");
             
             // Match numbered items like "1. content" or "1) content" using precompiled regex
             var match = ChatRegexPatterns.NumberedItem.Match(trimmedLine);
             if (match.Success)
             {
                 var item = match.Groups[1].Value.Trim();
-                Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] REGEX MATCH SUCCESS - Full: [{trimmedLine}] -> Extracted: [{item}]");
                 if (!string.IsNullOrEmpty(item))
                 {
                     items.Add(item);
-                    Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] ADDED ITEM {items.Count}: [{item}]");
                 }
             }
             else
             {
-                Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] REGEX NO MATCH FOR LINE: [{trimmedLine}]");
                 // If line doesn't match numbered pattern, add it as-is (might be non-numbered suggestion)
                 if (!string.IsNullOrWhiteSpace(trimmedLine))
                 {
                     items.Add(trimmedLine);
-                    Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] ADDED AS-IS ITEM {items.Count}: [{trimmedLine}]");
                 }
             }
         }
 
-        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] FINAL RESULT: Extracted {items.Count} items: [{string.Join("]; [", items)}]");
         return items;
     }
 
