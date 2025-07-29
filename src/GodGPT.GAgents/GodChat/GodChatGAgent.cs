@@ -1045,16 +1045,21 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         if (!isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
         {
-            // Check for complete or partial [SUGGESTIONS] marker to handle cross-chunk splits
+            // Check for complete or partial [SUGGESTIONS] marker to handle ALL possible cross-chunk splits
+            // Including extreme cases like chunk ending with just "["
             shouldStartAccumulating = streamingContent.Contains("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase) ||
                                      streamingContent.Contains("[SUGGES", StringComparison.OrdinalIgnoreCase) ||
                                      streamingContent.Contains("[SUGGEST", StringComparison.OrdinalIgnoreCase) ||
-                                     streamingContent.Contains("[SUGGESTION", StringComparison.OrdinalIgnoreCase);
+                                     streamingContent.Contains("[SUGGESTION", StringComparison.OrdinalIgnoreCase) ||
+                                     streamingContent.Contains("[S", StringComparison.OrdinalIgnoreCase) ||
+                                     streamingContent.Contains("[\"", StringComparison.OrdinalIgnoreCase) ||  // JSON format with quote
+                                     (streamingContent.EndsWith("[") && streamingContent.Length > 10); // Ending with just [
             
             if (shouldStartAccumulating && !isAlreadyAccumulating)
             {
                 RequestContext.Set("IsAccumulatingForSuggestions", true);
                 RequestContext.Set("AccumulatedContent", streamingContent);
+                Logger.LogInformation($"[ACCUMULATION_FILTER] Started accumulating. Initial chunk length: {streamingContent.Length}");
                 streamingContent = ""; // Don't send this chunk to frontend
                 Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Started accumulating content due to suggestion marker");
             }
@@ -1063,6 +1068,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 // Continue accumulating - add current chunk to accumulated content
                 var existingContent = RequestContext.Get("AccumulatedContent") as string ?? "";
                 RequestContext.Set("AccumulatedContent", existingContent + streamingContent);
+                Logger.LogInformation($"[ACCUMULATION_FILTER] Continuing accumulation. Chunk length: {streamingContent.Length}, Total length: {(existingContent + streamingContent).Length}");
                 
                 if (chatContent.IsLastChunk)
                 {
@@ -1070,11 +1076,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     var fullAccumulatedContent = RequestContext.Get("AccumulatedContent") as string ?? "";
                     var (cleanContent, suggestions) = ParseResponseWithSuggestions(fullAccumulatedContent);
                     
-                    // Store suggestions for the last chunk
+                    // Store both clean content and suggestions for compatibility with existing logic
+                    RequestContext.Set("CleanMainContent", cleanContent);
                     if (suggestions?.Any() == true)
                     {
                         RequestContext.Set("ConversationSuggestions", suggestions);
+                        Logger.LogInformation($"[ACCUMULATION_FILTER] Final processing. Accumulated: {fullAccumulatedContent.Length} chars, Clean: {cleanContent.Length} chars, Suggestions: {suggestions.Count}");
                         Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Extracted {suggestions.Count} suggestions from accumulated content");
+                    }
+                    else
+                    {
+                        Logger.LogInformation($"[ACCUMULATION_FILTER] Final processing. Accumulated: {fullAccumulatedContent.Length} chars, Clean: {cleanContent.Length} chars, No suggestions found");
                     }
                     
                     // Send the clean content to frontend
@@ -1086,6 +1098,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 {
                     // Not the last chunk - don't send anything to frontend yet
                     streamingContent = "";
+                    Logger.LogInformation($"[ACCUMULATION_FILTER] Intermediate chunk filtered out");
                     Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Continuing accumulation - not sending to frontend");
                 }
             }
