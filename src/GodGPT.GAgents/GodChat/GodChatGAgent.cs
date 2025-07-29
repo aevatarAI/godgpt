@@ -1129,9 +1129,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             Response = streamingContent, // Use filtered content for streaming
             ChatId = contextDto.ChatId,
             SerialNumber = chatContent.SerialNumber,
-            IsLastChunk = chatContent.IsLastChunk,
-            RequestId = contextDto.RequestId,
-            MessageId = contextDto.MessageId
+            IsLastChunk = chatContent.IsLastChunk
         };
         
         // Log final content being sent to frontend
