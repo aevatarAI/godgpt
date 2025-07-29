@@ -15,6 +15,7 @@ using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Agent;
@@ -31,7 +32,7 @@ using Orleans.Providers;
 using Volo.Abp;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
-
+[SiloNamePatternPlacement("User")]
 [Json.Schema.Generation.Description("manage chat agent")]
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]

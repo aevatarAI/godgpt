@@ -6,6 +6,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Agent;
@@ -28,6 +29,7 @@ namespace Aevatar.Application.Grains.Agents.Anonymous;
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(AnonymousUserGAgent))]
+[SiloNamePatternPlacement("User")]
 [Reentrant]
 public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUserEventLog>, 
     IAnonymousUserGAgent

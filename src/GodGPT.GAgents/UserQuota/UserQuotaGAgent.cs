@@ -8,6 +8,7 @@ using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.UserQuota.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -47,6 +48,8 @@ public interface IUserQuotaGAgent : IGAgent
 }
 
 [GAgent(nameof(UserQuotaGAgent))]
+[SiloNamePatternPlacement("User")]
+
 public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEvent>, IUserQuotaGAgent
 {
     private readonly ILogger<UserQuotaGAgent> _logger;

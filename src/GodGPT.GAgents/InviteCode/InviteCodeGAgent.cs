@@ -1,11 +1,12 @@
 using Aevatar.Application.Grains.Agents.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using Microsoft.Extensions.Logging;
 using Orleans.Providers;
 
 namespace Aevatar.Application.Grains.Agents.Invitation;
-
+[SiloNamePatternPlacement("User")]
 [GAgent(nameof(InviteCodeGAgent))]
 public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>, IInviteCodeGAgent
 {

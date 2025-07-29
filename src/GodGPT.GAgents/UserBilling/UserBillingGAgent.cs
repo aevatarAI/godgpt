@@ -18,6 +18,7 @@ using Aevatar.Application.Grains.UserBilling.SEvents;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -69,6 +70,8 @@ public interface IUserBillingGAgent : IGAgent
 }
 
 [GAgent(nameof(UserBillingGAgent))]
+[SiloNamePatternPlacement("User")]
+
 public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingLogEvent>, IUserBillingGAgent
 {
     private readonly ILogger<UserBillingGrain> _logger;

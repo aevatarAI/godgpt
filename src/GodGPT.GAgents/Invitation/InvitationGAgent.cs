@@ -8,9 +8,11 @@ using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Application.Grains.Twitter;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using Microsoft.Extensions.Logging;
 
 namespace Aevatar.Application.Grains.Invitation;
+[SiloNamePatternPlacement("User")]
 
 [GAgent(nameof(InvitationGAgent))]
 public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>, IInvitationGAgent

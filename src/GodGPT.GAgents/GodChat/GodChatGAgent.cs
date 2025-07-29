@@ -26,10 +26,12 @@ using Newtonsoft.Json;
 using Orleans.Concurrency;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Core.Placement;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
 [Description("god chat agent")]
+[SiloNamePatternPlacement("User")]
 [GAgent]
 [Reentrant]
 public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, EventBase, ChatConfigDto>, IGodChat

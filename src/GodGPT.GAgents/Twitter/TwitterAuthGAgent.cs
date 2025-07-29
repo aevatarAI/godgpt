@@ -7,6 +7,7 @@ using Aevatar.Application.Grains.Twitter.Dtos;
 using Aevatar.Application.Grains.Twitter.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using GodGPT.GAgents.Twitter;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
@@ -44,6 +45,7 @@ public interface ITwitterAuthGAgent : IGAgent
 /// Twitter OAuth2 authentication grain
 /// </summary>
 [Description("Twitter OAuth2 authentication agent")]
+[SiloNamePatternPlacement("User")]
 [GAgent]
 public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEvent, EventBase, ConfigurationBase>, ITwitterAuthGAgent
 {

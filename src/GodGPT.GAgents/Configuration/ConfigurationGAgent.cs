@@ -1,6 +1,7 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Orleans.Providers;
@@ -10,6 +11,7 @@ namespace Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 [Description("manage chat agent")]
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
+[SiloNamePatternPlacement("User")]
 [GAgent(nameof(ConfigurationGAgent))]
 public class ConfigurationGAgent : GAgentBase<ConfigurationState, ConfigurationLogEvent>, IConfigurationGAgent
 {
