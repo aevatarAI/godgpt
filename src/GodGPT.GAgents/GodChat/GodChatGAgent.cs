@@ -1062,10 +1062,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             bool contains_quote = streamingContent.Contains("[\"", StringComparison.OrdinalIgnoreCase);
             bool ends_bracket = streamingContent.EndsWith("[") && streamingContent.Length > 10;
             
-            shouldStartAccumulating = contains_suggestions || contains_sugges || contains_suggest || 
-                                     contains_suggestion || contains_quote || ends_bracket;
+            // EMERGENCY: Force detection if we see numbered suggestions (like "2. " or "3. ")
+            bool contains_numbered_suggestions = streamingContent.Contains("2. ") || streamingContent.Contains("3. ") || 
+                                               streamingContent.Contains("1. ") || streamingContent.Contains("显化") || 
+                                               streamingContent.Contains("语言觉醒") || streamingContent.Contains("练习方法");
             
-            Logger.LogInformation($"[DETECTION_DEBUG] Detection results - Full:[SUGGESTIONS]: {contains_suggestions}, [SUGGES: {contains_sugges}, [SUGGEST: {contains_suggest}, [SUGGESTION: {contains_suggestion}, [\": {contains_quote}, ends[: {ends_bracket} => ShouldStart: {shouldStartAccumulating}");
+            shouldStartAccumulating = contains_suggestions || contains_sugges || contains_suggest || 
+                                     contains_suggestion || contains_quote || ends_bracket || contains_numbered_suggestions;
+            
+            Logger.LogInformation($"[DETECTION_DEBUG] Detection results - Full:[SUGGESTIONS]: {contains_suggestions}, [SUGGES: {contains_sugges}, [SUGGEST: {contains_suggest}, [SUGGESTION: {contains_suggestion}, [\": {contains_quote}, ends[: {ends_bracket}, numbered: {contains_numbered_suggestions} => ShouldStart: {shouldStartAccumulating}");
             
             if (shouldStartAccumulating && !isAlreadyAccumulating)
             {
