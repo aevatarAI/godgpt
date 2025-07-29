@@ -1044,8 +1044,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // Check if we're already in filtering mode or if this chunk starts filtering
             bool isAlreadyFiltering = RequestContext.Get("IsFilteringSuggestions") as bool? ?? false;
             
-            // Check if this chunk contains suggestion start marker
-            bool containsSuggestionStart = streamingContent.Contains("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+            // Check if this chunk contains suggestion start marker (support partial matching for cross-chunk scenarios)
+            bool containsSuggestionStart = streamingContent.Contains("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase) ||
+                                           streamingContent.Contains("CONVERSATION_SUGGESTIONS", StringComparison.OrdinalIgnoreCase) ||
+                                           streamingContent.Contains("---CONVERSATION_SUGGESTI", StringComparison.OrdinalIgnoreCase);
             
             if (containsSuggestionStart)
             {
