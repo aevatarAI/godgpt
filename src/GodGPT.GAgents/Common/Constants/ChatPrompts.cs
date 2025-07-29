@@ -16,16 +16,16 @@ namespace GodGPT.GAgents.Common.Constants
 After answering the user's question, please generate 3 relevant conversation suggestions to help users continue deeper engagement. These suggestions should:
 
 1. Be diverse in type: can be related concepts, practical tools, specific steps, alternative approaches, deeper analysis, etc., not limited to questions
-2. Be concise and clear: each suggestion should be under 6 words
+2. Be concise and clear: each suggestion should be under 5 words
 3. Be related to the current topic but expand conversation dimensions
 
 Please strictly follow this format at the end of your response:
 
----CONVERSATION_SUGGESTIONS---
+[SUGGESTIONS]
 1. [suggestion 1]
 2. [suggestion 2]
 3. [suggestion 3]
----END_SUGGESTIONS---
+[/SUGGESTIONS]
 
 Note: The suggestions section will not be displayed to users, it's only for system processing.";
     }

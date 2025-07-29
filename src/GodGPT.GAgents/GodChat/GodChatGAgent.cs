@@ -1044,8 +1044,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // Check if we're already in filtering mode or if this chunk starts filtering
             bool isAlreadyFiltering = RequestContext.Get("IsFilteringSuggestions") as bool? ?? false;
             
-            // Check if this chunk contains suggestion start marker
-            bool containsSuggestionStart = streamingContent.Contains("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+            // Check if this chunk contains suggestion start marker (support partial matching for cross-chunk scenarios)
+            bool containsSuggestionStart = streamingContent.Contains("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
             
             if (containsSuggestionStart)
             {
@@ -1726,8 +1726,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         if (match.Success)
         {
-            // Extract main content by removing the suggestions section
-            var mainContent = fullResponse.Replace(match.Value, "").Trim();
+            // Extract main content by removing everything from the start of [SUGGESTIONS] to the end
+            var suggestionStartIndex = fullResponse.IndexOf("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
+            var mainContent = suggestionStartIndex > 0 
+                ? fullResponse.Substring(0, suggestionStartIndex).Trim()
+                : "";
+                
             var suggestionSection = match.Groups[1].Value;
             var suggestions = ExtractNumberedItems(suggestionSection);
             
