@@ -1071,11 +1071,19 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - Before: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
                 Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - CleanMainContent length: {cleanMainContent.Length}");
                 
-                partialMessage.Response = cleanMainContent;
-                
-                Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - After: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
-                Logger.LogDebug(
-                    $"[GodChatGAgent][ChatMessageCallbackAsync] Using clean main content for final response, length: {cleanMainContent.Length}");
+                // FIX: Only replace if cleanMainContent is actually different and cleaner
+                // This prevents unnecessary replacement that might cause duplication
+                if (cleanMainContent.Length != partialMessage.Response?.Length || 
+                    !cleanMainContent.Equals(partialMessage.Response, StringComparison.Ordinal))
+                {
+                    partialMessage.Response = cleanMainContent;
+                    Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - After: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
+                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Using clean main content for final response, length: {cleanMainContent.Length}");
+                }
+                else
+                {
+                    Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - SKIPPED: Content already clean, no replacement needed");
+                }
             }
 
             // Add conversation suggestions to the last chunk if available
@@ -1559,19 +1567,24 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return partialContent;
         }
 
-        // Use robust pattern to remove any conversation suggestions content (complete or incomplete)
-        // This handles cases where the suggestion block is cut off or incomplete in streaming
-        var cleaned = ChatRegexPatterns.ConversationSuggestionsRemoval.Replace(partialContent, "").Trim();
+        // ROBUST FIX: Remove any conversation suggestions content (complete or incomplete)
+        // First, try to remove complete blocks with end markers
+        var cleanedContent = ChatRegexPatterns.ConversationSuggestionsRemoval.Replace(partialContent, "");
         
-        // Additional safety: if we still find the start marker without proper handling, truncate there
-        var suggestionStartIndex = cleaned.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+        // ADDITIONAL FIX: If we still find the start marker without end marker, truncate everything after it
+        // This handles cases where LLM didn't generate the end marker yet
+        var suggestionStartIndex = cleanedContent.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
         if (suggestionStartIndex >= 0)
         {
-            cleaned = cleaned.Substring(0, suggestionStartIndex).Trim();
-            Logger.LogDebug($"[GodChatGAgent][CleanPartialStreamingContent] Truncated at suggestion marker. Cleaned length: {cleaned.Length}");
+            cleanedContent = cleanedContent.Substring(0, suggestionStartIndex).TrimEnd();
+            Logger.LogDebug($"[CONTENT_ANALYSIS] TRUNCATED incomplete suggestion block at position {suggestionStartIndex}");
         }
-
-        return cleaned;
+        
+        // SAFETY CHECK: Remove any remaining suggestion markers that might have been missed
+        cleanedContent = cleanedContent.Replace("---CONVERSATION_SUGGESTIONS---", "", StringComparison.OrdinalIgnoreCase);
+        cleanedContent = cleanedContent.Replace("---END_SUGGESTIONS---", "", StringComparison.OrdinalIgnoreCase);
+        
+        return cleanedContent.Trim();
     }
 
     /// <summary>
