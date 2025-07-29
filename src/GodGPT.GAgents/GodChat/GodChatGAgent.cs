@@ -1506,6 +1506,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     /// <summary>
     /// Clean partial streaming content to remove conversation suggestions markers
     /// This ensures streaming responses don't leak suggestion content to frontend
+    /// Updated to handle incomplete suggestion blocks more robustly
     /// </summary>
     /// <param name="partialContent">Partial response content from streaming</param>
     /// <returns>Cleaned partial content without suggestion markers</returns>
@@ -1516,22 +1517,25 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return partialContent;
         }
 
-        // Remove conversation suggestions start marker if present in partial content
-        // This prevents streaming suggestion content to frontend during response generation
-        var suggestionStartIndex =
-            partialContent.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+        // Use robust pattern to remove any conversation suggestions content (complete or incomplete)
+        // This handles cases where the suggestion block is cut off or incomplete in streaming
+        var cleaned = ChatRegexPatterns.ConversationSuggestionsRemoval.Replace(partialContent, "").Trim();
+        
+        // Additional safety: if we still find the start marker without proper handling, truncate there
+        var suggestionStartIndex = cleaned.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
         if (suggestionStartIndex >= 0)
         {
-            // Truncate content at the start of suggestions block
-            return partialContent.Substring(0, suggestionStartIndex).Trim();
+            cleaned = cleaned.Substring(0, suggestionStartIndex).Trim();
+            Logger.LogDebug($"[GodChatGAgent][CleanPartialStreamingContent] Truncated at suggestion marker. Cleaned length: {cleaned.Length}");
         }
 
-        return partialContent;
+        return cleaned;
     }
 
     /// <summary>
     /// Parse complete response to extract main content and conversation suggestions
     /// Only used when the complete response is available (IsAggregationMsg = true)
+    /// Updated to handle incomplete suggestion blocks more robustly
     /// </summary>
     /// <param name="fullResponse">Complete response text</param>
     /// <returns>Tuple of (main content, list of suggestions)</returns>
@@ -1542,18 +1546,18 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return (fullResponse, new List<string>());
         }
 
-        // Pattern to match conversation suggestions block using precompiled regex
+        // Use the robust pattern to extract conversation suggestions content
         var match = ChatRegexPatterns.ConversationSuggestionsBlock.Match(fullResponse);
 
         if (match.Success)
         {
-            // Extract main content by removing the suggestions section
-            var mainContent = fullResponse.Replace(match.Value, "").Trim();
+            // Remove the entire conversation suggestions block (including markers) using removal pattern
+            var mainContent = ChatRegexPatterns.ConversationSuggestionsRemoval.Replace(fullResponse, "").Trim();
             var suggestionSection = match.Groups[1].Value;
             var suggestions = ExtractNumberedItems(suggestionSection);
 
             Logger.LogDebug(
-                $"[GodChatGAgent][ParseResponseWithSuggestions] Extracted {suggestions.Count} suggestions from response");
+                $"[GodChatGAgent][ParseResponseWithSuggestions] Extracted {suggestions.Count} suggestions from response. Main content length: {mainContent.Length}");
             return (mainContent, suggestions);
         }
 
