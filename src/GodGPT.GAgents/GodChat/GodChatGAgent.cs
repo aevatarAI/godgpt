@@ -1071,18 +1071,35 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - Before: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
                 Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - CleanMainContent length: {cleanMainContent.Length}");
                 
-                // FIX: Only replace if cleanMainContent is actually different and cleaner
-                // This prevents unnecessary replacement that might cause duplication
-                if (cleanMainContent.Length != partialMessage.Response?.Length || 
-                    !cleanMainContent.Equals(partialMessage.Response, StringComparison.Ordinal))
+                // SMART FIX: Detect potential duplication scenario
+                // If last chunk is very small but cleanMainContent is much larger,
+                // it means previous chunks already contain most content - don't replace to avoid duplication
+                var currentChunkLength = partialMessage.Response?.Length ?? 0;
+                var isSmallLastChunk = currentChunkLength < 50; // Small chunk threshold
+                var isLargeCleanContent = cleanMainContent.Length > 200; // Large content threshold
+                var sizeDifferenceRatio = cleanMainContent.Length / Math.Max(currentChunkLength, 1);
+                
+                // If last chunk is small and clean content is much larger (>10x), likely duplication scenario
+                if (isSmallLastChunk && isLargeCleanContent && sizeDifferenceRatio > 10)
                 {
-                    partialMessage.Response = cleanMainContent;
-                    Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - After: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
-                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Using clean main content for final response, length: {cleanMainContent.Length}");
+                    Logger.LogWarning($"[CONTENT_ANALYSIS] DUPLICATION_PREVENTION - Skipping replacement to prevent duplication. LastChunk: {currentChunkLength}, CleanContent: {cleanMainContent.Length}, Ratio: {sizeDifferenceRatio:F1}x");
+                    // Don't replace - keep the small last chunk to avoid duplication
                 }
                 else
                 {
-                    Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - SKIPPED: Content already clean, no replacement needed");
+                    // FIX: Only replace if cleanMainContent is actually different and cleaner
+                    // This prevents unnecessary replacement that might cause duplication
+                    if (cleanMainContent.Length != partialMessage.Response?.Length || 
+                        !cleanMainContent.Equals(partialMessage.Response, StringComparison.Ordinal))
+                    {
+                        partialMessage.Response = cleanMainContent;
+                        Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - After: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
+                        Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Using clean main content for final response, length: {cleanMainContent.Length}");
+                    }
+                    else
+                    {
+                        Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - SKIPPED: Content already clean, no replacement needed");
+                    }
                 }
             }
 
