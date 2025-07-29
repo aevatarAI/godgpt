@@ -1095,20 +1095,34 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // For the last chunk, use clean content and add conversation suggestions if available
         if (chatContent.IsLastChunk)
         {
-            // Use clean main content (without suggestions) for the final response
-            var cleanMainContent = RequestContext.Get("CleanMainContent") as string;
-            if (!string.IsNullOrEmpty(cleanMainContent))
-            {
-                partialMessage.Response = cleanMainContent;
-                Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Using clean main content for final response, length: {cleanMainContent.Length}");
-            }
-            
             // Add conversation suggestions to the last chunk if available
             var storedSuggestions = RequestContext.Get("ConversationSuggestions") as List<string>;
             if (storedSuggestions?.Any() == true)
             {
                 partialMessage.SuggestedItems = storedSuggestions;
                 Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Added {storedSuggestions.Count} suggestions to last chunk");
+                
+                // Only replace response with clean content if we actually parsed suggestions
+                // This ensures we don't accidentally replace a small last chunk with full content
+                var cleanMainContent = RequestContext.Get("CleanMainContent") as string;
+                if (!string.IsNullOrEmpty(cleanMainContent))
+                {
+                    // Safety check: avoid replacing small chunk with much larger content
+                    var currentChunkLength = partialMessage.Response?.Length ?? 0;
+                    var cleanContentLength = cleanMainContent.Length;
+                    
+                    // Only replace if suggestions were actually found (indicated by storedSuggestions)
+                    // and clean content is reasonably sized relative to current chunk
+                    if (currentChunkLength == 0 || cleanContentLength <= currentChunkLength * 2)
+                    {
+                        partialMessage.Response = cleanMainContent;
+                        Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Replaced response with clean content. Current: {currentChunkLength}, Clean: {cleanContentLength}");
+                    }
+                    else
+                    {
+                        Logger.LogWarning($"[GodChatGAgent][ChatMessageCallbackAsync] Skipped replacing response to avoid duplication. Current: {currentChunkLength}, Clean: {cleanContentLength}");
+                    }
+                }
             }
         }
 
