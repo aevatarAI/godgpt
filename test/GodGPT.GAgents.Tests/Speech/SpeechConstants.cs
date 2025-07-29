@@ -2,6 +2,6 @@ namespace Aevatar.GodGPT.Tests.Speech;
 
 public class SpeechConstants
 {
-    public const string WAW_BASE64 = "";
+    public const string Voice_BASE64 = "";
 }
        

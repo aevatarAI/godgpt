@@ -24,7 +24,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
-using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Options;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
@@ -152,6 +151,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         List<string>? images = null)
     {
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start.");
+        
+        // Get language from RequestContext with error handling
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Language from context: {language}");
+        
         var actionType = images == null || images.IsNullOrEmpty()
             ? ActionType.Conversation
             : ActionType.ImageConversation;
@@ -559,7 +563,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 $"[GodChatGAgent][GodStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
             var settings = promptSettings ?? new ExecutionPromptSettings();
             settings.Temperature = "0.9";
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(message, State.ChatHistory, settings,
+            var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+            var promptMessage = message;
+            promptMessage = GodGPTLanguageHelper.AppendLanguagePrompt(message, language);
+
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMessage, State.ChatHistory, settings,
                 context: aiChatContextDto, imageKeys: images);
             if (!result)
             {

@@ -5,6 +5,7 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.UserQuota.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
@@ -52,13 +53,15 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     private readonly ILogger<UserQuotaGAgent> _logger;
     private readonly IOptionsMonitor<CreditsOptions> _creditsOptions;
     private readonly IOptionsMonitor<RateLimitOptions> _rateLimiterOptions;
+    private readonly ILocalizationService _localizationService;
 
     public UserQuotaGAgent(ILogger<UserQuotaGAgent> logger, IOptionsMonitor<CreditsOptions> creditsOptions,
-        IOptionsMonitor<RateLimitOptions> rateLimiterOptions)
+        IOptionsMonitor<RateLimitOptions> rateLimiterOptions,ILocalizationService localizationService)
     {
         _logger = logger;
         _creditsOptions = creditsOptions;
         _rateLimiterOptions = rateLimiterOptions;
+        _localizationService = localizationService;
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -272,6 +275,8 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     public async Task<ExecuteActionResultDto> ExecuteActionAsync(string sessionId, string chatManagerGuid,
         ActionType actionType = ActionType.Conversation)
     {
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+        Logger.LogDebug($"[ExecuteActionAsync] Language from sessionId:{sessionId} chatManagerGuid: {chatManagerGuid}, language:{language}");
         if (actionType == ActionType.ImageConversation)
         {
             // For non-subscribed users, check daily limit
@@ -297,11 +302,11 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 _logger.LogDebug(
                     "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Daily image conversation limit exceeded for non-subscriber. Count={Count}",
                     chatManagerGuid, sessionId, dailyInfo.Count);
-                    
+                var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.DailyUpdateLimit,language);
                 return new ExecuteActionResultDto
                 {
                     Code = ExecuteActionStatus.RateLimitExceeded,
-                    Message = "Daily upload limit reached. Upgrade to premium to continue."
+                    Message = localizedMessage
                 };
             }
 
@@ -353,15 +358,17 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         // Check if daily limit exceeded (non-subscribers can only use once per day)
         if (dailyInfo.Count >= 1)
         {
+            var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
             _logger.LogDebug(
-                "[UserQuotaGAgent][CanUploadImageAsync] UserId={UserId} Daily image upload limit exceeded for non-subscriber. Count={Count}",
-                this.GetPrimaryKeyString(), dailyInfo.Count);
-                
+                "[UserQuotaGAgent][CanUploadImageAsync] UserId={UserId} Daily image upload limit exceeded for non-subscriber. Count={Count} language={language}",
+                this.GetPrimaryKeyString(), dailyInfo.Count, language);
+            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.DailyUpdateLimit,language);
+
             return new ExecuteActionResultDto
             {
                 Success = false,
                 Code = ExecuteActionStatus.RateLimitExceeded,
-                Message = "Daily upload limit reached. Upgrade to premium to continue."
+                Message = localizedMessage
             };
         }
 
