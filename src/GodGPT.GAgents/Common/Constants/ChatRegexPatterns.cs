@@ -74,8 +74,9 @@ public static class ChatRegexPatterns
     
     /// <summary>
     /// Pattern to match conversation suggestions block between delimiters
+    /// Supports various end marker formats including incomplete ones
     /// </summary>
-    public const string ConversationSuggestionsPattern = @"---CONVERSATION_SUGGESTIONS---(.*?)---END_SUGGESTIONS---";
+    public const string ConversationSuggestionsPattern = @"---CONVERSATION_SUGGESTIONS---(.*?)(?:---END_SUGGESTIONS?---?|---END_SUGGEST(?:IONS?)?(?:---)?|$)";
     
     /// <summary>
     /// Pattern to match numbered list items (1. item, 2) item, etc.)
