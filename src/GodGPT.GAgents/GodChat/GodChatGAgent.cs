@@ -680,7 +680,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
         return aiChatContextDto;
     }
-    
+
     private async Task<IAIAgentStatusProxy?> GetProxyByRegionAsync(string? region)
     {
         Logger.LogDebug(
@@ -1038,90 +1038,65 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             }
         }
         
-        // New accumulation-based filtering strategy for suggestions
-        // Check if we're already in accumulation mode or if this chunk starts accumulation
+        // Get current accumulation state
         bool isAlreadyAccumulating = RequestContext.Get("IsAccumulatingForSuggestions") as bool? ?? false;
         bool shouldStartAccumulating = false;
         
-        // Add detailed logging for debugging
-        Logger.LogInformation($"[CHUNK_DEBUG] Processing chunk. Length: {streamingContent?.Length ?? 0}, IsLastChunk: {chatContent.IsLastChunk}, IsVoiceChat: {isFilteringVoiceChat}, AlreadyAccumulating: {isAlreadyAccumulating}");
-        if (!string.IsNullOrEmpty(streamingContent))
-        {
-            Logger.LogInformation($"[CHUNK_DEBUG] Chunk content preview: \"{streamingContent.Substring(0, Math.Min(50, streamingContent.Length))}{(streamingContent.Length > 50 ? "..." : "")}\"");
-        }
-        
+        // Apply conversation suggestions filtering (text chat only)
         if (!isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
         {
-            // Check for complete or partial [SUGGESTIONS] marker to handle cross-chunk splits
-            // Use more conservative detection to avoid false positives
+            // Check for [SUGGESTIONS] marker and partial forms to handle cross-chunk splits
             bool contains_suggestions = streamingContent.Contains("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
-            bool contains_sugges = streamingContent.Contains("[SUGGES", StringComparison.OrdinalIgnoreCase);
-            bool contains_suggest = streamingContent.Contains("[SUGGEST", StringComparison.OrdinalIgnoreCase);
-            bool contains_suggestion = streamingContent.Contains("[SUGGESTION", StringComparison.OrdinalIgnoreCase);
-            // Remove overly aggressive detection patterns that may cause false positives
-            bool contains_quote = streamingContent.Contains("[\"", StringComparison.OrdinalIgnoreCase);
-            bool ends_bracket = streamingContent.EndsWith("[") && streamingContent.Length > 10;
+            bool contains_partial_marker = streamingContent.Contains("[SUGGES", StringComparison.OrdinalIgnoreCase) ||
+                                         streamingContent.Contains("[SUGGEST", StringComparison.OrdinalIgnoreCase) ||
+                                         streamingContent.Contains("[SUGGESTION", StringComparison.OrdinalIgnoreCase);
             
-            shouldStartAccumulating = contains_suggestions || contains_sugges || contains_suggest || 
-                                     contains_suggestion || contains_quote || ends_bracket;
+            // Check for potential marker start (conservative approach)
+            bool ends_with_bracket = streamingContent.TrimEnd().EndsWith("[") && streamingContent.Length > 10;
             
-            Logger.LogInformation($"[DETECTION_DEBUG] Detection results - Full:[SUGGESTIONS]: {contains_suggestions}, [SUGGES: {contains_sugges}, [SUGGEST: {contains_suggest}, [SUGGESTION: {contains_suggestion}, [\": {contains_quote}, ends[: {ends_bracket} => ShouldStart: {shouldStartAccumulating}");
+            shouldStartAccumulating = contains_suggestions || contains_partial_marker || ends_with_bracket;
             
             if (shouldStartAccumulating && !isAlreadyAccumulating)
             {
+                // Start accumulation - block all subsequent chunks from frontend
+                isAlreadyAccumulating = true;
                 RequestContext.Set("IsAccumulatingForSuggestions", true);
-                RequestContext.Set("AccumulatedContent", streamingContent);
-                Logger.LogInformation($"[ACCUMULATION_FILTER] Started accumulating. Initial chunk length: {streamingContent.Length}");
-                Logger.LogInformation($"[ACCUMULATION_STATE] STARTED - Setting streamingContent to empty string");
-                streamingContent = ""; // Don't send this chunk to frontend
-                Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Started accumulating content due to suggestion marker");
+                RequestContext.Set("AccumulatedSuggestionContent", streamingContent);
+                streamingContent = ""; // Block current chunk
             }
             else if (isAlreadyAccumulating)
             {
-                // Continue accumulating - add current chunk to accumulated content
-                var existingContent = RequestContext.Get("AccumulatedContent") as string ?? "";
-                RequestContext.Set("AccumulatedContent", existingContent + streamingContent);
-                Logger.LogInformation($"[ACCUMULATION_FILTER] Continuing accumulation. Chunk length: {streamingContent.Length}, Total length: {(existingContent + streamingContent).Length}");
-                Logger.LogInformation($"[ACCUMULATION_STATE] CONTINUING - Chunk preview: \"{streamingContent.Substring(0, Math.Min(30, streamingContent.Length))}{(streamingContent.Length > 30 ? "..." : "")}\"");
-                
-                if (chatContent.IsLastChunk)
-                {
-                    // Process accumulated content and filter suggestions
-                    var fullAccumulatedContent = RequestContext.Get("AccumulatedContent") as string ?? "";
-                    var (cleanContent, suggestions) = ParseResponseWithSuggestions(fullAccumulatedContent);
-                    
-                    // Store both clean content and suggestions for compatibility with existing logic
-                    RequestContext.Set("CleanMainContent", cleanContent);
-                    if (suggestions?.Any() == true)
-                    {
-                        RequestContext.Set("ConversationSuggestions", suggestions);
-                        Logger.LogInformation($"[ACCUMULATION_FILTER] Final processing. Accumulated: {fullAccumulatedContent.Length} chars, Clean: {cleanContent.Length} chars, Suggestions: {suggestions.Count}");
-                        Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Extracted {suggestions.Count} suggestions from accumulated content");
-                    }
-                    else
-                    {
-                        Logger.LogInformation($"[ACCUMULATION_FILTER] Final processing. Accumulated: {fullAccumulatedContent.Length} chars, Clean: {cleanContent.Length} chars, No suggestions found");
-                    }
-                    
-                    // Send the clean content to frontend
-                    streamingContent = cleanContent;
-                    Logger.LogInformation($"[ACCUMULATION_STATE] FINAL - Setting streamingContent to clean content (length: {cleanContent.Length})");
-                    RequestContext.Set("IsAccumulatingForSuggestions", false);
-                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Sent accumulated clean content to frontend");
-                }
-                else
-                {
-                    // Not the last chunk - don't send anything to frontend yet
-                    Logger.LogInformation($"[ACCUMULATION_STATE] INTERMEDIATE - Setting streamingContent to empty string");
-                    streamingContent = "";
-                    Logger.LogInformation($"[ACCUMULATION_FILTER] Intermediate chunk filtered out");
-                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Continuing accumulation - not sending to frontend");
-                }
+                // Continue accumulation - block this chunk from frontend
+                var existingContent = RequestContext.Get("AccumulatedSuggestionContent") as string ?? "";
+                RequestContext.Set("AccumulatedSuggestionContent", existingContent + streamingContent);
+                streamingContent = ""; // Block current chunk
             }
-            else
+        }
+        
+        // Handle voice chat filtering separately
+        if (isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
+        {
+            streamingContent = ""; // Block voice chat content
+        }
+
+        // Process accumulated content on final chunk
+        if (isAlreadyAccumulating && chatContent.IsLastChunk)
+        {
+            var accumulatedContent = RequestContext.Get("AccumulatedSuggestionContent") as string ?? "";
+            var (cleanContent, suggestions) = ParseResponseWithSuggestions(accumulatedContent);
+            
+            // Store suggestions for response
+            if (suggestions?.Any() == true)
             {
-                Logger.LogInformation($"[ACCUMULATION_STATE] NO_ACTION - Not starting or continuing accumulation");
+                RequestContext.Set("ConversationSuggestions", suggestions);
             }
+            
+            // Send clean content to frontend
+            streamingContent = cleanContent;
+            
+            // Reset accumulation state
+            RequestContext.Set("IsAccumulatingForSuggestions", false);
+            RequestContext.Remove("AccumulatedSuggestionContent");
         }
 
         var partialMessage = new ResponseStreamGodChat()
