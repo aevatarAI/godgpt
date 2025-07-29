@@ -315,6 +315,9 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
     public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null, string? guider = null)
     {
+        var totalStopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Start - UserId: {this.GetPrimaryKey()}");
+        
         var configuration = GetConfiguration();
         Stopwatch sw = new Stopwatch();
         sw.Start();
@@ -322,7 +325,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         // await RegisterAsync(godChat);
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step,time use:{sw.ElapsedMilliseconds}");
-        Logger.LogDebug($"[ChatGAgentManager][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
+        Logger.LogDebug($"[ChatManagerGAgent][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
         
         sw.Reset();
         //var sysMessage = await configuration.GetPrompt();
@@ -337,7 +340,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             if (!string.IsNullOrEmpty(rolePrompt))
             {
                 sysMessage = rolePrompt;
-                Logger.LogDebug($"[ChatGAgentManager][CreateSessionAsync] Added role prompt for guider: {guider}");
+                Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Added role prompt for guider: {guider}");
             }
         }
 
@@ -352,7 +355,12 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         };
         Logger.LogDebug($"[GodChatGAgent][InitializeAsync] Detail : {JsonConvert.SerializeObject(chatConfigDto)}");
 
+        var configStopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Starting ConfigAsync for GodChat - SessionId: {godChat.GetPrimaryKey()}");
         await godChat.ConfigAsync(chatConfigDto);
+        configStopwatch.Stop();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] ConfigAsync completed - Duration: {configStopwatch.ElapsedMilliseconds}ms, SessionId: {godChat.GetPrimaryKey()}");
+        
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
 
@@ -366,6 +374,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
         
         sw.Reset();
+        var raiseEventStopwatch = Stopwatch.StartNew();
         RaiseEvent(new CreateSessionInfoEventLog()
         {
             SessionId = sessionId,
@@ -375,9 +384,20 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         });
 
         await ConfirmEvents();
+        raiseEventStopwatch.Stop();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
+        
+        var initStopwatch = Stopwatch.StartNew();
         await godChat.InitAsync(this.GetPrimaryKey());
+        initStopwatch.Stop();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] InitAsync completed - Duration: {initStopwatch.ElapsedMilliseconds}ms");
+        
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
+        
+        totalStopwatch.Stop();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] End - Total Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}, UserId: {this.GetPrimaryKey()}");
+        
         return godChat.GetPrimaryKey();
     }
 
