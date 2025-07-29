@@ -73,20 +73,34 @@ public static class ChatRegexPatterns
     #region Conversation Suggestions Patterns
     
     /// <summary>
-    /// Pattern to match conversation suggestions block between delimiters
+    /// Pattern to match conversation suggestions block - supports both complete and incomplete blocks
+    /// Matches from start marker to end marker, or from start marker to end of text if no end marker
     /// </summary>
-    public const string ConversationSuggestionsPattern = @"---CONVERSATION_SUGGESTIONS---(.*?)---END_SUGGESTIONS---";
+    public const string ConversationSuggestionsPattern = @"---CONVERSATION_SUGGESTIONS---[\s\S]*?(?:---END_SUGGESTIONS---|$)";
     
     /// <summary>
-    /// Pattern to match numbered list items (1. item, 2) item, etc.)
+    /// Pattern to match conversation suggestions content only (between markers)
+    /// </summary>
+    public const string ConversationSuggestionsContentPattern = @"---CONVERSATION_SUGGESTIONS---([\s\S]*?)(?:---END_SUGGESTIONS---|$)";
+    
+    /// <summary>
+    /// Pattern to match numbered list items (1. item or 1) item)
     /// </summary>
     public const string NumberedItemPattern = @"^\d+[\.\)]\s*(.+)$";
     
     /// <summary>
     /// Precompiled regex for extracting conversation suggestions block content
+    /// This pattern is more robust and handles incomplete suggestion blocks
     /// </summary>
     public static readonly Regex ConversationSuggestionsBlock = new(
-        ConversationSuggestionsPattern, 
+        ConversationSuggestionsContentPattern, 
+        RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
+    
+    /// <summary>
+    /// Precompiled regex for removing entire conversation suggestions block (including markers)
+    /// </summary>
+    public static readonly Regex ConversationSuggestionsRemoval = new(
+        ConversationSuggestionsPattern,
         RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
     
     /// <summary>

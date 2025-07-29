@@ -842,6 +842,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     public async Task ChatMessageCallbackAsync(AIChatContextDto contextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage, AIStreamChatContent? chatContent)
     {
+        // Add diagnostic logging to track potential duplication
+        var requestId = contextDto?.RequestId.ToString() ?? "unknown";
+        var chatId = contextDto?.ChatId ?? "unknown"; 
+        var serialNumber = chatContent?.SerialNumber ?? -1;
+        
+        Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] START - RequestId: {requestId}, ChatId: {chatId}, SerialNumber: {serialNumber}, IsLastChunk: {chatContent?.IsLastChunk}, IsAggregationMsg: {chatContent?.IsAggregationMsg}");
+
         if (aiExceptionEnum == AIExceptionEnum.RequestLimitError && !contextDto.MessageId.IsNullOrWhiteSpace())
         {
             Logger.LogError(
@@ -943,10 +950,21 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
         if (chatContent.IsAggregationMsg)
         {
-            // Parse conversation suggestions for text chat only (skip voice chat)
-            List<string>? conversationSuggestions = null;
-            string cleanMainContent = chatContent.AggregationMsg; // Default to original content
-            bool isVoiceChat = false;
+            Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] AGGREGATION - RequestId: {requestId}, ChatId: {chatId} - Processing aggregation message");
+            
+            // Check if we've already processed the aggregation for this request to prevent duplication
+            var existingCleanContent = RequestContext.Get("CleanMainContent") as string;
+            if (!string.IsNullOrEmpty(existingCleanContent))
+            {
+                Logger.LogWarning($"[GodChatGAgent][ChatMessageCallbackAsync] DUPLICATE_AGGREGATION - RequestId: {requestId}, ChatId: {chatId} - Aggregation already processed, skipping to prevent duplication");
+                // Don't process aggregation again, just continue to streaming logic
+            }
+            else
+            {
+                // Parse conversation suggestions for text chat only (skip voice chat)
+                List<string>? conversationSuggestions = null;
+                string cleanMainContent = chatContent.AggregationMsg; // Default to original content
+                bool isVoiceChat = false;
 
             // Check if this is a voice chat by examining the message context
             if (!contextDto.MessageId.IsNullOrWhiteSpace())
@@ -1019,11 +1037,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
             // Store clean content to replace the response content
             RequestContext.Set("CleanMainContent", cleanMainContent);
+            } // End of else block for aggregation processing
         }
 
         // Clean partial streaming content to prevent conversation suggestions from being streamed to frontend
         // This ensures that suggestion markers are removed from all chunks, not just the final one
         var cleanedPartialContent = CleanPartialStreamingContent(chatContent.ResponseContent);
+        
+        // DIAGNOSTIC: Log content details to identify duplication
+        Logger.LogDebug($"[CONTENT_ANALYSIS] RequestId: {requestId}, ChatId: {chatId}, SerialNumber: {serialNumber}");
+        Logger.LogDebug($"[CONTENT_ANALYSIS] Original ResponseContent length: {chatContent.ResponseContent?.Length ?? 0}");
+        Logger.LogDebug($"[CONTENT_ANALYSIS] Cleaned partial content length: {cleanedPartialContent?.Length ?? 0}");
 
         var partialMessage = new ResponseStreamGodChat()
         {
@@ -1043,7 +1067,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var cleanMainContent = RequestContext.Get("CleanMainContent") as string;
             if (!string.IsNullOrEmpty(cleanMainContent))
             {
+                // DIAGNOSTIC: Log the replacement operation that might cause duplication
+                Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - Before: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
+                Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - CleanMainContent length: {cleanMainContent.Length}");
+                
                 partialMessage.Response = cleanMainContent;
+                
+                Logger.LogDebug($"[CONTENT_ANALYSIS] LAST_CHUNK_REPLACEMENT - After: partialMessage.Response length: {partialMessage.Response?.Length ?? 0}");
                 Logger.LogDebug(
                     $"[GodChatGAgent][ChatMessageCallbackAsync] Using clean main content for final response, length: {cleanMainContent.Length}");
             }
@@ -1170,10 +1200,22 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (contextDto.MessageId.IsNullOrWhiteSpace())
         {
             await PublishAsync(partialMessage);
-            return;
         }
-
-        await PushMessageToClientAsync(partialMessage);
+        else
+        {
+            await PushMessageToClientAsync(partialMessage);
+        }
+        
+        // Clean up RequestContext when processing is complete to prevent state pollution
+        // This is especially important for the last chunk to avoid cross-request contamination
+        if (chatContent.IsLastChunk)
+        {
+            RequestContext.Remove("CleanMainContent");
+            RequestContext.Remove("ConversationSuggestions");
+            Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] CLEANUP - RequestId: {requestId}, ChatId: {chatId} - RequestContext cleared for last chunk");
+        }
+        
+        Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] END - RequestId: {requestId}, ChatId: {chatId}, SerialNumber: {serialNumber}");
     }
 
     public async Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content,
@@ -1506,6 +1548,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     /// <summary>
     /// Clean partial streaming content to remove conversation suggestions markers
     /// This ensures streaming responses don't leak suggestion content to frontend
+    /// Updated to handle incomplete suggestion blocks more robustly
     /// </summary>
     /// <param name="partialContent">Partial response content from streaming</param>
     /// <returns>Cleaned partial content without suggestion markers</returns>
@@ -1516,22 +1559,25 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return partialContent;
         }
 
-        // Remove conversation suggestions start marker if present in partial content
-        // This prevents streaming suggestion content to frontend during response generation
-        var suggestionStartIndex =
-            partialContent.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+        // Use robust pattern to remove any conversation suggestions content (complete or incomplete)
+        // This handles cases where the suggestion block is cut off or incomplete in streaming
+        var cleaned = ChatRegexPatterns.ConversationSuggestionsRemoval.Replace(partialContent, "").Trim();
+        
+        // Additional safety: if we still find the start marker without proper handling, truncate there
+        var suggestionStartIndex = cleaned.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
         if (suggestionStartIndex >= 0)
         {
-            // Truncate content at the start of suggestions block
-            return partialContent.Substring(0, suggestionStartIndex).Trim();
+            cleaned = cleaned.Substring(0, suggestionStartIndex).Trim();
+            Logger.LogDebug($"[GodChatGAgent][CleanPartialStreamingContent] Truncated at suggestion marker. Cleaned length: {cleaned.Length}");
         }
 
-        return partialContent;
+        return cleaned;
     }
 
     /// <summary>
     /// Parse complete response to extract main content and conversation suggestions
     /// Only used when the complete response is available (IsAggregationMsg = true)
+    /// Updated to handle incomplete suggestion blocks more robustly
     /// </summary>
     /// <param name="fullResponse">Complete response text</param>
     /// <returns>Tuple of (main content, list of suggestions)</returns>
@@ -1542,18 +1588,18 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return (fullResponse, new List<string>());
         }
 
-        // Pattern to match conversation suggestions block using precompiled regex
+        // Use the robust pattern to extract conversation suggestions content
         var match = ChatRegexPatterns.ConversationSuggestionsBlock.Match(fullResponse);
 
         if (match.Success)
         {
-            // Extract main content by removing the suggestions section
-            var mainContent = fullResponse.Replace(match.Value, "").Trim();
+            // Remove the entire conversation suggestions block (including markers) using removal pattern
+            var mainContent = ChatRegexPatterns.ConversationSuggestionsRemoval.Replace(fullResponse, "").Trim();
             var suggestionSection = match.Groups[1].Value;
             var suggestions = ExtractNumberedItems(suggestionSection);
 
             Logger.LogDebug(
-                $"[GodChatGAgent][ParseResponseWithSuggestions] Extracted {suggestions.Count} suggestions from response");
+                $"[GodChatGAgent][ParseResponseWithSuggestions] Extracted {suggestions.Count} suggestions from response. Main content length: {mainContent.Length}");
             return (mainContent, suggestions);
         }
 
