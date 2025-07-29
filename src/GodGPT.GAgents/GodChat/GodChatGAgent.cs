@@ -1588,12 +1588,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var currentAccumulated = new StringBuilder(state.accumulatedSuggestions.ToString());
         var isInBlock = state.isInSuggestionBlock;
 
-        Logger.LogDebug($"[STREAMING_STATE] ChatId: {chatId}, IsInBlock: {isInBlock}, Input: [{partialContent}]");
+        Logger.LogInformation($"[STREAMING_STATE] ChatId: {chatId}, IsInBlock: {isInBlock}, Input length: {partialContent.Length}, Input: [{partialContent}]");
 
         // Case 1: We're already in a suggestion block
         if (isInBlock)
         {
-            Logger.LogDebug($"[STREAMING_STATE] Already in suggestion block, checking for end marker...");
+            Logger.LogInformation($"[STREAMING_STATE] Already in suggestion block, checking for end marker...");
             
             // Check if this chunk contains the end marker
             var endMarkerIndex = partialContent.IndexOf("---END_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
@@ -1603,21 +1603,21 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 var finalSuggestionPart = partialContent.Substring(0, endMarkerIndex);
                 currentAccumulated.Append(finalSuggestionPart);
                 
-                Logger.LogDebug($"[STREAMING_STATE] Found end marker at position {endMarkerIndex}");
-                Logger.LogDebug($"[STREAMING_STATE] Complete accumulated suggestions: [{currentAccumulated.ToString()}]");
+                Logger.LogInformation($"[STREAMING_STATE] Found end marker at position {endMarkerIndex}");
+                Logger.LogInformation($"[STREAMING_STATE] Complete accumulated suggestions: [{currentAccumulated.ToString()}]");
                 
                 // Parse complete suggestions and store in RequestContext
                 var suggestions = ExtractNumberedItems(currentAccumulated.ToString());
                 if (suggestions.Any())
                 {
                     RequestContext.Set("ConversationSuggestions", suggestions);
-                    Logger.LogDebug($"[STREAMING_STATE] Stored {suggestions.Count} suggestions in RequestContext");
+                    Logger.LogInformation($"[STREAMING_STATE] Stored {suggestions.Count} suggestions in RequestContext");
                 }
                 
                 // Clean up state and return content after end marker
                 SuggestionProcessingStates.TryRemove(chatId, out _);
                 cleanedContent = partialContent.Substring(endMarkerIndex + "---END_SUGGESTIONS---".Length).TrimStart();
-                Logger.LogDebug($"[STREAMING_STATE] Exited suggestion block, remaining content: [{cleanedContent}]");
+                Logger.LogInformation($"[STREAMING_STATE] Exited suggestion block, remaining content: [{cleanedContent}]");
             }
             else
             {
@@ -1625,7 +1625,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 currentAccumulated.Append(partialContent);
                 SuggestionProcessingStates.TryUpdate(chatId, (true, currentAccumulated), state);
                 cleanedContent = "";
-                Logger.LogDebug($"[STREAMING_STATE] Accumulated chunk content, current total: [{currentAccumulated.ToString()}]");
+                Logger.LogInformation($"[STREAMING_STATE] Accumulated chunk content, returning EMPTY. Current total: [{currentAccumulated.ToString()}]");
             }
         }
         else
@@ -1634,7 +1634,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var startMarkerIndex = partialContent.IndexOf("---CONVERSATION_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
             if (startMarkerIndex >= 0)
             {
-                Logger.LogDebug($"[STREAMING_STATE] Found start marker at position {startMarkerIndex}");
+                Logger.LogInformation($"[STREAMING_STATE] Found start marker at position {startMarkerIndex}");
                 
                 // Extract content before the start marker
                 var contentBeforeMarker = partialContent.Substring(0, startMarkerIndex).TrimEnd();
@@ -1643,7 +1643,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 var endMarkerIndex = partialContent.IndexOf("---END_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
                 if (endMarkerIndex >= 0 && endMarkerIndex > startMarkerIndex)
                 {
-                    Logger.LogDebug($"[STREAMING_STATE] Complete suggestion block in single chunk");
+                    Logger.LogInformation($"[STREAMING_STATE] Complete suggestion block in single chunk");
                     
                     // Complete block in one chunk - extract suggestions
                     var startPos = startMarkerIndex + "---CONVERSATION_SUGGESTIONS---".Length;
@@ -1653,7 +1653,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     if (suggestions.Any())
                     {
                         RequestContext.Set("ConversationSuggestions", suggestions);
-                        Logger.LogDebug($"[STREAMING_STATE] Stored {suggestions.Count} suggestions from single chunk");
+                        Logger.LogInformation($"[STREAMING_STATE] Stored {suggestions.Count} suggestions from single chunk");
                     }
                     
                     // Return content before marker + content after end marker
@@ -1669,17 +1669,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     
                     SuggestionProcessingStates.TryUpdate(chatId, (true, currentAccumulated), state);
                     cleanedContent = contentBeforeMarker;
-                    Logger.LogDebug($"[STREAMING_STATE] Entered suggestion block, initial content: [{suggestionStart}]");
+                    Logger.LogInformation($"[STREAMING_STATE] Entered suggestion block, initial content: [{suggestionStart}]");
                 }
             }
             else
             {
                 // No suggestion markers - return as-is  
-                Logger.LogDebug($"[STREAMING_STATE] No suggestion markers found, content unchanged");
+                Logger.LogInformation($"[STREAMING_STATE] No suggestion markers found, content unchanged");
             }
         }
 
-        Logger.LogDebug($"[STREAMING_STATE] Final cleaned content: [{cleanedContent}]");
+        Logger.LogInformation($"[STREAMING_STATE] Final cleaned content: [{cleanedContent}]");
         return cleanedContent;
     }
 
