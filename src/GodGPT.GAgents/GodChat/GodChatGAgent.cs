@@ -1638,7 +1638,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     }
 
     /// <summary>
-    /// Extract numbered items from text (e.g., "1. item", "2. item", etc.)
+    /// Extracts numbered items from text, removing numeric prefixes (1., 2), etc.)
     /// </summary>
     /// <param name="text">Text containing numbered items</param>
     /// <returns>List of extracted items</returns>
@@ -1650,24 +1650,41 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return items;
         }
 
+        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] INPUT TEXT: [{text}]");
+        
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] SPLIT INTO {lines.Length} LINES");
 
         foreach (var line in lines)
         {
             var trimmedLine = line.Trim();
+            Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] PROCESSING LINE: [{trimmedLine}]");
+            
             // Match numbered items like "1. content" or "1) content" using precompiled regex
             var match = ChatRegexPatterns.NumberedItem.Match(trimmedLine);
             if (match.Success)
             {
                 var item = match.Groups[1].Value.Trim();
+                Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] REGEX MATCH SUCCESS - Full: [{trimmedLine}] -> Extracted: [{item}]");
                 if (!string.IsNullOrEmpty(item))
                 {
                     items.Add(item);
+                    Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] ADDED ITEM {items.Count}: [{item}]");
+                }
+            }
+            else
+            {
+                Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] REGEX NO MATCH FOR LINE: [{trimmedLine}]");
+                // If line doesn't match numbered pattern, add it as-is (might be non-numbered suggestion)
+                if (!string.IsNullOrWhiteSpace(trimmedLine))
+                {
+                    items.Add(trimmedLine);
+                    Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] ADDED AS-IS ITEM {items.Count}: [{trimmedLine}]");
                 }
             }
         }
 
-        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} numbered items");
+        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] FINAL RESULT: Extracted {items.Count} items: [{string.Join("]; [", items)}]");
         return items;
     }
 
