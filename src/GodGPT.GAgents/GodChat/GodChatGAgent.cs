@@ -1595,15 +1595,38 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             Logger.LogInformation($"[STREAMING_STATE] Already in suggestion block, checking for end marker...");
             
-            // Check if this chunk contains the end marker
-            var endMarkerIndex = partialContent.IndexOf("---END_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
+            // Check for multiple possible end marker variants (more robust detection)
+            var endMarkerIndex = -1;
+            var endMarkerLength = 0;
+            
+            // Try different end marker patterns in order of preference
+            var endMarkerPatterns = new[]
+            {
+                "---END_SUGGESTIONS---",   // Standard format
+                "--END_SUGGESTIONS--",    // Common variant
+                "---END_SUGGESTION---",   // Singular variant
+                "--END_SUGGESTION--",     // Singular variant with fewer dashes
+                "---END_SUGGESTION",      // Incomplete format
+                "--END_SUGGESTION"        // Most lenient
+            };
+            
+            foreach (var pattern in endMarkerPatterns)
+            {
+                endMarkerIndex = partialContent.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
+                if (endMarkerIndex >= 0)
+                {
+                    endMarkerLength = pattern.Length;
+                    Logger.LogInformation($"[STREAMING_STATE] Found end marker '{pattern}' at position {endMarkerIndex}");
+                    break;
+                }
+            }
+            
             if (endMarkerIndex >= 0)
             {
                 // Found end marker - extract final suggestion content and exit block
                 var finalSuggestionPart = partialContent.Substring(0, endMarkerIndex);
                 currentAccumulated.Append(finalSuggestionPart);
                 
-                Logger.LogInformation($"[STREAMING_STATE] Found end marker at position {endMarkerIndex}");
                 Logger.LogInformation($"[STREAMING_STATE] Complete accumulated suggestions: [{currentAccumulated.ToString()}]");
                 
                 // Parse complete suggestions and store in RequestContext
@@ -1616,7 +1639,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 
                 // Clean up state and return content after end marker
                 SuggestionProcessingStates.TryRemove(chatId, out _);
-                cleanedContent = partialContent.Substring(endMarkerIndex + "---END_SUGGESTIONS---".Length).TrimStart();
+                cleanedContent = partialContent.Substring(endMarkerIndex + endMarkerLength).TrimStart();
                 Logger.LogInformation($"[STREAMING_STATE] Exited suggestion block, remaining content: [{cleanedContent}]");
             }
             else
@@ -1639,9 +1662,32 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 // Extract content before the start marker
                 var contentBeforeMarker = partialContent.Substring(0, startMarkerIndex).TrimEnd();
                 
-                // Check if end marker is also in this chunk (complete block in one chunk)
-                var endMarkerIndex = partialContent.IndexOf("---END_SUGGESTIONS---", StringComparison.OrdinalIgnoreCase);
-                if (endMarkerIndex >= 0 && endMarkerIndex > startMarkerIndex)
+                // Check if any end marker variant is also in this chunk (complete block in one chunk)
+                var endMarkerIndex = -1;
+                var endMarkerLength = 0;
+                
+                var endMarkerPatterns = new[]
+                {
+                    "---END_SUGGESTIONS---",
+                    "--END_SUGGESTIONS--",
+                    "---END_SUGGESTION---",
+                    "--END_SUGGESTION--",
+                    "---END_SUGGESTION",
+                    "--END_SUGGESTION"
+                };
+                
+                foreach (var pattern in endMarkerPatterns)
+                {
+                    endMarkerIndex = partialContent.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
+                    if (endMarkerIndex >= 0 && endMarkerIndex > startMarkerIndex)
+                    {
+                        endMarkerLength = pattern.Length;
+                        Logger.LogInformation($"[STREAMING_STATE] Found end marker '{pattern}' in same chunk at position {endMarkerIndex}");
+                        break;
+                    }
+                }
+                
+                if (endMarkerIndex >= 0)
                 {
                     Logger.LogInformation($"[STREAMING_STATE] Complete suggestion block in single chunk");
                     
@@ -1657,7 +1703,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     }
                     
                     // Return content before marker + content after end marker
-                    var contentAfterMarker = partialContent.Substring(endMarkerIndex + "---END_SUGGESTIONS---".Length).TrimStart();
+                    var contentAfterMarker = partialContent.Substring(endMarkerIndex + endMarkerLength).TrimStart();
                     cleanedContent = (contentBeforeMarker + contentAfterMarker).Trim();
                 }
                 else
