@@ -53,3 +53,9 @@ public class AddChatMessageMetasLogEvent : GodChatEventLog
 {
     [Id(0)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<ChatMessageMeta>();
 }
+
+[GenerateSerializer]
+public class AddPromptTemplateLogEvent : GodChatEventLog
+{
+    [Id(0)] public string PromptTemplate { get; set; } 
+}
