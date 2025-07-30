@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.RegularExpressions;
 using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
@@ -10,6 +9,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
@@ -18,13 +18,13 @@ using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.GAgent;
+using GodGPT.GAgents.Common.Constants;
 using GodGPT.GAgents.SpeechChat;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
-using Aevatar.Application.Grains.Common.Options;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -42,25 +42,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
     private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new();
-    // Voice synthesis sentence detection
-    // Extended sentence ending characters including punctuation marks for semantic pauses
-    private static readonly List<char> SentenceEnders =
-    [
-        '.', '?', '!', '。', '？', '！', // Complete sentence endings
-        ',', ';', ':', '，', '；', '：', // Semantic pause markers
-        '\n', '\r'
-    ];
     
-    // Regular expressions for cleaning text before speech synthesis
-    private static readonly Regex MarkdownLinkRegex = new Regex(@"\[([^\]]+)\]\([^\)]+\)", RegexOptions.Compiled);
-    private static readonly Regex MarkdownBoldRegex = new Regex(@"\*\*([^*]+)\*\*", RegexOptions.Compiled);
-    private static readonly Regex MarkdownItalicRegex = new Regex(@"\*([^*]+)\*", RegexOptions.Compiled);
-    private static readonly Regex MarkdownHeaderRegex = new Regex(@"^#+\s*(.+)$", RegexOptions.Compiled | RegexOptions.Multiline);
-    private static readonly Regex MarkdownCodeBlockRegex = new Regex(@"```[\s\S]*?```", RegexOptions.Compiled);
-    private static readonly Regex MarkdownInlineCodeRegex = new Regex(@"`([^`]+)`", RegexOptions.Compiled);
-    private static readonly Regex MarkdownTableRegex = new Regex(@"\|.*?\|", RegexOptions.Compiled);
-    private static readonly Regex MarkdownStrikethroughRegex = new Regex(@"~~([^~]+)~~", RegexOptions.Compiled);
-    private static readonly Regex EmojiRegex = new Regex(@"[\u2600-\u26FF]|[\u2700-\u27BF]", RegexOptions.Compiled);
+    // Instance variables for suggestion filtering state management
+    // These persist across chunk processing within the same grain instance
+    private bool _isAccumulatingForSuggestions = false;
+    private string _accumulatedSuggestionContent = "";
 
     public GodChatGAgent(ISpeechService speechService, IOptionsMonitor<LLMRegionOptions> llmRegionOptions)
     {
@@ -561,13 +547,33 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             Logger.LogDebug(
                 $"[GodChatGAgent][GodStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
+            
+            // Check if this is a voice chat from context
+            bool isPromptVoiceChat = false;
+            if (aiChatContextDto.MessageId != null)
+            {
+                try
+                {
+                    var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiChatContextDto.MessageId);
+                    isPromptVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "[GodChatGAgent][GodStreamChatAsync] Failed to parse MessageId for voice chat detection");
+                }
+            }
+            
+            // Add conversation suggestions prompt for text chat only
+            string enhancedMessage = message;
+            if (!isPromptVoiceChat)
+            {
+                enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Added conversation suggestions prompt for text chat");
+            }
+            
             var settings = promptSettings ?? new ExecutionPromptSettings();
             settings.Temperature = "0.9";
-            var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
-            var promptMessage = message;
-            promptMessage = GodGPTLanguageHelper.AppendLanguagePrompt(message, language);
-
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMessage, State.ChatHistory, settings,
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(enhancedMessage, State.ChatHistory, settings,
                 context: aiChatContextDto, imageKeys: images);
             if (!result)
             {
@@ -852,9 +858,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var dictionary = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
             
             // Check if this is a voice chat retry to call the appropriate method
-            var isVoiceChat = dictionary.ContainsKey("IsVoiceChat") && (bool)dictionary["IsVoiceChat"];
+            var isRetryVoiceChat = dictionary.ContainsKey("IsVoiceChat") && (bool)dictionary["IsVoiceChat"];
             
-            if (isVoiceChat)
+            if (isRetryVoiceChat)
             {
                 // Voice chat retry: call GodVoiceStreamChatAsync with voice parameters
                 var voiceLanguageValue = dictionary.GetValueOrDefault("VoiceLanguage", 0);
@@ -896,8 +902,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 try
                 {
                     var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-                    bool isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
-                    if (isVoiceChat)
+                    bool isErrorVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                    if (isErrorVoiceChat)
                     {
                         // Safe type conversion for voice language
                         var voiceLanguageValue = messageData.GetValueOrDefault("VoiceLanguage", 0);
@@ -944,6 +950,38 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         if (chatContent.IsAggregationMsg)
         {
+            // Parse conversation suggestions for text chat only (skip voice chat)
+            List<string>? conversationSuggestions = null;
+            string cleanMainContent = chatContent.AggregationMsg; // Default to original content
+            bool isAggregationVoiceChat = false;
+            
+            // Check if this is a voice chat by examining the message context
+            if (!contextDto.MessageId.IsNullOrWhiteSpace())
+            {
+                try
+                {
+                    var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
+                    isAggregationVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "[GodChatGAgent][ChatMessageCallbackAsync] Failed to parse MessageId for voice chat detection");
+                }
+            }
+            
+            // Parse conversation suggestions only for text chat
+            if (!isAggregationVoiceChat && !string.IsNullOrEmpty(chatContent.AggregationMsg))
+            {
+                var (mainContent, suggestions) = ParseResponseWithSuggestions(chatContent.AggregationMsg);
+                if (suggestions.Any())
+                {
+                    conversationSuggestions = suggestions;
+                    cleanMainContent = mainContent; // Use clean content without suggestions
+                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Parsed {suggestions.Count} conversation suggestions for text chat");
+                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned main content length: {cleanMainContent?.Length ?? 0}");
+                }
+            }
+            
             RaiseEvent(new AddChatHistoryLogEvent
             {
                 ChatList = new List<ChatMessage>()
@@ -951,7 +989,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     new ChatMessage
                     {
                         ChatRole = ChatRole.Assistant,
-                        Content = chatContent?.AggregationMsg
+                        Content = cleanMainContent // Store clean content without suggestions
                     }
                 }
             });
@@ -976,18 +1014,154 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
                 await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
             }
+            
+            // Store suggestions and clean content for later use in partialMessage
+            if (conversationSuggestions != null)
+            {
+                RequestContext.Set("ConversationSuggestions", conversationSuggestions);
+            }
+            // Store clean content to replace the response content
+            RequestContext.Set("CleanMainContent", cleanMainContent);
+        }
+
+        // Apply streaming suggestion filtering logic for text chat
+        string streamingContent = chatContent.ResponseContent;
+        bool shouldFilterStream = false;
+        
+        // Check if this is a text chat (not voice chat)
+        bool isFilteringVoiceChat = false;
+        if (!contextDto.MessageId.IsNullOrWhiteSpace())
+        {
+            try
+            {
+                var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
+                isFilteringVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "[GodChatGAgent][ChatMessageCallbackAsync] Failed to parse MessageId for voice chat detection in streaming filter");
+            }
+        }
+        
+        // Get current accumulation state from instance variables (reliable across chunks)
+        bool shouldStartAccumulating = false;
+        
+        // Apply conversation suggestions filtering (text chat only)
+        if (!isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
+        {
+            // Check for [SUGGESTIONS] marker and partial forms to handle cross-chunk splits
+            bool contains_suggestions = streamingContent.Contains("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
+            bool contains_partial_marker = streamingContent.Contains("[SUGGES", StringComparison.OrdinalIgnoreCase) ||
+                                         streamingContent.Contains("[SUGGEST", StringComparison.OrdinalIgnoreCase) ||
+                                         streamingContent.Contains("[SUGGESTION", StringComparison.OrdinalIgnoreCase);
+            
+            // Check for potential marker start (conservative approach)
+            bool ends_with_bracket = streamingContent.TrimEnd().EndsWith("[") && streamingContent.Length > 10;
+            
+            shouldStartAccumulating = contains_suggestions || contains_partial_marker || ends_with_bracket;
+            
+            if (shouldStartAccumulating && !_isAccumulatingForSuggestions)
+            {
+                // Start accumulation - block all subsequent chunks from frontend
+                _isAccumulatingForSuggestions = true;
+                _accumulatedSuggestionContent = streamingContent;
+                streamingContent = ""; // Block current chunk
+            }
+            else if (_isAccumulatingForSuggestions)
+            {
+                // Continue accumulation - block this chunk from frontend
+                _accumulatedSuggestionContent += streamingContent;
+                streamingContent = ""; // Block current chunk
+            }
+        }
+        
+        // Handle voice chat filtering separately
+        if (isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
+        {
+            streamingContent = ""; // Block voice chat content
+        }
+
+        // Process accumulated content on final chunk
+        if (_isAccumulatingForSuggestions && chatContent.IsLastChunk)
+        {
+            var (cleanContent, suggestions) = ParseResponseWithSuggestions(_accumulatedSuggestionContent);
+            
+            // Store suggestions for response
+            if (suggestions?.Any() == true)
+            {
+                RequestContext.Set("ConversationSuggestions", suggestions);
+            }
+            
+            // Send clean content to frontend
+            streamingContent = cleanContent;
+            
+            // Reset accumulation state
+            _isAccumulatingForSuggestions = false;
+            _accumulatedSuggestionContent = "";
         }
 
         var partialMessage = new ResponseStreamGodChat()
         {
-            Response = chatContent.ResponseContent,
+            Response = streamingContent, // Use filtered content for streaming
             ChatId = contextDto.ChatId,
-            IsLastChunk = chatContent.IsLastChunk,
             SerialNumber = chatContent.SerialNumber,
+            IsLastChunk = chatContent.IsLastChunk,
             SessionId = contextDto.RequestId,
             // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
             VoiceContentType = VoiceContentType.VoiceResponse
         };
+        
+        // Log final content being sent to frontend
+        Logger.LogInformation($"[FINAL_OUTPUT] Sending to frontend - Length: {streamingContent?.Length ?? 0}, IsLastChunk: {chatContent.IsLastChunk}");
+        if (!string.IsNullOrEmpty(streamingContent))
+        {
+            Logger.LogInformation($"[FINAL_OUTPUT] Content preview: '{streamingContent.Substring(0, Math.Min(100, streamingContent.Length))}{(streamingContent.Length > 100 ? "..." : "")}'");
+        }
+
+        // For the last chunk, use clean content and add conversation suggestions if available
+        if (chatContent.IsLastChunk)
+        {
+            // Add conversation suggestions to the last chunk if available
+            var storedSuggestions = RequestContext.Get("ConversationSuggestions") as List<string>;
+            if (storedSuggestions?.Any() == true)
+            {
+                partialMessage.SuggestedItems = storedSuggestions;
+                Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Added {storedSuggestions.Count} suggestions to last chunk");
+                
+                // Check if we just completed accumulation - if so, skip old replacement logic
+                // because streamingContent already contains the correct clean content
+                var wasAccumulating = RequestContext.Get("AccumulatedContent") != null;
+                
+                if (!wasAccumulating)
+                {
+                    // Only use old replacement logic if we weren't in accumulation mode
+                    // This ensures we don't accidentally replace a small last chunk with full content
+                    var cleanMainContent = RequestContext.Get("CleanMainContent") as string;
+                    if (!string.IsNullOrEmpty(cleanMainContent))
+                    {
+                        // Safety check: avoid replacing small chunk with much larger content
+                        var currentChunkLength = partialMessage.Response?.Length ?? 0;
+                        var cleanContentLength = cleanMainContent.Length;
+                        
+                        // Only replace if suggestions were actually found (indicated by storedSuggestions)
+                        // and clean content is reasonably sized relative to current chunk
+                        if (currentChunkLength == 0 || cleanContentLength <= currentChunkLength * 2)
+                        {
+                            partialMessage.Response = cleanMainContent;
+                            Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Replaced response with clean content. Current: {currentChunkLength}, Clean: {cleanContentLength}");
+                        }
+                        else
+                        {
+                            Logger.LogWarning($"[GodChatGAgent][ChatMessageCallbackAsync] Skipped replacing response to avoid duplication. Current: {currentChunkLength}, Clean: {cleanContentLength}");
+                        }
+                    }
+                }
+                else
+                {
+                    Logger.LogInformation($"[ACCUMULATION_FILTER] Skipped old replacement logic - using accumulation result");
+                }
+            }
+        }
 
         // Check if this is a voice chat and handle real-time voice synthesis
         Logger.LogDebug($"[ChatMessageCallbackAsync] MessageId: '{contextDto.MessageId}', ResponseContent: '{chatContent.ResponseContent}'");
@@ -995,11 +1169,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
         {
             var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-            var isVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
+            var isStreamingVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
             
-            Logger.LogDebug($"[ChatMessageCallbackAsync] IsVoiceChat: {isVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
+            Logger.LogDebug($"[ChatMessageCallbackAsync] IsVoiceChat: {isStreamingVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
 
-            if (isVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
+            if (isStreamingVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
             {
                 Logger.LogDebug($"[ChatMessageCallbackAsync] Entering voice chat processing logic");
                 
@@ -1091,10 +1265,22 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (contextDto.MessageId.IsNullOrWhiteSpace())
         {
             await PublishAsync(partialMessage);
-            return;
         }
-
-        await PushMessageToClientAsync(partialMessage);
+        else
+        {
+            await PushMessageToClientAsync(partialMessage);
+        }
+        
+        // Clean up RequestContext when processing is complete (last chunk)
+        if (chatContent.IsLastChunk)
+        {
+            RequestContext.Remove("CleanMainContent");
+            RequestContext.Remove("ConversationSuggestions");
+            RequestContext.Remove("IsFilteringSuggestions");
+            RequestContext.Remove("IsAccumulatingForSuggestions");
+            RequestContext.Remove("AccumulatedContent");
+            Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned up RequestContext for completed request");
+        }
     }
 
     public async Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content, string chatId,
@@ -1283,7 +1469,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             return false;
         
         // Remove all punctuation and check if there's actual content
-        var cleanText = System.Text.RegularExpressions.Regex.Replace(text, @"[^\w\u4e00-\u9fff]", "");
+        var cleanText = ChatRegexPatterns.NonWordChars.Replace(text, "");
         var result = cleanText.Length > 0; // At least one letter or Chinese character
         
         return result;
@@ -1333,7 +1519,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // Look for complete sentence endings
         for (var i = accumulatedText.Length - 1; i >= 0; i--)
         {
-            if (SentenceEnders.Contains(accumulatedText[i]))
+            if (VoiceChatConstants.SentenceEnders.Contains(accumulatedText[i]))
             {
                 // Only check if there's meaningful content, no length restriction
                 var potentialSentence = accumulatedText.Substring(0, i + 1);
@@ -1375,29 +1561,29 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var cleanText = text;
 
         // Remove markdown links but keep link text
-        cleanText = MarkdownLinkRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownLink.Replace(cleanText, "$1");
 
         // Remove bold and italic formatting
-        cleanText = MarkdownBoldRegex.Replace(cleanText, "$1");
-        cleanText = MarkdownItalicRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownBold.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownItalic.Replace(cleanText, "$1");
 
         // Remove strikethrough formatting
-        cleanText = MarkdownStrikethroughRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownStrikethrough.Replace(cleanText, "$1");
 
         // Remove header formatting
-        cleanText = MarkdownHeaderRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownHeader.Replace(cleanText, "$1");
 
         // Replace code blocks with speech-friendly text
-        cleanText = MarkdownCodeBlockRegex.Replace(cleanText, language == VoiceLanguageEnum.Chinese ? "代码块" : "code block");
+        cleanText = ChatRegexPatterns.MarkdownCodeBlock.Replace(cleanText, language == VoiceLanguageEnum.Chinese ? "代码块" : "code block");
 
         // Remove inline code formatting but keep content
-        cleanText = MarkdownInlineCodeRegex.Replace(cleanText, "$1");
+        cleanText = ChatRegexPatterns.MarkdownInlineCode.Replace(cleanText, "$1");
 
         // Remove table formatting
-        cleanText = MarkdownTableRegex.Replace(cleanText, " ");
+        cleanText = ChatRegexPatterns.MarkdownTable.Replace(cleanText, " ");
 
         // Remove emojis completely (they don't speech-synthesize well)
-        cleanText = EmojiRegex.Replace(cleanText, "");
+        cleanText = ChatRegexPatterns.Emoji.Replace(cleanText, "");
 
         // Remove multiple spaces and special markdown symbols
         cleanText = cleanText.Replace("**", "")
@@ -1411,7 +1597,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                              .Replace("<<<", "");
 
         // Remove excessive whitespace
-        cleanText = Regex.Replace(cleanText, @"\s+", " ").Trim();
+        cleanText = ChatRegexPatterns.WhitespaceNormalize.Replace(cleanText, " ").Trim();
 
         return cleanText;
     }
@@ -1560,5 +1746,73 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
         // Voice synthesis and streaming handled in ChatMessageCallbackAsync
         return string.Empty;
+    }
+
+    /// <summary>
+    /// Parse AI response to extract main content and conversation suggestions
+    /// </summary>
+    /// <param name="fullResponse">Complete AI response text</param>
+    /// <returns>Tuple of (main content, list of suggestions)</returns>
+    private (string mainContent, List<string> suggestions) ParseResponseWithSuggestions(string fullResponse)
+    {
+        if (string.IsNullOrEmpty(fullResponse))
+        {
+            return (fullResponse, new List<string>());
+        }
+
+        // Pattern to match conversation suggestions block using precompiled regex
+        var match = ChatRegexPatterns.ConversationSuggestionsBlock.Match(fullResponse);
+        
+        if (match.Success)
+        {
+            // Extract main content by removing everything from the start of [SUGGESTIONS] to the end
+            var suggestionStartIndex = fullResponse.IndexOf("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
+            var mainContent = suggestionStartIndex > 0 
+                ? fullResponse.Substring(0, suggestionStartIndex).Trim()
+                : "";
+                
+            var suggestionSection = match.Groups[1].Value;
+            var suggestions = ExtractNumberedItems(suggestionSection);
+            
+            Logger.LogDebug($"[GodChatGAgent][ParseResponseWithSuggestions] Extracted {suggestions.Count} suggestions from response");
+            return (mainContent, suggestions);
+        }
+        
+        Logger.LogDebug("[GodChatGAgent][ParseResponseWithSuggestions] No suggestions found in response");
+        return (fullResponse, new List<string>());
+    }
+
+    /// <summary>
+    /// Extract numbered items from text (e.g., "1. item", "2. item", etc.)
+    /// </summary>
+    /// <param name="text">Text containing numbered items</param>
+    /// <returns>List of extracted items</returns>
+    private List<string> ExtractNumberedItems(string text)
+    {
+        var items = new List<string>();
+        if (string.IsNullOrEmpty(text))
+        {
+            return items;
+        }
+        
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.Trim();
+            // Match numbered items like "1. content" or "1) content" using precompiled regex
+            var match = ChatRegexPatterns.NumberedItem.Match(trimmedLine);
+            if (match.Success)
+            {
+                var item = match.Groups[1].Value.Trim();
+                if (!string.IsNullOrEmpty(item))
+                {
+                    items.Add(item);
+                }
+            }
+        }
+        
+        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} numbered items");
+        return items;
     }
 }
