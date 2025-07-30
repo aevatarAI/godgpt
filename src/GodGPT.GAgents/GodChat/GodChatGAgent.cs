@@ -639,24 +639,30 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogDebug(
                 $"[GodChatGAgent][MockCallBackAsync] Mock callback, session {sessionId.ToString()}, chat {chatId}");
             await Task.Delay(TimeSpan.FromMilliseconds(800));
+            for (var i = 1; i <= 20; i++)
+            {
+                var IsLastChunk = i == 20;
 
-            await ChatMessageCallbackAsync(new AIChatContextDto
-            {
-                RequestId = sessionId,
-                MessageId = JsonConvert.SerializeObject(new Dictionary<string, object>()
+                await ChatMessageCallbackAsync(new AIChatContextDto
                 {
-                    { "IsHttpRequest", true }, { "LLM", sysmLLM }, { "StreamingModeEnabled", true },
-                    { "Message", content }
-                }),
-                ChatId = chatId
-            }, AIExceptionEnum.None, null, new AIStreamChatContent
-            {
-                ResponseContent = "Mock data for stress testing environment.",
-                SerialNumber = 1,
-                IsLastChunk = true,
-                IsAggregationMsg = true,
-                AggregationMsg = "Mock data for stress testing environment."
-            });
+                    RequestId = sessionId,
+                    MessageId = JsonConvert.SerializeObject(new Dictionary<string, object>()
+                    {
+                        { "IsHttpRequest", true }, { "LLM", sysmLLM }, { "StreamingModeEnabled", true },
+                        { "Message", content }
+                    }),
+                    ChatId = chatId
+                }, AIExceptionEnum.None, null, new AIStreamChatContent
+                {
+                    ResponseContent = "Mock data for stress testing environment." + i +"-line",
+                    SerialNumber = 1,
+                    IsLastChunk = IsLastChunk,
+                    IsAggregationMsg = IsLastChunk,
+                    AggregationMsg = "Mock data for stress testing environment." + i +"-line"
+                });
+            }
+
+            
         }
         catch (Exception e)
         {
