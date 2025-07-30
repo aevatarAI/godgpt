@@ -1072,12 +1072,6 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 streamingContent = ""; // Block current chunk
             }
         }
-        
-        // Handle voice chat filtering separately
-        if (isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
-        {
-            streamingContent = ""; // Block voice chat content
-        }
 
         // Process accumulated content on final chunk
         if (_isAccumulatingForSuggestions && chatContent.IsLastChunk)
