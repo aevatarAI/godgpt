@@ -65,6 +65,13 @@ public interface IUserBillingGAgent : IGAgent
     /// </summary>
     /// <returns>True if there is an active Apple subscription; otherwise, false.</returns>
     Task<bool> HasActiveAppleSubscriptionAsync();
+    
+    /// <summary>
+    /// Gets the active subscription status for all payment platforms.
+    /// Uses a single iteration through payment history for optimal performance.
+    /// </summary>
+    /// <returns>ActiveSubscriptionStatusDto containing status for Apple, Stripe, and overall subscriptions.</returns>
+    Task<ActiveSubscriptionStatusDto> GetActiveSubscriptionStatusAsync();
 }
 
 [GAgent(nameof(UserBillingGAgent))]
@@ -2947,6 +2954,47 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         _logger.LogInformation("[UserBillingGAgent][HasActiveAppleSubscriptionAsync] Has active Apple subscription: {HasActive}", hasActive);
         return hasActive;
+    }
+
+    public async Task<ActiveSubscriptionStatusDto> GetActiveSubscriptionStatusAsync()
+    {
+        var result = new ActiveSubscriptionStatusDto();
+        
+        // Single iteration through payment history for optimal performance
+        foreach (var payment in State.PaymentHistory)
+        {
+            // Check if payment has active subscription (same logic as HasActiveAppleSubscriptionAsync)
+            var isActiveSubscription = payment.InvoiceDetails != null && 
+                                     payment.InvoiceDetails.Any() &&
+                                     payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled);
+            
+            if (!isActiveSubscription) continue;
+            
+            // Check platform and set corresponding flags
+            switch (payment.Platform)
+            {
+                case PaymentPlatform.AppStore:
+                    result.HasActiveAppleSubscription = true;
+                    break;
+                case PaymentPlatform.Stripe:
+                    result.HasActiveStripeSubscription = true;
+                    break;
+            }
+            
+            // Early termination: if both platforms have active subscriptions, no need to continue
+            if (result.HasActiveAppleSubscription && result.HasActiveStripeSubscription)
+            {
+                break;
+            }
+        }
+        
+        // Set overall subscription status
+        result.HasActiveSubscription = result.HasActiveAppleSubscription || result.HasActiveStripeSubscription;
+        
+        _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Apple: {Apple}, Stripe: {Stripe}, Overall: {Overall}", 
+            result.HasActiveAppleSubscription, result.HasActiveStripeSubscription, result.HasActiveSubscription);
+            
+        return result;
     }
     
     private async Task ProcessInviteeSubscriptionAsync(Guid userId, PlanType planType, bool isUltimate, string invoiceId)
