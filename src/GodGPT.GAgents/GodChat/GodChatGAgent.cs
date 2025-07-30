@@ -1051,7 +1051,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             // Check for [SUGGESTIONS] marker and partial forms to handle cross-chunk splits
             bool contains_suggestions = streamingContent.Contains("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
-            bool contains_partial_marker = streamingContent.Contains("[SUGGES", StringComparison.OrdinalIgnoreCase) ||
+            bool contains_partial_marker = streamingContent.Contains("[SU", StringComparison.OrdinalIgnoreCase) ||
+                                         streamingContent.Contains("[SUG", StringComparison.OrdinalIgnoreCase) ||
+                                         streamingContent.Contains("[SUGG", StringComparison.OrdinalIgnoreCase) ||
+                                         streamingContent.Contains("[SUGGE", StringComparison.OrdinalIgnoreCase) ||
+                                         streamingContent.Contains("[SUGGES", StringComparison.OrdinalIgnoreCase) ||
                                          streamingContent.Contains("[SUGGEST", StringComparison.OrdinalIgnoreCase) ||
                                          streamingContent.Contains("[SUGGESTION", StringComparison.OrdinalIgnoreCase);
             
