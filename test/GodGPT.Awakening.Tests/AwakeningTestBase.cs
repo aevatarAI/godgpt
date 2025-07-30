@@ -13,7 +13,7 @@ namespace GodGPT.Awakening.Tests;
 /// </summary>
 public class AwakeningTestBase : AevatarOrleansTestBase<AwakeningTestModule>
 {
-    protected ILogger Logger => GetService<ILogger<AwakeningTestBase>>();
+    protected ILogger Logger => GetService<ILogger<AwakeningTestBase>>() ?? throw new InvalidOperationException("Logger service not found");
 
     /// <summary>
     /// Get AwakeningGAgent instance for testing

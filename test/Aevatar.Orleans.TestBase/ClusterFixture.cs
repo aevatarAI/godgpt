@@ -32,7 +32,7 @@ using Volo.Abp.Reflection;
 
 public class ClusterFixture : IDisposable, ISingletonDependency
 {
-    public static MockLoggerProvider LoggerProvider { get; set; }
+    public static MockLoggerProvider LoggerProvider { get; set; } = new MockLoggerProvider("TestCluster");
 
     public ClusterFixture()
     {
@@ -151,7 +151,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
 
     public class MapperAccessor : IMapperAccessor
     {
-        public IMapper Mapper { get; set; }
+        public IMapper Mapper { get; set; } = null!; // Will be set during DI container setup
     }
 
     private class TestClientBuilderConfigurator : IClientBuilderConfigurator

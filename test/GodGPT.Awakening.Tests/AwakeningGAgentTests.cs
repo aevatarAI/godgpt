@@ -69,11 +69,11 @@ public class AwakeningGAgentTests : AwakeningTestBase
         Assert.Equal("Session content is null", result.ErrorMessage);
     }
 
-    [Fact(Skip = "")]
-    // [Theory]
-    // [InlineData(VoiceLanguageEnum.Chinese)]
-    // [InlineData(VoiceLanguageEnum.English)]
-    // [InlineData(VoiceLanguageEnum.Spanish)]
+    // [Fact(Skip = "")]
+    [Theory(Skip = "")]
+    [InlineData(VoiceLanguageEnum.Chinese)]
+    [InlineData(VoiceLanguageEnum.English)]
+    [InlineData(VoiceLanguageEnum.Spanish)]
     public async Task GetTodayAwakeningAsync_WithDifferentLanguages_ShouldHandleAllLanguages(VoiceLanguageEnum language)
     {
         // Arrange
@@ -145,7 +145,7 @@ public class AwakeningGAgentTests : AwakeningTestBase
     }
 
     [Fact(Skip = "")]
-    public async Task CreateTestSessionContent_ShouldCreateValidSessionContent()
+    public void CreateTestSessionContent_ShouldCreateValidSessionContent()
     {
         // Arrange & Act
         var sessionContent = CreateTestSessionContent(5);

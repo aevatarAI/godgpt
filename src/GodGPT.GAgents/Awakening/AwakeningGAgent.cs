@@ -144,7 +144,7 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
         }
     }
 
-    public async Task<AwakeningContentDto?> GetTodayAwakeningAsync(VoiceLanguageEnum language)
+    public async Task<AwakeningContentDto?> GetTodayAwakeningAsync(VoiceLanguageEnum language, string? region)
     {
         try
         {
@@ -193,7 +193,7 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
             {
                 try
                 {
-                    var result = await GenerateAwakeningContentAsync(sessionContent, language, null);
+                    var result = await GenerateAwakeningContentAsync(sessionContent, language, region);
                     await CompleteGenerationAsync(result.IsSuccess);
                 }
                 catch (Exception ex)

@@ -36,6 +36,5 @@ public interface IAwakeningGAgent : IGAgent
     /// </summary>
     /// <param name="language">Language type</param>
     /// <returns>Today's awakening content, return null if not generated, includes generation status</returns>
-    [ReadOnly]
-    Task<AwakeningContentDto?> GetTodayAwakeningAsync(VoiceLanguageEnum language);
+    Task<AwakeningContentDto?> GetTodayAwakeningAsync(VoiceLanguageEnum language, string? region = "");
 }
