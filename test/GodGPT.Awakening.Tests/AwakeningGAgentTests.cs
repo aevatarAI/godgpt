@@ -6,7 +6,7 @@ namespace GodGPT.Awakening.Tests;
 public class AwakeningGAgentTests : AwakeningTestBase
 {
     [Fact]
-    public async Task GetTodayAwakeningAsync_WithNoSessionContent_ShouldReturnLevelZero()
+    public async Task GetTodayAwakeningAsync_WithNoSessionContent_ShouldReturnCompleted()
     {
         // Arrange
         var awakeningAgent = await GetAwakeningGAgentAsync();
@@ -16,6 +16,7 @@ public class AwakeningGAgentTests : AwakeningTestBase
         var result = await awakeningAgent.GetTodayAwakeningAsync(language);
 
         // Assert
+        // When no session content exists, should return completed result immediately
         Assert.NotNull(result);
         Assert.Equal(0, result.AwakeningLevel);
         Assert.Equal(string.Empty, result.AwakeningMessage);
@@ -81,6 +82,7 @@ public class AwakeningGAgentTests : AwakeningTestBase
         var result = await awakeningAgent.GetTodayAwakeningAsync(language);
 
         // Assert
+        // Without session content, should return completed result immediately
         Assert.NotNull(result);
         Assert.Equal(0, result.AwakeningLevel);
         Assert.Equal(string.Empty, result.AwakeningMessage);
@@ -88,22 +90,57 @@ public class AwakeningGAgentTests : AwakeningTestBase
     }
 
     [Fact]
-    public async Task GetTodayAwakeningAsync_CalledTwiceInSameDay_ShouldReturnSameResult()
+    public async Task GetTodayAwakeningAsync_WithNoSessionContent_ShouldReturnCompletedImmediately()
     {
-        // Arrange
-        var awakeningAgent = await GetAwakeningGAgentAsync();
+        // Arrange - Use random userId that has no session history
+        var userId = Guid.NewGuid();
+        var awakeningAgent = await GetAwakeningGAgentAsync(userId);
         var language = VoiceLanguageEnum.English;
 
-        // Act
+        // Act - Test user with no session history
+        var result = await awakeningAgent.GetTodayAwakeningAsync(language);
+
+        // Assert - Should return completed result immediately (no session content to process)
+        Assert.NotNull(result);
+        Assert.Equal(0, result.AwakeningLevel);
+        Assert.Equal(string.Empty, result.AwakeningMessage);
+        Assert.Equal(AwakeningStatus.Completed, result.Status);
+    }
+
+    [Fact]
+    public async Task GetTodayAwakeningAsync_WithValidSessionContent_ShouldTriggerAsyncGeneration()
+    {
+        // Arrange
+        var userId = Guid.NewGuid();
+        var awakeningAgent = await GetAwakeningGAgentAsync(userId);
+        var language = VoiceLanguageEnum.English;
+        
+        // Create test session data to simulate having conversation history
+        await CreateTestSessionForUserAsync(userId);
+
+        // Act - First call should trigger async generation
         var result1 = await awakeningAgent.GetTodayAwakeningAsync(language);
+        
+        // The first call might return null with Generating status, or completed with content
+        // depending on whether the async generation completes quickly
+        
+        // Wait for async generation to potentially complete
+        await Task.Delay(500);
+        
+        // Second call should return the same result as the system has been initialized
         var result2 = await awakeningAgent.GetTodayAwakeningAsync(language);
 
         // Assert
         Assert.NotNull(result1);
         Assert.NotNull(result2);
+        
+        // Both calls should return the same result after the generation process
         Assert.Equal(result1.AwakeningLevel, result2.AwakeningLevel);
         Assert.Equal(result1.AwakeningMessage, result2.AwakeningMessage);
         Assert.Equal(result1.Status, result2.Status);
+        
+        // Final status should be Completed
+        Assert.Equal(AwakeningStatus.Completed, result2.Status);
     }
 
     [Fact]
@@ -158,11 +195,13 @@ public class AwakeningGAgentIntegrationTests : AwakeningTestBase
         // Assert
         Assert.NotNull(agent1);
         Assert.NotNull(agent2);
+        
+        // Without session content, both should return completed results immediately
         Assert.NotNull(result1);
         Assert.NotNull(result2);
-        
-        // Both should return level 0 with no session content
         Assert.Equal(0, result1.AwakeningLevel);
         Assert.Equal(0, result2.AwakeningLevel);
+        Assert.Equal(AwakeningStatus.Completed, result1.Status);
+        Assert.Equal(AwakeningStatus.Completed, result2.Status);
     }
 }

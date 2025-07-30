@@ -15,6 +15,7 @@ using Aevatar.GAgents.SemanticKernel.Extensions;
 using Aevatar.Mock;
 using Aevatar.PermissionManagement.Extensions;
 using AutoMapper;
+using GodGPT.GAgents.Awakening.Options;
 using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -141,25 +142,10 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
                 .Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"))
                 .Configure<GoogleAnalyticsOptions>(configuration.GetSection("GoogleAnalytics"))
-                .Configure<TwitterRewardOptions>(options =>
-                {
-                    options.BearerToken = "test-bearer-token";
-                    options.ApiKey = "test-api-key";
-                    options.ApiSecret = "test-api-secret";
-                    options.MonitorHandle = "@GodGPT_";
-                    options.ShareLinkDomain = "https://app.godgpt.fun";
-                    options.SelfAccountId = "test-self-account";
-                    options.PullIntervalMinutes = 30;
-                    options.PullBatchSize = 100;
-                    options.DataRetentionDays = 5;
-                    options.DailyRewardLimit = 500;
-                    options.OriginalTweetReward = 2;
-                    options.MaxTweetsPerUser = 10;
-                    options.MaxUserReward = 20;
-                    options.ShareLinkMultiplier = 1.1;
-                })
                 .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"))
-                .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
+                .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"))
+                .Configure<AwakeningOptions>(configuration.GetSection("Awakening"))
+                .Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
         }
     }
 

@@ -1116,6 +1116,29 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         Logger.LogDebug($"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
         return response;
     }
+    
+    public async Task<List<ChatMessage>?> ChatWithUserId(Guid userId, string systemLLM, string content, string chatId,
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
+    {
+        Logger.LogDebug($"[GodChatGAgent][ChatWithUserId] {userId.ToString()} content:{content} start.");
+        var sw = new Stopwatch();
+        sw.Start();
+
+        var configuration = GetConfiguration();
+        var llm = await configuration.GetSystemLLM();
+        var streamingModeEnabled = await configuration.GetStreamingModeEnabled();
+        
+        var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
+
+        var settings = promptSettings ?? new ExecutionPromptSettings();
+        settings.Temperature = "0.9";
+        
+        var aiChatContextDto = CreateAIChatContext(userId, llm, streamingModeEnabled, content, chatId, promptSettings, isHttpRequest, region);
+        var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
+        sw.Stop();
+        Logger.LogDebug($"[GodChatGAgent][ChatWithUserId] {userId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
+        return response;
+    }
 
     private async Task PushMessageToClientAsync(ResponseStreamGodChat chatMessage)
     {

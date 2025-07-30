@@ -29,9 +29,7 @@ public class AwakeningTestModule : AbpModule
             options.EnableAwakening = true;
             options.MaxRetryAttempts = 2; // Reduced for faster tests
             options.TimeoutSeconds = 10; // Reduced for faster tests
-            options.LLMModel = "gpt-4o-mini";
             options.Temperature = 0.8;
-            options.MaxTokens = 200;
             options.EnableLanguageSpecificPrompt = false; // Disabled by default
             options.PromptTemplate = "Based on the user's recent conversation content: {CONTENT_SUMMARY}, please generate a personalized awakening level (1-10) and an inspiring awakening sentence in {LANGUAGE}. The response should be motivational and reflect the user's current state and interests. Context: {USER_CONTEXT}. Date: {DATE}. Format your response as JSON: {{\"level\": number, \"message\": \"string\"}}";
             options.LanguageInstructions = new Dictionary<VoiceLanguageEnum, string>

@@ -25,8 +25,9 @@ public interface IAwakeningGAgent : IGAgent
     /// </summary>
     /// <param name="sessionContent">Session content</param>
     /// <param name="language">Language type</param>
+    /// <param name="region">Region parameter for LLM service</param>
     /// <returns>Generated awakening content</returns>
-    Task<AwakeningResultDto> GenerateAwakeningContentAsync(SessionContentDto sessionContent, VoiceLanguageEnum language);
+    Task<AwakeningResultDto> GenerateAwakeningContentAsync(SessionContentDto sessionContent, VoiceLanguageEnum language, string? region = "");
     
     /// <summary>
     /// Get today's awakening level and quote, if not generated then generate asynchronously and return null
