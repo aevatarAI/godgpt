@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
 using Aevatar.GAgents.ChatAgent.Dtos;
+using System.Diagnostics;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 
@@ -29,6 +30,11 @@ public class AIAgentStatusProxy :
 
     protected sealed override async Task PerformConfigAsync(AIAgentStatusProxyConfig configuration)
     {
+        var stopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] Start - SessionId: {this.GetPrimaryKey()}, ParentId: {configuration.ParentId}");
+        
+        var initializeStopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] Starting InitializeAsync - SessionId: {this.GetPrimaryKey()}");
         await InitializeAsync(
             new InitializeDto()
             {
@@ -37,12 +43,21 @@ public class AIAgentStatusProxy :
                 StreamingModeEnabled = configuration.StreamingModeEnabled,
                 StreamingConfig = configuration.StreamingConfig
             });
+        initializeStopwatch.Stop();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] InitializeAsync completed - Duration: {initializeStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
+        
+        var raiseEventStopwatch = Stopwatch.StartNew();
         RaiseEvent(new SetStatusProxyConfigLogEvent
         {
             RecoveryDelay = configuration.RequestRecoveryDelay,
             ParentId = configuration.ParentId
         });
         await ConfirmEvents();
+        raiseEventStopwatch.Stop();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
+        
+        stopwatch.Stop();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}, ParentId: {configuration.ParentId}");
     }
 
     public async Task<List<ChatMessage>?> ChatWithHistory(string prompt, List<ChatMessage>? history = null,
