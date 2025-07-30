@@ -64,6 +64,10 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                     services.AddAutoMapper(typeof(GodGPTGAgentModule).Assembly);
                     var mock = new Mock<ILocalEventBus>();
                     services.AddSingleton(typeof(ILocalEventBus), mock.Object);
+                    
+                    // Mock IBlobContainer for testing
+                    var mockBlobContainer = new Mock<Volo.Abp.BlobStoring.IBlobContainer>();
+                    services.AddSingleton(mockBlobContainer.Object);
 
                     services.AddMemoryCache();
                     // Configure logging
