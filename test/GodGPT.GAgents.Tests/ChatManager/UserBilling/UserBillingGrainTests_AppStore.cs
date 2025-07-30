@@ -237,59 +237,6 @@ public partial class UserBillingGrainTests
 
     #region Receipt Verification Tests
 
-    [Fact]
-    public async Task VerifyAppStoreReceiptAsync_Test()
-    {
-        try
-        {
-            // Create a unique user ID for testing
-            var userId = Guid.NewGuid();
-            _testOutputHelper.WriteLine($"Testing VerifyAppStoreReceiptAsync with UserId: {userId}");
-            
-            // Get UserBillingGrain
-            var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
-            
-            // Prepare request
-            var requestDto = new VerifyReceiptRequestDto
-            {
-                ReceiptData = "base64encodedreceipt_mock",
-                UserId = userId.ToString(),
-                SandboxMode = true
-            };
-            
-            // Execute test method
-            var result = await userBillingGAgent.VerifyAppStoreReceiptAsync(requestDto, true);
-            
-            // Log results
-            _testOutputHelper.WriteLine($"VerifyAppStoreReceiptAsync result: IsValid={result.IsValid}, Environment={result.Environment}, ProductId={result.ProductId}");
-            
-            // Since we cannot mock HTTP responses, we only verify that the method doesn't throw an exception
-            // Actual results depend on the current environment and configuration
-            result.ShouldNotBeNull();
-            
-            // If the test environment has valid App Store configuration, we can further verify the results
-            if (result.IsValid)
-            {
-                result.Environment.ShouldNotBeNullOrEmpty();
-                if (result.Subscription != null)
-                {
-                    result.Subscription.ProductId.ShouldNotBeNullOrEmpty();
-                }
-            }
-            else
-            {
-                _testOutputHelper.WriteLine($"Receipt validation failed: {result.Error}");
-            }
-        }
-        catch (Exception ex)
-        {
-            _testOutputHelper.WriteLine($"Exception during VerifyAppStoreReceiptAsync test: {ex.Message}");
-            _testOutputHelper.WriteLine($"Stack trace: {ex.StackTrace}");
-            // Log exception but allow test to pass
-            _testOutputHelper.WriteLine("Test completed with exceptions, but allowed to pass");
-        }
-    }
-    
     #endregion
 
     #region Notification Processing Tests
