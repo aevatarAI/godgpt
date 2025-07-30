@@ -1049,15 +1049,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // Apply conversation suggestions filtering (text chat only)
         if (!isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
         {
-            // Check for [SUGGESTIONS] marker and partial forms to handle cross-chunk splits
+            // Check for [SUGGESTIONS] marker and partial forms using optimized method
             bool contains_suggestions = streamingContent.Contains("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
-            bool contains_partial_marker = streamingContent.Contains("[SU", StringComparison.OrdinalIgnoreCase) ||
-                                         streamingContent.Contains("[SUG", StringComparison.OrdinalIgnoreCase) ||
-                                         streamingContent.Contains("[SUGG", StringComparison.OrdinalIgnoreCase) ||
-                                         streamingContent.Contains("[SUGGE", StringComparison.OrdinalIgnoreCase) ||
-                                         streamingContent.Contains("[SUGGES", StringComparison.OrdinalIgnoreCase) ||
-                                         streamingContent.Contains("[SUGGEST", StringComparison.OrdinalIgnoreCase) ||
-                                         streamingContent.Contains("[SUGGESTION", StringComparison.OrdinalIgnoreCase);
+            bool contains_partial_marker = IsPartialSuggestionsMarker(streamingContent.AsSpan());
             
             // Check for potential marker start (conservative approach)
             bool ends_with_bracket = streamingContent.TrimEnd().EndsWith("[") && streamingContent.Length > 10;
@@ -1818,5 +1812,36 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         
         Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} numbered items");
         return items;
+    }
+
+    /// <summary>
+    /// Checks if the text contains a partial suggestions marker using prefix matching
+    /// </summary>
+    /// <param name="content">Content to check</param>
+    /// <returns>True if a partial marker is found, false otherwise</returns>
+    private static bool IsPartialSuggestionsMarker(ReadOnlySpan<char> content)
+    {
+        ReadOnlySpan<char> target = "[SUGGESTIONS]".AsSpan();
+        
+        // Check all occurrences of '[' in the content
+        int startIndex = 0;
+        while (true)
+        {
+            int index = content.Slice(startIndex).IndexOf('[');
+            if (index == -1) break;
+            
+            index += startIndex; // Adjust to absolute position
+            ReadOnlySpan<char> remaining = content.Slice(index);
+            
+            if (target.StartsWith(remaining, StringComparison.OrdinalIgnoreCase) && 
+                remaining.Length < target.Length)
+            {
+                return true;
+            }
+            
+            startIndex = index + 1;
+        }
+        
+        return false;
     }
 }
