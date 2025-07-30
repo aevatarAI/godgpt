@@ -1,0 +1,9 @@
+global using Xunit;
+global using Microsoft.Extensions.Logging;
+global using Microsoft.Extensions.DependencyInjection;
+global using Microsoft.Extensions.Configuration;
+global using System;
+global using System.Threading.Tasks;
+global using GodGPT.GAgents.Awakening;
+global using GodGPT.GAgents.Awakening.Dtos;
+global using GodGPT.GAgents.SpeechChat;
