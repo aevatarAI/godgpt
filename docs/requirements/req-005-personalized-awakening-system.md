@@ -82,6 +82,13 @@ public interface IAwakeningGAgent : IGAgent
     /// <returns>Today's awakening content, return null if not generated, includes generation status</returns>
     [ReadOnly]
     Task<AwakeningContentDto?> GetTodayAwakeningAsync(VoiceLanguageEnum language);
+    
+    /// <summary>
+    /// Reset today's awakening content to empty values (level=0, message="")
+    /// Keep all other fields unchanged (timestamp, status, etc.)
+    /// </summary>
+    /// <returns>Success status of the reset operation</returns>
+    Task<bool> ResetTodayContentAsync();
 }
 ```
 
@@ -616,6 +623,32 @@ private async Task CompleteGenerationAsync(bool isSuccess)
         _logger.LogWarning($"Awakening generation completed with failure for user {this.GetPrimaryKey()}");
     }
 }
+
+/// <summary>
+/// Reset today's awakening content to empty values (level=0, message="")
+/// Keep all other fields unchanged
+/// </summary>
+public async Task<bool> ResetTodayContentAsync()
+{
+    try
+    {
+        // Simply reset level and message to empty values
+        RaiseEvent(new ResetTodayContentLogEvent
+        {
+            Timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        });
+        
+        await ConfirmEvents();
+        
+        _logger.LogInformation($"Successfully reset awakening content for user {this.GetPrimaryKey()}");
+        return true;
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, $"Failed to reset content for user {this.GetPrimaryKey()}");
+        return false;
+    }
+}
 ```
 
 
@@ -668,6 +701,63 @@ public class ResetAwakeningContentLogEvent : AwakeningLogEvent
 {
     [Id(0)] public long Timestamp { get; set; }
     [Id(1)] public VoiceLanguageEnum Language { get; set; }
+}
+
+[GenerateSerializer]
+public class ResetTodayContentLogEvent : AwakeningLogEvent
+{
+    [Id(0)] public long Timestamp { get; set; }
+}
+```
+
+### Event Application Logic
+
+```csharp
+// Event application in AwakeningGAgent
+protected override void Apply(AwakeningLogEvent logEvent)
+{
+    switch (logEvent)
+    {
+        case GenerateAwakeningLogEvent generateEvent:
+            State.LastGeneratedTimestamp = generateEvent.Timestamp;
+            State.AwakeningLevel = generateEvent.AwakeningLevel;
+            State.AwakeningMessage = generateEvent.AwakeningMessage;
+            State.Language = generateEvent.Language;
+            State.SessionId = generateEvent.SessionId;
+            State.GenerationAttempts = generateEvent.AttemptCount;
+            State.Status = AwakeningStatus.Completed;
+            break;
+            
+        case LockGenerationTimestampLogEvent lockEvent:
+            State.LastGeneratedTimestamp = lockEvent.Timestamp;
+            break;
+            
+        case UpdateAwakeningStatusLogEvent statusEvent:
+            State.Status = statusEvent.Status;
+            break;
+            
+        case ResetAwakeningContentLogEvent resetEvent:
+            State.LastGeneratedTimestamp = resetEvent.Timestamp;
+            State.Language = resetEvent.Language;
+            State.AwakeningLevel = 0;
+            State.AwakeningMessage = string.Empty;
+            State.GenerationAttempts = 0;
+            State.Status = AwakeningStatus.Generating;
+            break;
+            
+        case ResetTodayContentLogEvent resetTodayEvent:
+            // Only reset level and message, preserve all other fields
+            State.AwakeningLevel = 0;
+            State.AwakeningMessage = string.Empty;
+            break;
+            
+        case AwakeningGenerationFailedLogEvent failedEvent:
+            State.Language = failedEvent.Language;
+            State.GenerationAttempts = failedEvent.AttemptCount;
+            State.Status = AwakeningStatus.Completed;
+            // Keep previous content on failure
+            break;
+    }
 }
 ```
 
@@ -785,6 +875,28 @@ public class AwakeningController : ControllerBase
         return Ok(result);
     }
     
+    [HttpPost("reset-content")]
+    public async Task<ActionResult<bool>> ResetTodayContent()
+    {
+        // Get current user's ID from authentication
+        var userId = GetCurrentUserIdFromAuth(); 
+        
+        // Get user's AwakeningGAgent instance
+        var awakeningAgent = _clusterClient.GetGrain<IAwakeningGAgent>(userId);
+        
+        // Reset content to empty values
+        var result = await awakeningAgent.ResetTodayContentAsync();
+        
+        if (result)
+        {
+            return Ok(new { Success = true, Message = "Content reset successfully" });
+        }
+        else
+        {
+            return BadRequest(new { Success = false, Message = "Failed to reset content" });
+        }
+    }
+    
     private Guid GetCurrentUserIdFromAuth()
     {
         // 从 JWT Token 或其他认证方式获取用户ID
@@ -793,6 +905,24 @@ public class AwakeningController : ControllerBase
     }
 }
 ```
+
+## Content Reset Feature
+
+The `ResetTodayContentAsync` method provides a simple way to clear awakening content:
+
+### Purpose
+Reset awakening level to 0 and message to empty string while keeping all other fields unchanged.
+
+### Usage
+```csharp
+var result = await awakeningAgent.ResetTodayContentAsync();
+```
+
+### Behavior
+- Sets `AwakeningLevel = 0`
+- Sets `AwakeningMessage = ""`
+- Preserves all other state fields (timestamp, status, language, etc.)
+- Returns `true` on success, `false` on failure
 
 ## Summary
 
