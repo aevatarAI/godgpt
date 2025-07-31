@@ -835,7 +835,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var initializeStopwatch = Stopwatch.StartNew();
         Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Starting InitializeAsync - SessionId: {this.GetPrimaryKey()}");
        
-        await PublishAsync(this.GetGrainId(),new AIAgentStatusProxyInitializeGEvent()
+        await PublishAsync(proxy.GetGrainId(),new AIAgentStatusProxyInitializeGEvent()
         {
             InitializeDto = new InitializeDto()
             {
