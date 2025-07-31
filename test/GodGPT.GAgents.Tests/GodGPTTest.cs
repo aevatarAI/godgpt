@@ -58,6 +58,8 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         _testOutputHelper.WriteLine($"chatMessage: {JsonConvert.SerializeObject(chatMessage)}");
        // chatMessage.ShouldNotBeEmpty();
         chatMessage.Count.ShouldBe(2);
+        var state = await godChat.GetStateAsync();
+        state.ProxyInitStatuses.ShouldNotBeEmpty();
     }
     
     [Fact]

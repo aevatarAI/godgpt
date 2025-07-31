@@ -608,6 +608,17 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 region, images);
 
         var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
+        var proxyId = aiAgentStatusProxy.GetPrimaryKey();
+        if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out var proxyInitStatus))
+        {
+            throw new Exception("proxy:" + proxyId +"Not start initializ");
+        }
+
+        if (proxyInitStatus != ProxyInitStatus.Initialized)
+        {
+            throw new Exception("proxy:" + proxyId +"Not initialized,status:" + proxyInitStatus.ToString());
+        }
+
         if (aiAgentStatusProxy != null)
         {
             Logger.LogDebug(
@@ -1717,4 +1728,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     {
         throw new NotImplementedException();
     }
+
+    public async Task<GodChatState?> GetStateAsync()
+    {
+        return State;
+    }
+
 }
