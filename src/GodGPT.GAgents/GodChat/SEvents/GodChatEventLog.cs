@@ -1,5 +1,6 @@
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
+using Aevatar.Application.Grains.Common.Constants;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -58,6 +59,13 @@ public class AddChatMessageMetasLogEvent : GodChatEventLog
 public class AddPromptTemplateLogEvent : GodChatEventLog
 {
     [Id(0)] public string PromptTemplate { get; set; } 
+}
+
+[GenerateSerializer]
+public class UpdateProxyInitStatusLogEvent : GodChatEventLog
+{
+    [Id(0)] public Guid ProxyId { get; set; }
+    [Id(1)] public ProxyInitStatus Status { get; set; }
 }
 
 [GenerateSerializer]

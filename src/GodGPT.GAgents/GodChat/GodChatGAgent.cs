@@ -184,6 +184,24 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         // Logger.LogDebug($"[GodChatGAgent][RequestStreamGodChatEvent] end:{JsonConvert.SerializeObject(@event)}");
     }
 
+    [EventHandler]
+    public async Task HandleEventAsync(UpdateProxyInitStatusGEvent @event)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[GodChatGAgent][HandleEventAsync][UpdateProxyInitStatusGEvent] Start - SessionId: {this.GetPrimaryKey()}, ProxyId: {@event.ProxyId}, Status: {@event.Status}");
+        
+        // Update the proxy initialization status
+        RaiseEvent(new UpdateProxyInitStatusLogEvent
+        {
+            ProxyId = @event.ProxyId,
+            Status = @event.Status
+        });
+        await ConfirmEvents();
+        
+        stopwatch.Stop();
+        Logger.LogDebug($"[GodChatGAgent][HandleEventAsync][UpdateProxyInitStatusGEvent] End - Duration: {stopwatch.ElapsedMilliseconds}ms, Status updated to: {@event.Status} for proxy: {@event.ProxyId}");
+    }
+
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
         List<string>? images = null)
@@ -1393,6 +1411,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 break;
             case GodSetMaxHistoryCount godSetMaxHistoryCount:
                 state.MaxHistoryCount = godSetMaxHistoryCount.MaxHistoryCount;
+                break;
+            case UpdateProxyInitStatusLogEvent updateProxyInitStatusLogEvent:
+                state.ProxyInitStatuses[updateProxyInitStatusLogEvent.ProxyId] = updateProxyInitStatusLogEvent.Status;
                 break;
             }
     }
