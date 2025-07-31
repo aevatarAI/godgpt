@@ -34,6 +34,18 @@ public class AIAgentStatusProxy :
         var stopwatch = Stopwatch.StartNew();
         Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] Start - SessionId: {this.GetPrimaryKey()}, ParentId: {configuration.ParentId}");
         
+        var raiseEventStopwatch = Stopwatch.StartNew();
+        RaiseEvent(new SetStatusProxyConfigLogEvent
+        {
+            RecoveryDelay = configuration.RequestRecoveryDelay,
+            ParentId = configuration.ParentId
+        });
+        await ConfirmEvents();
+        raiseEventStopwatch.Stop();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
+        
+        stopwatch.Stop();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}, ParentId: {configuration.ParentId}");
         var initializeStopwatch = Stopwatch.StartNew();
         Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] Starting InitializeAsync - SessionId: {this.GetPrimaryKey()}");
        
@@ -50,19 +62,7 @@ public class AIAgentStatusProxy :
         
         initializeStopwatch.Stop();
         Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] InitializeAsync completed - Duration: {initializeStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
-        
-        var raiseEventStopwatch = Stopwatch.StartNew();
-        RaiseEvent(new SetStatusProxyConfigLogEvent
-        {
-            RecoveryDelay = configuration.RequestRecoveryDelay,
-            ParentId = configuration.ParentId
-        });
-        await ConfirmEvents();
-        raiseEventStopwatch.Stop();
-        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
-        
-        stopwatch.Stop();
-        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}, ParentId: {configuration.ParentId}");
+
     }
     private async Task PublishAsync<T>(GrainId grainId,T @event) where T : EventBase{
         var grainIdString = grainId.ToString();
