@@ -781,11 +781,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         return await GetProxyByRegionAsync(DefaultRegion);
     }
 
-    private async Task<List<Guid>> InitializeRegionProxiesAsync(string region)
+ private async Task<List<Guid>> InitializeRegionProxiesAsync(string region)
     {
         var stopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Start - Region: {region}, SessionId: {this.GetPrimaryKey()}");
-        
         var llmsForRegion = GetLLMsForRegion(region);
         if (llmsForRegion.IsNullOrEmpty())
         {
@@ -801,67 +799,55 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
         var proxies = new List<Guid>();
         var totalProxyStopwatch = Stopwatch.StartNew();
-        
-        var llm = llmsForRegion.FirstOrDefault();
-        var proxyStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Creating proxy for LLM: {llm}");
-            
-        var systemPrompt = State.PromptTemplate;
-        if (llm != ProxyGPTModelName)
+        foreach (var llm in llmsForRegion)
         {
-            systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
-        }
-        else
-        {
-            systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
-        }
-        //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
-            
-        var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
-            
-        var configStopwatch = Stopwatch.StartNew();
-        await proxy.ConfigAsync(new AIAgentStatusProxyConfig
-        {
-            Instructions = systemPrompt,
-            LLMConfig = new LLMConfigDto { SystemLLM = llm },
-            StreamingModeEnabled = true,
-            StreamingConfig = new StreamingConfig { BufferingSize = 32 },
-            RequestRecoveryDelay = RequestRecoveryDelay,
-            ParentId = this.GetPrimaryKey()
-        });
-        configStopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Proxy config for {llm} - Duration: {configStopwatch.ElapsedMilliseconds}ms");
-
-        var initializeStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Starting InitializeAsync - SessionId: {this.GetPrimaryKey()}");
-       
-        await PublishAsync(proxy.GetGrainId(),new AIAgentStatusProxyInitializeGEvent()
-        {
-            InitializeDto = new InitializeDto()
+            var proxyStopwatch = Stopwatch.StartNew();
+            var systemPrompt = State.PromptTemplate;
+            if (llm != ProxyGPTModelName)
+            {
+                systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+            }
+            else
+            {
+                systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+            }
+            //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
+            var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
+            var configStopwatch = Stopwatch.StartNew();
+            await proxy.ConfigAsync(new AIAgentStatusProxyConfig
             {
                 Instructions = systemPrompt,
                 LLMConfig = new LLMConfigDto { SystemLLM = llm },
                 StreamingModeEnabled = true,
-                StreamingConfig = new StreamingConfig { BufferingSize = 32 }
-            }
-        });
-        
-        initializeStopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] InitializeAsync completed - Duration: {initializeStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
-
-        
-        
-        proxies.Add(proxy.GetPrimaryKey());
-        proxyStopwatch.Stop();
-        Logger.LogDebug(
-            $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region} with LLM {llm}. id {proxy.GetPrimaryKey().ToString()} - Duration: {proxyStopwatch.ElapsedMilliseconds}ms");
-        
+                StreamingConfig = new StreamingConfig { BufferingSize = 32 },
+                RequestRecoveryDelay = RequestRecoveryDelay,
+                ParentId = this.GetPrimaryKey()
+            });
+            configStopwatch.Stop();
+            Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Proxy config for {llm} - Duration: {configStopwatch.ElapsedMilliseconds}ms");
+            await PublishAsync(proxy.GetGrainId(),new AIAgentStatusProxyInitializeGEvent()
+            {
+                InitializeDto = new InitializeDto()
+                {
+                    Instructions = systemPrompt,
+                    LLMConfig = new LLMConfigDto { SystemLLM = llm },
+                    StreamingModeEnabled = true,
+                    StreamingConfig = new StreamingConfig { BufferingSize = 32 }
+                }
+            });
+            proxies.Add(proxy.GetPrimaryKey());
+            proxyStopwatch.Stop();
+            Logger.LogDebug(
+                $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region} with LLM {llm}. id {proxy.GetPrimaryKey().ToString()} - Duration: {proxyStopwatch.ElapsedMilliseconds}ms");
+            Logger.LogDebug(
+                $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region} with LLM {llm}. id {proxy.GetPrimaryKey().ToString()}");
+        }
         totalProxyStopwatch.Stop();
         stopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, ProxyCount: {proxies.Count}, TotalProxyTime: {totalProxyStopwatch.ElapsedMilliseconds}ms");
-
         return proxies;
     }
+
     private async Task PublishAsync<T>(GrainId grainId,T @event) where T : EventBase{
         var grainIdString = grainId.ToString();
         var streamId = StreamId.Create(AevatarOptions!.StreamNamespace, grainIdString);
