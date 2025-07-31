@@ -1081,6 +1081,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 // Start accumulation - block all subsequent chunks from frontend
                 _isAccumulatingForSuggestions = true;
                 _accumulatedSuggestionContent = streamingContent;
+                RequestContext.Set("AccumulatedContent", true); // Set accumulation flag
                 streamingContent = ""; // Block current chunk
             }
             else if (_isAccumulatingForSuggestions)
@@ -1108,6 +1109,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // Reset accumulation state
             _isAccumulatingForSuggestions = false;
             _accumulatedSuggestionContent = "";
+            RequestContext.Remove("AccumulatedContent"); // Clean up accumulation flag
         }
 
         var partialMessage = new ResponseStreamGodChat()
@@ -1131,44 +1133,46 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // For the last chunk, use clean content and add conversation suggestions if available
         if (chatContent.IsLastChunk)
         {
-            // Add conversation suggestions to the last chunk if available
-            var storedSuggestions = RequestContext.Get("ConversationSuggestions") as List<string>;
-            if (storedSuggestions?.Any() == true)
+            // Prioritize accumulation mechanism to prevent duplication
+            if (_isAccumulatingForSuggestions)
             {
-                partialMessage.SuggestedItems = storedSuggestions;
-                Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Added {storedSuggestions.Count} suggestions to last chunk");
-                
-                // Check if we just completed accumulation - if so, skip old replacement logic
-                // because streamingContent already contains the correct clean content
-                var wasAccumulating = RequestContext.Get("AccumulatedContent") != null;
-                
-                if (!wasAccumulating)
+                Logger.LogDebug($"Using accumulation result, skipping old replacement logic");
+                // streamingContent already contains the correct clean content from accumulation
+                // Skip all old replacement logic to prevent duplication
+            }
+            else
+            {
+                // Add conversation suggestions to the last chunk if available
+                var storedSuggestions = RequestContext.Get("ConversationSuggestions") as List<string>;
+                if (storedSuggestions?.Any() == true)
                 {
-                    // Only use old replacement logic if we weren't in accumulation mode
-                    // This ensures we don't accidentally replace a small last chunk with full content
+                    partialMessage.SuggestedItems = storedSuggestions;
+                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Added {storedSuggestions.Count} suggestions to last chunk");
+                    
                     var cleanMainContent = RequestContext.Get("CleanMainContent") as string;
                     if (!string.IsNullOrEmpty(cleanMainContent))
                     {
-                        // Safety check: avoid replacing small chunk with much larger content
+                        // Enhanced safety check to prevent duplication
                         var currentChunkLength = partialMessage.Response?.Length ?? 0;
                         var cleanContentLength = cleanMainContent.Length;
                         
-                        // Only replace if suggestions were actually found (indicated by storedSuggestions)
-                        // and clean content is reasonably sized relative to current chunk
-                        if (currentChunkLength == 0 || cleanContentLength <= currentChunkLength * 2)
+                        // Stricter conditions to prevent duplication
+                        bool isSafeToReplace = currentChunkLength > 0 && // Never replace empty chunks
+                                             cleanContentLength <= currentChunkLength * 1.5 && // Reduced ratio
+                                             cleanContentLength <= 30 && // Strict absolute limit
+                                             !cleanMainContent.Contains(partialMessage.Response ?? "") && // No content overlap
+                                             cleanContentLength < (partialMessage.Response?.Length ?? 0) + 20; // Size similarity check
+                        
+                        if (isSafeToReplace)
                         {
                             partialMessage.Response = cleanMainContent;
-                            Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Replaced response with clean content. Current: {currentChunkLength}, Clean: {cleanContentLength}");
+                            Logger.LogDebug($"Replaced response with clean content. Current: {currentChunkLength}, Clean: {cleanContentLength}");
                         }
                         else
                         {
-                            Logger.LogWarning($"[GodChatGAgent][ChatMessageCallbackAsync] Skipped replacing response to avoid duplication. Current: {currentChunkLength}, Clean: {cleanContentLength}");
+                            Logger.LogWarning($"Skipped replacing response to avoid duplication. Current: {currentChunkLength}, Clean: {cleanContentLength}");
                         }
                     }
-                }
-                else
-                {
-                    Logger.LogInformation($"[ACCUMULATION_FILTER] Skipped old replacement logic - using accumulation result");
                 }
             }
         }
