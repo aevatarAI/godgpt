@@ -63,15 +63,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     private static readonly Regex MarkdownTableRegex = new Regex(@"\|.*?\|", RegexOptions.Compiled);
     private static readonly Regex MarkdownStrikethroughRegex = new Regex(@"~~([^~]+)~~", RegexOptions.Compiled);
     private static readonly Regex EmojiRegex = new Regex(@"[\u2600-\u26FF]|[\u2700-\u27BF]", RegexOptions.Compiled);
-    public GodChatGAgent(ILocalizationService localizationService)
-    {
-        _localizationService = localizationService;
 
-    }
-    public GodChatGAgent(ISpeechService speechService, IOptionsMonitor<LLMRegionOptions> llmRegionOptions)
+    public GodChatGAgent(ISpeechService speechService, IOptionsMonitor<LLMRegionOptions> llmRegionOptions,ILocalizationService localizationService)
     {
         _speechService = speechService;
         _llmRegionOptions = llmRegionOptions;
+        _localizationService = localizationService;
     }
 
     protected override async Task ChatPerformConfigAsync(ChatConfigDto configuration)
