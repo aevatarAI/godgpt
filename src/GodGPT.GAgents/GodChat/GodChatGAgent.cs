@@ -790,61 +790,64 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogDebug(
                 $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region}, LLM not config");
             stopwatch.Stop();
-            Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] End (no LLMs) - Duration: {stopwatch.ElapsedMilliseconds}ms");
+            Logger.LogDebug(
+                $"[GodChatGAgent][InitializeRegionProxiesAsync] End (no LLMs) - Duration: {stopwatch.ElapsedMilliseconds}ms");
             return new List<Guid>();
         }
-        
+
         var oldSystemPrompt = await GetConfiguration().GetPrompt();
         //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} old system prompt: {oldSystemPrompt}");
 
         var proxies = new List<Guid>();
         var totalProxyStopwatch = Stopwatch.StartNew();
-        foreach (var llm in llmsForRegion)
+        var proxyStopwatch = Stopwatch.StartNew();
+        var systemPrompt = State.PromptTemplate;
+        var llm = llmsForRegion.FirstOrDefault();
+        if (llm != ProxyGPTModelName)
         {
-            var proxyStopwatch = Stopwatch.StartNew();
-            var systemPrompt = State.PromptTemplate;
-            if (llm != ProxyGPTModelName)
-            {
-                systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
-            }
-            else
-            {
-                systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
-            }
-            //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
-            var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
-            var configStopwatch = Stopwatch.StartNew();
-            await proxy.ConfigAsync(new AIAgentStatusProxyConfig
+            systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+        }
+        else
+        {
+            systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+        }
+
+        //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
+        var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
+        var configStopwatch = Stopwatch.StartNew();
+        await proxy.ConfigAsync(new AIAgentStatusProxyConfig
+        {
+            Instructions = systemPrompt,
+            LLMConfig = new LLMConfigDto { SystemLLM = llm },
+            StreamingModeEnabled = true,
+            StreamingConfig = new StreamingConfig { BufferingSize = 32 },
+            RequestRecoveryDelay = RequestRecoveryDelay,
+            ParentId = this.GetPrimaryKey()
+        });
+        configStopwatch.Stop();
+        Logger.LogDebug(
+            $"[GodChatGAgent][InitializeRegionProxiesAsync] Proxy config for {llm} - Duration: {configStopwatch.ElapsedMilliseconds}ms");
+        await PublishAsync(proxy.GetGrainId(), new AIAgentStatusProxyInitializeGEvent()
+        {
+            InitializeDto = new InitializeDto()
             {
                 Instructions = systemPrompt,
                 LLMConfig = new LLMConfigDto { SystemLLM = llm },
                 StreamingModeEnabled = true,
-                StreamingConfig = new StreamingConfig { BufferingSize = 32 },
-                RequestRecoveryDelay = RequestRecoveryDelay,
-                ParentId = this.GetPrimaryKey()
-            });
-            configStopwatch.Stop();
-            Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Proxy config for {llm} - Duration: {configStopwatch.ElapsedMilliseconds}ms");
-            await PublishAsync(proxy.GetGrainId(),new AIAgentStatusProxyInitializeGEvent()
-            {
-                InitializeDto = new InitializeDto()
-                {
-                    Instructions = systemPrompt,
-                    LLMConfig = new LLMConfigDto { SystemLLM = llm },
-                    StreamingModeEnabled = true,
-                    StreamingConfig = new StreamingConfig { BufferingSize = 32 }
-                }
-            });
-            proxies.Add(proxy.GetPrimaryKey());
-            proxyStopwatch.Stop();
-            Logger.LogDebug(
-                $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region} with LLM {llm}. id {proxy.GetPrimaryKey().ToString()} - Duration: {proxyStopwatch.ElapsedMilliseconds}ms");
-            Logger.LogDebug(
-                $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region} with LLM {llm}. id {proxy.GetPrimaryKey().ToString()}");
-        }
+                StreamingConfig = new StreamingConfig { BufferingSize = 32 }
+            }
+        });
+        proxies.Add(proxy.GetPrimaryKey());
+        proxyStopwatch.Stop();
+        Logger.LogDebug(
+            $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region} with LLM {llm}. id {proxy.GetPrimaryKey().ToString()} - Duration: {proxyStopwatch.ElapsedMilliseconds}ms");
+        Logger.LogDebug(
+            $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region} with LLM {llm}. id {proxy.GetPrimaryKey().ToString()}");
+
         totalProxyStopwatch.Stop();
         stopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, ProxyCount: {proxies.Count}, TotalProxyTime: {totalProxyStopwatch.ElapsedMilliseconds}ms");
+        Logger.LogDebug(
+            $"[GodChatGAgent][InitializeRegionProxiesAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, ProxyCount: {proxies.Count}, TotalProxyTime: {totalProxyStopwatch.ElapsedMilliseconds}ms");
         return proxies;
     }
 
