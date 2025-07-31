@@ -204,7 +204,12 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
             });
 
             // Return null with generating status - client should poll for completion
-            return null;
+            return new AwakeningContentDto
+            {
+                AwakeningLevel = 0,
+                AwakeningMessage = string.Empty,
+                Status = AwakeningStatus.Generating
+            };
         }
         catch (Exception ex)
         {
@@ -640,6 +645,74 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
             _logger.LogWarning("Awakening generation completed with failure for user {UserId}", this.GetPrimaryKey());
         }
     }
+
+    public async Task<bool> ResetAwakeningStateForTestingAsync()
+    {
+        try
+        {
+            _logger.LogInformation("Resetting awakening state for testing for user {UserId}", this.GetPrimaryKey());
+            
+            // Trigger reset event
+            RaiseEvent(new ResetAwakeningStateForTestingLogEvent
+            {
+                ResetAt = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
+            
+            _logger.LogInformation("Successfully reset awakening state for testing for user {UserId}", this.GetPrimaryKey());
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reset awakening state for testing for user {UserId}", this.GetPrimaryKey());
+            return false;
+        }
+    }
+
+    protected sealed override void GAgentTransitionState(AwakeningState state,
+        StateLogEventBase<AwakeningLogEvent> @event)
+    {
+        switch (@event)
+        {
+            case ResetAwakeningContentLogEvent resetEvent:
+                state.LastGeneratedTimestamp = resetEvent.Timestamp;
+                state.Language = resetEvent.Language;
+                state.AwakeningMessage = string.Empty;
+                state.AwakeningLevel = 0;
+                state.SessionId = string.Empty;
+                state.GenerationAttempts = 0;
+                state.Status = AwakeningStatus.NotStarted;
+                break;
+
+            case LockGenerationTimestampLogEvent lockEvent:
+                state.LastGeneratedTimestamp = lockEvent.Timestamp;
+                break;
+
+            case UpdateAwakeningStatusLogEvent statusEvent:
+                state.Status = statusEvent.Status;
+                break;
+
+            case GenerateAwakeningLogEvent generateEvent:
+                state.LastGeneratedTimestamp = generateEvent.Timestamp;
+                state.AwakeningLevel = generateEvent.AwakeningLevel;
+                state.AwakeningMessage = generateEvent.AwakeningMessage;
+                state.Language = generateEvent.Language;
+                state.SessionId = generateEvent.SessionId;
+                state.GenerationAttempts = generateEvent.AttemptCount;
+                break;
+
+            case ResetAwakeningStateForTestingLogEvent resetTestingEvent:
+                state.LastGeneratedTimestamp = 0;
+                state.AwakeningLevel = 0;
+                state.AwakeningMessage = string.Empty;
+                state.Language = VoiceLanguageEnum.Unset;
+                state.SessionId = string.Empty;
+                state.GenerationAttempts = 0;
+                state.Status = AwakeningStatus.NotStarted;
+                break;
+    }
+}
 
     #endregion
 }

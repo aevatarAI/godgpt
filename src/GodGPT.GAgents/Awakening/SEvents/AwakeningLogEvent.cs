@@ -56,3 +56,12 @@ public class ResetAwakeningContentLogEvent : AwakeningLogEvent
     [Id(0)] public long Timestamp { get; set; }
     [Id(1)] public VoiceLanguageEnum Language { get; set; }
 }
+
+/// <summary>
+/// Event for resetting awakening state for testing purposes
+/// </summary>
+[GenerateSerializer]
+public class ResetAwakeningStateForTestingLogEvent : AwakeningLogEvent
+{
+    [Id(0)] public DateTime ResetAt { get; set; } = DateTime.UtcNow;
+}

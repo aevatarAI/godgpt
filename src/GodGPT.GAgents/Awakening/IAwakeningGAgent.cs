@@ -37,4 +37,11 @@ public interface IAwakeningGAgent : IGAgent
     /// <param name="language">Language type</param>
     /// <returns>Today's awakening content, return null if not generated, includes generation status</returns>
     Task<AwakeningContentDto?> GetTodayAwakeningAsync(VoiceLanguageEnum language, string? region = "");
+    
+    /// <summary>
+    /// Reset awakening generation state for testing purposes
+    /// This will clear the generated timestamp and allow regeneration of awakening content
+    /// </summary>
+    /// <returns>True if reset was successful</returns>
+    Task<bool> ResetAwakeningStateForTestingAsync();
 }
