@@ -27,6 +27,9 @@ using Orleans.Concurrency;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Core;
 using Aevatar.Core.Placement;
+using Microsoft.Extensions.DependencyInjection;
+using Volo.Abp.BlobStoring;
+using Volo.Abp.Threading;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -1351,8 +1354,41 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                  {
                      break;
                  }
-                 State.PromptTemplate = addPromptTemplateLogEvent.PromptTemplate;
+                 state.PromptTemplate = addPromptTemplateLogEvent.PromptTemplate;
                  break;
+            case GodAddChatHistoryLogEvent godAddChatHistoryLogEvent :
+                if (godAddChatHistoryLogEvent.ChatList.Count > 0)
+                {
+                    state.ChatHistory.AddRange(godAddChatHistoryLogEvent.ChatList);
+                }
+
+                if (state.ChatHistory.Count() > state.MaxHistoryCount)
+                {
+                    var toDeleteImageKeys = new List<string>();
+                    var recordsToDelete = state.ChatHistory.Take(state.ChatHistory.Count() - state.MaxHistoryCount);
+                    foreach (var record in recordsToDelete)
+                    {
+                        if (record.ImageKeys != null && record.ImageKeys.Count > 0)
+                        {
+                            toDeleteImageKeys.AddRange(record.ImageKeys);
+                        }
+                    }
+
+                    if (toDeleteImageKeys.Any())
+                    {
+                        var blobContainer = ServiceProvider.GetRequiredService<IBlobContainer>();
+                        var downloadTasks = toDeleteImageKeys.Select(async key =>
+                        {
+                            await blobContainer.DeleteAsync(key);
+                        });
+
+                        AsyncHelper.RunSync(async () => await Task.WhenAll(downloadTasks));
+                    }
+
+                    state.ChatHistory.RemoveRange(0, state.ChatHistory.Count() - state.MaxHistoryCount);
+                }
+
+                break;
             }
     }
 
