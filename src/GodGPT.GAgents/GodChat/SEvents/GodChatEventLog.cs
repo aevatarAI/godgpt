@@ -59,3 +59,9 @@ public class AddPromptTemplateLogEvent : GodChatEventLog
 {
     [Id(0)] public string PromptTemplate { get; set; } 
 }
+
+[GenerateSerializer]
+public class GodSetMaxHistoryCount : GodChatEventLog
+{
+    [Id(0)] public int MaxHistoryCount { get; set; }
+}

@@ -110,6 +110,17 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         });
         await ConfirmEvents();
 
+        var maxHistoryCount = configuration.MaxHistoryCount;
+        if (maxHistoryCount > 100)
+        {
+            maxHistoryCount = 100;
+        }
+
+        if (maxHistoryCount == 0)
+        {
+            maxHistoryCount = 10;
+        }
+        RaiseEvent(new GodSetMaxHistoryCount() { MaxHistoryCount = maxHistoryCount });
         stopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][ChatPerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
     }
@@ -1362,10 +1373,16 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     state.ChatHistory.AddRange(godAddChatHistoryLogEvent.ChatList);
                 }
 
-                if (state.ChatHistory.Count() > state.MaxHistoryCount)
+                var maxHistoryCount = 32;
+                if (state.MaxHistoryCount > 0)
+                {
+                    maxHistoryCount = state.MaxHistoryCount;
+                }
+
+                if (state.ChatHistory.Count() > maxHistoryCount)
                 {
                     var toDeleteImageKeys = new List<string>();
-                    var recordsToDelete = state.ChatHistory.Take(state.ChatHistory.Count() - state.MaxHistoryCount);
+                    var recordsToDelete = state.ChatHistory.Take(state.ChatHistory.Count() - maxHistoryCount);
                     foreach (var record in recordsToDelete)
                     {
                         if (record.ImageKeys != null && record.ImageKeys.Count > 0)
@@ -1385,9 +1402,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                         AsyncHelper.RunSync(async () => await Task.WhenAll(downloadTasks));
                     }
 
-                    state.ChatHistory.RemoveRange(0, state.ChatHistory.Count() - state.MaxHistoryCount);
+                    state.ChatHistory.RemoveRange(0, state.ChatHistory.Count() - maxHistoryCount);
                 }
-
+                break;
+            case GodSetMaxHistoryCount godSetMaxHistoryCount:
+                state.MaxHistoryCount = godSetMaxHistoryCount.MaxHistoryCount;
                 break;
             }
     }
