@@ -51,6 +51,10 @@ public class TestSiloConfigurator : ISiloConfigurator
             // Configure TwitterRewardOptions from configuration
             services.Configure<Aevatar.Application.Grains.Common.Options.TwitterRewardOptions>(
                 configuration.GetSection("TwitterReward"));
+            
+            // Configure LLMRegionOptions from configuration
+            services.Configure<Aevatar.Application.Grains.Common.Options.LLMRegionOptions>(
+                configuration.GetSection("LLMRegion"));
         });
     }
 }

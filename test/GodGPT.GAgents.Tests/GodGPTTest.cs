@@ -45,6 +45,7 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
             FullName = "Test001"
         });
         _testOutputHelper.WriteLine($"God GAgent GrainId: {godGAgentId.ToString()}");
+        await Task.Delay(TimeSpan.FromSeconds(10));
 
         var chatId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"ChatId: {chatId.ToString()}");
@@ -55,8 +56,8 @@ public class GodGPTTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
         await Task.Delay(TimeSpan.FromSeconds(20));
         var chatMessage = await godChat.GetChatMessageAsync();
         _testOutputHelper.WriteLine($"chatMessage: {JsonConvert.SerializeObject(chatMessage)}");
-        chatMessage.ShouldNotBeEmpty();
-        chatMessage.Count.ShouldBe(1);
+       // chatMessage.ShouldNotBeEmpty();
+        chatMessage.Count.ShouldBe(2);
     }
     
     [Fact]

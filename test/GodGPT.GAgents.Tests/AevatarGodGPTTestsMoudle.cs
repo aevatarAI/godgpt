@@ -20,5 +20,7 @@ public class AevatarGodGPTTestsMoudle : AbpModule
         
         //TwitterRewardOptions
         Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
+        Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
+
     }
 }
