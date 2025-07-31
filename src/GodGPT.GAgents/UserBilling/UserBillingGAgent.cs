@@ -2496,8 +2496,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var invoiceDetail = invoiceDetails.FirstOrDefault(t => t.InvoiceId == transactionInfo.TransactionId);
         if (invoiceDetail != null)
         {
-            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, originaltransaction: {Id}, trancaction: {trancactionId}",
-                userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
+            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] {UserId}, {trancactionId}, {Id}, Transaction processed.",
+                userId, transactionInfo.TransactionId, transactionInfo.OriginalTransactionId);
             return;
         }
 
