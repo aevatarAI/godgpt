@@ -8,6 +8,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
+using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.GEvents;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Invitation;
@@ -817,6 +818,25 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         configStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Proxy config for {llm} - Duration: {configStopwatch.ElapsedMilliseconds}ms");
 
+        var initializeStopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] Starting InitializeAsync - SessionId: {this.GetPrimaryKey()}");
+       
+        await PublishAsync(this.GetGrainId(),new AIAgentStatusProxyInitializeGEvent()
+        {
+            InitializeDto = new InitializeDto()
+            {
+                Instructions = systemPrompt,
+                LLMConfig = new LLMConfigDto { SystemLLM = llm },
+                StreamingModeEnabled = true,
+                StreamingConfig = new StreamingConfig { BufferingSize = 32 }
+            }
+        });
+        
+        initializeStopwatch.Stop();
+        Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] InitializeAsync completed - Duration: {initializeStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
+
+        
+        
         proxies.Add(proxy.GetPrimaryKey());
         proxyStopwatch.Stop();
         Logger.LogDebug(
@@ -828,7 +848,13 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
         return proxies;
     }
-
+    private async Task PublishAsync<T>(GrainId grainId,T @event) where T : EventBase{
+        var grainIdString = grainId.ToString();
+        var streamId = StreamId.Create(AevatarOptions!.StreamNamespace, grainIdString);
+        var stream = StreamProvider.GetStream<EventWrapperBase>(streamId);
+        var eventWrapper = new EventWrapper<T>(@event, Guid.NewGuid(), this.GetGrainId());
+        await stream.OnNextAsync(eventWrapper);
+    }
     private List<string> GetLLMsForRegion(string region)
     {
         var regionToLLMsMap = _llmRegionOptions.CurrentValue.RegionToLLMsMap;
