@@ -1772,6 +1772,25 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // 10. Process based on notification type and subtype
             switch (notificationTypeEnum)
             {
+                case AppStoreNotificationType.SUBSCRIBED:
+                    // Handle new subscription
+                    if (subtypeEnum == AppStoreNotificationSubtype.INITIAL_BUY)
+                    {
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Initial subscription purchase",
+                            userId.ToString(), signedTransactionInfo.TransactionId);
+                    }
+                    else if (subtypeEnum == AppStoreNotificationSubtype.RESUBSCRIBE)
+                    {
+                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Resubscription to same or different subscription in group",
+                        userId.ToString(), signedTransactionInfo.TransactionId);
+                    }
+                    await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
+                    _logger.LogInformation(
+                        "[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Subscribed",
+                        userId.ToString(), signedTransactionInfo.TransactionId);
+                    //Report payment success to Google Analytics for completed payments
+                    _ = ReportPaymentSuccessAsync(userId, signedTransactionInfo.TransactionId);
+                    break;
                 case AppStoreNotificationType.DID_RENEW:
                     // Handle successful renewal
                     await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
@@ -1847,19 +1866,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Purchase refunded",
                         userId.ToString(), signedTransactionInfo.TransactionId);
                     await HandleRefundAsync(userId.ToString(), appStoreTransactionInfo);
-                    break;
-                case AppStoreNotificationType.SUBSCRIBED:
-                    // Handle new subscription
-                    if (subtypeEnum == AppStoreNotificationSubtype.INITIAL_BUY)
-                    {
-                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Initial subscription purchase");
-                        await HandleInitialPurchaseAsync(userId.ToString(), appStoreTransactionInfo);
-                    }
-                    else if (subtypeEnum == AppStoreNotificationSubtype.RESUBSCRIBE)
-                    {
-                        _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] Resubscription to same or different subscription in group");
-                        await HandleRenewalAsync(userId.ToString(), appStoreTransactionInfo);
-                    }
                     break;
                 case AppStoreNotificationType.CONSUMPTION_REQUEST: // Handle consumption data request for refund
                 case AppStoreNotificationType.DID_FAIL_TO_RENEW: // Handle renewal failure
@@ -2041,30 +2047,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
-    private async Task HandleInitialPurchaseAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
-    {
-        if (string.IsNullOrEmpty(userId))
-        {
-            _logger.LogWarning("[UserBillingGAgent][HandleInitialPurchaseAsync] UserId is empty for transaction: {Id}", 
-                transactionInfo.OriginalTransactionId);
-            return;
-        }
-        
-        _logger.LogInformation("[UserBillingGAgent][HandleInitialPurchaseAsync] Processing initial purchase for user: {UserId}", userId);
-    }
-    
-    private async Task HandleRenewalAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
-    {
-        if (string.IsNullOrEmpty(userId))
-        {
-            _logger.LogWarning("[UserBillingGAgent][HandleRenewalAsync] UserId is empty for transaction: {Id}", 
-                transactionInfo.OriginalTransactionId);
-            return;
-        }
-        
-        _logger.LogInformation("[UserBillingGAgent][HandleRenewalAsync] Processing renewal for user: {UserId}", userId);
-    }
-    
     private async Task HandleRefundAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
     {
         if (string.IsNullOrEmpty(userId))
@@ -2127,6 +2109,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     public async Task<VerifyReceiptResponseDto> VerifyAppStoreTransactionAsync(VerifyReceiptRequestDto requestDto, bool savePaymentEnabled)
     {
+        _logger.LogDebug("[UserBillingGAgent][VerifyAppStoreTransactionAsync] verify transaction. {UserId}, {TransactionId}, {IsSandbox}",
+            requestDto.UserId, requestDto.TransactionId, requestDto.SandboxMode);
         try
         {
             var transactionId = requestDto.TransactionId;
@@ -2145,7 +2129,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             }
             
             // Now we have a transactionId, verify it using App Store API
-            _logger.LogInformation("[UserBillingGAgent][VerifyAppStoreTransactionAsync] Verifying transaction: {TransactionId}", transactionId);
+            _logger.LogInformation("[UserBillingGAgent][VerifyAppStoreTransactionAsync] {UserId}, {TransactionId} Verifying transaction",
+                requestDto.UserId, transactionId);
             
             var transactionResult = await GetAppStoreTransactionInfoAsync(transactionId, environment);
             
@@ -2205,8 +2190,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             if (!string.IsNullOrEmpty(requestDto.UserId) && Guid.TryParse(requestDto.UserId, out var userId) && savePaymentEnabled)
             {
                 // We need to create or update subscription record
-                _logger.LogInformation("[UserBillingGAgent][VerifyAppStoreTransactionAsync] Creating subscription for user: {UserId}", userId);
-                //await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
+                _logger.LogInformation("[UserBillingGAgent][VerifyAppStoreTransactionAsync] {UserId}, {TransactionId}, {OriginalTransactionId}, Creating subscription", 
+                    requestDto.UserId, transactionInfo.TransactionId, transactionInfo.OriginalTransactionId);
                 await HandleDidRenewAsync(userId, transactionInfo, null);
             }
             
@@ -2237,6 +2222,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     
     public async Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto createSubscriptionDto)
     {
+        _logger.LogDebug("[UserBillingGAgent][CreateAppStoreSubscriptionAsync] create app store subscription {UserId}, {TransactionId}, {IsSandbox}",
+            this.GetPrimaryKey().ToString(), createSubscriptionDto.TransactionId, createSubscriptionDto.SandboxMode);
         try
         {
             // 1. Verify App Store receipt
@@ -2509,8 +2496,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var invoiceDetail = invoiceDetails.FirstOrDefault(t => t.InvoiceId == transactionInfo.TransactionId);
         if (invoiceDetail != null)
         {
-            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] Transaction processed user {UserId}, originaltransaction: {Id}, trancaction: {trancactionId}",
-                userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
+            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] {UserId}, {trancactionId}, {Id}, Transaction processed.",
+                userId, transactionInfo.TransactionId, transactionInfo.OriginalTransactionId);
             return;
         }
 
