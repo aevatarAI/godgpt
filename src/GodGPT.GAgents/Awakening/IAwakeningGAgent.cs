@@ -44,4 +44,11 @@ public interface IAwakeningGAgent : IGAgent
     /// </summary>
     /// <returns>True if reset was successful</returns>
     Task<bool> ResetAwakeningStateForTestingAsync();
+    
+    /// <summary>
+    /// Reset today's awakening content to empty values (level=0, message="")
+    /// Keep all other fields unchanged (timestamp, status, language, etc.)
+    /// </summary>
+    /// <returns>Success status of the reset operation</returns>
+    Task<bool> ResetTodayContentAsync();
 }

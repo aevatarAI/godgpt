@@ -65,3 +65,11 @@ public class ResetAwakeningStateForTestingLogEvent : AwakeningLogEvent
 {
     [Id(0)] public DateTime ResetAt { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Event for resetting today's awakening content to empty values
+/// </summary>
+[GenerateSerializer]
+public class ResetTodayContentLogEvent : AwakeningLogEvent
+{
+}

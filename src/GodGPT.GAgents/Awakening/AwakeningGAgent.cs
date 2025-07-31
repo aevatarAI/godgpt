@@ -670,6 +670,25 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
         }
     }
 
+    public async Task<bool> ResetTodayContentAsync()
+    {
+        try
+        {
+                    // Simply reset level and message to empty values
+        RaiseEvent(new ResetTodayContentLogEvent());
+            
+            await ConfirmEvents();
+            
+            _logger.LogInformation("Successfully reset awakening content for user {UserId}", this.GetPrimaryKey());
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reset content for user {UserId}", this.GetPrimaryKey());
+            return false;
+        }
+    }
+
     protected sealed override void GAgentTransitionState(AwakeningState state,
         StateLogEventBase<AwakeningLogEvent> @event)
     {
@@ -710,6 +729,12 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
                 state.SessionId = string.Empty;
                 state.GenerationAttempts = 0;
                 state.Status = AwakeningStatus.NotStarted;
+                break;
+                
+            case ResetTodayContentLogEvent resetTodayEvent:
+                // Only reset level and message, preserve all other fields
+                state.AwakeningLevel = 0;
+                state.AwakeningMessage = string.Empty;
                 break;
     }
 }
