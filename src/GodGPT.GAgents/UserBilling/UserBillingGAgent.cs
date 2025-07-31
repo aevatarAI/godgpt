@@ -2486,7 +2486,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var existingSubscription = await GetPaymentSummaryBySubscriptionIdAsync(transactionInfo.OriginalTransactionId);
         if (existingSubscription == null)
         {
-            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] PaymentSummary not exist.{0}, {1}, {2}", 
+            _logger.LogWarning("[UserBillingGAgent][HandleDidRenewAsync] PaymentSummary not exist.{0}, {1}, {2}", 
                 userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
             await CreateAppStoreSubscriptionAsync(userId, transactionInfo);
             return;
@@ -2496,7 +2496,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var invoiceDetail = invoiceDetails.FirstOrDefault(t => t.InvoiceId == transactionInfo.TransactionId);
         if (invoiceDetail != null)
         {
-            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync] {UserId}, {trancactionId}, {Id}, Transaction processed.",
+            _logger.LogWarning("[UserBillingGAgent][HandleDidRenewAsync] {UserId}, {trancactionId}, {Id}, Transaction processed.",
                 userId, transactionInfo.TransactionId, transactionInfo.OriginalTransactionId);
             return;
         }
@@ -2543,13 +2543,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         await ConfirmEvents();
         
         //Check OriginTransactionId-user binding
-       
         var paymentGrainId = CommonHelper.GetAppleUserPaymentGrainId(transactionInfo.OriginalTransactionId);
         var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
         var resultDto = await paymentGrain.UpdateUserIdAsync(userId);
         if (resultDto.Success)
         {
-            _logger.LogWarning("[UserBillingGAgent][UpdateSubscriptionStateAsync]");
+            _logger.LogWarning("[UserBillingGAgent][HandleDidRenewAsync] {UserId}, {TransactionId}, {Id}, OriginTransactionId-user bound.",
+                userId.ToString(), transactionInfo.TransactionId, transactionInfo.OriginalTransactionId);
         }
         // Grant or revoke user rights
         await UpdateUserQuotaOnApplePaySuccess(userId, transactionInfo, appleProduct);
