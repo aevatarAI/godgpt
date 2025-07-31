@@ -39,7 +39,7 @@ public class AppleStoreWebhookHandler : IWebhookHandler
         try
         {
             _logger.LogDebug(
-                "AppleStoreWebhookHandler Received request: Method={method}, Path={path}, QueryString={query}",
+                "[AppleStoreWebhookHandler][webhook] Received request: Method={method}, Path={path}, QueryString={query}",
                 request.Method, request.Path, request.QueryString);
 
             // 1. Use AppleEventProcessingGrain to parse notification and get userId
@@ -56,7 +56,8 @@ public class AppleStoreWebhookHandler : IWebhookHandler
             }
             
             //2. Filter by type
-            if (notificationType != AppStoreNotificationType.DID_RENEW.ToString() 
+            if (notificationType != AppStoreNotificationType.SUBSCRIBED.ToString()
+                && notificationType != AppStoreNotificationType.DID_RENEW.ToString() 
                 /*&& decodedPayload.NotificationType != AppStoreNotificationType.REFUND.ToString()*/
                 && !(notificationType ==  AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS.ToString() 
                      && subtype == AppStoreNotificationSubtype.AUTO_RENEW_DISABLED.ToString())
@@ -66,7 +67,7 @@ public class AppleStoreWebhookHandler : IWebhookHandler
                 && notificationType != AppStoreNotificationType.DID_CHANGE_RENEWAL_PREF.ToString()
                )
             {
-                _logger.LogInformation("[AppleEventProcessingGrain][ParseEventAndGetUserIdAsync] Filter NotificationType {0}, SubType={1}",
+                _logger.LogInformation("[AppleStoreWebhookHandler][webhook] Filter NotificationType {0}, SubType={1}",
                     notificationType, subtype);
                 return new { success = true, message = "Notification received but filter by type" };
             }
@@ -87,7 +88,7 @@ public class AppleStoreWebhookHandler : IWebhookHandler
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AppleStoreWebhookHandler Error processing webhook request");
+            _logger.LogError(ex, "[AppleStoreWebhookHandler][webhook] Error processing webhook request");
             // Return 200 status code even on error to prevent Apple from retrying (can be adjusted based on business requirements)
             return new { success = false, error = "Internal server error" };
         }
