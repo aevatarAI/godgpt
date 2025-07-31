@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using Aevatar.AI.Exceptions;
 using Aevatar.AI.Feature.StreamSyncWoker;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
@@ -25,6 +26,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
+using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Service;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -38,7 +41,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     private const string ProxyGPTModelName = "HyperEcho";
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
-    
+    private readonly ILocalizationService _localizationService;
+
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
     private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new();
@@ -47,7 +51,21 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     // These persist across chunk processing within the same grain instance
     private bool _isAccumulatingForSuggestions = false;
     private string _accumulatedSuggestionContent = "";
+    // Regular expressions for cleaning text before speech synthesis
+    private static readonly Regex MarkdownLinkRegex = new Regex(@"\[([^\]]+)\]\([^\)]+\)", RegexOptions.Compiled);
+    private static readonly Regex MarkdownBoldRegex = new Regex(@"\*\*([^*]+)\*\*", RegexOptions.Compiled);
+    private static readonly Regex MarkdownItalicRegex = new Regex(@"\*([^*]+)\*", RegexOptions.Compiled);
+    private static readonly Regex MarkdownHeaderRegex = new Regex(@"^#+\s*(.+)$", RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly Regex MarkdownCodeBlockRegex = new Regex(@"```[\s\S]*?```", RegexOptions.Compiled);
+    private static readonly Regex MarkdownInlineCodeRegex = new Regex(@"`([^`]+)`", RegexOptions.Compiled);
+    private static readonly Regex MarkdownTableRegex = new Regex(@"\|.*?\|", RegexOptions.Compiled);
+    private static readonly Regex MarkdownStrikethroughRegex = new Regex(@"~~([^~]+)~~", RegexOptions.Compiled);
+    private static readonly Regex EmojiRegex = new Regex(@"[\u2600-\u26FF]|[\u2700-\u27BF]", RegexOptions.Compiled);
+    public GodChatGAgent(ILocalizationService localizationService)
+    {
+        _localizationService = localizationService;
 
+    }
     public GodChatGAgent(ISpeechService speechService, IOptionsMonitor<LLMRegionOptions> llmRegionOptions)
     {
         _speechService = speechService;
@@ -226,15 +244,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     {
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogInformation($"[PERF][VoiceChat] {sessionId} START - file: {fileName}, size: {voiceData?.Length ?? 0} chars, language: {voiceLanguage}, duration: {voiceDurationSeconds}s");
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
 
         // Validate voiceData
         if (string.IsNullOrEmpty(voiceData) || voiceLanguage == VoiceLanguageEnum.Unset)
         {
+
             Logger.LogError($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Invalid voice data");
-            var errMsg = "Invalid voice message. Please try again.";
+            var errMsg = _localizationService.GetLocalizedException(ExceptionMessageKeys.InvalidVoiceMessage,language);
             if (voiceLanguage == VoiceLanguageEnum.Unset)
             {
-                errMsg = "Please set voice language.";
+                errMsg = _localizationService.GetLocalizedException(ExceptionMessageKeys.UnSetVoiceLanguage,language);
             }
 
             var errorMessage = new ResponseStreamGodChat()
@@ -281,8 +301,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             if (string.IsNullOrWhiteSpace(voiceContent))
             {
                 voiceParseSuccess = false;
-                voiceParseErrorMessage = "Speech recognition service timeout";
-                voiceContent = "Transcript Unavailable";
+                voiceParseErrorMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.SpeechTimeout,language);
+                voiceContent = _localizationService.GetLocalizedException(ExceptionMessageKeys.TranscriptUnavailable,language);
                 Logger.LogWarning($"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - FAILED (empty result)");
             }
             else
@@ -295,10 +315,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             sttStopwatch.Stop();
             Logger.LogError(ex, $"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - FAILED with exception");
             voiceParseSuccess = false;
-            voiceParseErrorMessage = ex.Message.Contains("timeout") ? "Speech recognition service timeout" :
-                ex.Message.Contains("format") ? "Audio file corrupted or unsupported format" :
-                "Speech recognition service unavailable";
-            voiceContent = "Transcript Unavailable";
+            voiceParseErrorMessage = ex.Message.Contains("timeout") ? _localizationService.GetLocalizedException(ExceptionMessageKeys.SpeechTimeout,language) :
+                ex.Message.Contains("format") ? _localizationService.GetLocalizedException(ExceptionMessageKeys.AudioFormatUnsupported,language) :
+                _localizationService.GetLocalizedException(ExceptionMessageKeys.SpeechServiceUnavailable,language);
+            voiceContent = _localizationService.GetLocalizedException(ExceptionMessageKeys.TranscriptUnavailable,language);
         }
 
         // If voice parsing failed, don't call LLM, just save the failed message
@@ -341,7 +361,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // Send error response
             var errorResponse = new ResponseStreamGodChat()
             {
-                Response = "Language not recognised. Please try again in the selected language.",
+                Response = _localizationService.GetLocalizedException(ExceptionMessageKeys.LanguageNotRecognised,language),
                 ChatId = chatId,
                 IsLastChunk = true,
                 SerialNumber = -99,
