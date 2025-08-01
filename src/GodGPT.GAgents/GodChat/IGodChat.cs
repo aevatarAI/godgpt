@@ -48,4 +48,7 @@ public interface IGodChat : IGAgent
 
     [ReadOnly]
     Task<DateTime?> GetLastChatTimeAsync();
+    
+    Task<GodChatState?> GetStateAsync();
+
 }

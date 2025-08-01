@@ -9,13 +9,13 @@ using Aevatar.Application.Grains;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
+using Aevatar.Core.Placement;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.SemanticKernel.Extensions;
 using Aevatar.Mock;
 using Aevatar.PermissionManagement.Extensions;
 using AutoMapper;
-using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -23,7 +23,9 @@ using MongoDB.Driver.Core.Configuration;
 using Moq;
 using Orleans.Hosting;
 using Orleans.TestingHost;
+using Orleans.Configuration;
 using Volo.Abp.AutoMapper;
+using Volo.Abp.BlobStoring;
 using Volo.Abp.DependencyInjection;
 using Volo.Abp.EventBus.Local;
 using Volo.Abp.ObjectMapping;
@@ -55,9 +57,14 @@ public class ClusterFixture : IDisposable, ISingletonDependency
         {
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json")
-                //.AddJsonFile("/opt/evn/godgpt.appsettings.json")
-                // .AddJsonFile("appsettings.secrets.json")
+                .AddJsonFile("appsettings.Development.json", optional: true)
                 .Build();
+            
+            // Configure silo name to match the placement pattern
+            hostBuilder.Configure<SiloOptions>(options =>
+            {
+                options.SiloName = "User";
+            });
 
             hostBuilder.ConfigureServices(services =>
                 {
@@ -119,17 +126,27 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                         configuration.GetSection("AIServices:AzureOpenAIEmbeddings"));
                     services.Configure<RagConfig>(configuration.GetSection("Rag"));
                     services.Configure<SystemLLMConfigOptions>(configuration);
-                    services.Configure<SpeechOptions>(configuration.GetSection("Speech"));
-                    services.AddSingleton<ISpeechService, SpeechService>();
+                    services.Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
+
                     services.AddSemanticKernel()
                         .AddQdrantVectorStore()
                         .AddAzureOpenAITextEmbedding()
                         .AddHttpClient();
+                    
+                    // Register the SiloNamePatternPlacement director
+                    services.AddPlacementDirector<SiloNamePatternPlacement, SiloNamePatternPlacementDirector>();
+                    
+                    // Register IBlobContainer for testing
+                    services.AddSingleton<Volo.Abp.BlobStoring.IBlobContainer>(sp => 
+                        new Mock<Volo.Abp.BlobStoring.IBlobContainer>().Object);
+                    
+                    // Register ISpeechService for testing
+                    services.AddSingleton<GodGPT.GAgents.SpeechChat.ISpeechService>(sp => 
+                        new Mock<GodGPT.GAgents.SpeechChat.ISpeechService>().Object);
                 })
                 .AddMemoryStreams("Aevatar")
                 .AddMemoryGrainStorage("PubSubStore")
                 .AddMemoryGrainStorageAsDefault()
-                .AddMemoryGrainStorage("DefaultGrainStorage")
                 .UseAevatar()
                 .AddLogStorageBasedLogConsistencyProvider("LogStorage")
                 .Configure<StripeOptions>(configuration.GetSection("Stripe"))
