@@ -36,13 +36,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
     private const string ProxyGPTModelName = "HyperEcho";
+    private const string ChatModelName = "GodGPT";
+    private const string ConsoleModelName = "GodGPTConsole";
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
-    
+
     // Dictionary to maintain text accumulator for voice chat sessions
     // Key: chatId, Value: accumulated text buffer for sentence detection
     private static readonly Dictionary<string, StringBuilder> VoiceTextAccumulators = new();
-    
+
     // Instance variables for suggestion filtering state management
     // These persist across chunk processing within the same grain instance
     private bool _isAccumulatingForSuggestions = false;
@@ -133,21 +135,22 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     }
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
-        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null,
         List<string>? images = null)
     {
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start.");
-        
+
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Language from context: {language}");
-        
+
         var actionType = images == null || images.IsNullOrEmpty()
             ? ActionType.Conversation
             : ActionType.ImageConversation;
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
         var actionResultDto =
-            await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString(), actionType);
+            await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString(),
+                actionType);
         if (!actionResultDto.Success)
         {
             Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} Access restricted");
@@ -174,12 +177,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             {
                 ChatList = chatMessages
             });
-            
+
             RaiseEvent(new AddChatMessageMetasLogEvent
             {
                 ChatMessageMetas = new List<ChatMessageMeta>()
             });
-            
+
             await ConfirmEvents();
 
             //2、Directly respond with error information.
@@ -225,7 +228,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         VoiceLanguageEnum voiceLanguage = VoiceLanguageEnum.English, double voiceDurationSeconds = 0.0)
     {
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogInformation($"[PERF][VoiceChat] {sessionId} START - file: {fileName}, size: {voiceData?.Length ?? 0} chars, language: {voiceLanguage}, duration: {voiceDurationSeconds}s");
+        Logger.LogInformation(
+            $"[PERF][VoiceChat] {sessionId} START - file: {fileName}, size: {voiceData?.Length ?? 0} chars, language: {voiceLanguage}, duration: {voiceDurationSeconds}s");
 
         // Validate voiceData
         if (string.IsNullOrEmpty(voiceData) || voiceLanguage == VoiceLanguageEnum.Unset)
@@ -265,7 +269,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var conversionStopwatch = Stopwatch.StartNew();
         var voiceDataBytes = Convert.FromBase64String(voiceData);
         conversionStopwatch.Stop();
-        Logger.LogInformation($"[PERF][VoiceChat] {sessionId} Base64_Conversion: {conversionStopwatch.ElapsedMilliseconds}ms, bytes: {voiceDataBytes.Length}");
+        Logger.LogInformation(
+            $"[PERF][VoiceChat] {sessionId} Base64_Conversion: {conversionStopwatch.ElapsedMilliseconds}ms, bytes: {voiceDataBytes.Length}");
 
         string voiceContent;
         var voiceParseSuccess = true;
@@ -277,23 +282,26 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             voiceContent = await _speechService.SpeechToTextAsync(voiceDataBytes, voiceLanguage);
             sttStopwatch.Stop();
-            
+
             if (string.IsNullOrWhiteSpace(voiceContent))
             {
                 voiceParseSuccess = false;
                 voiceParseErrorMessage = "Speech recognition service timeout";
                 voiceContent = "Transcript Unavailable";
-                Logger.LogWarning($"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - FAILED (empty result)");
+                Logger.LogWarning(
+                    $"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - FAILED (empty result)");
             }
             else
             {
-                Logger.LogInformation($"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - SUCCESS, length: {voiceContent.Length} chars, content: '{voiceContent}'");
+                Logger.LogInformation(
+                    $"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - SUCCESS, length: {voiceContent.Length} chars, content: '{voiceContent}'");
             }
         }
         catch (Exception ex)
         {
             sttStopwatch.Stop();
-            Logger.LogError(ex, $"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - FAILED with exception");
+            Logger.LogError(ex,
+                $"[PERF][VoiceChat] {sessionId} STT_Processing: {sttStopwatch.ElapsedMilliseconds}ms - FAILED with exception");
             voiceParseSuccess = false;
             voiceParseErrorMessage = ex.Message.Contains("timeout") ? "Speech recognition service timeout" :
                 ex.Message.Contains("format") ? "Audio file corrupted or unsupported format" :
@@ -330,12 +338,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             {
                 ChatList = chatMessages
             });
-            
+
             RaiseEvent(new AddChatMessageMetasLogEvent
             {
                 ChatMessageMetas = new List<ChatMessageMeta> { chatMessageMeta }
             });
-            
+
             await ConfirmEvents();
 
             // Send error response
@@ -361,7 +369,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             }
 
             totalStopwatch.Stop();
-            Logger.LogInformation($"[PERF][VoiceChat] {sessionId} TOTAL_Time: {totalStopwatch.ElapsedMilliseconds}ms - FAILED (parse error)");
+            Logger.LogInformation(
+                $"[PERF][VoiceChat] {sessionId} TOTAL_Time: {totalStopwatch.ElapsedMilliseconds}ms - FAILED (parse error)");
             return;
         }
 
@@ -371,15 +380,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // Send STT result immediately to frontend via VoiceToText message
         var sttResultMessage = new ResponseStreamGodChat()
         {
-            Response = voiceContent,  // STT converted text
+            Response = voiceContent, // STT converted text
             ChatId = chatId,
             IsLastChunk = false,
-            SerialNumber = 0,  // Mark as first message (STT result)
+            SerialNumber = 0, // Mark as first message (STT result)
             SessionId = sessionId,
-            VoiceContentType = VoiceContentType.VoiceToText,  // Critical: indicate this is STT result
+            VoiceContentType = VoiceContentType.VoiceToText, // Critical: indicate this is STT result
             ErrorCode = ChatErrorCode.Success,
             NewTitle = string.Empty,
-            AudioData = null,  // No audio data for STT result
+            AudioData = null, // No audio data for STT result
             AudioMetadata = null
         };
 
@@ -393,15 +402,18 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             await PublishAsync(sttResultMessage);
         }
 
-        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} STT result sent to frontend: '{voiceContent}'");
+        Logger.LogDebug(
+            $"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} STT result sent to frontend: '{voiceContent}'");
 
         var quotaStopwatch = Stopwatch.StartNew();
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
-        var actionResultDto = await userQuotaGAgent.ExecuteVoiceActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
-        
-        
+        var actionResultDto =
+            await userQuotaGAgent.ExecuteVoiceActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString());
+
+
         quotaStopwatch.Stop();
-        Logger.LogInformation($"[PERF][VoiceChat] {sessionId} Quota_Check: {quotaStopwatch.ElapsedMilliseconds}ms - success: {actionResultDto.Success}");
+        Logger.LogInformation(
+            $"[PERF][VoiceChat] {sessionId} Quota_Check: {quotaStopwatch.ElapsedMilliseconds}ms - success: {actionResultDto.Success}");
         if (!actionResultDto.Success)
         {
             Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} Access restricted");
@@ -441,12 +453,12 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             {
                 ChatList = chatMessages
             });
-            
+
             RaiseEvent(new AddChatMessageMetasLogEvent
             {
                 ChatMessageMetas = new List<ChatMessageMeta> { userVoiceMeta, assistantResponseMeta }
             });
-            
+
             await ConfirmEvents();
 
             //2、Directly respond with error information.
@@ -479,7 +491,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             }
 
             totalStopwatch.Stop();
-            Logger.LogInformation($"[PERF][VoiceChat] {sessionId} TOTAL_Time: {totalStopwatch.ElapsedMilliseconds}ms - FAILED (quota denied)");
+            Logger.LogInformation(
+                $"[PERF][VoiceChat] {sessionId} TOTAL_Time: {totalStopwatch.ElapsedMilliseconds}ms - FAILED (quota denied)");
             return;
         }
 
@@ -492,7 +505,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             await configuration.GetStreamingModeEnabled(),
             voiceContent, chatId, promptSettings, isHttpRequest, region, voiceLanguage, voiceDurationSeconds);
         llmStopwatch.Stop();
-        
+
         totalStopwatch.Stop();
         Logger.LogInformation($"[PERF][VoiceChat] {sessionId} LLM_Processing: {llmStopwatch.ElapsedMilliseconds}ms");
         Logger.LogInformation($"[PERF][VoiceChat] {sessionId} TOTAL_Time: {totalStopwatch.ElapsedMilliseconds}ms");
@@ -547,30 +560,33 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             Logger.LogDebug(
                 $"[GodChatGAgent][GodStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
-            
+
             // Check if this is a voice chat from context
             bool isPromptVoiceChat = false;
             if (aiChatContextDto.MessageId != null)
             {
                 try
                 {
-                    var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiChatContextDto.MessageId);
+                    var messageData =
+                        JsonConvert.DeserializeObject<Dictionary<string, object>>(aiChatContextDto.MessageId);
                     isPromptVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogWarning(ex, "[GodChatGAgent][GodStreamChatAsync] Failed to parse MessageId for voice chat detection");
+                    Logger.LogWarning(ex,
+                        "[GodChatGAgent][GodStreamChatAsync] Failed to parse MessageId for voice chat detection");
                 }
             }
-            
+
             // Add conversation suggestions prompt for text chat only
             string enhancedMessage = message;
             if (!isPromptVoiceChat)
             {
                 enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
-                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Added conversation suggestions prompt for text chat");
+                Logger.LogDebug(
+                    $"[GodChatGAgent][GodStreamChatAsync] Added conversation suggestions prompt for text chat");
             }
-            
+
             var settings = promptSettings ?? new ExecutionPromptSettings();
             settings.Temperature = "0.9";
             var result = await aiAgentStatusProxy.PromptWithStreamAsync(enhancedMessage, State.ChatHistory, settings,
@@ -599,7 +615,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 {
                     ChatTime = DateTime.UtcNow
                 });
-                
+
                 RaiseEvent(new AddChatMessageMetasLogEvent
                 {
                     ChatMessageMetas = new List<ChatMessageMeta>()
@@ -651,7 +667,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             aiChatContextDto.MessageId = JsonConvert.SerializeObject(new Dictionary<string, object>()
             {
                 { "IsHttpRequest", true }, { "LLM", llm }, { "StreamingModeEnabled", streamingModeEnabled },
-                { "Message", message }, {"Region", region }, {"Images", images}
+                { "Message", message }, { "Region", region }, { "Images", images }
             });
         }
 
@@ -741,7 +757,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region}, LLM not config");
             return new List<Guid>();
         }
-        
+
         var oldSystemPrompt = await GetConfiguration().GetPrompt();
         //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} old system prompt: {oldSystemPrompt}");
 
@@ -749,14 +765,24 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         foreach (var llm in llmsForRegion)
         {
             var systemPrompt = State.PromptTemplate;
-            if (llm != ProxyGPTModelName)
-            {
-                systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
-            }
-            else
+
+            if (llm == ProxyGPTModelName || llm == ChatModelName || llm == ConsoleModelName)
             {
                 systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
             }
+            else
+            {
+                systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+            }
+
+            // if (llm != ProxyGPTModelName)
+            // {
+            //     systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+            // }
+            // else
+            // {
+            //     systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+            // }
             //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
             var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
             await proxy.ConfigAsync(new AIAgentStatusProxyConfig
@@ -846,7 +872,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         await ConfirmEvents();
     }
 
-        public async Task ChatMessageCallbackAsync(AIChatContextDto contextDto,
+    public async Task ChatMessageCallbackAsync(AIChatContextDto contextDto,
         AIExceptionEnum aiExceptionEnum, string? errorMessage, AIStreamChatContent? chatContent)
     {
         if (aiExceptionEnum == AIExceptionEnum.RequestLimitError && !contextDto.MessageId.IsNullOrWhiteSpace())
@@ -856,17 +882,17 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             var configuration = GetConfiguration();
             var systemLlm = await configuration.GetSystemLLM();
             var dictionary = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
-            
+
             // Check if this is a voice chat retry to call the appropriate method
             var isRetryVoiceChat = dictionary.ContainsKey("IsVoiceChat") && (bool)dictionary["IsVoiceChat"];
-            
+
             if (isRetryVoiceChat)
             {
                 // Voice chat retry: call GodVoiceStreamChatAsync with voice parameters
                 var voiceLanguageValue = dictionary.GetValueOrDefault("VoiceLanguage", 0);
                 var voiceLanguage = (VoiceLanguageEnum)Convert.ToInt32(voiceLanguageValue);
                 var voiceDurationSeconds = Convert.ToDouble(dictionary.GetValueOrDefault("VoiceDurationSeconds", 0.0));
-                
+
                 GodVoiceStreamChatAsync(contextDto.RequestId,
                     (string)dictionary.GetValueOrDefault("LLM", systemLlm),
                     (bool)dictionary.GetValueOrDefault("StreamingModeEnabled", true),
@@ -886,7 +912,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     (string)dictionary.GetValueOrDefault("Region", null),
                     false, (List<string>?)dictionary.GetValueOrDefault("Images"));
             }
-            
+
             return;
         }
 
@@ -894,7 +920,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             Logger.LogError(
                 $"[GodChatGAgent][ChatMessageCallbackAsync] DETAILED ERROR - sessionId {contextDto?.RequestId.ToString()}, chatId {contextDto?.ChatId}, aiExceptionEnum: {aiExceptionEnum}, errorMessage: '{errorMessage}', MessageId: '{contextDto?.MessageId}'");
-            
+
             // Extract voice chat info if available
             string voiceChatInfo = "";
             if (!contextDto.MessageId.IsNullOrWhiteSpace())
@@ -917,9 +943,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     Logger.LogError(ex, "Failed to parse MessageId for voice chat info");
                 }
             }
-            
+
             Logger.LogError($"[GodChatGAgent][ChatMessageCallbackAsync] ERROR CONTEXT:{voiceChatInfo}");
-            
+
             var chatMessage = new ResponseStreamGodChat()
             {
                 Response =
@@ -947,14 +973,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
         Logger.LogDebug(
             $"[GodChatGAgent][ChatMessageCallbackAsync] sessionId {contextDto.RequestId.ToString()}, chatId {contextDto.ChatId}, messageId {contextDto.MessageId}, {JsonConvert.SerializeObject(chatContent)}");
-        
+
         if (chatContent.IsAggregationMsg)
         {
             // Parse conversation suggestions for text chat only (skip voice chat)
             List<string>? conversationSuggestions = null;
             string cleanMainContent = chatContent.AggregationMsg; // Default to original content
             bool isAggregationVoiceChat = false;
-            
+
             // Check if this is a voice chat by examining the message context
             if (!contextDto.MessageId.IsNullOrWhiteSpace())
             {
@@ -965,10 +991,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogWarning(ex, "[GodChatGAgent][ChatMessageCallbackAsync] Failed to parse MessageId for voice chat detection");
+                    Logger.LogWarning(ex,
+                        "[GodChatGAgent][ChatMessageCallbackAsync] Failed to parse MessageId for voice chat detection");
                 }
             }
-            
+
             // Parse conversation suggestions only for text chat
             if (!isAggregationVoiceChat && !string.IsNullOrEmpty(chatContent.AggregationMsg))
             {
@@ -977,11 +1004,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 {
                     conversationSuggestions = suggestions;
                     cleanMainContent = mainContent; // Use clean content without suggestions
-                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Parsed {suggestions.Count} conversation suggestions for text chat");
-                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned main content length: {cleanMainContent?.Length ?? 0}");
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][ChatMessageCallbackAsync] Parsed {suggestions.Count} conversation suggestions for text chat");
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned main content length: {cleanMainContent?.Length ?? 0}");
                 }
             }
-            
+
             RaiseEvent(new AddChatHistoryLogEvent
             {
                 ChatList = new List<ChatMessage>()
@@ -998,7 +1027,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             {
                 ChatTime = DateTime.UtcNow
             });
-            
+
             RaiseEvent(new AddChatMessageMetasLogEvent
             {
                 ChatMessageMetas = new List<ChatMessageMeta>()
@@ -1008,18 +1037,19 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
             var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
             var inviterId = await chatManagerGAgent.GetInviterAsync();
-            
+
             if (inviterId != null && inviterId != Guid.Empty)
             {
                 var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
                 await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
             }
-            
+
             // Store suggestions and clean content for later use in partialMessage
             if (conversationSuggestions != null)
             {
                 RequestContext.Set("ConversationSuggestions", conversationSuggestions);
             }
+
             // Store clean content to replace the response content
             RequestContext.Set("CleanMainContent", cleanMainContent);
         }
@@ -1027,7 +1057,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         // Apply streaming suggestion filtering logic for text chat
         string streamingContent = chatContent.ResponseContent;
         bool shouldFilterStream = false;
-        
+
         // Check if this is a text chat (not voice chat)
         bool isFilteringVoiceChat = false;
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
@@ -1039,25 +1069,26 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "[GodChatGAgent][ChatMessageCallbackAsync] Failed to parse MessageId for voice chat detection in streaming filter");
+                Logger.LogWarning(ex,
+                    "[GodChatGAgent][ChatMessageCallbackAsync] Failed to parse MessageId for voice chat detection in streaming filter");
             }
         }
-        
+
         // Get current accumulation state from instance variables (reliable across chunks)
         bool shouldStartAccumulating = false;
-        
+
         // Apply conversation suggestions filtering (text chat only)
         if (!isFilteringVoiceChat && !string.IsNullOrEmpty(streamingContent))
         {
             // Check for [SUGGESTIONS] marker and partial forms using optimized method
             bool contains_suggestions = streamingContent.Contains("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
             bool contains_partial_marker = IsPartialSuggestionsMarker(streamingContent.AsSpan());
-            
+
             // Check for potential marker start (conservative approach)
             bool ends_with_bracket = streamingContent.TrimEnd().EndsWith("[") && streamingContent.Length > 10;
-            
+
             shouldStartAccumulating = contains_suggestions || contains_partial_marker || ends_with_bracket;
-            
+
             if (shouldStartAccumulating && !_isAccumulatingForSuggestions)
             {
                 // Start accumulation - block all subsequent chunks from frontend
@@ -1078,16 +1109,16 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         if (_isAccumulatingForSuggestions && chatContent.IsLastChunk)
         {
             var (cleanContent, suggestions) = ParseResponseWithSuggestions(_accumulatedSuggestionContent);
-            
+
             // Store suggestions for response
             if (suggestions?.Any() == true)
             {
                 RequestContext.Set("ConversationSuggestions", suggestions);
             }
-            
+
             // Send clean content to frontend
             streamingContent = cleanContent;
-            
+
             // Reset accumulation state
             _isAccumulatingForSuggestions = false;
             _accumulatedSuggestionContent = "";
@@ -1104,12 +1135,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             // Note: Default to VoiceResponse in this version as VoiceToText is not implemented yet
             VoiceContentType = VoiceContentType.VoiceResponse
         };
-        
+
         // Log final content being sent to frontend
-        Logger.LogInformation($"[FINAL_OUTPUT] Sending to frontend - Length: {streamingContent?.Length ?? 0}, IsLastChunk: {chatContent.IsLastChunk}");
+        Logger.LogInformation(
+            $"[FINAL_OUTPUT] Sending to frontend - Length: {streamingContent?.Length ?? 0}, IsLastChunk: {chatContent.IsLastChunk}");
         if (!string.IsNullOrEmpty(streamingContent))
         {
-            Logger.LogInformation($"[FINAL_OUTPUT] Content preview: '{streamingContent.Substring(0, Math.Min(100, streamingContent.Length))}{(streamingContent.Length > 100 ? "..." : "")}'");
+            Logger.LogInformation(
+                $"[FINAL_OUTPUT] Content preview: '{streamingContent.Substring(0, Math.Min(100, streamingContent.Length))}{(streamingContent.Length > 100 ? "..." : "")}'");
         }
 
         // For the last chunk, use clean content and add conversation suggestions if available
@@ -1129,30 +1162,35 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 if (storedSuggestions?.Any() == true)
                 {
                     partialMessage.SuggestedItems = storedSuggestions;
-                    Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Added {storedSuggestions.Count} suggestions to last chunk");
-                    
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][ChatMessageCallbackAsync] Added {storedSuggestions.Count} suggestions to last chunk");
+
                     var cleanMainContent = RequestContext.Get("CleanMainContent") as string;
                     if (!string.IsNullOrEmpty(cleanMainContent))
                     {
                         // Enhanced safety check to prevent duplication
                         var currentChunkLength = partialMessage.Response?.Length ?? 0;
                         var cleanContentLength = cleanMainContent.Length;
-                        
+
                         // Stricter conditions to prevent duplication
                         bool isSafeToReplace = currentChunkLength > 0 && // Never replace empty chunks
-                                             cleanContentLength <= currentChunkLength * 1.5 && // Reduced ratio
-                                             cleanContentLength <= 30 && // Strict absolute limit
-                                             !cleanMainContent.Contains(partialMessage.Response ?? "") && // No content overlap
-                                             cleanContentLength < (partialMessage.Response?.Length ?? 0) + 20; // Size similarity check
-                        
+                                               cleanContentLength <= currentChunkLength * 1.5 && // Reduced ratio
+                                               cleanContentLength <= 30 && // Strict absolute limit
+                                               !cleanMainContent.Contains(partialMessage.Response ??
+                                                                          "") && // No content overlap
+                                               cleanContentLength <
+                                               (partialMessage.Response?.Length ?? 0) + 20; // Size similarity check
+
                         if (isSafeToReplace)
                         {
                             partialMessage.Response = cleanMainContent;
-                            Logger.LogDebug($"Replaced response with clean content. Current: {currentChunkLength}, Clean: {cleanContentLength}");
+                            Logger.LogDebug(
+                                $"Replaced response with clean content. Current: {currentChunkLength}, Clean: {cleanContentLength}");
                         }
                         else
                         {
-                            Logger.LogWarning($"Skipped replacing response to avoid duplication. Current: {currentChunkLength}, Clean: {cleanContentLength}");
+                            Logger.LogWarning(
+                                $"Skipped replacing response to avoid duplication. Current: {currentChunkLength}, Clean: {cleanContentLength}");
                         }
                     }
                 }
@@ -1160,74 +1198,83 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         }
 
         // Check if this is a voice chat and handle real-time voice synthesis
-        Logger.LogDebug($"[ChatMessageCallbackAsync] MessageId: '{contextDto.MessageId}', ResponseContent: '{chatContent.ResponseContent}'");
-        
+        Logger.LogDebug(
+            $"[ChatMessageCallbackAsync] MessageId: '{contextDto.MessageId}', ResponseContent: '{chatContent.ResponseContent}'");
+
         if (!contextDto.MessageId.IsNullOrWhiteSpace())
         {
             var messageData = JsonConvert.DeserializeObject<Dictionary<string, object>>(contextDto.MessageId);
             var isStreamingVoiceChat = messageData.ContainsKey("IsVoiceChat") && (bool)messageData["IsVoiceChat"];
-            
-            Logger.LogDebug($"[ChatMessageCallbackAsync] IsVoiceChat: {isStreamingVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
+
+            Logger.LogDebug(
+                $"[ChatMessageCallbackAsync] IsVoiceChat: {isStreamingVoiceChat}, HasResponseContent: {!string.IsNullOrEmpty(chatContent.ResponseContent)}");
 
             if (isStreamingVoiceChat && !string.IsNullOrEmpty(chatContent.ResponseContent))
             {
                 Logger.LogDebug($"[ChatMessageCallbackAsync] Entering voice chat processing logic");
-                
+
                 // Safe type conversion to handle both int and long from JSON deserialization
                 var voiceLanguageValue = messageData.GetValueOrDefault("VoiceLanguage", 0);
                 var voiceLanguage = (VoiceLanguageEnum)Convert.ToInt32(voiceLanguageValue);
-                
-                Logger.LogDebug($"[ChatMessageCallbackAsync] VoiceLanguage: {voiceLanguage}, ChatId: {contextDto.ChatId}");
-                
+
+                Logger.LogDebug(
+                    $"[ChatMessageCallbackAsync] VoiceLanguage: {voiceLanguage}, ChatId: {contextDto.ChatId}");
+
                 // Get or create text accumulator for this chat session
                 if (!VoiceTextAccumulators.ContainsKey(contextDto.ChatId))
                 {
                     VoiceTextAccumulators[contextDto.ChatId] = new StringBuilder();
-                    Logger.LogDebug($"[ChatMessageCallbackAsync] Created new text accumulator for chat: {contextDto.ChatId}");
+                    Logger.LogDebug(
+                        $"[ChatMessageCallbackAsync] Created new text accumulator for chat: {contextDto.ChatId}");
                 }
                 else
                 {
-                    Logger.LogDebug($"[ChatMessageCallbackAsync] Using existing text accumulator for chat: {contextDto.ChatId}");
+                    Logger.LogDebug(
+                        $"[ChatMessageCallbackAsync] Using existing text accumulator for chat: {contextDto.ChatId}");
                 }
-                
+
                 var textAccumulator = VoiceTextAccumulators[contextDto.ChatId];
-                
+
                 // Filter out empty or whitespace-only content to avoid unnecessary accumulation
                 if (!string.IsNullOrWhiteSpace(chatContent.ResponseContent))
                 {
                     textAccumulator.Append(chatContent.ResponseContent);
-                    Logger.LogDebug($"[ChatMessageCallbackAsync] Appended text: '{chatContent.ResponseContent}', IsLastChunk: {chatContent.IsLastChunk}");
+                    Logger.LogDebug(
+                        $"[ChatMessageCallbackAsync] Appended text: '{chatContent.ResponseContent}', IsLastChunk: {chatContent.IsLastChunk}");
                 }
                 else
                 {
-                    Logger.LogDebug($"[ChatMessageCallbackAsync] Skipped whitespace content, IsLastChunk: {chatContent.IsLastChunk}");
+                    Logger.LogDebug(
+                        $"[ChatMessageCallbackAsync] Skipped whitespace content, IsLastChunk: {chatContent.IsLastChunk}");
                 }
-                
+
                 // Check for complete sentences in accumulated text
                 var accumulatedText = textAccumulator.ToString();
                 Logger.LogDebug($"[ChatMessageCallbackAsync] Total accumulated text: '{accumulatedText}'");
-                
-                var completeSentence = ExtractCompleteSentence(accumulatedText, textAccumulator, chatContent.IsLastChunk);
-                
+
+                var completeSentence =
+                    ExtractCompleteSentence(accumulatedText, textAccumulator, chatContent.IsLastChunk);
+
                 Logger.LogDebug($"[ChatMessageCallbackAsync] ExtractCompleteSentence result: '{completeSentence}'");
-                
+
                 if (!string.IsNullOrEmpty(completeSentence))
                 {
                     try
                     {
                         // Clean text for speech synthesis (remove markdown and math formulas)
                         var cleanedText = CleanTextForSpeech(completeSentence, voiceLanguage);
-                        
+
                         // Skip synthesis if cleaned text has no meaningful content
                         var hasMeaningful = HasMeaningfulContent(cleanedText);
-                        
+
                         if (hasMeaningful)
                         {
                             try
                             {
                                 // Synthesize voice for cleaned sentence
-                                var voiceResult = await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
-                                
+                                var voiceResult =
+                                    await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
+
                                 partialMessage.AudioData = voiceResult.AudioData;
                                 partialMessage.AudioMetadata = voiceResult.Metadata;
                             }
@@ -1245,9 +1292,10 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 }
                 else
                 {
-                    Logger.LogDebug($"[ChatMessageCallbackAsync] No complete sentence extracted from accumulated text: '{textAccumulator.ToString()}'");
+                    Logger.LogDebug(
+                        $"[ChatMessageCallbackAsync] No complete sentence extracted from accumulated text: '{textAccumulator.ToString()}'");
                 }
-                
+
                 // Clean up accumulator if this is the last chunk
                 if (chatContent.IsLastChunk)
                 {
@@ -1266,7 +1314,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             await PushMessageToClientAsync(partialMessage);
         }
-        
+
         // Clean up RequestContext when processing is complete (last chunk)
         if (chatContent.IsLastChunk)
         {
@@ -1275,11 +1323,13 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
             RequestContext.Remove("IsFilteringSuggestions");
             RequestContext.Remove("IsAccumulatingForSuggestions");
             RequestContext.Remove("AccumulatedContent");
-            Logger.LogDebug($"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned up RequestContext for completed request");
+            Logger.LogDebug(
+                $"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned up RequestContext for completed request");
         }
     }
 
-    public async Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content, string chatId,
+    public async Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content,
+        string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null)
     {
         Logger.LogDebug($"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()} content:{content} start.");
@@ -1294,16 +1344,18 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         var configuration = GetConfiguration();
         var llm = await configuration.GetSystemLLM();
         var streamingModeEnabled = await configuration.GetStreamingModeEnabled();
-        
+
         var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
-        
+
         var settings = promptSettings ?? new ExecutionPromptSettings();
         settings.Temperature = "0.9";
-        
-        var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId, promptSettings, isHttpRequest, region);
-        var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
+
+        var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId,
+            promptSettings, isHttpRequest, region);
+        var response = await aiAgentStatusProxy.ChatWithHistory(content, State.ChatHistory, settings, aiChatContextDto);
         sw.Stop();
-        Logger.LogDebug($"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
+        Logger.LogDebug(
+            $"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
         return response;
     }
 
@@ -1327,21 +1379,21 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     {
         Logger.LogDebug(
             $"[GodChatGAgent][GetChatMessageWithMetaAsync] - sessionId: {this.GetPrimaryKey()}, messageCount: {State.ChatHistory.Count}, metaCount: {State.ChatMessageMetas.Count}");
-        
+
         var result = new List<ChatMessageWithMetaDto>();
-        
+
         // Combine ChatHistory with ChatMessageMetas
         for (int i = 0; i < State.ChatHistory.Count; i++)
         {
             var message = State.ChatHistory[i];
             var meta = i < State.ChatMessageMetas.Count ? State.ChatMessageMetas[i] : null;
-            
+
             result.Add(ChatMessageWithMetaDto.Create(message, meta));
         }
-        
+
         Logger.LogDebug(
             $"[GodChatGAgent][GetChatMessageWithMetaAsync] - sessionId: {this.GetPrimaryKey()}, returned {result.Count} messages with metadata");
-        
+
         return Task.FromResult(result);
     }
 
@@ -1396,44 +1448,27 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
                     state.RegionProxies[regionProxy.Key] = regionProxy.Value;
                 }
+
                 break;
             case UpdateChatTimeEventLog updateChatTimeEventLog:
                 if (state.FirstChatTime == null)
                 {
                     state.FirstChatTime = updateChatTimeEventLog.ChatTime;
                 }
+
                 state.LastChatTime = updateChatTimeEventLog.ChatTime;
                 break;
-             case AddChatMessageMetasLogEvent addChatMessageMetasLogEvent:
-                    if (addChatMessageMetasLogEvent.ChatMessageMetas != null && addChatMessageMetasLogEvent.ChatMessageMetas.Any())
-                    {
-                        // Calculate the starting index for new metadata based on current ChatHistory count
-                        // minus the number of new metadata items we're adding
-                        int newMetadataCount = addChatMessageMetasLogEvent.ChatMessageMetas.Count;
-                        int targetStartIndex = Math.Max(0, state.ChatHistory.Count - newMetadataCount);
-                        
-                        // Ensure we have enough default metadata up to the target start index
-                        while (state.ChatMessageMetas.Count < targetStartIndex)
-                        {
-                            state.ChatMessageMetas.Add(new ChatMessageMeta
-                            {
-                                IsVoiceMessage = false,
-                                VoiceLanguage = VoiceLanguageEnum.English,
-                                VoiceParseSuccess = true,
-                                VoiceParseErrorMessage = null,
-                                VoiceDurationSeconds = 0.0
-                            });
-                        }
-                        
-                        // Add the new metadata
-                        foreach (var meta in addChatMessageMetasLogEvent.ChatMessageMetas)
-                        {
-                            state.ChatMessageMetas.Add(meta);
-                        }
-                    }
-                    
-                    // Final sync: ensure ChatMessageMetas matches ChatHistory count
-                    while (state.ChatMessageMetas.Count < state.ChatHistory.Count)
+            case AddChatMessageMetasLogEvent addChatMessageMetasLogEvent:
+                if (addChatMessageMetasLogEvent.ChatMessageMetas != null &&
+                    addChatMessageMetasLogEvent.ChatMessageMetas.Any())
+                {
+                    // Calculate the starting index for new metadata based on current ChatHistory count
+                    // minus the number of new metadata items we're adding
+                    int newMetadataCount = addChatMessageMetasLogEvent.ChatMessageMetas.Count;
+                    int targetStartIndex = Math.Max(0, state.ChatHistory.Count - newMetadataCount);
+
+                    // Ensure we have enough default metadata up to the target start index
+                    while (state.ChatMessageMetas.Count < targetStartIndex)
                     {
                         state.ChatMessageMetas.Add(new ChatMessageMeta
                         {
@@ -1445,8 +1480,28 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                         });
                     }
 
-                    break;            
-            }
+                    // Add the new metadata
+                    foreach (var meta in addChatMessageMetasLogEvent.ChatMessageMetas)
+                    {
+                        state.ChatMessageMetas.Add(meta);
+                    }
+                }
+
+                // Final sync: ensure ChatMessageMetas matches ChatHistory count
+                while (state.ChatMessageMetas.Count < state.ChatHistory.Count)
+                {
+                    state.ChatMessageMetas.Add(new ChatMessageMeta
+                    {
+                        IsVoiceMessage = false,
+                        VoiceLanguage = VoiceLanguageEnum.English,
+                        VoiceParseSuccess = true,
+                        VoiceParseErrorMessage = null,
+                        VoiceDurationSeconds = 0.0
+                    });
+                }
+
+                break;
+        }
     }
 
     private IConfigurationGAgent GetConfiguration()
@@ -1463,11 +1518,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     {
         if (string.IsNullOrEmpty(text))
             return false;
-        
+
         // Remove all punctuation and check if there's actual content
         var cleanText = ChatRegexPatterns.NonWordChars.Replace(text, "");
         var result = cleanText.Length > 0; // At least one letter or Chinese character
-        
+
         return result;
     }
 
@@ -1478,10 +1533,11 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     /// <param name="textAccumulator">The accumulator to update</param>
     /// <param name="isLastChunk">Whether this is the last chunk of the stream</param>
     /// <returns>Complete sentence if found, otherwise null</returns>
-    private string ExtractCompleteSentence(string accumulatedText, StringBuilder textAccumulator, bool isLastChunk = false)
+    private string ExtractCompleteSentence(string accumulatedText, StringBuilder textAccumulator,
+        bool isLastChunk = false)
     {
         Logger.LogDebug($"[ExtractCompleteSentence] Input: '{accumulatedText}', isLastChunk: {isLastChunk}");
-        
+
         if (string.IsNullOrEmpty(accumulatedText))
         {
             Logger.LogDebug("[ExtractCompleteSentence] Returning null - empty input");
@@ -1511,7 +1567,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         }
 
         var extractIndex = -1;
-        
+
         // Look for complete sentence endings
         for (var i = accumulatedText.Length - 1; i >= 0; i--)
         {
@@ -1570,7 +1626,8 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         cleanText = ChatRegexPatterns.MarkdownHeader.Replace(cleanText, "$1");
 
         // Replace code blocks with speech-friendly text
-        cleanText = ChatRegexPatterns.MarkdownCodeBlock.Replace(cleanText, language == VoiceLanguageEnum.Chinese ? "代码块" : "code block");
+        cleanText = ChatRegexPatterns.MarkdownCodeBlock.Replace(cleanText,
+            language == VoiceLanguageEnum.Chinese ? "代码块" : "code block");
 
         // Remove inline code formatting but keep content
         cleanText = ChatRegexPatterns.MarkdownInlineCode.Replace(cleanText, "$1");
@@ -1583,14 +1640,14 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
         // Remove multiple spaces and special markdown symbols
         cleanText = cleanText.Replace("**", "")
-                             .Replace("__", "")
-                             .Replace("~~", "")
-                             .Replace("---", "")
-                             .Replace("***", "")
-                             .Replace("===", "")
-                             .Replace("```", "")
-                             .Replace(">>>", "")
-                             .Replace("<<<", "");
+            .Replace("__", "")
+            .Replace("~~", "")
+            .Replace("---", "")
+            .Replace("***", "")
+            .Replace("===", "")
+            .Replace("```", "")
+            .Replace(">>>", "")
+            .Replace("<<<", "");
 
         // Remove excessive whitespace
         cleanText = ChatRegexPatterns.WhitespaceNormalize.Replace(cleanText, " ").Trim();
@@ -1658,7 +1715,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         await LLMInitializedAsync(llm, streamingModeEnabled, sysMessage);
 
         // Step 3: Create voice chat context with voice-specific metadata
-        var aiChatContextDto = CreateVoiceChatContext(sessionId, llm, streamingModeEnabled, message, chatId, 
+        var aiChatContextDto = CreateVoiceChatContext(sessionId, llm, streamingModeEnabled, message, chatId,
             promptSettings, isHttpRequest, region, voiceLanguage, voiceDurationSeconds);
 
         // Step 4: Get AI proxy and start streaming chat (same as GodStreamChatAsync)
@@ -1667,16 +1724,16 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             Logger.LogDebug(
                 $"[GodChatGAgent][GodVoiceStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
-            
+
             // Set default temperature for voice chat
             var settings = promptSettings ?? new ExecutionPromptSettings();
             settings.Temperature = "0.9";
-            
+
             // Start streaming with voice context
             var promptMsg = message;
             switch (voiceLanguage)
             {
-                case  VoiceLanguageEnum.English:
+                case VoiceLanguageEnum.English:
                     promptMsg += ".Requirement: Please reply in English.";
                     break;
                 case VoiceLanguageEnum.Chinese:
@@ -1690,13 +1747,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 default:
                     break;
             }
+
             Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] promptMsg: {promptMsg}");
 
             var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMsg, State.ChatHistory, settings,
                 context: aiChatContextDto);
             if (!result)
             {
-                Logger.LogError($"[GodChatGAgent][GodVoiceStreamChatAsync] Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
+                Logger.LogError(
+                    $"[GodChatGAgent][GodVoiceStreamChatAsync] Failed to initiate voice streaming response. {this.GetPrimaryKey().ToString()}");
             }
 
             if (!addToHistory)
@@ -1724,7 +1783,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                     }
                 }
             });
-                
+
             RaiseEvent(new AddChatMessageMetasLogEvent
             {
                 ChatMessageMetas = new List<ChatMessageMeta> { userVoiceMeta }
@@ -1758,22 +1817,23 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
         // Pattern to match conversation suggestions block using precompiled regex
         var match = ChatRegexPatterns.ConversationSuggestionsBlock.Match(fullResponse);
-        
+
         if (match.Success)
         {
             // Extract main content by removing everything from the start of [SUGGESTIONS] to the end
             var suggestionStartIndex = fullResponse.IndexOf("[SUGGESTIONS]", StringComparison.OrdinalIgnoreCase);
-            var mainContent = suggestionStartIndex > 0 
+            var mainContent = suggestionStartIndex > 0
                 ? fullResponse.Substring(0, suggestionStartIndex).Trim()
                 : "";
-                
+
             var suggestionSection = match.Groups[1].Value;
             var suggestions = ExtractNumberedItems(suggestionSection);
-            
-            Logger.LogDebug($"[GodChatGAgent][ParseResponseWithSuggestions] Extracted {suggestions.Count} suggestions from response");
+
+            Logger.LogDebug(
+                $"[GodChatGAgent][ParseResponseWithSuggestions] Extracted {suggestions.Count} suggestions from response");
             return (mainContent, suggestions);
         }
-        
+
         Logger.LogDebug("[GodChatGAgent][ParseResponseWithSuggestions] No suggestions found in response");
         return (fullResponse, new List<string>());
     }
@@ -1790,9 +1850,9 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
         {
             return items;
         }
-        
+
         var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        
+
         foreach (var line in lines)
         {
             var trimmedLine = line.Trim();
@@ -1807,7 +1867,7 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
                 }
             }
         }
-        
+
         Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} numbered items");
         return items;
     }
@@ -1820,26 +1880,26 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
     private static bool IsPartialSuggestionsMarker(ReadOnlySpan<char> content)
     {
         ReadOnlySpan<char> target = "[SUGGESTIONS]".AsSpan();
-        
+
         // Check all occurrences of '[' in the content
         int startIndex = 0;
         while (true)
         {
             int index = content.Slice(startIndex).IndexOf('[');
             if (index == -1) break;
-            
+
             index += startIndex; // Adjust to absolute position
             ReadOnlySpan<char> remaining = content.Slice(index);
-            
-            if (target.StartsWith(remaining, StringComparison.OrdinalIgnoreCase) && 
+
+            if (target.StartsWith(remaining, StringComparison.OrdinalIgnoreCase) &&
                 remaining.Length < target.Length)
             {
                 return true;
             }
-            
+
             startIndex = index + 1;
         }
-        
+
         return false;
     }
 }
