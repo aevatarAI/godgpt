@@ -147,6 +147,7 @@ public class LocalizationService : ILocalizationService
                 ["en.SpeechServiceUnavailable"] = "Speech recognition service unavailable",
                 ["en.AudioFormatUnsupported"] = "Audio file corrupted or unsupported format",
                 ["en.LanguageNotRecognised"] = "Language not recognised. Please try again in the selected language.",
+                ["en.FailedGetUserInfo"] = "Failed to get user information",
 
                 
                 //chinese
@@ -162,6 +163,7 @@ public class LocalizationService : ILocalizationService
                 ["zh-tw.SpeechServiceUnavailable"] = "語音識別服務不可用",
                 ["zh-tw.AudioFormatUnsupported"] = "音頻文件損壞或格式不受支持",
                 ["zh-tw.LanguageNotRecognised"] = "語言無法識別。請在選定的語言中重試。",
+                ["zh-tw.FailedGetUserInfo"] = "獲取用戶資訊失敗",
 
                 // Spanish translations
                 ["es.SharesReached"] = "Se alcanzó el máximo de {MaxShareCount} compartidos. ¡Elimina algunos para continuar! ",
@@ -175,7 +177,8 @@ public class LocalizationService : ILocalizationService
                 ["es.TranscriptUnavailable"] = "Transcripción no disponible",
                 ["es.SpeechServiceUnavailable"] = "Servicio de reconocimiento de voz no disponible",
                 ["es.AudioFormatUnsupported"] = "Archivo de audio corrupto o formato no compatible",
-                ["es.LanguageNotRecognised"] = "Idioma no reconocido. Por favor, intenta de nuevo en el idioma seleccionado."
+                ["es.LanguageNotRecognised"] = "Idioma no reconocido. Por favor, intenta de nuevo en el idioma seleccionado.",
+                ["es.FailedGetUserInfo"] = "No se pudo obtener la información del usuario"
 
             },
             

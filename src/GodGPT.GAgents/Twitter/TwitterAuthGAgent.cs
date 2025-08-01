@@ -2,7 +2,9 @@ using System.Text;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Twitter.Dtos;
 using Aevatar.Application.Grains.Twitter.SEvents;
 using Aevatar.Core;
@@ -50,14 +52,17 @@ public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEven
     private readonly ILogger<TwitterAuthGAgent> _logger;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IOptionsMonitor<TwitterAuthOptions> _authOptions;
+    private readonly ILocalizationService _localizationService;
 
     public TwitterAuthGAgent(
         ILogger<TwitterAuthGAgent> logger,
-        IHttpClientFactory httpClientFactory, IOptionsMonitor<TwitterAuthOptions> authOptions)
+        IHttpClientFactory httpClientFactory, IOptionsMonitor<TwitterAuthOptions> authOptions,ILocalizationService localizationService)
     {
         _logger = logger;
         _httpClientFactory = httpClientFactory;
         _authOptions = authOptions;
+        _localizationService = localizationService;
+
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -264,9 +269,13 @@ public class TwitterAuthGAgent : GAgentBase<TwitterAuthState, TwitterAuthLogEven
             var response = await client.GetAsync(_authOptions.CurrentValue.UserInfoEndpoint);
             if (!response.IsSuccessStatusCode)
             {
+                var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+
                 var error = await response.Content.ReadAsStringAsync();
+                var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.FailedGetUserInfo,language);
+
                 _logger.LogError("User info request failed: {Error}", error);
-                return new TwitterUserInfoDto { Success = false, Error = "Failed to get user information" };
+                return new TwitterUserInfoDto { Success = false, Error = localizedMessage };
             }
 
             // Parse response
