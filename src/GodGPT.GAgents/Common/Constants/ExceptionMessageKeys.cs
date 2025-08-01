@@ -15,5 +15,6 @@ public static class ExceptionMessageKeys
     public const string SpeechServiceUnavailable = "SpeechServiceUnavailable";
     public const string AudioFormatUnsupported = "AudioFormatUnsupported";
     public const string LanguageNotRecognised = "LanguageNotRecognised";
+    public const string FailedGetUserInfo = "FailedGetUserInfo";
 
 } 
