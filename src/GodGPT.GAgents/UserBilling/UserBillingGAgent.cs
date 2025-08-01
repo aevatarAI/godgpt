@@ -26,6 +26,7 @@ using Newtonsoft.Json.Linq;
 using Stripe;
 using Stripe.Checkout;
 using PaymentMethod = Aevatar.Application.Grains.Common.Constants.PaymentMethod;
+using GodGPT.GAgents.Common.Observability;
 
 namespace Aevatar.Application.Grains.UserBilling;
 
@@ -1873,6 +1874,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task ReportApplePaymentSuccessAsync(Guid userId, string transactionId, PurchaseType purchaseType, PaymentPlatform paymentPlatform)
     {
+        // Record payment success event to OpenTelemetry
+        PaymentTelemetryMetrics.RecordPaymentSuccess(
+            paymentPlatform.ToString(), 
+            purchaseType.ToString(), 
+            userId.ToString(), 
+            transactionId, 
+            _logger);
+        
         try
         {
             var analyticsGrain =
