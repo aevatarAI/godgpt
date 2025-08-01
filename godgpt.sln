@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GodGPT.TwitterIntegration.T
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GodGPT.PaymentAnalytics.Tests", "test\GodGPT.PaymentAnalytics.Tests\GodGPT.PaymentAnalytics.Tests.csproj", "{A3B7F2E1-9C8D-4E6A-B1F5-7834290ACE12}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GodGPT.Awakening.Tests", "test\GodGPT.Awakening.Tests\GodGPT.Awakening.Tests.csproj", "{A9EACEFA-F77A-48AA-8993-75A6C27CB607}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -115,6 +117,18 @@ Global
 		{A3B7F2E1-9C8D-4E6A-B1F5-7834290ACE12}.Release|x64.Build.0 = Release|Any CPU
 		{A3B7F2E1-9C8D-4E6A-B1F5-7834290ACE12}.Release|x86.ActiveCfg = Release|Any CPU
 		{A3B7F2E1-9C8D-4E6A-B1F5-7834290ACE12}.Release|x86.Build.0 = Release|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Debug|x64.Build.0 = Debug|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Debug|x86.Build.0 = Debug|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Release|x64.ActiveCfg = Release|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Release|x64.Build.0 = Release|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Release|x86.ActiveCfg = Release|Any CPU
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -127,6 +141,7 @@ Global
 		{FA9A44C5-111B-404A-B028-17700B382EFD} = {CA9AC87F-097E-4F15-8393-4BC07735A5B0}
 		{5794530E-0149-4765-91B7-406D39533100} = {04DBDB01-70F4-4E06-B468-8F87850B22BE}
 		{A3B7F2E1-9C8D-4E6A-B1F5-7834290ACE12} = {04DBDB01-70F4-4E06-B468-8F87850B22BE}
+		{A9EACEFA-F77A-48AA-8993-75A6C27CB607} = {04DBDB01-70F4-4E06-B468-8F87850B22BE}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {28315BFD-90E7-4E14-A2EA-F3D23AF4126F}

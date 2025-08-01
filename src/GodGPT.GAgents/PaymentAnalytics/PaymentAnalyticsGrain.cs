@@ -47,7 +47,8 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
         PaymentPlatform paymentPlatform,
         string transactionId, 
-        string userId
+        string userId,
+        PurchaseType purchaseType = PurchaseType.None
         )
     {
         if (string.IsNullOrWhiteSpace(transactionId))
@@ -88,7 +89,7 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
 
             // Create unique transaction ID by combining user, platform and original transaction ID
             var uniqueTransactionId = userId + "^" + paymentPlatform + "^" + transactionId;
-            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId, userId);
+            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId, userId, paymentValue: 0, purchaseType);
             var url = BuildGA4ApiUrl(currentOptions.ApiEndpoint, currentOptions.MeasurementId, currentOptions.ApiSecret);
             
             _logger.LogInformation("PaymentAnalyticsGrain reporting purchase event for transaction {TransactionId} to: {Url}", uniqueTransactionId, url);
@@ -125,7 +126,7 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     /// Create Google Analytics 4 payload for purchase event with idempotency support
     /// Uses GA4's built-in transaction_id deduplication mechanism
     /// </summary>
-    private object CreateGA4PurchasePayload(string transactionId, string userId, decimal? paymentValue = 0)
+    private object CreateGA4PurchasePayload(string transactionId, string userId, decimal? paymentValue = 0, PurchaseType purchaseType = PurchaseType.None)
     {
         var clientId = userId;
         
@@ -142,7 +143,8 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
                         transaction_id = transactionId,
                         currency = "USD",
                         value = paymentValue,
-                        engagement_time_msec = 1000
+                        engagement_time_msec = 1000,
+                        purchase_type = purchaseType.ToString().ToLowerInvariant()
                     }
                 }
             }

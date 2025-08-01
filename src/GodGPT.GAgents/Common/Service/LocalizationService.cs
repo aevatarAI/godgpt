@@ -140,13 +140,28 @@ public class LocalizationService : ILocalizationService
                 ["en.ConversationDeleted"] = "Sorry, this conversation has been deleted by the owner.",
                 ["en.InvalidConversation"] = "Unable to load conversation {SessionId}",
                 ["en.DailyUpdateLimit"] = "Daily upload limit reached. Upgrade to premium to continue.",
+                ["en.InvalidVoiceMessage"] = "Invalid voice message. Please try again.",
+                ["en.UnSetVoiceLanguage"] = "Please set voice language.",
+                ["en.SpeechTimeout"] = "Speech recognition service timeout",
+                ["en.TranscriptUnavailable"] = "Transcript Unavailable",
+                ["en.SpeechServiceUnavailable"] = "Speech recognition service unavailable",
+                ["en.AudioFormatUnsupported"] = "Audio file corrupted or unsupported format",
+                ["en.LanguageNotRecognised"] = "Language not recognised. Please try again in the selected language.",
 
+                
                 //chinese
                 ["zh-tw.SharesReached"] = "已達到最大分享次數 {MaxShareCount}。請刪除一些以繼續！",
                 ["zh-tw.InvalidSession"] = "無效的會話無法生成分享連結。  ",
                 ["zh-tw.ConversationDeleted"] = "抱歉，此對話已被擁有者刪除。",
                 ["zh-tw.InvalidConversation"] = "無法載入對話 {SessionId} ",
                 ["zh-tw.DailyUpdateLimit"] = "已達到每日上傳限制。 陞級到高級版以繼續。",
+                ["zh-tw.InvalidVoiceMessage"] = "語音資訊無效。 請重試。",
+                ["zh-tw.UnSetVoiceLanguage"] = "請設定語音語言。",
+                ["zh-tw.SpeechTimeout"] = "語音識別服務超時",
+                ["zh-tw.TranscriptUnavailable"] = "轉錄不可用",
+                ["zh-tw.SpeechServiceUnavailable"] = "語音識別服務不可用",
+                ["zh-tw.AudioFormatUnsupported"] = "音頻文件損壞或格式不受支持",
+                ["zh-tw.LanguageNotRecognised"] = "語言無法識別。請在選定的語言中重試。",
 
                 // Spanish translations
                 ["es.SharesReached"] = "Se alcanzó el máximo de {MaxShareCount} compartidos. ¡Elimina algunos para continuar! ",
@@ -154,6 +169,13 @@ public class LocalizationService : ILocalizationService
                 ["es.ConversationDeleted"] = "Lo siento, esta conversación ha sido eliminada por el propietario. ",
                 ["es.InvalidConversation"] = "No se pudo cargar la conversación {SessionId} ",
                 ["es.DailyUpdateLimit"] = "Se ha alcanzado el límite de carga diaria. Actualiza a Premium para continuar.",
+                ["es.InvalidVoiceMessage"] = "Mensaje de voz no válido. Por favor, intente de nuevo.",
+                ["es.UnSetVoiceLanguage"] = "Por favor, establezca el idioma de voz.",
+                ["es.SpeechTimeout"] = "Tiempo de espera del servicio de reconocimiento de voz",
+                ["es.TranscriptUnavailable"] = "Transcripción no disponible",
+                ["es.SpeechServiceUnavailable"] = "Servicio de reconocimiento de voz no disponible",
+                ["es.AudioFormatUnsupported"] = "Archivo de audio corrupto o formato no compatible",
+                ["es.LanguageNotRecognised"] = "Idioma no reconocido. Por favor, intenta de nuevo en el idioma seleccionado."
 
             },
             

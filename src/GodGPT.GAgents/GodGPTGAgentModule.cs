@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
+using GodGPT.GAgents.Awakening.Options;
 using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.Configuration;
 
@@ -30,6 +31,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
         Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
         Configure<GoogleAnalyticsOptions>(configuration.GetSection("GoogleAnalytics"));
+        Configure<AwakeningOptions>(configuration.GetSection("Awakening"));
 
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
         // Register speech services
