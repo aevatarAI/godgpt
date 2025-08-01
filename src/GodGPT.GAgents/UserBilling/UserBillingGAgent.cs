@@ -1067,7 +1067,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
             subscriptionIds.Remove(paymentSummary.SubscriptionId);
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto);
+            await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
         }
         else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Refunded && invoiceIds.Contains(invoiceDetail.InvoiceId))
         {
