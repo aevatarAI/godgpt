@@ -77,21 +77,21 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     protected override async Task PerformConfigAsync(ChatConfigDto configuration)
     {
         var stopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][ChatPerformConfigAsync] Start - SessionId: {this.GetPrimaryKey()}");
+        Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] Start - SessionId: {this.GetPrimaryKey()}");
         
         var regionToLLMsMap = _llmRegionOptions.CurrentValue.RegionToLLMsMap;
         if (regionToLLMsMap.IsNullOrEmpty())
         {
-            Logger.LogDebug($"[GodChatGAgent][ChatPerformConfigAsync] LLMConfigs is null or empty.");
+            Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] LLMConfigs is null or empty.");
             stopwatch.Stop();
-            Logger.LogDebug($"[GodChatGAgent][ChatPerformConfigAsync] End (early return) - Duration: {stopwatch.ElapsedMilliseconds}ms");
+            Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] End (early return) - Duration: {stopwatch.ElapsedMilliseconds}ms");
             return;
         }
 
         var initProxiesStopwatch = Stopwatch.StartNew();
         var proxyIds = await InitializeRegionProxiesAsync(DefaultRegion);
         initProxiesStopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][ChatPerformConfigAsync] InitializeRegionProxiesAsync - Duration: {initProxiesStopwatch.ElapsedMilliseconds}ms, ProxyCount: {proxyIds.Count}");
+        Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] InitializeRegionProxiesAsync - Duration: {initProxiesStopwatch.ElapsedMilliseconds}ms, ProxyCount: {proxyIds.Count}");
         
         Dictionary<string, List<Guid>> regionProxies = new();
         regionProxies[DefaultRegion] = proxyIds;
@@ -103,7 +103,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         });
         await ConfirmEvents();
         raiseEventStopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][ChatPerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
+        Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
         RaiseEvent(new AddPromptTemplateLogEvent
         {
             PromptTemplate = configuration.Instructions
@@ -122,7 +122,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
         RaiseEvent(new GodSetMaxHistoryCount() { MaxHistoryCount = maxHistoryCount });
         stopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][ChatPerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
+        Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
     }
 
     [EventHandler]
