@@ -64,4 +64,7 @@ public class AppStoreJWSTransactionDecodedPayload
     
     [JsonPropertyName("appTransactionId")]
     [Id(19)] public string AppTransactionId { get; set; }
+    
+    [JsonPropertyName("appAccountToken")] 
+    [Id(20)] public string AppAccountToken { get; set; }
 }

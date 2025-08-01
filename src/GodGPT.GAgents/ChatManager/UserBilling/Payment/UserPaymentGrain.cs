@@ -13,8 +13,8 @@ public interface IUserPaymentGrain : IGrainWithGuidKey
 {
     Task<GrainResultDto<PaymentDetailsDto>> ProcessPaymentCallbackAsync(string jsonPayload, string stripeSignature);
     Task<PaymentDetailsDto> GetPaymentDetailsAsync();
-    Task<bool> UpdatePaymentStatusAsync(PaymentStatus newStatus);
     Task<GrainResultDto<PaymentDetailsDto>> InitializePaymentAsync(UserPaymentState paymentState);
+    Task<GrainResultDto<PaymentDetailsDto>> UpdateUserIdAsync(Guid newUserId);
 }
 
 public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
@@ -458,46 +458,6 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         return Task.FromResult(State.ToDto());
     }
 
-    public async Task<bool> UpdatePaymentStatusAsync(PaymentStatus newStatus)
-    {
-        _logger.LogInformation("[PaymentGAgent][UpdatePaymentStatusAsync] Updating payment {PaymentId} status to {NewStatus}", 
-            this.GetPrimaryKey(), newStatus);
-        
-        bool canUpdateStatus = true;
-        if (State.Status > PaymentStatus.Processing && State.Status != newStatus)
-        {
-            bool isSpecialAllowedTransition = 
-                (State.Status == PaymentStatus.Completed && newStatus == PaymentStatus.Refunded) ||
-                (State.Status == PaymentStatus.Completed && newStatus == PaymentStatus.Disputed);
-            
-            if (!isSpecialAllowedTransition)
-            {
-                canUpdateStatus = false;
-                _logger.LogWarning("[PaymentGAgent][UpdatePaymentStatusAsync] Cannot update status from {CurrentStatus} to {NewStatus} as current status is finalized", 
-                    State.Status, newStatus);
-                return false;
-            }
-        }
-        
-        if (canUpdateStatus)
-        {
-            State.Status = newStatus;
-            State.LastUpdated = DateTime.UtcNow;
-            
-            if (newStatus == PaymentStatus.Completed && State.CompletedAt == null)
-            {
-                State.CompletedAt = DateTime.UtcNow;
-            }
-            
-            await WriteStateAsync();
-            
-            _logger.LogInformation("[PaymentGAgent][UpdatePaymentStatusAsync] Successfully updated status to {NewStatus}", newStatus);
-            return true;
-        }
-        
-        return false;
-    }
-
     public async Task<GrainResultDto<PaymentDetailsDto>> InitializePaymentAsync(UserPaymentState paymentState)
     {
         _logger.LogInformation("[PaymentGAgent][InitializePaymentAsync] Initializing payment for order {OrderId}", paymentState.OrderId);
@@ -532,6 +492,69 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             {
                 Success = false,
                 Message = $"Failed to initialize payment: {ex.Message}"
+            };
+        }
+    }
+
+    public async Task<GrainResultDto<PaymentDetailsDto>> UpdateUserIdAsync(Guid newUserId)
+    {
+        _logger.LogInformation("[PaymentGAgent][UpdateUserIdAsync] Updating user ID from {OldUserId} to {NewUserId} for payment {PaymentId}", 
+            State.UserId, newUserId, State.Id);
+        
+        try
+        {
+            // Validate input parameters
+            if (newUserId == Guid.Empty)
+            {
+                _logger.LogWarning("[PaymentGAgent][UpdateUserIdAsync] New user ID cannot be empty for payment {PaymentId}", State.Id);
+                return new GrainResultDto<PaymentDetailsDto>
+                {
+                    Success = false,
+                    Message = "New user ID cannot be empty"
+                };
+            }
+
+            // Check if new user ID is different from current one
+            if (State.UserId == newUserId)
+            {
+                _logger.LogInformation("[PaymentGAgent][UpdateUserIdAsync] New user ID {NewUserId} is same as current user ID for payment {PaymentId}", 
+                    newUserId, State.Id);
+                return new GrainResultDto<PaymentDetailsDto>
+                {
+                    Success = true,
+                    Data = State.ToDto(),
+                    Message = "User ID is already set to the specified value"
+                };
+            }
+
+            // Store original user ID for logging
+            var originalUserId = State.UserId;
+            
+            // Update user ID and timestamp
+            State.UserId = newUserId;
+            State.LastUpdated = DateTime.UtcNow;
+            
+            // Persist changes
+            await WriteStateAsync();
+            
+            _logger.LogInformation("[PaymentGAgent][UpdateUserIdAsync] Successfully updated user ID from {OldUserId} to {NewUserId} for payment {PaymentId}", 
+                originalUserId, newUserId, State.Id);
+            
+            return new GrainResultDto<PaymentDetailsDto>
+            {
+                Success = true,
+                Data = State.ToDto(),
+                Message = "User ID updated successfully"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[PaymentGAgent][UpdateUserIdAsync] Failed to update user ID for payment {PaymentId}: {ErrorMessage}", 
+                State.Id, ex.Message);
+            return new GrainResultDto<PaymentDetailsDto>
+            {
+                Success = false,
+                Message = $"Failed to update user ID: {ex.Message}"
             };
         }
     }

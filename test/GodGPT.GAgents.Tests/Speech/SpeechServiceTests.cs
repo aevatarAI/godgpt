@@ -19,7 +19,7 @@ public class SpeechServiceTests : AevatarGodGPTTestsBase
     public async Task SpeechToTextAsync_Should_Initialize_Without_Error()
     {
         var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
-        var audioData = Convert.FromBase64String(SpeechConstants.WAW_BASE64);
+        var audioData = Convert.FromBase64String(SpeechConstants.Voice_BASE64);
 
         // Act & Assert
         var result = await speechService.SpeechToTextAsync(audioData, VoiceLanguageEnum.Chinese);
@@ -40,7 +40,7 @@ public class SpeechServiceTests : AevatarGodGPTTestsBase
     {
         var speechService = ServiceProvider.GetRequiredService<ISpeechService>();
         // Convert base64 string to byte array
-        var wavData = ConvertBase64ToByteArray(SpeechConstants.WAW_BASE64);
+        var wavData = ConvertBase64ToByteArray(SpeechConstants.Voice_BASE64);
             
         // Act
         var result = await speechService.SpeechToTextAsync(wavData, VoiceLanguageEnum.Chinese);

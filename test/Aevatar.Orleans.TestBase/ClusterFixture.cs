@@ -15,6 +15,7 @@ using Aevatar.GAgents.SemanticKernel.Extensions;
 using Aevatar.Mock;
 using Aevatar.PermissionManagement.Extensions;
 using AutoMapper;
+using GodGPT.GAgents.Awakening.Options;
 using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,7 +32,7 @@ using Volo.Abp.Reflection;
 
 public class ClusterFixture : IDisposable, ISingletonDependency
 {
-    public static MockLoggerProvider LoggerProvider { get; set; }
+    public static MockLoggerProvider LoggerProvider { get; set; } = new MockLoggerProvider("TestCluster");
 
     public ClusterFixture()
     {
@@ -64,6 +65,10 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                     services.AddAutoMapper(typeof(GodGPTGAgentModule).Assembly);
                     var mock = new Mock<ILocalEventBus>();
                     services.AddSingleton(typeof(ILocalEventBus), mock.Object);
+                    
+                    // Mock IBlobContainer for testing
+                    var mockBlobContainer = new Mock<Volo.Abp.BlobStoring.IBlobContainer>();
+                    services.AddSingleton(mockBlobContainer.Object);
 
                     services.AddMemoryCache();
                     // Configure logging
@@ -137,31 +142,16 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<ApplePayOptions>(configuration.GetSection("ApplePay"))
                 .Configure<RolePromptOptions>(configuration.GetSection("RolePrompts"))
                 .Configure<GoogleAnalyticsOptions>(configuration.GetSection("GoogleAnalytics"))
-                .Configure<TwitterRewardOptions>(options =>
-                {
-                    options.BearerToken = "test-bearer-token";
-                    options.ApiKey = "test-api-key";
-                    options.ApiSecret = "test-api-secret";
-                    options.MonitorHandle = "@GodGPT_";
-                    options.ShareLinkDomain = "https://app.godgpt.fun";
-                    options.SelfAccountId = "test-self-account";
-                    options.PullIntervalMinutes = 30;
-                    options.PullBatchSize = 100;
-                    options.DataRetentionDays = 5;
-                    options.DailyRewardLimit = 500;
-                    options.OriginalTweetReward = 2;
-                    options.MaxTweetsPerUser = 10;
-                    options.MaxUserReward = 20;
-                    options.ShareLinkMultiplier = 1.1;
-                })
                 .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"))
-                .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"));
+                .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"))
+                .Configure<AwakeningOptions>(configuration.GetSection("Awakening"))
+                .Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
         }
     }
 
     public class MapperAccessor : IMapperAccessor
     {
-        public IMapper Mapper { get; set; }
+        public IMapper Mapper { get; set; } = null!; // Will be set during DI container setup
     }
 
     private class TestClientBuilderConfigurator : IClientBuilderConfigurator

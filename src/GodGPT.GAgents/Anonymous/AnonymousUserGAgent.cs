@@ -153,6 +153,10 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
     {
         await EnsureInitializedAsync();
         
+        // Get language from RequestContext with error handling
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+        Logger.LogDebug($"[AnonymousUserGAgent][GuestChatAsync] Language from context: {language}");
+        
         // Check chat limits
         if (!await CanChatAsync())
         {
