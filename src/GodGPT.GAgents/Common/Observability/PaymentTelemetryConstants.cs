@@ -9,7 +9,7 @@ namespace GodGPT.GAgents.Common.Observability
         public const string PaymentMeterName = "GodGPT.Payment";
         
         // Metric names - follow godgpt_payment_* pattern
-        public const string PaymentSuccessEvents = "godgpt_payment_success_events_total";
+        public const string PaymentSuccessEvents = "godgpt_payment_success_total";
         
         // Event categories for labeling
         public const string PaymentProcessingCategory = "payment_processing";
