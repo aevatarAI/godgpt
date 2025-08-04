@@ -885,7 +885,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             FullName = fullName
         });
 
-        await ConfirmEvents();
+        //await ConfirmEvents();
         return this.GetPrimaryKey();
     }
 
