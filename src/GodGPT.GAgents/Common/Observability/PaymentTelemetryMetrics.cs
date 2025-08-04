@@ -15,10 +15,8 @@ namespace GodGPT.GAgents.Common.Observability
         // Counter for payment success events
         private static readonly Counter<long> PaymentSuccessCounter = Meter.CreateCounter<long>(
             PaymentTelemetryConstants.PaymentSuccessEvents, 
-            "events", 
+            "ms", 
             "Payment success events processed");
-
-
 
         /// <summary>
         /// Records a payment success event (separate from analytics reporting)
@@ -60,7 +58,7 @@ namespace GodGPT.GAgents.Common.Observability
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, "[PaymentTelemetry] Failed to record payment success metric");
+                logger?.LogError(ex, "[PaymentTelemetry] Failed to record payment success metric");
             }
         }
 
