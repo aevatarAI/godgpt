@@ -15,7 +15,7 @@ namespace GodGPT.GAgents.Common.Observability
         // Counter for payment success events
         private static readonly Counter<long> PaymentSuccessCounter = Meter.CreateCounter<long>(
             PaymentTelemetryConstants.PaymentSuccessEvents, 
-            "ms", 
+            "events", 
             "Payment success events processed");
 
         /// <summary>
