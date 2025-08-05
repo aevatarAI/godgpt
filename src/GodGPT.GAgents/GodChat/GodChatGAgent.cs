@@ -106,6 +106,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         //await ConfirmEvents();
         raiseEventStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
+        var raiseTemplateEventStopwatch = Stopwatch.StartNew();
         RaiseEvent(new AddPromptTemplateLogEvent
         {
             PromptTemplate = configuration.Instructions
@@ -124,6 +125,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
         RaiseEvent(new GodSetMaxHistoryCount() { MaxHistoryCount = maxHistoryCount });
         await ConfirmEvents();
+        raiseTemplateEventStopwatch.Stop();
+        Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] raiseTemplateEventStopwatch - Duration: {raiseTemplateEventStopwatch.ElapsedMilliseconds}ms");
+
+
         stopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
     }
