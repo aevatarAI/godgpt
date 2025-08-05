@@ -103,14 +103,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Region = DefaultRegion,
             ProxyIds = proxyIds
         });
-        await ConfirmEvents();
+        //await ConfirmEvents();
         raiseEventStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
         RaiseEvent(new AddPromptTemplateLogEvent
         {
             PromptTemplate = configuration.Instructions
         });
-        await ConfirmEvents();
+        //await ConfirmEvents();
 
         var maxHistoryCount = configuration.MaxHistoryCount;
         if (maxHistoryCount > 100)
@@ -123,6 +123,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             maxHistoryCount = 10;
         }
         RaiseEvent(new GodSetMaxHistoryCount() { MaxHistoryCount = maxHistoryCount });
+        await ConfirmEvents();
         stopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
     }
