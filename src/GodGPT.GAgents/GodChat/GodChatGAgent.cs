@@ -97,9 +97,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         regionProxies[DefaultRegion] = proxyIds;
         
         var raiseEventStopwatch = Stopwatch.StartNew();
-        RaiseEvent(new UpdateRegionProxiesLogEvent
+        // Optimize: Use single region event for better performance
+        RaiseEvent(new UpdateSingleRegionProxyLogEvent
         {
-            RegionProxies = regionProxies
+            Region = DefaultRegion,
+            ProxyIds = proxyIds
         });
         await ConfirmEvents();
         raiseEventStopwatch.Stop();
@@ -1516,6 +1518,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 break;
             case UpdateProxyInitStatusLogEvent updateProxyInitStatusLogEvent:
                 state.ProxyInitStatuses[updateProxyInitStatusLogEvent.ProxyId] = updateProxyInitStatusLogEvent.Status;
+                break;
+            case UpdateSingleRegionProxyLogEvent updateSingleRegionProxyLogEvent:
+                // Optimized path for single region updates
+                if (state.RegionProxies == null)
+                {
+                    state.RegionProxies = new Dictionary<string, List<Guid>>();
+                }
+                state.RegionProxies[updateSingleRegionProxyLogEvent.Region] = updateSingleRegionProxyLogEvent.ProxyIds;
                 break;
             }
     }

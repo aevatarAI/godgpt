@@ -44,6 +44,13 @@ public class UpdateRegionProxiesLogEvent : GodChatEventLog
 }
 
 [GenerateSerializer]
+public class UpdateSingleRegionProxyLogEvent : GodChatEventLog
+{
+    [Id(0)] public string Region { get; set; }
+    [Id(1)] public List<Guid> ProxyIds { get; set; }
+}
+
+[GenerateSerializer]
 public class UpdateChatTimeEventLog : GodChatEventLog
 {
     [Id(0)] public DateTime ChatTime { get; set; }
