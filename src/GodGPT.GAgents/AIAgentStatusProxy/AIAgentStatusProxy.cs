@@ -59,7 +59,7 @@ public class AIAgentStatusProxy :
             RecoveryDelay = configuration.RequestRecoveryDelay,
             ParentId = configuration.ParentId
         });
-        await ConfirmEvents();
+        //await ConfirmEvents();
         raiseEventStopwatch.Stop();
         Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
         
