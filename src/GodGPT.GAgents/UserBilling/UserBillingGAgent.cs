@@ -1039,7 +1039,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var purchaseType = !paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.InvoiceDetails.Count == 1
                 ? PurchaseType.Subscription
                 : PurchaseType.Renewal;
-            _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe);
+            _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe, productConfig.Currency, productConfig.Amount);
             
         } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
@@ -1769,7 +1769,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         "[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Subscribed",
                         userId.ToString(), signedTransactionInfo.TransactionId);
                     //Report payment success to Google Analytics for completed payments
-                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Subscription, PaymentPlatform.AppStore);
+                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Subscription, PaymentPlatform.AppStore, signedTransactionInfo.Currency, signedTransactionInfo.Price);
                     break;
                 case AppStoreNotificationType.DID_RENEW:
                     // Handle successful renewal
@@ -1779,7 +1779,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         userId.ToString(), signedTransactionInfo.TransactionId);
 
                     //Report payment success to Google Analytics for completed payments
-                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore);
+                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.Currency, signedTransactionInfo.Price);
 
                     break;
                 case AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS:
@@ -1826,7 +1826,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                             _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, User upgraded subscription, effective immediately",
                                 userId.ToString(), signedTransactionInfo.TransactionId);
                             //Report payment success to Google Analytics for completed payments
-                            _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore);
+                            _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.Currency, signedTransactionInfo.Price);
                             break;
                         case AppStoreNotificationSubtype.DOWNGRADE:
                             _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, User downgraded subscription, effective at next renewal",
@@ -1872,7 +1872,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
-    private async Task ReportApplePaymentSuccessAsync(Guid userId, string transactionId, PurchaseType purchaseType, PaymentPlatform paymentPlatform)
+    private async Task ReportApplePaymentSuccessAsync(Guid userId, string transactionId, PurchaseType purchaseType, PaymentPlatform paymentPlatform, string currency, decimal amount)
     {
         // Record payment success event to OpenTelemetry
         PaymentTelemetryMetrics.RecordPaymentSuccess(
@@ -1890,7 +1890,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 paymentPlatform,
                 transactionId,
                 userId.ToString(),
-                purchaseType
+                purchaseType,
+                currency,
+                amount
             );
 
             if (analyticsResult.IsSuccess)

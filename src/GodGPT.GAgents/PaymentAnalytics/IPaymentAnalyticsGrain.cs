@@ -17,10 +17,11 @@ public interface IPaymentAnalyticsGrain : IGrainWithStringKey
     /// <param name="transactionId">Unique transaction/order ID for deduplication</param>
     /// <param name="userId">User ID</param>
     /// <param name="purchaseType">Type of purchase (None, Subscription, Renewal)</param>
+    /// <param name="currency"></param>
+    /// <param name="amount"></param>
     /// <returns>Analytics result with success status</returns>
-    Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
-        PaymentPlatform paymentPlatform,
-        string transactionId, 
+    Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(PaymentPlatform paymentPlatform,
+        string transactionId,
         string userId,
-        PurchaseType purchaseType = PurchaseType.None);
+        PurchaseType purchaseType = PurchaseType.None, string currency = "USD", decimal amount = 0);
 }
