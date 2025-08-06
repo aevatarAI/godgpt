@@ -250,6 +250,7 @@ public class UserProfileDto
     [Id(7)] public Guid Id { get; set; }
     [Id(8)] public Guid? InviterId { get; set; }
     [Id(9)] public VoiceLanguageEnum VoiceLanguage { get; set; }
+    [Id(10)] public bool? IsFirstConversation { get; set; }
 
 }
 
