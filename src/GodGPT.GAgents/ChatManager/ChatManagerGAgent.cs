@@ -14,6 +14,7 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.UserQuota;
+using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.Core.Placement;
 using Aevatar.GAgents.AI.Common;
@@ -38,7 +39,7 @@ namespace Aevatar.Application.Grains.Agents.ChatManager;
 [LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(ChatGAgentManager))]
 [Reentrant]
-public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManageEventLog>,
+public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEventLog>,
     IChatManagerGAgent
 {
     private const string FormattedDate = "yyyy-MM-dd";
@@ -432,101 +433,14 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     public async Task<Tuple<string, string>> ChatWithSessionAsync(Guid sessionId, string sysmLLM, string content,
         ExecutionPromptSettings promptSettings = null)
     {
-        var sessionInfo = State.GetSession(sessionId);
-        IGodChat godChat = GrainFactory.GetGrain<IGodChat>(sessionId);
-        
-        if (sessionInfo == null)
-        {
-            return new Tuple<string, string>("", "");
-        }
-
-        // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
-        var actionResult = await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(),
-            CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        if (!actionResult.Success)
-        {
-            // 2. If not allowed, return error message without further processing
-            return new Tuple<string, string>(actionResult.Message, "");
-        }
-
-        // 3. If allowed, continue with chat logic
-        var title = "";
-        if (sessionInfo.Title.IsNullOrEmpty())
-        {
-            var titleList = await ChatWithHistory(content,context: new AIChatContextDto());
-            title = titleList is { Count: > 0 }
-                ? titleList[0].Content!
-                : string.Join(" ", content.Split(" ").Take(4));
-
-            RaiseEvent(new RenameTitleEventLog()
-            {
-                SessionId = sessionId,
-                Title = title
-            });
-
-            await ConfirmEvents();
-        }
-
-        var configuration = GetConfiguration();
-        var response = await godChat.GodChatAsync(await configuration.GetSystemLLM(), content, promptSettings);
-        return new Tuple<string, string>(response, title);
+        throw new Exception("The method is outdated");
     }
     
     private async Task StreamChatWithSessionAsync(Guid sessionId,string sysmLLM, string content,string chatId,
         ExecutionPromptSettings promptSettings = null)
     {
-        Stopwatch sw = new Stopwatch();
-        sw.Start();
-        var sessionInfo = State.GetSession(sessionId);
-        IGodChat godChat = GrainFactory.GetGrain<IGodChat>(sessionId);
-        sw.Stop();
-        Logger.LogDebug($"StreamChatWithSessionAsync - step1,time use:{sw.ElapsedMilliseconds}");
+        throw new Exception("The method is outdated");
 
-        // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGAgent =
-            GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
-        var actionResult = await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(),
-            CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        if (!actionResult.Success)
-        {
-            // 2. If not allowed, log and return early without further processing
-            Logger.LogWarning($"StreamChatWithSessionAsync: {actionResult.Message} for user {this.GetPrimaryKey()}. SessionId: {sessionId}");
-            return;
-        }
-
-        var title = "";
-        if (sessionInfo == null)
-        {
-            Logger.LogError("StreamChatWithSessionAsync sessionInfoIsNull sessionId={A}",sessionId);
-            return ;
-        }
-        if (sessionInfo.Title.IsNullOrEmpty())
-        {
-            sw.Reset();
-            sw.Start();
-            var titleList = await ChatWithHistory(content,context: new AIChatContextDto());
-            title = titleList is { Count: > 0 }
-                ? titleList[0].Content!
-                : string.Join(" ", content.Split(" ").Take(4));
-        
-            RaiseEvent(new RenameTitleEventLog()
-            {
-                SessionId = sessionId,
-                Title = title
-            });
-        
-            await ConfirmEvents();
-            sw.Stop();
-            Logger.LogDebug($"StreamChatWithSessionAsync - step3,time use:{sw.ElapsedMilliseconds}");
-        }
-
-        sw.Reset();
-        sw.Start();
-        var configuration = GetConfiguration();
-        godChat.GodStreamChatAsync(sessionId,await configuration.GetSystemLLM(), await configuration.GetStreamingModeEnabled(),content, chatId,promptSettings);
-        sw.Stop();
-        Logger.LogDebug($"StreamChatWithSessionAsync - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
     public async Task<List<SessionInfoDto>> GetSessionListAsync()
@@ -1121,7 +1035,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return Task.FromResult(State.InviterId);
     }
 
-    protected override void AIGAgentTransitionState(ChatManagerGAgentState state,
+    protected override void GAgentTransitionState(ChatManagerGAgentState state,
         StateLogEventBase<ChatManageEventLog> @event)
     {
         switch (@event)
@@ -1219,7 +1133,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }   
     }
 
-    protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
+    protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
         // var configuration = GetConfiguration();
         //
@@ -1247,7 +1161,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             });
             await ConfirmEvents();
         }
-        await base.OnAIGAgentActivateAsync(cancellationToken);
+        await base.OnGAgentActivateAsync(cancellationToken);
     }
 
     private IConfigurationGAgent GetConfiguration()
