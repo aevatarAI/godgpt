@@ -5,6 +5,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
+using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.Core.Placement;
 using Aevatar.GAgents.AI.Common;
@@ -31,7 +32,7 @@ namespace Aevatar.Application.Grains.Agents.Anonymous;
 [GAgent(nameof(AnonymousUserGAgent))]
 [SiloNamePatternPlacement("User")]
 [Reentrant]
-public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUserEventLog>, 
+public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserEventLog>, 
     IAnonymousUserGAgent
 {
     public override Task<string> GetDescriptionAsync()
@@ -309,7 +310,7 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
     /// <summary>
     /// Handle state transitions for events (mimic ChatManagerGAgent.AIGAgentTransitionState)
     /// </summary>
-    protected override void AIGAgentTransitionState(AnonymousUserState state, StateLogEventBase<AnonymousUserEventLog> @event)
+    protected override void GAgentTransitionState(AnonymousUserState state, StateLogEventBase<AnonymousUserEventLog> @event)
     {
         switch (@event)
         {
@@ -337,11 +338,11 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
     /// <summary>
     /// Initialization on grain activation (mimic ChatManagerGAgent.OnAIGAgentActivateAsync)
     /// </summary>
-    protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
+    protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
         Logger.LogDebug("[AnonymousUserGAgent][OnAIGAgentActivateAsync] Activating anonymous user grain");
         await EnsureInitializedAsync();
-        await base.OnAIGAgentActivateAsync(cancellationToken);
+        await base.OnGAgentActivateAsync(cancellationToken);
     }
 }
  
