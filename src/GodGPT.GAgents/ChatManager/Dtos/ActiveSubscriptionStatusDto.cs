@@ -19,7 +19,12 @@ public class ActiveSubscriptionStatusDto
     [Id(1)] public bool HasActiveStripeSubscription { get; set; } = false;
     
     /// <summary>
-    /// Whether there is any active subscription (Apple or Stripe)
+    /// Whether there is any active subscription (Apple, Stripe, or Google Play)
     /// </summary>
     [Id(2)] public bool HasActiveSubscription { get; set; } = false;
+    
+    /// <summary>
+    /// Whether there is an active Google Play subscription
+    /// </summary>
+    [Id(3)] public bool HasActiveGooglePlaySubscription { get; set; } = false;
 } 

@@ -72,6 +72,36 @@ public interface IUserBillingGAgent : IGAgent
     /// </summary>
     /// <returns>ActiveSubscriptionStatusDto containing status for Apple, Stripe, and overall subscriptions.</returns>
     Task<ActiveSubscriptionStatusDto> GetActiveSubscriptionStatusAsync();
+    
+    // Google Pay related methods
+    /// <summary>
+    /// Verify Google Pay Web payment
+    /// </summary>
+    /// <param name="request">Google Pay verification request</param>
+    /// <returns>Payment verification result</returns>
+    Task<PaymentVerificationResultDto> VerifyGooglePayPaymentAsync(GooglePayVerificationDto request);
+    
+    /// <summary>
+    /// Verify Google Play purchase
+    /// </summary>
+    /// <param name="request">Google Play verification request</param>
+    /// <returns>Payment verification result</returns>
+    Task<PaymentVerificationResultDto> VerifyGooglePlayPurchaseAsync(GooglePlayVerificationDto request);
+    
+    /// <summary>
+    /// Handle Google Play real-time notification
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <param name="notificationData">RTDN notification data</param>
+    /// <returns>Processing success</returns>
+    Task<bool> HandleGooglePlayNotificationAsync(string userId, string notificationData);
+    
+    /// <summary>
+    /// Synchronize Google Play subscription status
+    /// </summary>
+    /// <param name="subscriptionId">Subscription ID</param>
+    /// <returns>Synchronization success</returns>
+    Task<bool> SyncGooglePlaySubscriptionAsync(string subscriptionId);
 }
 
 [GAgent(nameof(UserBillingGAgent))]
@@ -3122,4 +3152,113 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             }
         }
     }
+
+    #region Google Pay Methods
+
+    public async Task<PaymentVerificationResultDto> VerifyGooglePayPaymentAsync(GooglePayVerificationDto request)
+    {
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Verifying Google Pay payment for user: {UserId}, productId: {ProductId}",
+                request.UserId, request.ProductId);
+
+            // TODO: Implement Google Pay Web payment verification
+            // This is a placeholder implementation
+            var result = new PaymentVerificationResultDto
+            {
+                IsValid = false,
+                Message = "Google Pay Web verification not yet implemented",
+                ErrorCode = "NOT_IMPLEMENTED"
+            };
+
+            _logger.LogWarning("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Google Pay Web verification not yet implemented");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePayPaymentAsync] Error verifying Google Pay payment");
+            return new PaymentVerificationResultDto
+            {
+                IsValid = false,
+                Message = "Internal error during verification",
+                ErrorCode = "INTERNAL_ERROR"
+            };
+        }
+    }
+
+    public async Task<PaymentVerificationResultDto> VerifyGooglePlayPurchaseAsync(GooglePlayVerificationDto request)
+    {
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] Verifying Google Play purchase for user: {UserId}, productId: {ProductId}",
+                request.UserId, request.ProductId);
+
+            // TODO: Implement Google Play purchase verification using GooglePayService
+            // This is a placeholder implementation
+            var result = new PaymentVerificationResultDto
+            {
+                IsValid = false,
+                Message = "Google Play purchase verification not yet implemented",
+                ErrorCode = "NOT_IMPLEMENTED"
+            };
+
+            _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] Google Play purchase verification not yet implemented");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] Error verifying Google Play purchase");
+            return new PaymentVerificationResultDto
+            {
+                IsValid = false,
+                Message = "Internal error during verification",
+                ErrorCode = "INTERNAL_ERROR"
+            };
+        }
+    }
+
+    public async Task<bool> HandleGooglePlayNotificationAsync(string userId, string notificationData)
+    {
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][HandleGooglePlayNotificationAsync] Handling Google Play notification for user: {UserId}",
+                userId);
+
+            // TODO: Implement Google Play RTDN notification handling
+            // This should include:
+            // 1. Parse notification data
+            // 2. Update subscription status
+            // 3. Process business logic (user quota, analytics, etc.)
+            
+            _logger.LogWarning("[UserBillingGAgent][HandleGooglePlayNotificationAsync] Google Play notification handling not yet implemented");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][HandleGooglePlayNotificationAsync] Error handling Google Play notification");
+            return false;
+        }
+    }
+
+    public async Task<bool> SyncGooglePlaySubscriptionAsync(string subscriptionId)
+    {
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][SyncGooglePlaySubscriptionAsync] Syncing Google Play subscription: {SubscriptionId}",
+                subscriptionId);
+
+            // TODO: Implement Google Play subscription synchronization
+            // This should query the Google Play API for the latest subscription status
+            
+            _logger.LogWarning("[UserBillingGAgent][SyncGooglePlaySubscriptionAsync] Google Play subscription sync not yet implemented");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][SyncGooglePlaySubscriptionAsync] Error syncing Google Play subscription");
+            return false;
+        }
+    }
+
+    #endregion
 }
