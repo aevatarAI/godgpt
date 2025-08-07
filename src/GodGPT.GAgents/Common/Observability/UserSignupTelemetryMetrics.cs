@@ -1,94 +1,154 @@
+using System.Diagnostics;
 using System.Diagnostics.Metrics;
-using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Logging;
 
-namespace GodGPT.GAgents.Common.Observability
+namespace Aevatar.Application.Grains.Common.Observability;
+
+/// <summary>
+/// User lifecycle telemetry metrics collection following OpenTelemetry best practices
+/// Provides independent, reusable metrics with minimal coupling to business logic
+/// </summary>
+public static class UserLifecycleTelemetryMetrics
 {
-    /// <summary>
-    /// User lifecycle telemetry metrics collection following OpenTelemetry best practices
-    /// Provides independent, reusable metrics with minimal coupling to business logic
-    /// </summary>
-    public static class UserLifecycleTelemetryMetrics
-    {
-        private static readonly Meter Meter = new(UserLifecycleTelemetryConstants.UserLifecycleMeterName);
+    private static readonly Meter Meter = new(UserLifecycleTelemetryConstants.UserLifecycleMeterName);
         
-        // Counter for signup success events
-        private static readonly Counter<long> SignupSuccessCounter = Meter.CreateCounter<long>(
-            UserLifecycleTelemetryConstants.SignupSuccessEvents, 
-            "events", 
-            "User signup success events processed");
+    // Counter for signup success events
+    private static readonly Counter<long> SignupSuccessCounter = Meter.CreateCounter<long>(
+        UserLifecycleTelemetryConstants.SignupSuccessEvents, 
+        string.Empty, 
+        "User signup success events processed");
 
-        /// <summary>
-        /// Records a user signup success event
-        /// </summary>
-        /// <param name="signupSource">Source of signup (web, mobile, api, etc.)</param>
-        /// <param name="userId">User identifier (converted to tier for low cardinality)</param>
-        /// <param name="logger">Optional logger</param>
-        /// <param name="methodName">Automatically captured calling method name</param>
-        /// <param name="filePath">Automatically captured file path</param>
-        public static void RecordSignupSuccess(
-            string signupSource, 
-            string userId,
-            ILogger? logger = null,
-            [CallerMemberName] string methodName = "", 
-            [CallerFilePath] string? filePath = null)
+    // New: Counter for user activity events by cohort
+    private static readonly Counter<long> ActiveByCohortCounter = Meter.CreateCounter<long>(
+        UserLifecycleTelemetryConstants.ActiveByCohortEvents,
+        string.Empty,
+        "User activity events grouped by registration cohort for retention analysis");
+
+    // New: Counter for anonymous user activity events
+    private static readonly Counter<long> AnonymousUserActivityCounter = Meter.CreateCounter<long>(
+        UserLifecycleTelemetryConstants.AnonymousUserActivityEvents,
+        string.Empty,
+        "Anonymous user daily activity events for conversion funnel tracking");
+
+    // New: Counter for credits exhausted events
+    private static readonly Counter<long> CreditsExhaustedCounter = Meter.CreateCounter<long>(
+        UserLifecycleTelemetryConstants.CreditsExhaustedEvents,
+        string.Empty,
+        "User credits exhausted events for conversion funnel analysis");
+
+    /// <summary>
+    /// Records a user signup success event
+    /// </summary>
+    /// <param name="userId">User identifier (converted to tier for low cardinality)</param>
+    /// <param name="logger">Optional logger</param>
+    public static void RecordSignupSuccess(string userId, ILogger? logger = null)
+    {
+        try
         {
-            try
-            {
-                var className = GetClassNameFromFilePath(filePath);
-                var fullMethodName = className != null ? $"{className}.{methodName}" : methodName;
+            // Use user tier instead of user ID to avoid high cardinality
+            SignupSuccessCounter.Add(1,
+                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.UserIdTag, userId));
                 
-                // Use user tier instead of user ID to avoid high cardinality
-                var userTier = GetUserTier(userId);
-                
-                SignupSuccessCounter.Add(1,
-                    new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.SignupSourceTag, signupSource),
-                    new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.UserTierTag, userTier),
-                    new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.MethodNameTag, fullMethodName),
-                    new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.EventCategoryTag, UserLifecycleTelemetryConstants.UserOnboardingCategory));
-                
-                logger?.LogInformation(
-                    "[UserLifecycleTelemetry] Signup success recorded: source={SignupSource} tier={UserTier} user={UserId} method={MethodName}",
-                    signupSource, userTier, userId, fullMethodName);
-            }
-            catch (Exception ex)
-            {
-                logger?.LogError(ex, "[UserLifecycleTelemetry] Failed to record signup success metric");
-            }
+            logger?.LogInformation(
+                "[UserLifecycleTelemetry] Signup success recorded: user={UserId}", userId);
         }
-
-        /// <summary>
-        /// Gets class name from file path for context
-        /// </summary>
-        private static string? GetClassNameFromFilePath(string? filePath)
+        catch (Exception ex)
         {
-            if (string.IsNullOrEmpty(filePath))
-                return null;
-
-            var fileName = System.IO.Path.GetFileNameWithoutExtension(filePath);
-            return fileName;
-        }
-
-        /// <summary>
-        /// Converts user ID to tier for low cardinality metrics
-        /// </summary>
-        private static string GetUserTier(string userId)
-        {
-            // Simple tier classification to avoid high cardinality
-            // This can be enhanced based on business requirements
-            if (string.IsNullOrEmpty(userId))
-                return "unknown";
-                
-            var hash = userId.GetHashCode();
-            var tier = Math.Abs(hash) % 4;
-            
-            return tier switch
-            {
-                0 => "tier_a",
-                1 => "tier_b", 
-                2 => "tier_c",
-                _ => "tier_d"
-            };
+            logger?.LogError(ex, "[UserLifecycleTelemetry] Failed to record signup success metric");
         }
     }
-} 
+
+    /// <summary>
+    /// Records user activity event for retention tracking
+    /// This single metric supports both new user registration and user retention analysis
+    /// Application-level deduplication ensures each user is counted only once per day
+    /// </summary>
+    /// <param name="registrationDate">User registration date (YYYY-MM-DD format)</param>
+    /// <param name="activityDate">User activity date (YYYY-MM-DD format)</param>
+    /// <param name="membershipLevel">Membership level (9 levels: see UserMembershipTier constants)</param>
+    /// <param name="logger">Optional logger</param>
+    public static void RecordUserActivityByCohort(
+        string registrationDate,
+        string activityDate,
+        string membershipLevel,
+        ILogger? logger = null)
+    {
+        try
+        {
+            ActiveByCohortCounter.Add(1,
+                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.RegistrationDateTag, registrationDate),
+                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ActivityDateTag, activityDate),
+                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.MembershipLevelTag, membershipLevel));
+
+            logger?.LogInformation(
+                "[UserLifecycleTelemetry] User activity recorded: registration={RegistrationDate} activity={ActivityDate} membership={MembershipLevel}",
+                registrationDate, activityDate, membershipLevel);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "[UserLifecycleTelemetry] Failed to record user activity by cohort");
+        }
+    }
+
+    /// <summary>
+    /// Records anonymous user daily activity event (part of user lifecycle/conversion tracking)
+    /// This method ensures each anonymous user is counted only once per day
+    /// </summary>
+    /// <param name="activityDate">Activity date (YYYY-MM-DD format)</param>
+    /// <param name="chatCount">Current chat count for the user</param>
+    /// <param name="logger">Optional logger</param>
+    public static void RecordAnonymousUserActivity(
+        string activityDate,
+        int chatCount,
+        ILogger? logger = null)
+    {
+        try
+        {
+            AnonymousUserActivityCounter.Add(1,
+                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ActivityDateTag, activityDate),
+                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ChatCountTag, chatCount));
+
+            logger?.LogInformation(
+                "[UserLifecycleTelemetry] Anonymous user activity recorded: date={ActivityDate} chatCount={ChatCount}",
+                activityDate, chatCount);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "[UserLifecycleTelemetry] Failed to record anonymous user activity");
+        }
+    }
+
+    /// <summary>
+    /// Records a credits exhausted event (critical conversion point in user lifecycle)
+    /// This method tracks when users run out of credits, indicating potential conversion opportunity
+    /// </summary>
+    /// <param name="userId">User identifier</param>
+    /// <param name="daysSinceSignup">Days since user registration</param>
+    /// <param name="logger">Optional logger</param>
+    public static void RecordCreditsExhausted(
+        string userId,
+        int daysSinceSignup,
+        ILogger? logger = null)
+    {
+        try
+        {
+            var exhaustionDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            
+            var tags = new TagList
+            {
+                { UserLifecycleTelemetryConstants.ExhaustionDateTag, exhaustionDate },
+                { UserLifecycleTelemetryConstants.DaysSinceSignupTag, daysSinceSignup.ToString() }
+            };
+
+            CreditsExhaustedCounter.Add(1, tags);
+            
+            logger?.LogDebug(
+                "[UserLifecycleTelemetry] Credits exhausted event recorded for user: {UserId}, days: {DaysSinceSignup}",
+                userId, daysSinceSignup);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "[UserLifecycleTelemetry] Failed to record credits exhausted event for user: {UserId}", userId);
+        }
+    }
+}

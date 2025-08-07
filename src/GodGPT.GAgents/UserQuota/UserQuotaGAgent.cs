@@ -4,6 +4,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.UserQuota.SEvents;
@@ -490,6 +491,12 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation
             });
             await ConfirmEvents();
+
+            if (State.Credits == 0)
+            {
+                // Report credits exhausted event for conversion analysis
+                await ReportCreditsExhaustedAsync();
+            }
         }
 
         var updatedRateLimitInfo = State.RateLimits[actionType];
@@ -509,6 +516,34 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     }
 
     #endregion
+
+    /// <summary>
+    /// Reports credits exhausted event to OpenTelemetry for conversion tracking
+    /// </summary>
+    private Task ReportCreditsExhaustedAsync()
+    {
+        try
+        {
+            // Calculate days since signup
+            var daysSinceSignup = (int)(DateTime.UtcNow - State.CreatedAt).TotalDays;
+
+            // Report the telemetry event
+            UserLifecycleTelemetryMetrics.RecordCreditsExhausted(
+                this.GetPrimaryKey().ToString(),
+                daysSinceSignup,
+                _logger);
+
+            _logger.LogDebug(
+                "[UserQuotaGAgent] Credits exhausted event reported - User: {UserId}, Days: {DaysSinceSignup}",
+                this.GetPrimaryKey().ToString(), daysSinceSignup);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserQuotaGAgent] Failed to report credits exhausted event for user: {UserId}", this.GetPrimaryKeyString());
+        }
+        
+        return Task.CompletedTask;
+    }
 
     public async Task UpdateQuotaAsync(string productId, DateTime expiresDate)
     {
