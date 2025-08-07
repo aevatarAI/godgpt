@@ -11,6 +11,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.PaymentAnalytics;
@@ -26,7 +27,6 @@ using Newtonsoft.Json.Linq;
 using Stripe;
 using Stripe.Checkout;
 using PaymentMethod = Aevatar.Application.Grains.Common.Constants.PaymentMethod;
-using GodGPT.GAgents.Common.Observability;
 
 namespace Aevatar.Application.Grains.UserBilling;
 

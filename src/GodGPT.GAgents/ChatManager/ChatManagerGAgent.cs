@@ -7,6 +7,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
 using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
@@ -19,7 +20,6 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using GodGPT.GAgents.SpeechChat;
-using GodGPT.GAgents.Common.Observability;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -367,6 +367,10 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
         
         sw.Reset();
+        
+        // Record user activity metrics for retention analysis (before RaiseEvent to ensure proper deduplication)
+        await RecordUserActivityMetricsAsync();
+        
         RaiseEvent(new CreateSessionInfoEventLog()
         {
             SessionId = sessionId,
@@ -380,6 +384,98 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
         return godChat.GetPrimaryKey();
+    }
+
+    /// <summary>
+    /// Records user activity metrics for retention analysis
+    /// Application-level deduplication: Check SessionInfoList to determine if today's activity was already reported
+    /// </summary>
+    private async Task RecordUserActivityMetricsAsync()
+    {
+        try
+        {
+            var today = DateTime.UtcNow.Date;
+            
+            // Check SessionInfoList for the last session's creation time
+            var lastSession = State.SessionInfoList?.LastOrDefault();
+            if (lastSession != null && lastSession.CreateAt.Date == today)
+            {
+                // Today already has session creation, skip duplicate reporting
+                Logger.LogDebug("[GodChatGAgent][RecordUserActivityMetricsAsync] {UserId} User activity metrics already recorded today", this.GetPrimaryKey().ToString());
+                return;
+            }
+            
+            // First session creation today, need to record metrics
+            var todayString = today.ToString("yyyy-MM-dd");
+            var userRegistrationDate = State.RegisteredAtUtc?.ToString("yyyy-MM-dd") ?? todayString;
+
+            // Get user membership level
+            var membershipLevel = await DetermineMembershipLevelAsync();
+
+            // Record user activity metrics (ensure each user is counted only once per day)
+            UserLifecycleTelemetryMetrics.RecordUserActivityByCohort(
+                registrationDate: userRegistrationDate,
+                activityDate: todayString,
+                membershipLevel: membershipLevel,
+                logger: Logger);
+                
+            Logger.LogInformation("User activity metrics recorded: registration={RegistrationDate}, activity={ActivityDate}, membership={MembershipLevel}", 
+                userRegistrationDate, todayString, membershipLevel);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to record user activity metrics for retention analysis");
+        }
+    }
+
+    /// <summary>
+    /// Determines user membership level based on UserQuotaGAgent subscription information
+    /// Returns one of 9 levels defined in UserMembershipTier constants:
+    /// Free, PremiumDay, PremiumWeek, PremiumMonth, PremiumYear,
+    /// UltimateDay, UltimateWeek, UltimateMonth, UltimateYear
+    /// </summary>
+    private async Task<string> DetermineMembershipLevelAsync()
+    {
+        try
+        {
+            var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+            
+            // Check Ultimate subscription first (higher priority)
+            var ultimateSubscription = await userQuotaGrain.GetSubscriptionAsync(ultimate: true);
+            if (ultimateSubscription.IsActive)
+            {
+                return ultimateSubscription.PlanType switch
+                {
+                    PlanType.Day => UserMembershipTier.UltimateDay,
+                    PlanType.Week => UserMembershipTier.UltimateWeek,
+                    PlanType.Month => UserMembershipTier.UltimateMonth,
+                    PlanType.Year => UserMembershipTier.UltimateYear,
+                    _ => UserMembershipTier.UltimateMonth // Default fallback for unknown plan types
+                };
+            }
+            
+            // Check Premium subscription
+            var premiumSubscription = await userQuotaGrain.GetSubscriptionAsync(ultimate: false);
+            if (premiumSubscription.IsActive)
+            {
+                return premiumSubscription.PlanType switch
+                {
+                    PlanType.Day => UserMembershipTier.PremiumDay,
+                    PlanType.Week => UserMembershipTier.PremiumWeek,
+                    PlanType.Month => UserMembershipTier.PremiumMonth,
+                    PlanType.Year => UserMembershipTier.PremiumYear,
+                    _ => UserMembershipTier.PremiumMonth // Default fallback for unknown plan types
+                };
+            }
+            
+            // No active subscription
+            return UserMembershipTier.Free;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to determine membership level from UserQuotaGAgent, defaulting to 'free'");
+            return UserMembershipTier.Free;
+        }
     }
 
     private async Task<string> AppendUserInfoToSystemPromptAsync(IConfigurationGAgent configurationGAgent,
@@ -1281,10 +1377,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         {
             // Record signup success event via OpenTelemetry
             var userId = this.GetPrimaryKey().ToString();
-            UserLifecycleTelemetryMetrics.RecordSignupSuccess(
-                signupSource: "chat", 
-                userId: userId,
-                logger: Logger);
+            UserLifecycleTelemetryMetrics.RecordSignupSuccess(userId: userId, logger: Logger);
         }
 
         if (State.MaxShareCount == 0)

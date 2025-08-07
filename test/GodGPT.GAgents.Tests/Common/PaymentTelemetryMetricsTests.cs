@@ -1,4 +1,4 @@
-using GodGPT.GAgents.Common.Observability;
+using Aevatar.Application.Grains.Common.Observability;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
