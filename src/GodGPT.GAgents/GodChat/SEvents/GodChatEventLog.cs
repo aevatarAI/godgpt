@@ -80,3 +80,12 @@ public class GodSetMaxHistoryCount : GodChatEventLog
 {
     [Id(0)] public int MaxHistoryCount { get; set; }
 }
+
+[GenerateSerializer]
+public class PerformConfigCombinedEventLog : GodChatEventLog
+{
+    [Id(0)] public string Region { get; set; }
+    [Id(1)] public List<Guid> ProxyIds { get; set; }
+    [Id(2)] public string PromptTemplate { get; set; }
+    [Id(3)] public int MaxHistoryCount { get; set; }
+}

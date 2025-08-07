@@ -97,22 +97,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         regionProxies[DefaultRegion] = proxyIds;
         
         var raiseEventStopwatch = Stopwatch.StartNew();
-        // Optimize: Use single region event for better performance
-        RaiseEvent(new UpdateSingleRegionProxyLogEvent
-        {
-            Region = DefaultRegion,
-            ProxyIds = proxyIds
-        });
-        //await ConfirmEvents();
-        raiseEventStopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
-        var raiseTemplateEventStopwatch = Stopwatch.StartNew();
-        RaiseEvent(new AddPromptTemplateLogEvent
-        {
-            PromptTemplate = configuration.Instructions
-        });
-        //await ConfirmEvents();
-
+        // Optimize: Use combined event to reduce RaiseEvent calls from 3 to 1
         var maxHistoryCount = configuration.MaxHistoryCount;
         if (maxHistoryCount > 100)
         {
@@ -123,11 +108,17 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         {
             maxHistoryCount = 10;
         }
-        RaiseEvent(new GodSetMaxHistoryCount() { MaxHistoryCount = maxHistoryCount });
+        
+        RaiseEvent(new PerformConfigCombinedEventLog
+        {
+            Region = DefaultRegion,
+            ProxyIds = proxyIds,
+            PromptTemplate = configuration.Instructions,
+            MaxHistoryCount = maxHistoryCount
+        });
         await ConfirmEvents();
-        raiseTemplateEventStopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] raiseTemplateEventStopwatch - Duration: {raiseTemplateEventStopwatch.ElapsedMilliseconds}ms");
-
+        raiseEventStopwatch.Stop();
+        Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] Combined RaiseEvent - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
 
         stopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
@@ -1532,6 +1523,24 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     state.RegionProxies = new Dictionary<string, List<Guid>>();
                 }
                 state.RegionProxies[updateSingleRegionProxyLogEvent.Region] = updateSingleRegionProxyLogEvent.ProxyIds;
+                break;
+            case PerformConfigCombinedEventLog performConfigCombinedEventLog:
+                // Handle combined config event - equivalent to the three separate events
+                // 1. UpdateSingleRegionProxyLogEvent equivalent
+                if (state.RegionProxies == null)
+                {
+                    state.RegionProxies = new Dictionary<string, List<Guid>>();
+                }
+                state.RegionProxies[performConfigCombinedEventLog.Region] = performConfigCombinedEventLog.ProxyIds;
+                
+                // 2. AddPromptTemplateLogEvent equivalent
+                if (!performConfigCombinedEventLog.PromptTemplate.IsNullOrEmpty())
+                {
+                    state.PromptTemplate = performConfigCombinedEventLog.PromptTemplate;
+                }
+                
+                // 3. GodSetMaxHistoryCount equivalent
+                state.MaxHistoryCount = performConfigCombinedEventLog.MaxHistoryCount;
                 break;
             }
     }
