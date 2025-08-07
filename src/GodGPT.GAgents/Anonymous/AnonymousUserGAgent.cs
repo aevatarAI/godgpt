@@ -74,7 +74,7 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
     public async Task<Guid> CreateGuestSessionAsync(string? guider = null)
     {
         var stopwatch = Stopwatch.StartNew();
-        await EnsureInitializedAsync();
+        //await EnsureInitializedAsync();
         
         // Check if user has exceeded chat limit
         var canChatStopwatch = Stopwatch.StartNew();
@@ -152,9 +152,9 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
             CreateAt = DateTime.UtcNow
         });
 
-        await ConfirmEvents();
         await godChat.InitAsync(this.GetPrimaryKey()); // Initialize with AnonymousUserGAgent ID
-        
+        await ConfirmEvents();
+
         // Update state
         State.CurrentSessionId = sessionId;
         State.CurrentGuider = guider;
