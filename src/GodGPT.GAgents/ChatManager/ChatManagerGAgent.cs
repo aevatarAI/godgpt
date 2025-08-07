@@ -19,6 +19,7 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using GodGPT.GAgents.SpeechChat;
+using GodGPT.GAgents.Common.Observability;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -49,7 +50,6 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         return Task.FromResult("Chat GAgent Manager");
     }
-    
     [EventHandler]
     public async Task HandleEventAsync(RequestStreamGodChatEvent @event)
     {
@@ -1212,28 +1212,80 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             case SetInviterEventLog setInviterEventLog:
                 state.InviterId = setInviterEventLog.InviterId;
                 break;
+            case InitializeNewUserStatusLogEvent initializeNewUserStatusLogEvent:
+                state.IsFirstConversation = initializeNewUserStatusLogEvent.IsFirstConversation;
+                state.UserId = initializeNewUserStatusLogEvent.UserId;
+                if (initializeNewUserStatusLogEvent.RegisteredAtUtc != null)
+                {
+                    state.RegisteredAtUtc = initializeNewUserStatusLogEvent.RegisteredAtUtc;
+                }
+                state.MaxShareCount = initializeNewUserStatusLogEvent.MaxShareCount;
+                break;
         }   
+    }
+
+    /// <summary>
+    /// Check and initialize first access status based on version history.
+    /// Uses IsFirstConversation field to mark whether this is the first access to ChatManagerGAgent.
+    /// If the field has a value, it means this is not the first access.
+    /// </summary>
+    private async Task<bool> CheckAndInitializeFirstAccessStatus()
+    {
+        // If IsFirstConversation is already set, no need to set it again
+        if (State.IsFirstConversation != null)
+        {
+            return false;
+        }
+
+        // Use Version property to determine if this is a historical user or new user
+        // Version > 0 means there are existing events, so it's a historical user
+        // Version == 0 means no events yet, so it's a new user
+        var isFirstAccess = Version == 0;
+        var userId = this.GetPrimaryKey();
+
+        if (isFirstAccess)
+        {
+            // For new users: initialize all fields in one combined event
+            RaiseEvent(new InitializeNewUserStatusLogEvent
+            {
+                IsFirstConversation = true,
+                UserId = userId,
+                RegisteredAtUtc = DateTime.UtcNow,
+                MaxShareCount = 10000 
+            });
+            await ConfirmEvents();
+            return true;
+        }
+        else
+        {
+            // For historical users: use separate events to maintain backward compatibility
+            // Don't set RegisteredAtUtc and MaxShareCount for historical users here
+            // as they should be handled by existing logic if needed
+            RaiseEvent(new InitializeNewUserStatusLogEvent
+            {
+                IsFirstConversation = false,
+                UserId = userId,
+                RegisteredAtUtc = null,
+                MaxShareCount = 10000
+            });
+            await ConfirmEvents();
+            return false;
+        }
     }
 
     protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
     {
-        // var configuration = GetConfiguration();
-        //
-        // var llm = await configuration.GetSystemLLM();
-        // var streamingModeEnabled = false;
-        // if (State.SystemLLM != llm || State.StreamingModeEnabled != streamingModeEnabled)
-        // {
-        //     await InitializeAsync(new InitializeDto()
-        //     {
-        //         Instructions = "Please summarize the following content briefly, with no more than 8 words.",
-        //         LLMConfig = new LLMConfigDto() { SystemLLM = await configuration.GetSystemLLM(), },
-        //         StreamingModeEnabled = streamingModeEnabled,
-        //         StreamingConfig = new StreamingConfig()
-        //         {
-        //             BufferingSize = 32,
-        //         }
-        //     });
-        // }
+        // Check and initialize first access status if needed
+        var firstAccess = await CheckAndInitializeFirstAccessStatus();
+        if (firstAccess)
+        {
+            // Record signup success event via OpenTelemetry
+            var userId = this.GetPrimaryKey().ToString();
+            UserLifecycleTelemetryMetrics.RecordSignupSuccess(
+                signupSource: "chat", 
+                userId: userId,
+                logger: Logger);
+        }
 
         if (State.MaxShareCount == 0)
         {

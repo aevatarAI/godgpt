@@ -44,11 +44,10 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
         return base.OnActivateAsync(cancellationToken);
     }
 
-    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
-        PaymentPlatform paymentPlatform,
-        string transactionId, 
-        string userId
-        )
+    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(PaymentPlatform paymentPlatform,
+        string transactionId,
+        string userId,
+        PurchaseType purchaseType = PurchaseType.None, string currency = "USD", decimal amount = 0)
     {
         if (string.IsNullOrWhiteSpace(transactionId))
         {
@@ -87,22 +86,21 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
             _logger.LogDebug("Reporting payment success event to Google Analytics with transaction ID: {TransactionId}", transactionId);
 
             // Create unique transaction ID by combining user, platform and original transaction ID
-            var uniqueTransactionId = userId + "^" + paymentPlatform + "^" + transactionId;
-            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId, userId);
+            var eventPayload = CreateGA4PurchasePayload(paymentPlatform, transactionId, userId, purchaseType, currency, amount);
             var url = BuildGA4ApiUrl(currentOptions.ApiEndpoint, currentOptions.MeasurementId, currentOptions.ApiSecret);
             
-            _logger.LogInformation("PaymentAnalyticsGrain reporting purchase event for transaction {TransactionId} to: {Url}", uniqueTransactionId, url);
+            _logger.LogInformation("PaymentAnalyticsGrain reporting purchase event for transaction {TransactionId} to: {Url}", transactionId, url);
             
             var result = await SendEventToGA4Async(url, eventPayload, currentOptions.TimeoutSeconds);
             
             if (result.IsSuccess)
             {
-                _logger.LogInformation("[PaymentAnalytics] Successfully reported purchase event for transaction {TransactionId}", uniqueTransactionId);
+                _logger.LogInformation("[PaymentAnalytics] Successfully reported purchase event for transaction {TransactionId}", transactionId);
             }
             else
             {
                 _logger.LogWarning("[PaymentAnalytics] Failed to report purchase event for transaction {TransactionId}: {ErrorMessage}", 
-                    uniqueTransactionId, result.ErrorMessage);
+                    transactionId, result.ErrorMessage);
             }
             
             return result;
@@ -125,27 +123,30 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     /// Create Google Analytics 4 payload for purchase event with idempotency support
     /// Uses GA4's built-in transaction_id deduplication mechanism
     /// </summary>
-    private object CreateGA4PurchasePayload(string transactionId, string userId, decimal? paymentValue = 0)
+    private object CreateGA4PurchasePayload(PaymentPlatform paymentPlatform, string transactionId, string userId, PurchaseType purchaseType = PurchaseType.None, string currency = "USD", decimal amount = 0)
     {
-        var clientId = userId;
-        
+        var uniqueTransactionId = userId + "^" + paymentPlatform + "^" + transactionId;
         return new
         {
-            client_id = clientId,
+            client_id = userId,
+            user_id = userId,
             events = new[]
             {
                 new
                 {
-                    name = "purchase",  // Using standard purchase event for GA4 auto-deduplication
+                    name = "purchase",
                     @params = new
                     {
-                        transaction_id = transactionId,
-                        currency = "USD",
-                        value = paymentValue,
+                        transaction_id = uniqueTransactionId,
+                        currency = currency,
+                        value = amount,
+                        platform = paymentPlatform.ToString(),
+                        purchase_type = purchaseType.ToString().ToLowerInvariant(),
                         engagement_time_msec = 1000
                     }
                 }
-            }
+            },
+            timestamp_micros = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000
         };
     }
 
