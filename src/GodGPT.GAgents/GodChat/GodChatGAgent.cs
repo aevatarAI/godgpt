@@ -116,7 +116,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             PromptTemplate = configuration.Instructions,
             MaxHistoryCount = maxHistoryCount
         });
-        await ConfirmEvents();
+        //await ConfirmEvents();
         raiseEventStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] Combined RaiseEvent - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
 

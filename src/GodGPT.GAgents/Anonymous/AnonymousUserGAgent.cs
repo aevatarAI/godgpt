@@ -153,7 +153,7 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
         });
 
         await godChat.InitAsync(this.GetPrimaryKey()); // Initialize with AnonymousUserGAgent ID
-        await ConfirmEvents();
+        //await ConfirmEvents();
 
         // Update state
         State.CurrentSessionId = sessionId;
