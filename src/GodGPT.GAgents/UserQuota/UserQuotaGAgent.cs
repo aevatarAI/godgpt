@@ -312,7 +312,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             {
                 DailyImageConversation = dailyInfo
             });
-            await ConfirmEvents();
+            //await ConfirmEvents();
 
             _logger.LogDebug(
                 "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Image conversation allowed. New count={Count}",

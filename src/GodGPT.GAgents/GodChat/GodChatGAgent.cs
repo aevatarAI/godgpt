@@ -599,7 +599,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 Title = title
             });
 
-            await ConfirmEvents();
+            //await ConfirmEvents();
             eventStopwatch.Stop();
             Logger.LogDebug($"[GodChatGAgent][SetSessionTitleAsync] RaiseEvent - Duration: {eventStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
 
