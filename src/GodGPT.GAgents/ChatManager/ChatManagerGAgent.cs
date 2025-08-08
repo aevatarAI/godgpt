@@ -384,7 +384,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Guider = guider // Set the role information for the conversation
         });
 
-        await ConfirmEvents();
+        //await ConfirmEvents();
         raiseEventStopwatch.Stop();
         Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
         
@@ -1159,7 +1159,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 MaxShareCount = 10000
             });
-            await ConfirmEvents();
+            //await ConfirmEvents();
         }
         await base.OnGAgentActivateAsync(cancellationToken);
     }
