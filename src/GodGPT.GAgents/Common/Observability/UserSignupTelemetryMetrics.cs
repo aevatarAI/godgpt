@@ -47,7 +47,7 @@ public static class UserLifecycleTelemetryMetrics
         {
             // Use user tier instead of user ID to avoid high cardinality
             SignupSuccessCounter.Add(1,
-                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.UserIdTag, userId));
+                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.UserIdTag, "ChatManager"));
                 
             logger?.LogDebug(
                 "[UserLifecycleTelemetry] Signup success recorded: user={UserId}", userId);
@@ -63,26 +63,23 @@ public static class UserLifecycleTelemetryMetrics
     /// This single metric supports both new user registration and user retention analysis
     /// Application-level deduplication ensures each user is counted only once per day
     /// </summary>
-    /// <param name="registrationDate">User registration date (YYYY-MM-DD format)</param>
-    /// <param name="activityDate">User activity date (YYYY-MM-DD format)</param>
+    /// <param name="daysSinceRegistration">Days since user registration (0=registered today, 1=registered yesterday, etc.)</param>
     /// <param name="membershipLevel">Membership level (9 levels: see UserMembershipTier constants)</param>
     /// <param name="logger">Optional logger</param>
     public static void RecordUserActivityByCohort(
-        string registrationDate,
-        string activityDate,
+        int daysSinceRegistration,
         string membershipLevel,
         ILogger? logger = null)
     {
         try
         {
             ActiveByCohortCounter.Add(1,
-                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.RegistrationDateTag, registrationDate),
-                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ActivityDateTag, activityDate),
+                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.DaysSinceRegistrationTag, daysSinceRegistration),
                 new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.MembershipLevelTag, membershipLevel));
 
             logger?.LogDebug(
-                "[UserLifecycleTelemetry] User activity recorded: registration={RegistrationDate} activity={ActivityDate} membership={MembershipLevel}",
-                registrationDate, activityDate, membershipLevel);
+                "[UserLifecycleTelemetry] User activity recorded: daysSinceRegistration={DaysSinceRegistration} membership={MembershipLevel}",
+                daysSinceRegistration, membershipLevel);
         }
         catch (Exception ex)
         {
@@ -98,19 +95,16 @@ public static class UserLifecycleTelemetryMetrics
     /// <param name="chatCount">Current chat count for the user</param>
     /// <param name="logger">Optional logger</param>
     public static void RecordAnonymousUserActivity(
-        string activityDate,
         int chatCount,
         ILogger? logger = null)
     {
         try
         {
             AnonymousUserActivityCounter.Add(1,
-                new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ActivityDateTag, activityDate),
                 new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ChatCountTag, chatCount));
 
             logger?.LogDebug(
-                "[UserLifecycleTelemetry] Anonymous user activity recorded: date={ActivityDate} chatCount={ChatCount}",
-                activityDate, chatCount);
+                "[UserLifecycleTelemetry] Anonymous user activity recorded: chatCount={ChatCount}", chatCount);
         }
         catch (Exception ex)
         {
@@ -137,7 +131,6 @@ public static class UserLifecycleTelemetryMetrics
             var tags = new TagList
             {
                 { UserLifecycleTelemetryConstants.ExhaustionDateTag, exhaustionDate },
-                { UserLifecycleTelemetryConstants.DaysSinceSignupTag, daysSinceSignup.ToString() }
             };
 
             CreditsExhaustedCounter.Add(1, tags);

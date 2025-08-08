@@ -22,14 +22,12 @@ public static class PaymentTelemetryMetrics
     /// </summary>
     /// <param name="paymentPlatform">Payment platform</param>
     /// <param name="purchaseType">Type of purchase</param>
-    /// <param name="userId">User identifier (converted to tier for low cardinality)</param>
-    /// <param name="transactionId">Transaction identifier</param>
     /// <param name="logger">Optional logger</param>
     public static void RecordPaymentSuccess(
         string paymentPlatform,
         string purchaseType,
         string userId,
-        string transactionId,
+        string productId,
         ILogger? logger = null)
     {
         try
@@ -37,12 +35,11 @@ public static class PaymentTelemetryMetrics
             PaymentSuccessCounter.Add(1,
                 new KeyValuePair<string, object?>(PaymentTelemetryConstants.PaymentPlatformTag, paymentPlatform),
                 new KeyValuePair<string, object?>(PaymentTelemetryConstants.PurchaseTypeTag, purchaseType),
-                new KeyValuePair<string, object?>(PaymentTelemetryConstants.UserIdTag, userId),
-                new KeyValuePair<string, object?>(PaymentTelemetryConstants.TransactionIdTag, transactionId));
+                new KeyValuePair<string, object?>(PaymentTelemetryConstants.ProductIdTag, productId));
 
             logger?.LogDebug(
-                "[PaymentTelemetry] Payment success recorded: platform={PaymentPlatform} type={PurchaseType} tier={userId} transaction={TransactionId}",
-                paymentPlatform, purchaseType, userId, transactionId);
+                "[PaymentTelemetry] Payment success recorded: platform={PaymentPlatform} type={PurchaseType} userId={UserId} productId={TransactionId}",
+                paymentPlatform, purchaseType, userId, productId);
         }
         catch (Exception ex)
         {

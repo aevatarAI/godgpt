@@ -11,13 +11,9 @@ namespace Aevatar.Application.Grains.Common.Observability
         // Metric names - follow godgpt_payment_* pattern
         public const string PaymentSuccessEvents = "godgpt_payment_success_total";
         
-        // Event categories for labeling
-        public const string PaymentProcessingCategory = "payment_processing";
-        
         // Common tag names
         public const string PaymentPlatformTag = "payment_platform";
         public const string PurchaseTypeTag = "purchase_type";
-        public const string UserIdTag = "user_id";
-        public const string TransactionIdTag = "transaction_id";
+        public const string ProductIdTag = "product_id";
     }
 } 

@@ -24,8 +24,7 @@ namespace Aevatar.Application.Grains.Common.Observability
         public const string UserIdTag = "user_id";
         
         // New: Retention analysis related tags
-        public const string RegistrationDateTag = "registration_date";   // User registration date (YYYY-MM-DD)
-        public const string ActivityDateTag = "activity_date";          // User activity date (YYYY-MM-DD)
+        public const string DaysSinceRegistrationTag = "days_since_registration";   // Days since user registration (0=today, 1=yesterday, etc.)
         public const string MembershipLevelTag = "membership_level";    // Membership level (9 levels: free, premium_day/week/month/year, ultimate_day/week/month/year)
         
         // New: Anonymous user tracking related tags
@@ -33,6 +32,5 @@ namespace Aevatar.Application.Grains.Common.Observability
         
         // New: Credits exhausted tracking related tags
         public const string ExhaustionDateTag = "exhaustion_date";          // Credits exhaustion date (YYYY-MM-DD)
-        public const string DaysSinceSignupTag = "days_since_signup";       // Days since user registration
     }
 } 
