@@ -1471,16 +1471,16 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     state.ChatHistory.AddRange(godAddChatHistoryLogEvent.ChatList);
                 }
 
-                var maxHistoryCount = 32;
+                var maxChatHistoryCount = 32;
                 if (state.MaxHistoryCount > 0)
                 {
-                    maxHistoryCount = state.MaxHistoryCount;
+                    maxChatHistoryCount = state.MaxHistoryCount;
                 }
 
-                if (state.ChatHistory.Count() > maxHistoryCount)
+                if (state.ChatHistory.Count() > maxChatHistoryCount)
                 {
                     var toDeleteImageKeys = new List<string>();
-                    var recordsToDelete = state.ChatHistory.Take(state.ChatHistory.Count() - maxHistoryCount);
+                    var recordsToDelete = state.ChatHistory.Take(state.ChatHistory.Count() - maxChatHistoryCount);
                     foreach (var record in recordsToDelete)
                     {
                         if (record.ImageKeys != null && record.ImageKeys.Count > 0)
@@ -1500,7 +1500,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                         AsyncHelper.RunSync(async () => await Task.WhenAll(downloadTasks));
                     }
 
-                    state.ChatHistory.RemoveRange(0, state.ChatHistory.Count() - maxHistoryCount);
+                    state.ChatHistory.RemoveRange(0, state.ChatHistory.Count() - maxChatHistoryCount);
                 }
                 break;
             case GodSetMaxHistoryCount godSetMaxHistoryCount:
