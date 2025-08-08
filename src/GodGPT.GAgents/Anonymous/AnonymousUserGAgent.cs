@@ -207,7 +207,7 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
             SessionUsed = true // Mark session as used
         });
 
-        await ConfirmEvents();
+        //await ConfirmEvents();
         
         Logger.LogDebug($"[AnonymousUserGAgent][GuestChatAsync] Chat completed for user: {State.UserHashId}, new count: {State.ChatCount + 1}");
     }
