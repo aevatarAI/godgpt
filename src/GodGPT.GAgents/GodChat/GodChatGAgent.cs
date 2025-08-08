@@ -1024,13 +1024,15 @@ public class GodChatGAgent : ChatGAgentBase<GodChatState, GodChatEventLog, Event
 
             await ConfirmEvents();
 
-            var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
-            var inviterId = await chatManagerGAgent.GetInviterAsync();
-            
-            if (inviterId != null && inviterId != Guid.Empty)
+            if (State.ChatManagerGuid != Guid.Empty)
             {
-                var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
-                await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
+                var inviterId = await chatManagerGAgent.GetInviterAsync();
+                if (inviterId != null && inviterId != Guid.Empty)
+                {
+                    var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
+                    await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                }
             }
             
             // Store suggestions and clean content for later use in partialMessage
