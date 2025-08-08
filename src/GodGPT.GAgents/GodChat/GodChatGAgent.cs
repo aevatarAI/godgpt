@@ -1031,7 +1031,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             ChatManagerGuid = ChatManagerGuid
         });
 
-        await ConfirmEvents();
+        //await ConfirmEvents();
         
         stopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][InitAsync] End - Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
