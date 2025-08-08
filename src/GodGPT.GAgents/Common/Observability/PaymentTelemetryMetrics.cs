@@ -40,7 +40,7 @@ public static class PaymentTelemetryMetrics
                 new KeyValuePair<string, object?>(PaymentTelemetryConstants.UserIdTag, userId),
                 new KeyValuePair<string, object?>(PaymentTelemetryConstants.TransactionIdTag, transactionId));
 
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "[PaymentTelemetry] Payment success recorded: platform={PaymentPlatform} type={PurchaseType} tier={userId} transaction={TransactionId}",
                 paymentPlatform, purchaseType, userId, transactionId);
         }

@@ -49,7 +49,7 @@ public static class UserLifecycleTelemetryMetrics
             SignupSuccessCounter.Add(1,
                 new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.UserIdTag, userId));
                 
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "[UserLifecycleTelemetry] Signup success recorded: user={UserId}", userId);
         }
         catch (Exception ex)
@@ -80,7 +80,7 @@ public static class UserLifecycleTelemetryMetrics
                 new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ActivityDateTag, activityDate),
                 new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.MembershipLevelTag, membershipLevel));
 
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "[UserLifecycleTelemetry] User activity recorded: registration={RegistrationDate} activity={ActivityDate} membership={MembershipLevel}",
                 registrationDate, activityDate, membershipLevel);
         }
@@ -108,7 +108,7 @@ public static class UserLifecycleTelemetryMetrics
                 new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ActivityDateTag, activityDate),
                 new KeyValuePair<string, object?>(UserLifecycleTelemetryConstants.ChatCountTag, chatCount));
 
-            logger?.LogInformation(
+            logger?.LogDebug(
                 "[UserLifecycleTelemetry] Anonymous user activity recorded: date={ActivityDate} chatCount={ChatCount}",
                 activityDate, chatCount);
         }
