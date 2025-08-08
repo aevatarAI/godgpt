@@ -682,7 +682,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             if (addToHistory)
             {
                 var historyStopwatch = Stopwatch.StartNew();
-                RaiseEvent(new GodAddChatHistoryLogEvent
+                // Optimize: Use combined event to reduce RaiseEvent calls from 3 to 1
+                RaiseEvent(new GodStreamChatCombinedEventLog
                 {
                     ChatList = new List<ChatMessage>()
                     {
@@ -692,22 +693,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                             Content = message,
                             ImageKeys = images
                         }
-                    }
-                });
-
-                RaiseEvent(new UpdateChatTimeEventLog
-                {
-                    ChatTime = DateTime.UtcNow
-                });
-                
-                RaiseEvent(new AddChatMessageMetasLogEvent
-                {
+                    },
+                    ChatTime = DateTime.UtcNow,
                     ChatMessageMetas = new List<ChatMessageMeta>()
                 });
 
                 //await ConfirmEvents();
                 historyStopwatch.Stop();
-                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] AddToHistory - Duration: {historyStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Combined RaiseEvent - Duration: {historyStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
             }
         }
         else
@@ -1541,6 +1534,94 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 
                 // 3. GodSetMaxHistoryCount equivalent
                 state.MaxHistoryCount = performConfigCombinedEventLog.MaxHistoryCount;
+                break;
+            case GodStreamChatCombinedEventLog godStreamChatCombinedEventLog:
+                // Handle combined stream chat event - equivalent to the three separate events
+                // 1. GodAddChatHistoryLogEvent equivalent
+                if (godStreamChatCombinedEventLog.ChatList.Count > 0)
+                {
+                    state.ChatHistory.AddRange(godStreamChatCombinedEventLog.ChatList);
+                }
+
+                var maxHistoryCount = 32;
+                if (state.MaxHistoryCount > 0)
+                {
+                    maxHistoryCount = state.MaxHistoryCount;
+                }
+
+                if (state.ChatHistory.Count() > maxHistoryCount)
+                {
+                    var toDeleteImageKeys = new List<string>();
+                    var recordsToDelete = state.ChatHistory.Take(state.ChatHistory.Count() - maxHistoryCount);
+                    foreach (var record in recordsToDelete)
+                    {
+                        if (record.ImageKeys != null && record.ImageKeys.Count > 0)
+                        {
+                            toDeleteImageKeys.AddRange(record.ImageKeys);
+                        }
+                    }
+
+                    if (toDeleteImageKeys.Any())
+                    {
+                        var blobContainer = ServiceProvider.GetRequiredService<IBlobContainer>();
+                        var downloadTasks = toDeleteImageKeys.Select(async key =>
+                        {
+                            await blobContainer.DeleteAsync(key);
+                        });
+
+                        AsyncHelper.RunSync(async () => await Task.WhenAll(downloadTasks));
+                    }
+
+                    state.ChatHistory.RemoveRange(0, state.ChatHistory.Count() - maxHistoryCount);
+                }
+                
+                // 2. UpdateChatTimeEventLog equivalent
+                if (state.FirstChatTime == null)
+                {
+                    state.FirstChatTime = godStreamChatCombinedEventLog.ChatTime;
+                }
+                state.LastChatTime = godStreamChatCombinedEventLog.ChatTime;
+                
+                // 3. AddChatMessageMetasLogEvent equivalent
+                if (godStreamChatCombinedEventLog.ChatMessageMetas != null && godStreamChatCombinedEventLog.ChatMessageMetas.Any())
+                {
+                    // Calculate the starting index for new metadata based on current ChatHistory count
+                    // minus the number of new metadata items we're adding
+                    int newMetadataCount = godStreamChatCombinedEventLog.ChatMessageMetas.Count;
+                    int targetStartIndex = Math.Max(0, state.ChatHistory.Count - newMetadataCount);
+                    
+                    // Ensure we have enough default metadata up to the target start index
+                    while (state.ChatMessageMetas.Count < targetStartIndex)
+                    {
+                        state.ChatMessageMetas.Add(new ChatMessageMeta
+                        {
+                            IsVoiceMessage = false,
+                            VoiceLanguage = VoiceLanguageEnum.English,
+                            VoiceParseSuccess = true,
+                            VoiceParseErrorMessage = null,
+                            VoiceDurationSeconds = 0.0
+                        });
+                    }
+                    
+                    // Add the new metadata
+                    foreach (var meta in godStreamChatCombinedEventLog.ChatMessageMetas)
+                    {
+                        state.ChatMessageMetas.Add(meta);
+                    }
+                }
+                
+                // Final sync: ensure ChatMessageMetas matches ChatHistory count
+                while (state.ChatMessageMetas.Count < state.ChatHistory.Count)
+                {
+                    state.ChatMessageMetas.Add(new ChatMessageMeta
+                    {
+                        IsVoiceMessage = false,
+                        VoiceLanguage = VoiceLanguageEnum.English,
+                        VoiceParseSuccess = true,
+                        VoiceParseErrorMessage = null,
+                        VoiceDurationSeconds = 0.0
+                    });
+                }
                 break;
             }
     }

@@ -89,3 +89,11 @@ public class PerformConfigCombinedEventLog : GodChatEventLog
     [Id(2)] public string PromptTemplate { get; set; }
     [Id(3)] public int MaxHistoryCount { get; set; }
 }
+
+[GenerateSerializer]
+public class GodStreamChatCombinedEventLog : GodChatEventLog
+{
+    [Id(0)] public List<ChatMessage> ChatList { get; set; } = new List<ChatMessage>();
+    [Id(1)] public DateTime ChatTime { get; set; }
+    [Id(2)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<ChatMessageMeta>();
+}
