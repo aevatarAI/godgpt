@@ -1924,7 +1924,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 ChatMessageMetas = new List<ChatMessageMeta> { userVoiceMeta }
             });
 
-            await ConfirmEvents();
+            //await ConfirmEvents();
             historyStopwatch.Stop();
             Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] AddToHistory - Duration: {historyStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
         }
