@@ -412,15 +412,18 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             // Get user membership level
             var membershipLevel = await DetermineMembershipLevelAsync();
 
+            // Calculate days since registration
+            var registrationDate = State.RegisteredAtUtc?.Date ?? today;
+            var daysSinceRegistration = (int)(today - registrationDate).TotalDays;
+
             // Record user activity metrics (ensure each user is counted only once per day)
             UserLifecycleTelemetryMetrics.RecordUserActivityByCohort(
-                registrationDate: userRegistrationDate,
-                activityDate: todayString,
+                daysSinceRegistration: daysSinceRegistration,
                 membershipLevel: membershipLevel,
                 logger: Logger);
                 
-            Logger.LogInformation("User activity metrics recorded: registration={RegistrationDate}, activity={ActivityDate}, membership={MembershipLevel}", 
-                userRegistrationDate, todayString, membershipLevel);
+            Logger.LogInformation("User activity metrics recorded: daysSinceRegistration={DaysSinceRegistration}, membership={MembershipLevel}", 
+                daysSinceRegistration, membershipLevel);
         }
         catch (Exception ex)
         {

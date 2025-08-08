@@ -293,15 +293,13 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         }
         try
         {
-            var activityDateString = reportDate.ToString("yyyy-MM-dd");
             // Record the telemetry metric
             UserLifecycleTelemetryMetrics.RecordAnonymousUserActivity(
-                activityDateString,
                 chatCount,
                 Logger);
 
             Logger.LogDebug(
-                $"[AnonymousUserGAgent][RecordDailyActivityTelemetryAsync] Daily telemetry reported for user: {State.UserHashId}, date: {activityDateString}, chatCount: {chatCount}");
+                $"[AnonymousUserGAgent][RecordDailyActivityTelemetryAsync] Daily telemetry reported for user: {State.UserHashId}, chatCount: {chatCount}");
         }
         catch (Exception ex)
         {
