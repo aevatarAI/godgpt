@@ -82,37 +82,37 @@ public class SetRegisteredAtUtcEventLog : ChatManageEventLog
 }
 
 /// <summary>
-/// 初始化用户首次访问状态的事件
-/// 该事件用于合并多个相关字段的设置，减少事件发送次数
-/// 适用于新用户的完整初始化和历史用户的状态标记
+/// Event for initializing user first access status
+/// This event is used to consolidate multiple related field settings to reduce event sending frequency
+/// Applicable for complete initialization of new users and status marking of existing users
 /// </summary>
 [GenerateSerializer]
 public class InitializeNewUserStatusLogEvent : ChatManageEventLog
 {
     /// <summary>
-    /// 标记是否首次访问ChatManagerGAgent（复用字段，实际用于首次访问标记）
-    /// true: 新用户首次访问
-    /// false: 历史用户非首次访问
+    /// Marks whether this is the first access to ChatManagerGAgent (reused field, actually used for first access marking)
+    /// true: New user's first access
+    /// false: Existing user's non-first access
     /// </summary>
     [Id(0)] public bool IsFirstConversation { get; set; }
     
     /// <summary>
-    /// 用户唯一标识符
-    /// 从Grain的PrimaryKey获取
+    /// User unique identifier
+    /// Obtained from Grain's PrimaryKey
     /// </summary>
     [Id(1)] public Guid UserId { get; set; }
     
     /// <summary>
-    /// 注册时间（UTC时间）
-    /// 新用户：设置为当前时间
-    /// 历史用户：可能为null（保持历史兼容性）
+    /// Registration time (UTC time)
+    /// New users: Set to current time
+    /// Existing users: May be null (maintain historical compatibility)
     /// </summary>
     [Id(2)] public DateTime? RegisteredAtUtc { get; set; }
     
     /// <summary>
-    /// 最大分享次数限制
-    /// 新用户：设置默认值（如10000）
-    /// 历史用户：根据需要设置，避免覆盖现有值
+    /// Maximum share count limit
+    /// New users: Set to default value (e.g., 10000)
+    /// Existing users: Set as needed, avoid overwriting existing values
     /// </summary>
     [Id(3)] public int MaxShareCount { get; set; }
 }
