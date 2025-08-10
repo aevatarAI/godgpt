@@ -34,8 +34,30 @@ public class GooglePayWebhookHandler : IWebhookHandler
                 "[GooglePayWebhookHandler][webhook] Received request: Method={method}, Path={path}, QueryString={query}",
                 request.Method, request.Path, request.QueryString);
 
-            // 1. Read RTDN notification payload
+            // 1. Security validation - verify request headers
+            var userAgent = request.Headers["User-Agent"].ToString();
+            var contentType = request.Headers["Content-Type"].ToString();
+            
+            // Note: We'll add signature verification after reading the body
+            _logger.LogDebug("[GooglePayWebhookHandler][webhook] Request headers - UserAgent: {UserAgent}, ContentType: {ContentType}", 
+                userAgent, contentType);
+
+            // 2. Read RTDN notification payload
             var json = await new StreamReader(request.Body).ReadToEndAsync();
+            
+            // 3. CRITICAL SECURITY: Verify Pub/Sub message signature
+            var signature = request.Headers["X-Goog-Signature"].FirstOrDefault();
+            if (!string.IsNullOrEmpty(signature))
+            {
+                // TODO: Add GooglePaySecurityValidator injection and signature verification
+                _logger.LogInformation("[GooglePayWebhookHandler][webhook] Signature verification needed for security");
+                // For now, log the signature for debugging
+                _logger.LogDebug("[GooglePayWebhookHandler][webhook] Received signature: {Signature}", signature.Substring(0, Math.Min(20, signature.Length)) + "...");
+            }
+            else
+            {
+                _logger.LogWarning("[GooglePayWebhookHandler][webhook] No X-Goog-Signature header found - potential security risk");
+            }
             
             // 2. Use GooglePlayEventProcessingGrain to parse notification and get userId
             var googlePlayEventProcessingGrain = _clusterClient.GetGrain<IGooglePlayEventProcessingGrain>(GooglePlayEventProcessingGrainId);
