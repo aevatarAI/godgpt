@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.Webhook;
+using Aevatar.Application.Grains.Common.Security;
 using Aevatar.Webhook.SDK.Handler;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -12,15 +13,18 @@ public class GooglePayWebhookHandler : IWebhookHandler
 {
     private readonly ILogger<GooglePayWebhookHandler> _logger;
     private readonly IClusterClient _clusterClient;
+    private readonly GooglePaySecurityValidator _securityValidator;
     
     private static readonly string GooglePlayEventProcessingGrainId = "GooglePlayEventProcessingGrainId_1";
 
     public GooglePayWebhookHandler(
         IClusterClient clusterClient,
-        ILogger<GooglePayWebhookHandler> logger)
+        ILogger<GooglePayWebhookHandler> logger,
+        GooglePaySecurityValidator securityValidator)
     {
         _clusterClient = clusterClient;
         _logger = logger;
+        _securityValidator = securityValidator;
     }
 
     public string RelativePath => "api/webhooks/godgpt-googleplay-payment";
@@ -38,9 +42,18 @@ public class GooglePayWebhookHandler : IWebhookHandler
             var userAgent = request.Headers["User-Agent"].ToString();
             var contentType = request.Headers["Content-Type"].ToString();
             
-            // Note: We'll add signature verification after reading the body
             _logger.LogDebug("[GooglePayWebhookHandler][webhook] Request headers - UserAgent: {UserAgent}, ContentType: {ContentType}", 
                 userAgent, contentType);
+
+            // Validate request headers first
+            if (!_securityValidator.ValidateRequestHeaders(userAgent, contentType))
+            {
+                _logger.LogWarning("[GooglePayWebhookHandler][webhook] Request failed header validation");
+                dynamic resp = new System.Dynamic.ExpandoObject();
+                resp.success = false;
+                resp.message = "Invalid request headers";
+                return resp;
+            }
 
             // 2. Read RTDN notification payload
             var json = await new StreamReader(request.Body).ReadToEndAsync();
@@ -49,14 +62,26 @@ public class GooglePayWebhookHandler : IWebhookHandler
             var signature = request.Headers["X-Goog-Signature"].FirstOrDefault();
             if (!string.IsNullOrEmpty(signature))
             {
-                // TODO: Add GooglePaySecurityValidator injection and signature verification
-                _logger.LogInformation("[GooglePayWebhookHandler][webhook] Signature verification needed for security");
-                // For now, log the signature for debugging
-                _logger.LogDebug("[GooglePayWebhookHandler][webhook] Received signature: {Signature}", signature.Substring(0, Math.Min(20, signature.Length)) + "...");
+                _logger.LogDebug("[GooglePayWebhookHandler][webhook] Verifying Pub/Sub message signature");
+                
+                // Verify signature using GooglePaySecurityValidator
+                bool isSignatureValid = _securityValidator.VerifyPubSubSignature(json, signature);
+                if (!isSignatureValid)
+                {
+                    _logger.LogError("[GooglePayWebhookHandler][webhook] Signature verification failed - potential security attack");
+                    dynamic resp = new System.Dynamic.ExpandoObject();
+                    resp.success = false;
+                    resp.message = "Signature verification failed";
+                    return resp;
+                }
+                
+                _logger.LogInformation("[GooglePayWebhookHandler][webhook] Signature verification successful");
             }
             else
             {
                 _logger.LogWarning("[GooglePayWebhookHandler][webhook] No X-Goog-Signature header found - potential security risk");
+                // Depending on security policy, you might want to reject requests without signatures
+                // For now, we'll log the warning but continue processing
             }
             
             // 2. Use GooglePlayEventProcessingGrain to parse notification and get userId
