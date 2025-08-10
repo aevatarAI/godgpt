@@ -48,8 +48,32 @@ public class GooglePayTestModule : AbpModule
         
         // Create and register a mock for IGooglePayService
         var googlePayServiceMock = new Mock<IGooglePayService>();
+        
+        // Setup for Google Play purchases
+        googlePayServiceMock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.Is<GooglePlayVerificationDto>(r => r.PurchaseToken == "valid_subscription_token")))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = true, Message = "Subscription verified successfully", TransactionId = "trans_123", ProductId = "premium_monthly" });
+        
+        googlePayServiceMock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.Is<GooglePlayVerificationDto>(r => r.PurchaseToken == "valid_product_token")))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = true, Message = "Product purchase verified successfully", TransactionId = "trans_456", ProductId = "premium_monthly" });
+        
+        googlePayServiceMock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.Is<GooglePlayVerificationDto>(r => r.PurchaseToken == "not_found_token")))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "INVALID_PURCHASE_TOKEN", Message = "Purchase token not found" });
+        
+        googlePayServiceMock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.Is<GooglePlayVerificationDto>(r => r.PurchaseToken == "api_error_token")))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "API_ERROR", Message = "Google Play API error" });
+        
+        // Default fallback for other tokens
         googlePayServiceMock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.IsAny<GooglePlayVerificationDto>()))
             .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "INVALID_TOKEN", Message = "Invalid token" });
+        
+        // Set a default behavior for Google Pay web payments to avoid null returns
+        googlePayServiceMock.Setup(x => x.VerifyGooglePayPaymentAsync(It.IsAny<GooglePayVerificationDto>()))
+            .ReturnsAsync((GooglePayVerificationDto dto) => new PaymentVerificationResultDto 
+            { 
+                IsValid = false, 
+                ErrorCode = "NO_MOCK_SETUP", 
+                Message = "No mock setup for this test"
+            });
         
         // Register both the mock and the service
         context.Services.AddSingleton(googlePayServiceMock);

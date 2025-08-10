@@ -1800,6 +1800,143 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
+    private async Task ProcessGooglePayPurchaseSuccessAsync(Guid userId, PaymentVerificationResultDto verificationResult)
+    {
+        _logger.LogInformation("[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Processing successful Google Pay Web payment for user {UserId}, product {ProductId}", userId, verificationResult.ProductId);
+
+        try
+        {
+            // Get product configuration
+            var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
+            if (productConfig == null)
+            {
+                _logger.LogError("[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Could not find product configuration for ProductId: {ProductId}", verificationResult.ProductId);
+                return;
+            }
+
+            // Create payment summary
+            var paymentSummary = await CreateOrUpdateGooglePayPaymentSummaryAsync(userId, verificationResult);
+
+            // Update user quota
+            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+            var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
+
+            // Reset rate limits if this is a new subscription
+            if (!subscription.IsActive)
+            {
+                await userQuotaAgent.ResetRateLimitsAsync();
+            }
+
+            // Update subscription details
+            subscription.IsActive = true;
+            subscription.PlanType = (PlanType)productConfig.PlanType;
+            subscription.StartDate = paymentSummary.SubscriptionStartDate;
+            subscription.EndDate = paymentSummary.SubscriptionEndDate;
+            subscription.Status = PaymentStatus.Completed;
+            
+            if (subscription.SubscriptionIds == null)
+            {
+                subscription.SubscriptionIds = new List<string>();
+            }
+            
+            if (!subscription.SubscriptionIds.Contains(paymentSummary.SubscriptionId))
+            {
+                subscription.SubscriptionIds.Add(paymentSummary.SubscriptionId);
+            }
+
+            await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
+
+            // Report payment success for analytics
+            await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, PurchaseType.Subscription,
+                PaymentPlatform.GooglePlay, verificationResult.ProductId, productConfig.Currency, productConfig.Amount);
+
+            // Process invitee benefits if applicable
+            await ProcessInviteeSubscriptionAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate, verificationResult.TransactionId);
+
+            _logger.LogInformation("[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Successfully processed Google Pay Web payment for user {UserId}", userId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Error processing Google Pay Web payment for user {UserId}", userId);
+            throw;
+        }
+    }
+
+    private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult)
+    {
+        var transactionId = verificationResult.TransactionId;
+        var existingPayment = State.PaymentHistory.FirstOrDefault(p => 
+            p.Platform == PaymentPlatform.GooglePlay && 
+            p.OrderId == transactionId);
+
+        var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
+
+        if (existingPayment != null)
+        {
+            _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Updating existing Google Pay payment for transaction: {TransactionId}", transactionId);
+            
+            // Update existing payment status
+            existingPayment.InvoiceDetails.ForEach(detail => 
+            {
+                detail.Status = PaymentStatus.Completed;
+                detail.CompletedAt = DateTime.UtcNow;
+            });
+            
+            RaiseEvent(new UpdatePaymentLogEvent { PaymentId = existingPayment.PaymentGrainId, PaymentSummary = existingPayment });
+            await ConfirmEvents();
+            return existingPayment;
+        }
+        else
+        {
+            _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Creating new Google Pay payment for transaction: {TransactionId}", transactionId);
+
+            var subscriptionStartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow;
+            var subscriptionEndDate = verificationResult.SubscriptionEndDate ?? 
+                (productConfig.PlanType == 1 ? subscriptionStartDate.AddMonths(1) : subscriptionStartDate.AddYears(1));
+
+            var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
+            {
+                PaymentGrainId = Guid.NewGuid(),
+                OrderId = transactionId,
+                UserId = userId,
+                PriceId = verificationResult.ProductId,
+                PlanType = (PlanType)productConfig.PlanType,
+                MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
+                Amount = productConfig.Amount,
+                Currency = productConfig.Currency,
+                CreatedAt = DateTime.UtcNow,
+                Platform = PaymentPlatform.GooglePlay,
+                PaymentType = productConfig.IsSubscription ? PaymentType.Subscription : PaymentType.OneTime,
+                InvoiceDetails = new List<UserBillingInvoiceDetail>
+                {
+                    new UserBillingInvoiceDetail
+                    {
+                        InvoiceId = transactionId,
+                        PriceId = verificationResult.ProductId,
+                        Status = PaymentStatus.Completed,
+                        CreatedAt = DateTime.UtcNow,
+                        CompletedAt = DateTime.UtcNow,
+                        SubscriptionStartDate = subscriptionStartDate,
+                        SubscriptionEndDate = subscriptionEndDate,
+                        MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
+                        Amount = productConfig.Amount,
+                        PlanType = (PlanType)productConfig.PlanType
+                    }
+                },
+                SubscriptionId = $"gp_web_{verificationResult.ProductId}_{userId}",
+                SubscriptionStartDate = subscriptionStartDate,
+                SubscriptionEndDate = subscriptionEndDate
+            };
+
+            var paymentId = await AddPaymentRecordAsync(newPaymentSummary);
+
+            RaiseEvent(new AddPaymentLogEvent { PaymentSummary = newPaymentSummary });
+            await ConfirmEvents();
+            
+            return newPaymentSummary;
+        }
+    }
+
     private async Task ReportGooglePaymentSuccessAsync(Guid userId, string transactionId, PurchaseType purchaseType,
         PaymentPlatform paymentPlatform, string productId, string currency, decimal amount)
     {
@@ -3448,14 +3585,58 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     public async Task<PaymentVerificationResultDto> VerifyGooglePayPaymentAsync(GooglePayVerificationDto request)
     {
-        // This method is for Google Pay (Web), which is different from Google Play (In-App).
-        _logger.LogWarning("[UserBillingGAgent] VerifyGooglePayPaymentAsync is not implemented.");
-        return await Task.FromResult(new PaymentVerificationResultDto
+        // Validate input
+        if (request == null || string.IsNullOrEmpty(request.UserId) || !Guid.TryParse(request.UserId, out var userGuid))
         {
-            IsValid = false,
-            Message = "Google Pay (Web) verification is not supported in this agent.",
-            ErrorCode = "NOT_SUPPORTED"
-        });
+            _logger.LogWarning("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Invalid request: UserId is missing or invalid.");
+            return new PaymentVerificationResultDto { IsValid = false, Message = "Invalid UserId.", ErrorCode = "INVALID_INPUT" };
+        }
+
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Verifying Google Pay payment for user: {UserId}, productId: {ProductId}", request.UserId, request.ProductId);
+            
+            // Get the Google Pay service
+            var googlePayService = GetGooglePayService();
+            
+            // Verify the payment with Google Pay
+            var verificationResult = await googlePayService.VerifyGooglePayPaymentAsync(request);
+            
+            if (verificationResult.IsValid)
+            {
+                _logger.LogInformation("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Google Pay payment successful for user {UserId}. TransactionId: {TransactionId}", request.UserId, verificationResult.TransactionId);
+                
+                // Process the successful payment
+                await ProcessGooglePayPurchaseSuccessAsync(userGuid, verificationResult);
+                
+                return verificationResult;
+            }
+            else
+            {
+                _logger.LogWarning("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Google Pay payment verification failed for user {UserId}. Reason: {Message}", request.UserId, verificationResult?.Message);
+                return verificationResult;
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePayPaymentAsync] IGooglePayService not available for user {UserId}", request.UserId);
+            return new PaymentVerificationResultDto
+            {
+                IsValid = false,
+                Message = "Google Pay service is not available.",
+                ErrorCode = "SERVICE_UNAVAILABLE"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePayPaymentAsync] Error verifying Google Pay payment for user {UserId}", request.UserId);
+            return new PaymentVerificationResultDto
+            {
+                IsValid = false,
+                Message = "An error occurred while verifying the payment.",
+                ErrorCode = "INTERNAL_ERROR"
+            };
+        }
     }
 
     public async Task<PaymentVerificationResultDto> VerifyGooglePlayPurchaseAsync(GooglePlayVerificationDto request)

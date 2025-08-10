@@ -75,9 +75,9 @@ public class ClusterFixture : IDisposable, ISingletonDependency
         mock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.IsAny<GooglePlayVerificationDto>()))
             .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "INVALID_TOKEN", Message = "Invalid token" });
 
-        // Setup for web payment verification
-        mock.Setup(x => x.VerifyGooglePayPaymentAsync(It.IsAny<GooglePayVerificationDto>()))
-            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "NOT_IMPLEMENTED", Message = "Google Pay web payment verification requires separate implementation" });
+        // Setup for web payment verification - removed to allow individual tests to set their own behavior
+        // mock.Setup(x => x.VerifyGooglePayPaymentAsync(It.IsAny<GooglePayVerificationDto>()))
+        //     .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "NOT_IMPLEMENTED", Message = "Google Pay web payment verification requires separate implementation" });
     }
 
     private class TestSiloConfigurations : ISiloConfigurator
