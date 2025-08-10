@@ -1,9 +1,22 @@
 using Aevatar;
 using Aevatar.Application.Grains;
+using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using GodGPT.Webhook.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Configuration;
 using Volo.Abp.Modularity;
+using Moq;
+using Moq.Contrib.HttpClient;
+using System.Net;
+using Google.Apis.AndroidPublisher.v3.Data;
+using System.Text.Json;
+using Aevatar.Application.Grains.UserBilling;
+using System.IO;
+using Autofac;
+using Volo.Abp.Autofac;
 
 namespace GodGPT.GooglePay.Tests;
 
@@ -17,43 +30,47 @@ public class GooglePayTestModule : AbpModule
     {
         var services = context.Services;
 
-        // Configure GooglePayOptions for testing
-        services.Configure<GooglePayOptions>(options =>
-        {
-            options.PackageName = "com.godgpt.app.test";
-            options.ServiceAccountEmail = "test-service@godgpt-test.iam.gserviceaccount.com";
-            options.ServiceAccountKeyPath = "/test/path/to/service-account-key.json";
-            options.WebhookEndpoint = "/api/webhooks/godgpt-googleplay-payment";
-            options.ApplicationName = "GodGPT-Test";
-            options.TimeoutSeconds = 30;
-            options.EnableSandboxTesting = true;
-            options.PubSubTopicName = "projects/godgpt-test/topics/play-billing-test";
-            options.WebMerchantId = "test-merchant-id";
-            options.WebGatewayMerchantId = "test-gateway-merchant-id";
-            options.Products = new List<GooglePayProduct>
-            {
-                new GooglePayProduct
-                {
-                    PlanType = 1,
-                    ProductId = "premium_monthly_test",
-                    SubscriptionId = "premium_monthly_test",
-                    Amount = 9.99m,
-                    Currency = "USD",
-                    IsUltimate = false,
-                    BasePlanId = "monthly-autorenewing",
-                    OfferId = ""
-                }
-            };
-        });
-
-        // Register HttpClient for testing
-        services.AddHttpClient();
+        // Load configuration including Development settings
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(Directory.GetCurrentDirectory())
+            .AddJsonFile("appsettings.json", optional: false)
+            .AddJsonFile("appsettings.Development.json", optional: true)
+            .Build();
         
-        // Register GooglePayService with mock implementation for testing
-        services.AddTransient<IGooglePayService, MockGooglePayService>();
+        // Replace the existing configuration
+        services.ReplaceConfiguration(configuration);
+        
+        // Configure GooglePayOptions from configuration
+        services.Configure<GooglePayOptions>(configuration.GetSection("GooglePay"));
+        
+        // Register GooglePayOptions post processor for flat configuration support
+        services.AddSingleton<IPostConfigureOptions<GooglePayOptions>, GooglePayOptionsPostProcessor>();
+        
+        // Create and register a mock for IGooglePayService
+        var googlePayServiceMock = new Mock<IGooglePayService>();
+        googlePayServiceMock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.IsAny<GooglePlayVerificationDto>()))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "INVALID_TOKEN", Message = "Invalid token" });
+        
+        // Register both the mock and the service
+        context.Services.AddSingleton(googlePayServiceMock);
+        context.Services.AddSingleton<IGooglePayService>(sp => sp.GetRequiredService<Mock<IGooglePayService>>().Object);
+
+        
+        // --- Mock Grain for Webhook Test ---
+        var userBillingGAgentMock = new Mock<IUserBillingGAgent>();
+        userBillingGAgentMock
+            .Setup(g => g.HandleGooglePlayNotificationAsync(It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(true); // Simulate successful processing
+
+        services.AddSingleton(userBillingGAgentMock);
+        services.AddSingleton<IUserBillingGAgent>(sp => sp.GetRequiredService<Mock<IUserBillingGAgent>>().Object);
+        // --- End Mock Grain ---
         
         // Register webhook handler for testing
         services.AddTransient<GooglePayWebhookHandler>();
+        
+        // Register ILocalizationService for testing
+        services.AddSingleton<ILocalizationService, LocalizationService>();
         
         // Register other services needed for testing
         services.AddLogging();

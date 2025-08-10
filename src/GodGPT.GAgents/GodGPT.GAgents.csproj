@@ -6,6 +6,7 @@
         <Nullable>enable</Nullable>
         <RootNamespace>Aevatar.Application.Grains</RootNamespace>
         <AssemblyName>GodGPT.GAgents</AssemblyName>
+        <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -49,6 +50,7 @@
         <None Include="ChatManager/UserBilling/Certificates/AppleRootCA-G3.cer">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
+        <Compile Include="**/*.cs" Exclude="obj/**;bin/**" />
     </ItemGroup>
 
 </Project>

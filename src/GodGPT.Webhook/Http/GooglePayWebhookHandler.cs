@@ -48,14 +48,20 @@ public class GooglePayWebhookHandler : IWebhookHandler
             {
                 _logger.LogWarning("[GooglePayWebhookHandler][webhook] Could not determine user ID from notification");
                 // Return 200 status to avoid Google retries
-                return new { success = true, message = "Notification received but no associated user found" };
+                dynamic resp = new System.Dynamic.ExpandoObject();
+                resp.success = true;
+                resp.message = "Notification received but no associated user found";
+                return resp;
             }
             
             // 3. Filter by event type (only process key business events)
             if (!IsKeyBusinessEvent(notificationType))
             {
                 _logger.LogInformation("[GooglePayWebhookHandler][webhook] Filter NotificationType {0}", notificationType);
-                return new { success = true, message = "Notification received but filtered by type" };
+                dynamic resp = new System.Dynamic.ExpandoObject();
+                resp.success = true;
+                resp.message = "Notification received but filtered by type";
+                return resp;
             }
             
             // 4. Use found userId to call UserBillingGAgent to process notification
@@ -65,18 +71,26 @@ public class GooglePayWebhookHandler : IWebhookHandler
             if (!result)
             {
                 _logger.LogWarning("[GooglePayWebhookHandler][Webhook] Failed to process notification for user {UserId}", userId);
-                return new { success = false, message = "Failed to process notification" };
+                dynamic resp = new System.Dynamic.ExpandoObject();
+                resp.success = false;
+                resp.message = "Failed to process notification";
+                return resp;
             }
             
             // Return success response
             _logger.LogInformation("[GooglePayWebhookHandler][webhook] Successfully processed notification for user {UserId}", userId);
-            return new { success = true };
+            dynamic successResp = new System.Dynamic.ExpandoObject();
+            successResp.success = true;
+            return successResp;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[GooglePayWebhookHandler][webhook] Error processing webhook request");
             // Return 200 status to avoid Google retries (can be adjusted based on business requirements)
-            return new { success = false, error = "Internal server error" };
+            dynamic resp = new System.Dynamic.ExpandoObject();
+            resp.success = false;
+            resp.error = "Internal server error";
+            return resp;
         }
     }
     

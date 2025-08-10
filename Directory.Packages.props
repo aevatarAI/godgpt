@@ -17,6 +17,7 @@
     <PackageVersion Include="Google.Apis.AndroidPublisher.v3" Version="1.68.0.3576" />
     <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="9.0.0" />
     <PackageVersion Include="Moq" Version="4.20.70" />
+    <PackageVersion Include="Moq.Contrib.HttpClient" Version="1.4.0" />
     <!-- AElf packages -->
     <PackageVersion Include="AElf.Client" Version="1.1.0" />
     <PackageVersion Include="AElf.ExceptionHandler.ABP" Version="8.2.8" />

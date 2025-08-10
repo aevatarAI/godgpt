@@ -1,4 +1,6 @@
+using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
+using Aevatar.Application.Grains.Common.Dtos;
 using Aevatar.Application.Grains.Common.Options;
 using Google.Apis.AndroidPublisher.v3;
 using Google.Apis.AndroidPublisher.v3.Data;
@@ -6,279 +8,351 @@ using Google.Apis.Auth.OAuth2;
 using Google.Apis.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using System.Text.Json;
+using System.IO;
+using System;
+using System.Threading.Tasks;
 
-namespace Aevatar.Application.Grains.Common.Service;
-
-/// <summary>
-/// Google Pay service implementation for Google Play Developer API integration
-/// </summary>
-public class GooglePayService : IGooglePayService
+namespace Aevatar.Application.Grains.Common.Service
 {
-    private readonly ILogger<GooglePayService> _logger;
-    private readonly GooglePayOptions _options;
-    private readonly AndroidPublisherService _publisherService;
-
-    public GooglePayService(
-        ILogger<GooglePayService> logger,
-        IOptionsMonitor<GooglePayOptions> googlePayOptions)
+    public class GooglePayService : IGooglePayService
     {
-        _logger = logger;
-        _options = googlePayOptions.CurrentValue;
+        private AndroidPublisherService _androidPublisherService;
+        private readonly GooglePayOptions _options;
+        private readonly ILogger<GooglePayService> _logger;
+
+        public GooglePayService(
+            ILogger<GooglePayService> logger,
+            IOptions<GooglePayOptions> options)
+        {
+            _logger = logger;
+            _options = options.Value;
+        }
         
-        // Initialize Google APIs client
-        _publisherService = InitializePublisherService();
-    }
-
-    private AndroidPublisherService InitializePublisherService()
-    {
-        try
+        public async Task<PaymentVerificationResultDto> VerifyGooglePayPaymentAsync(
+            GooglePayVerificationDto request)
         {
-            // Load service account credentials from JSON file
-            GoogleCredential credential;
-            using (var stream = new FileStream(_options.ServiceAccountKeyPath, FileMode.Open, FileAccess.Read))
+            _logger.LogWarning("Google Pay web payment verification not implemented in real service");
+            await Task.CompletedTask;
+            
+            return new PaymentVerificationResultDto
             {
-                credential = GoogleCredential.FromStream(stream)
-                    .CreateScoped(AndroidPublisherService.Scope.Androidpublisher);
+                IsValid = false,
+                ErrorCode = "NOT_IMPLEMENTED",
+                Message = "Google Pay web payment verification requires separate implementation"
+            };
+        }
+
+        public async Task<PaymentVerificationResultDto> VerifyGooglePlayPurchaseAsync(
+            GooglePlayVerificationDto request)
+        {
+            EnsureAndroidPublisherServiceInitialized();
+            try
+            {
+                _logger.LogInformation("Verifying Google Play purchase for token: {PurchaseToken}", 
+                    request.PurchaseToken?[..8] + "...");
+
+                var subscriptionResult = await GetSubscriptionPurchaseInternalAsync(
+                    request.PackageName ?? _options.PackageName,
+                    request.ProductId,
+                    request.PurchaseToken);
+
+                if (subscriptionResult != null)
+                {
+                    return CreateSuccessResult(subscriptionResult, request);
+                }
+                
+                var productResult = await GetProductPurchaseInternalAsync(
+                    request.PackageName ?? _options.PackageName,
+                    request.ProductId,
+                    request.PurchaseToken);
+
+                if (productResult != null)
+                {
+                    return CreateSuccessResult(productResult, request);
+                }
+
+                _logger.LogWarning("Purchase verification failed for token: {PurchaseToken}", 
+                    request.PurchaseToken?[..8] + "...");
+
+                return new PaymentVerificationResultDto
+                {
+                    IsValid = false,
+                    ErrorCode = "INVALID_PURCHASE_TOKEN",
+                    Message = "Purchase token is invalid or expired"
+                };
             }
-
-            return new AndroidPublisherService(new BaseClientService.Initializer()
+            catch (Google.GoogleApiException apiEx)
             {
-                HttpClientInitializer = credential,
-                ApplicationName = _options.ApplicationName ?? "GodGPT",
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[GooglePayService] Failed to initialize AndroidPublisherService");
-            throw;
-        }
-    }
-
-    public async Task<GooglePlayPurchaseDto> VerifyPurchaseAsync(string purchaseToken, string productId, string packageName)
-    {
-        try
-        {
-            _logger.LogDebug("[GooglePayService][VerifyPurchaseAsync] Verifying purchase for productId: {ProductId}", productId);
-
-            var request = _publisherService.Purchases.Subscriptionsv2.Get(packageName, purchaseToken);
-            var subscription = await request.ExecuteAsync();
-
-            if (subscription == null)
+                _logger.LogError(apiEx, "Google Play API error during verification: {Error}", apiEx.Message);
+                
+                return new PaymentVerificationResultDto
+                {
+                    IsValid = false,
+                    ErrorCode = GetErrorCodeFromApiException(apiEx),
+                    Message = $"Google Play API error: {apiEx.Message}"
+                };
+            }
+            catch (Exception ex)
             {
-                _logger.LogWarning("[GooglePayService][VerifyPurchaseAsync] No subscription found for token: {Token}", 
-                    purchaseToken?.Substring(0, Math.Min(10, purchaseToken.Length)) + "***");
+                _logger.LogError(ex, "Unexpected error during Google Play purchase verification");
+                
+                return new PaymentVerificationResultDto
+                {
+                    IsValid = false,
+                    ErrorCode = "VERIFICATION_ERROR",
+                    Message = "An unexpected error occurred during verification"
+                };
+            }
+        }
+
+        public async Task<GooglePlaySubscriptionDto> GetSubscriptionAsync(
+            string packageName, 
+            string subscriptionId, 
+            string purchaseToken)
+        {
+            EnsureAndroidPublisherServiceInitialized();
+            try
+            {
+                var subscription = await GetSubscriptionPurchaseInternalAsync(packageName, subscriptionId, purchaseToken);
+                
+                if (subscription == null)
+                {
+                    return new GooglePlaySubscriptionDto();
+                }
+
+                return new GooglePlaySubscriptionDto
+                {
+                    SubscriptionId = subscriptionId,
+                    StartTimeMillis = subscription.StartTimeMillis ?? 0,
+                    ExpiryTimeMillis = subscription.ExpiryTimeMillis ?? 0,
+                    AutoRenewing = subscription.AutoRenewing ?? false,
+                    PaymentState = subscription.PaymentState ?? 0,
+                    OrderId = subscription.OrderId ?? string.Empty,
+                    PriceAmountMicros = subscription.PriceAmountMicros?.ToString() ?? "0",
+                    PriceCurrencyCode = subscription.PriceCurrencyCode ?? "USD",
+                    PurchaseToken = purchaseToken
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting subscription details for {PurchaseToken}", purchaseToken?[..8] + "...");
+                return new GooglePlaySubscriptionDto();
+            }
+        }
+
+        public async Task<GooglePlayProductDto> GetProductAsync(
+            string packageName, 
+            string productId, 
+            string purchaseToken)
+        {
+            EnsureAndroidPublisherServiceInitialized();
+            try
+            {
+                var product = await GetProductPurchaseInternalAsync(packageName, productId, purchaseToken);
+                
+                if (product == null)
+                {
+                    return new GooglePlayProductDto();
+                }
+
+                return new GooglePlayProductDto
+                {
+                    ProductId = productId,
+                    PurchaseTimeMillis = product.PurchaseTimeMillis ?? 0,
+                    PurchaseState = product.PurchaseState ?? 0,
+                    ConsumptionState = product.ConsumptionState ?? 0,
+                    OrderId = product.OrderId ?? string.Empty,
+                    PurchaseToken = purchaseToken,
+                    DeveloperPayload = product.DeveloperPayload ?? string.Empty
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting product details for {PurchaseToken}", purchaseToken?[..8] + "...");
+                return new GooglePlayProductDto();
+            }
+        }
+
+        public async Task<bool> AcknowledgePurchaseAsync(string packageName, string productId, string purchaseToken)
+        {
+            EnsureAndroidPublisherServiceInitialized();
+            try
+            {
+                try
+                {
+                    var subscriptionAckRequest = _androidPublisherService.Purchases.Subscriptions.Acknowledge(
+                        new SubscriptionPurchasesAcknowledgeRequest(), packageName, productId, purchaseToken);
+                    
+                    await subscriptionAckRequest.ExecuteAsync();
+                    _logger.LogInformation("Successfully acknowledged subscription purchase: {PurchaseToken}", 
+                        purchaseToken?[..8] + "...");
+                    return true;
+                }
+                catch (Google.GoogleApiException)
+                {
+                    var productAckRequest = _androidPublisherService.Purchases.Products.Acknowledge(
+                        new ProductPurchasesAcknowledgeRequest(), packageName, productId, purchaseToken);
+                    
+                    await productAckRequest.ExecuteAsync();
+                    _logger.LogInformation("Successfully acknowledged product purchase: {PurchaseToken}", 
+                        purchaseToken?[..8] + "...");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to acknowledge purchase: {PurchaseToken}", purchaseToken?[..8] + "...");
+                return false;
+            }
+        }
+
+        private AndroidPublisherService CreateAndroidPublisherService()
+        {
+            try
+            {
+                GoogleCredential credential;
+                
+                if (!string.IsNullOrEmpty(_options.ServiceAccountJson))
+                {
+                    credential = GoogleCredential.FromJson(_options.ServiceAccountJson)
+                        .CreateScoped(AndroidPublisherService.Scope.Androidpublisher);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "Google Play service account credentials not configured. " +
+                        "Please set ServiceAccountJson in GooglePayOptions.");
+                }
+
+                return new AndroidPublisherService(new BaseClientService.Initializer()
+                {
+                    HttpClientInitializer = credential,
+                    ApplicationName = "GodGPT Google Play Integration"
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initialize Android Publisher Service");
+                throw;
+            }
+        }
+
+        private void EnsureAndroidPublisherServiceInitialized()
+        {
+            if (_androidPublisherService != null)
+            {
+                return;
+            }
+            _androidPublisherService = CreateAndroidPublisherService();
+        }
+
+        private async Task<SubscriptionPurchase?> GetSubscriptionPurchaseInternalAsync(
+            string packageName, 
+            string subscriptionId, 
+            string purchaseToken)
+        {
+            try
+            {
+                var request = _androidPublisherService.Purchases.Subscriptions.Get(
+                    packageName, subscriptionId, purchaseToken);
+                
+                var subscription = await request.ExecuteAsync();
+                return subscription;
+            }
+            catch (Google.GoogleApiException apiEx) when (apiEx.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogDebug("Subscription not found for token: {PurchaseToken}", purchaseToken?[..8] + "...");
                 return null;
             }
-
-            var result = new GooglePlayPurchaseDto
+            catch (Exception ex)
             {
-                PurchaseToken = purchaseToken,
-                ProductId = subscription.LineItems?.FirstOrDefault()?.ProductId ?? productId,
-                PurchaseTimeMillis = subscription.StartTimeDateTimeOffset?.ToUnixTimeMilliseconds() ?? 0,
-                PurchaseState = GetPurchaseState(subscription.SubscriptionState),
-                OrderId = "subscription_order", // Subscriptions don't have traditional order IDs
-                PackageName = packageName,
-                AutoRenewing = subscription.LineItems?.FirstOrDefault()?.AutoRenewingPlan != null,
-                DeveloperPayload = "" // Not applicable for subscriptions
-            };
-
-            _logger.LogInformation("[GooglePayService][VerifyPurchaseAsync] Successfully verified purchase for productId: {ProductId}", productId);
-            return result;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[GooglePayService][VerifyPurchaseAsync] Error verifying purchase for productId: {ProductId}", productId);
-            return null;
-        }
-    }
-
-    public async Task<bool> VerifyWebPaymentAsync(string paymentToken, string orderId)
-    {
-        try
-        {
-            _logger.LogDebug("[GooglePayService][VerifyWebPaymentAsync] Verifying web payment for orderId: {OrderId}", orderId);
-
-            // For Google Pay Web, we need to verify the payment token
-            // This typically involves validating the JWT token structure and signature
-            // For a complete implementation, you would need to:
-            // 1. Parse the payment token JWT
-            // 2. Verify the signature using Google's public keys
-            // 3. Validate the token contents (amount, merchant ID, etc.)
-            
-            // Placeholder implementation - in production, implement proper JWT validation
-            if (string.IsNullOrWhiteSpace(paymentToken))
-            {
-                _logger.LogWarning("[GooglePayService][VerifyWebPaymentAsync] Payment token is null or empty");
-                return false;
-            }
-
-            // TODO: Implement proper Google Pay Web token verification
-            // This should include JWT signature verification and payload validation
-            _logger.LogWarning("[GooglePayService][VerifyWebPaymentAsync] Web payment verification not fully implemented yet");
-            
-            return true; // Temporary - replace with actual verification logic
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[GooglePayService][VerifyWebPaymentAsync] Error verifying web payment for orderId: {OrderId}", orderId);
-            return false;
-        }
-    }
-
-    public async Task<GooglePlaySubscriptionDto> GetSubscriptionAsync(string subscriptionId, string packageName)
-    {
-        try
-        {
-            _logger.LogDebug("[GooglePayService][GetSubscriptionAsync] Getting subscription: {SubscriptionId}", subscriptionId);
-
-            var request = _publisherService.Purchases.Subscriptionsv2.Get(packageName, subscriptionId);
-            var subscription = await request.ExecuteAsync();
-
-            if (subscription == null)
-            {
-                _logger.LogWarning("[GooglePayService][GetSubscriptionAsync] No subscription found: {SubscriptionId}", subscriptionId);
+                _logger.LogError(ex, "Error retrieving subscription for token: {PurchaseToken}", purchaseToken?[..8] + "...");
                 return null;
             }
+        }
 
-            var lineItem = subscription.LineItems?.FirstOrDefault();
-            var result = new GooglePlaySubscriptionDto
+        private async Task<ProductPurchase?> GetProductPurchaseInternalAsync(
+            string packageName, 
+            string productId, 
+            string purchaseToken)
+        {
+            try
             {
-                SubscriptionId = subscriptionId,
-                StartTimeMillis = subscription.StartTimeDateTimeOffset?.ToUnixTimeMilliseconds() ?? 0,
-                ExpiryTimeMillis = lineItem?.ExpiryTimeDateTimeOffset?.ToUnixTimeMilliseconds() ?? 0,
-                AutoRenewing = lineItem?.AutoRenewingPlan != null,
-                PaymentState = GetPaymentState(subscription.SubscriptionState),
-                OrderId = $"GPA.{subscriptionId}.{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
-                PriceAmountMicros = "9990000", // Default $9.99 in micros, should be extracted from actual subscription data
-                PriceCurrencyCode = "USD" // Default, should be extracted from actual subscription data
+                var request = _androidPublisherService.Purchases.Products.Get(
+                    packageName, productId, purchaseToken);
+                
+                var product = await request.ExecuteAsync();
+                return product;
+            }
+            catch (Google.GoogleApiException apiEx) when (apiEx.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogDebug("Product purchase not found for token: {PurchaseToken}", purchaseToken?[..8] + "...");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error retrieving product purchase for token: {PurchaseToken}", purchaseToken?[..8] + "...");
+                return null;
+            }
+        }
+
+        private PaymentVerificationResultDto CreateSuccessResult(
+            SubscriptionPurchase subscription, 
+            GooglePlayVerificationDto request)
+        {
+            var isValid = subscription.PaymentState == 1; // Payment received
+            var startTime = DateTimeOffset.FromUnixTimeMilliseconds(subscription.StartTimeMillis ?? 0);
+            var expiryTime = DateTimeOffset.FromUnixTimeMilliseconds(subscription.ExpiryTimeMillis ?? 0);
+
+            return new PaymentVerificationResultDto
+            {
+                IsValid = isValid,
+                ProductId = request.ProductId,
+                TransactionId = subscription.OrderId,
+                SubscriptionStartDate = startTime.DateTime,
+                SubscriptionEndDate = expiryTime.DateTime,
+                PaymentState = subscription.PaymentState,
+                AutoRenewing = subscription.AutoRenewing,
+                PurchaseTimeMillis = subscription.StartTimeMillis,
+                Message = isValid ? "Subscription verified successfully" : "Payment not received"
             };
-
-            _logger.LogInformation("[GooglePayService][GetSubscriptionAsync] Successfully retrieved subscription: {SubscriptionId}", subscriptionId);
-            return result;
         }
-        catch (Exception ex)
+
+        private PaymentVerificationResultDto CreateSuccessResult(
+            ProductPurchase product, 
+            GooglePlayVerificationDto request)
         {
-            _logger.LogError(ex, "[GooglePayService][GetSubscriptionAsync] Error getting subscription: {SubscriptionId}", subscriptionId);
-            return null;
-        }
-    }
+            var isValid = product.PurchaseState == 0; // Purchased
+            var purchaseTime = DateTimeOffset.FromUnixTimeMilliseconds(product.PurchaseTimeMillis ?? 0);
 
-    public async Task<bool> GetRefundStatusAsync(string purchaseToken, string packageName)
-    {
-        try
-        {
-            _logger.LogDebug("[GooglePayService][GetRefundStatusAsync] Checking refund status for token: {Token}", 
-                purchaseToken?.Substring(0, Math.Min(10, purchaseToken.Length)) + "***");
-
-            // Query the subscription to check if it has been refunded/revoked
-            var request = _publisherService.Purchases.Subscriptionsv2.Get(packageName, purchaseToken);
-            var subscription = await request.ExecuteAsync();
-
-            if (subscription == null)
+            return new PaymentVerificationResultDto
             {
-                _logger.LogWarning("[GooglePayService][GetRefundStatusAsync] No subscription found for token");
-                return false;
-            }
-
-            // Check if subscription is in a refunded/revoked state
-            bool isRefunded = subscription.SubscriptionState == "SUBSCRIPTION_STATE_CANCELED" ||
-                             subscription.SubscriptionState == "SUBSCRIPTION_STATE_EXPIRED";
-
-            _logger.LogInformation("[GooglePayService][GetRefundStatusAsync] Refund status checked: {IsRefunded}", isRefunded);
-            return isRefunded;
+                IsValid = isValid,
+                ProductId = request.ProductId,
+                TransactionId = product.OrderId,
+                SubscriptionStartDate = purchaseTime.DateTime,
+                PaymentState = product.PurchaseState,
+                PurchaseTimeMillis = product.PurchaseTimeMillis,
+                Message = isValid ? "Product purchase verified successfully" : "Purchase not completed"
+            };
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[GooglePayService][GetRefundStatusAsync] Error checking refund status");
-            return false;
-        }
-    }
 
-    public async Task<bool> GetCancellationStatusAsync(string subscriptionId, string packageName)
-    {
-        try
+        private string GetErrorCodeFromApiException(Google.GoogleApiException apiEx)
         {
-            _logger.LogDebug("[GooglePayService][GetCancellationStatusAsync] Checking cancellation status for: {SubscriptionId}", subscriptionId);
-
-            var subscription = await GetSubscriptionAsync(subscriptionId, packageName);
-            if (subscription == null)
+            return apiEx.HttpStatusCode switch
             {
-                _logger.LogWarning("[GooglePayService][GetCancellationStatusAsync] No subscription found: {SubscriptionId}", subscriptionId);
-                return false;
-            }
-
-            // Check if subscription is canceled (not auto-renewing)
-            bool isCanceled = !subscription.AutoRenewing;
-
-            _logger.LogInformation("[GooglePayService][GetCancellationStatusAsync] Cancellation status: {IsCanceled}", isCanceled);
-            return isCanceled;
+                System.Net.HttpStatusCode.NotFound => "PURCHASE_NOT_FOUND",
+                System.Net.HttpStatusCode.Unauthorized => "UNAUTHORIZED_ACCESS",
+                System.Net.HttpStatusCode.Forbidden => "INSUFFICIENT_PERMISSIONS",
+                System.Net.HttpStatusCode.BadRequest => "INVALID_REQUEST",
+                System.Net.HttpStatusCode.TooManyRequests => "RATE_LIMIT_EXCEEDED",
+                _ => "API_ERROR"
+            };
         }
-        catch (Exception ex)
+
+        public void Dispose()
         {
-            _logger.LogError(ex, "[GooglePayService][GetCancellationStatusAsync] Error checking cancellation status");
-            return false;
+            _androidPublisherService?.Dispose();
         }
-    }
-
-    public async Task<bool> AcknowledgePurchaseAsync(string purchaseToken, string packageName)
-    {
-        try
-        {
-            _logger.LogDebug("[GooglePayService][AcknowledgePurchaseAsync] Acknowledging purchase for token: {Token}", 
-                purchaseToken?.Substring(0, Math.Min(10, purchaseToken.Length)) + "***");
-
-            // For subscriptions, we use the subscriptions acknowledge endpoint
-            // Note: For subscription acknowledgment, we need the subscription ID, not just the purchase token
-            // This is a simplified implementation that would need the actual subscription ID
-            var acknowledgeRequest = new SubscriptionPurchasesAcknowledgeRequest();
-            var request = _publisherService.Purchases.Subscriptions.Acknowledge(acknowledgeRequest, packageName, "default-subscription-id", purchaseToken);
-            await request.ExecuteAsync();
-
-            _logger.LogInformation("[GooglePayService][AcknowledgePurchaseAsync] Successfully acknowledged purchase");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[GooglePayService][AcknowledgePurchaseAsync] Error acknowledging purchase");
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Convert Google Play subscription state to our purchase state enum
-    /// </summary>
-    private int GetPurchaseState(string subscriptionState)
-    {
-        return subscriptionState switch
-        {
-            "SUBSCRIPTION_STATE_ACTIVE" => 1, // Purchased
-            "SUBSCRIPTION_STATE_CANCELED" => 0, // Canceled
-            "SUBSCRIPTION_STATE_IN_GRACE_PERIOD" => 1, // Still active
-            "SUBSCRIPTION_STATE_ON_HOLD" => 2, // Pending
-            "SUBSCRIPTION_STATE_PAUSED" => 2, // Pending
-            "SUBSCRIPTION_STATE_EXPIRED" => 0, // Canceled
-            _ => 0 // Default to canceled for unknown states
-        };
-    }
-
-    /// <summary>
-    /// Convert Google Play subscription state to our payment state enum
-    /// </summary>
-    private int GetPaymentState(string subscriptionState)
-    {
-        return subscriptionState switch
-        {
-            "SUBSCRIPTION_STATE_ACTIVE" => 1, // Payment received
-            "SUBSCRIPTION_STATE_IN_GRACE_PERIOD" => 0, // Payment pending
-            "SUBSCRIPTION_STATE_ON_HOLD" => 0, // Payment pending
-            "SUBSCRIPTION_STATE_PAUSED" => 0, // Payment pending
-            _ => 2 // Payment failed for other states
-        };
-    }
-
-    public void Dispose()
-    {
-        _publisherService?.Dispose();
     }
 }

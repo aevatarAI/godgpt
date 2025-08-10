@@ -1,120 +1,223 @@
-namespace GodGPT.GooglePay.Tests;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Aevatar.Application.Grains;
+using Aevatar.Application.Grains.Agents.ChatManager;
+using Aevatar.Application.Grains.ChatManager.Dtos;
+using Aevatar.Application.Grains.ChatManager.UserBilling;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
+using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.Common.Dtos;
+using Aevatar.Application.Grains.Common.Helpers;
+using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.PaymentAnalytics;
+using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
+using Aevatar.Application.Grains.UserBilling;
+using Aevatar.Application.Grains.UserQuota;
+using Aevatar.Core;
+using Microsoft.Extensions.DependencyInjection;
+using Moq;
+using Newtonsoft.Json;
+using Xunit;
+using Microsoft.Extensions.Options;
 
-/// <summary>
-/// Tests for UserBillingGAgent Google Pay functionality
-/// </summary>
-public class UserBillingGAgentGooglePayTests : GooglePayTestBase
+namespace GodGPT.GooglePay.Tests
 {
-    [Fact]
-    public async Task VerifyGooglePlayPurchaseAsync_ValidRequest_ReturnsNotImplemented()
+    public class UserBillingGAgentGooglePayTests : GooglePayTestBase
     {
-        // Arrange
-        var grain = await GetUserBillingGAgentAsync();
-        var request = CreateTestGooglePlayVerificationDto();
+        private Mock<IGooglePayService> _mockGooglePayService;
+        private readonly Mock<IUserQuotaGAgent> _mockUserQuotaAgent;
+        private readonly Mock<IPaymentAnalyticsGrain> _mockPaymentAnalyticsGrain;
+        private readonly Mock<IInvitationGAgent> _mockInvitationAgent;
+        private readonly Mock<IChatManagerGAgent> _mockChatManagerAgent;
 
-        // Act
-        var result = await grain.VerifyGooglePlayPurchaseAsync(request);
+        public UserBillingGAgentGooglePayTests()
+        {
+            // Get the mock from DI container instead of creating a new one
+            _mockGooglePayService = ServiceProvider.GetRequiredService<Mock<IGooglePayService>>();
+            _mockUserQuotaAgent = new Mock<IUserQuotaGAgent>();
+            _mockPaymentAnalyticsGrain = new Mock<IPaymentAnalyticsGrain>();
+            _mockInvitationAgent = new Mock<IInvitationGAgent>();
+            _mockChatManagerAgent = new Mock<IChatManagerGAgent>();
+        }
 
-        // Assert
-        Assert.NotNull(result);
-        Assert.False(result.IsValid);
-        Assert.Equal("NOT_IMPLEMENTED", result.ErrorCode);
-        Assert.Contains("not yet implemented", result.Message);
-    }
+        private async Task<IUserBillingGAgent> SetupGrain(Guid userId)
+        {
+            var grain = await GetUserBillingGAgentAsync(userId);
 
-    [Fact]
-    public async Task VerifyGooglePayPaymentAsync_ValidRequest_ReturnsNotImplemented()
-    {
-        // Arrange
-        var grain = await GetUserBillingGAgentAsync();
-        var request = CreateTestGooglePayVerificationDto();
+            // Mock grain factory calls
+            _mockUserQuotaAgent.Setup(g => g.GetSubscriptionAsync(It.IsAny<bool>())).ReturnsAsync(new SubscriptionInfoDto());
+            _mockChatManagerAgent.Setup(g => g.GetInviterAsync()).ReturnsAsync(Guid.NewGuid());
+            _mockPaymentAnalyticsGrain.Setup(g => g.ReportPaymentSuccessAsync(It.IsAny<PaymentPlatform>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(new PaymentAnalyticsResultDto { IsSuccess = true });
 
-        // Act
-        var result = await grain.VerifyGooglePayPaymentAsync(request);
+            return grain;
+        }
 
-        // Assert
-        Assert.NotNull(result);
-        Assert.False(result.IsValid);
-        Assert.Equal("NOT_IMPLEMENTED", result.ErrorCode);
-        Assert.Contains("not yet implemented", result.Message);
-    }
+        [Fact]
+        public async Task VerifyGooglePlayPurchaseAsync_ValidPurchase_ProcessesSuccessfully()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var grain = await SetupGrain(userId);
+            var request = CreateTestGooglePlayVerificationDto(userId.ToString(), purchaseToken: "valid_subscription_token");
+            
+            // Act
+            var result = await grain.VerifyGooglePlayPurchaseAsync(request);
 
-    [Fact]
-    public async Task HandleGooglePlayNotificationAsync_ValidNotification_ReturnsNotImplemented()
-    {
-        // Arrange
-        var grain = await GetUserBillingGAgentAsync();
-        var userId = Guid.NewGuid().ToString();
-        var notificationData = CreateTestRTDNNotification();
+            // Assert
+            Assert.True(result.IsValid);
+            Assert.Equal("Subscription verified successfully", result.Message);
+            _mockUserQuotaAgent.Verify(q => q.UpdateSubscriptionAsync(It.Is<SubscriptionInfoDto>(s => s.IsActive && s.Status == PaymentStatus.Completed), It.IsAny<bool>()), Times.Once);
+            _mockPaymentAnalyticsGrain.Verify(p => p.ReportPaymentSuccessAsync(PaymentPlatform.GooglePlay, It.IsAny<string>(), userId.ToString()), Times.Once);
+            _mockInvitationAgent.Verify(i => i.ProcessInviteeSubscriptionAsync(userId.ToString(), It.IsAny<PlanType>(), It.IsAny<bool>(), It.IsAny<string>()), Times.Once);
+        }
 
-        // Act
-        var result = await grain.HandleGooglePlayNotificationAsync(userId, notificationData);
+        [Fact]
+        public async Task VerifyGooglePlayPurchaseAsync_InvalidPurchase_ReturnsFalse()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var grain = await SetupGrain(userId);
+            var request = CreateTestGooglePlayVerificationDto(userId.ToString());
+            var verificationResult = new PaymentVerificationResultDto { IsValid = false, Message = "Invalid token", ErrorCode = "INVALID_TOKEN" };
 
-        // Assert
-        Assert.False(result);
-    }
+            _mockGooglePayService.Setup(s => s.VerifyGooglePlayPurchaseAsync(It.IsAny<GooglePlayVerificationDto>()))
+                .ReturnsAsync(verificationResult);
 
-    [Fact]
-    public async Task SyncGooglePlaySubscriptionAsync_ValidSubscriptionId_ReturnsNotImplemented()
-    {
-        // Arrange
-        var grain = await GetUserBillingGAgentAsync();
-        var subscriptionId = "test_subscription_123";
+            // Act
+            var result = await grain.VerifyGooglePlayPurchaseAsync(request);
 
-        // Act
-        var result = await grain.SyncGooglePlaySubscriptionAsync(subscriptionId);
+            // Assert
+            Assert.False(result.IsValid);
+            Assert.Equal("Invalid token", result.Message);
+            _mockUserQuotaAgent.Verify(q => q.UpdateSubscriptionAsync(It.IsAny<SubscriptionInfoDto>(), It.IsAny<bool>()), Times.Never);
+        }
 
-        // Assert
-        Assert.False(result);
-    }
+        [Fact]
+        public async Task HandleGooglePlayNotificationAsync_SubscriptionPurchased_ProcessesSuccessfully()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var grain = await SetupGrain(userId);
+            var productId = "com.aevatar.godgpt.monthly.ultimate";
+            var purchaseToken = "valid_subscription_token";
+            var notification = CreateTestRTDNSubscriptionNotification(GooglePlayNotificationType.SUBSCRIPTION_PURCHASED, productId, purchaseToken);
+            var notificationData = CreateTestRTDN(notification);
 
-    [Fact]
-    public async Task VerifyGooglePlayPurchaseAsync_NullRequest_HandlesGracefully()
-    {
-        // Arrange
-        var grain = await GetUserBillingGAgentAsync();
+            // Act
+            var result = await grain.HandleGooglePlayNotificationAsync(userId.ToString(), notificationData);
 
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => 
-            grain.VerifyGooglePlayPurchaseAsync(null));
-    }
+            // Assert
+            Assert.True(result);
+            _mockUserQuotaAgent.Verify(q => q.UpdateSubscriptionAsync(It.Is<SubscriptionInfoDto>(s => s.IsActive), It.IsAny<bool>()), Times.Once);
+        }
 
-    [Fact]
-    public async Task VerifyGooglePayPaymentAsync_NullRequest_HandlesGracefully()
-    {
-        // Arrange
-        var grain = await GetUserBillingGAgentAsync();
+        [Fact]
+        public async Task HandleGooglePlayNotificationAsync_SubscriptionCanceled_UpdatesStatus()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var grain = await SetupGrain(userId);
+            var productId = "com.aevatar.godgpt.monthly.ultimate";
+            var purchaseToken = "test_purchase_token_cancel";
 
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => 
-            grain.VerifyGooglePayPaymentAsync(null));
-    }
+            // Pre-load the state with a successful purchase
+            var initialPayment = await SeedPaymentHistoryWithGooglePlayPurchase(grain, userId, productId, purchaseToken);
 
-    [Fact]
-    public async Task HandleGooglePlayNotificationAsync_NullUserId_HandlesGracefully()
-    {
-        // Arrange
-        var grain = await GetUserBillingGAgentAsync();
-        var notificationData = CreateTestRTDNNotification();
+            var notification = CreateTestRTDNSubscriptionNotification(GooglePlayNotificationType.SUBSCRIPTION_CANCELED, productId, purchaseToken);
+            var notificationData = CreateTestRTDN(notification);
 
-        // Act
-        var result = await grain.HandleGooglePlayNotificationAsync(null, notificationData);
+            // Act
+            var result = await grain.HandleGooglePlayNotificationAsync(userId.ToString(), notificationData);
 
-        // Assert
-        Assert.False(result);
-    }
+            // Assert
+            Assert.True(result);
+            var paymentHistory = await grain.GetPaymentHistoryAsync();
+            var updatedPayment = paymentHistory.First(p => p.SubscriptionId == initialPayment.SubscriptionId);
+            Assert.Equal(PaymentStatus.Cancelled, updatedPayment.Status);
+            _mockUserQuotaAgent.Verify(q => q.UpdateSubscriptionAsync(It.IsAny<SubscriptionInfoDto>(), It.IsAny<bool>()), Times.Never); // No immediate revoke
+        }
 
-    [Fact]
-    public async Task HandleGooglePlayNotificationAsync_EmptyNotificationData_HandlesGracefully()
-    {
-        // Arrange
-        var grain = await GetUserBillingGAgentAsync();
-        var userId = Guid.NewGuid().ToString();
+        [Fact]
+        public async Task HandleGooglePlayNotificationAsync_SubscriptionRevoked_RevokesQuota()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var grain = await SetupGrain(userId);
+            var productId = "com.aevatar.godgpt.yearly.premium";
+            var purchaseToken = "test_purchase_token_revoke";
+            
+            var subscriptionDto = new SubscriptionInfoDto { IsActive = true, SubscriptionIds = new List<string> { "GPA.revoke" } };
+            _mockUserQuotaAgent.Setup(q => q.GetSubscriptionAsync(It.IsAny<bool>())).ReturnsAsync(subscriptionDto);
+            
+            await SeedPaymentHistoryWithGooglePlayPurchase(grain, userId, productId, purchaseToken, "GPA.revoke");
 
-        // Act
-        var result = await grain.HandleGooglePlayNotificationAsync(userId, "");
+            var notification = CreateTestRTDNSubscriptionNotification(GooglePlayNotificationType.SUBSCRIPTION_REVOKED, productId, purchaseToken);
+            var notificationData = CreateTestRTDN(notification);
+            
+            // Act
+            var result = await grain.HandleGooglePlayNotificationAsync(userId.ToString(), notificationData);
 
-        // Assert
-        Assert.False(result);
+            // Assert
+            Assert.True(result);
+            var paymentHistory = await grain.GetPaymentHistoryAsync();
+            Assert.Equal(PaymentStatus.Cancelled, paymentHistory.First().Status);
+            _mockUserQuotaAgent.Verify(q => q.UpdateSubscriptionAsync(It.Is<SubscriptionInfoDto>(s => !s.IsActive), It.IsAny<bool>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleGooglePlayNotificationAsync_VoidedPurchase_UpdatesStatusAndRevokes()
+        {
+            // Arrange
+            var userId = Guid.NewGuid();
+            var grain = await SetupGrain(userId);
+            var purchaseToken = "test_purchase_token_voided";
+            var orderId = "GPA.voided";
+
+            var subscriptionDto = new SubscriptionInfoDto { IsActive = true, SubscriptionIds = new List<string> { orderId } };
+            _mockUserQuotaAgent.Setup(q => q.GetSubscriptionAsync(It.IsAny<bool>())).ReturnsAsync(subscriptionDto);
+
+            await SeedPaymentHistoryWithGooglePlayPurchase(grain, userId, "com.aevatar.godgpt.monthly.ultimate", purchaseToken, orderId);
+
+            var notification = CreateTestRTDNVoidedPurchaseNotification(purchaseToken, orderId);
+            var notificationData = CreateTestRTDN(notification);
+
+            // Act
+            var result = await grain.HandleGooglePlayNotificationAsync(userId.ToString(), notificationData);
+
+            // Assert
+            Assert.True(result);
+            var paymentHistory = await grain.GetPaymentHistoryAsync();
+            Assert.Equal(PaymentStatus.Refunded, paymentHistory.First().Status);
+            _mockUserQuotaAgent.Verify(q => q.UpdateSubscriptionAsync(It.Is<SubscriptionInfoDto>(s => s.Status == PaymentStatus.Refunded && !s.IsActive), It.IsAny<bool>()), Times.Once);
+        }
+        
+        private async Task<PaymentSummary> SeedPaymentHistoryWithGooglePlayPurchase(IUserBillingGAgent grain, Guid userId, string productId, string purchaseToken, string subscriptionId = null)
+        {
+            subscriptionId ??= $"GPA.{Guid.NewGuid()}";
+            var options = GetService<IOptions<GooglePayOptions>>().Value;
+            var productConfig = options.Products.First(p => p.ProductId == productId);
+            var paymentSummary = new PaymentSummary
+            {
+                PaymentGrainId = Guid.NewGuid(),
+                UserId = userId,
+                PriceId = productId,
+                Platform = PaymentPlatform.GooglePlay,
+                Status = PaymentStatus.Completed,
+                SubscriptionId = subscriptionId,
+                PlanType = (PlanType)productConfig.PlanType,
+                MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
+                InvoiceDetails = new List<UserBillingInvoiceDetail>
+                {
+                    new UserBillingInvoiceDetail { PurchaseToken = purchaseToken, Status = PaymentStatus.Completed }
+                }
+            };
+            await grain.AddPaymentRecordAsync(paymentSummary);
+            return paymentSummary;
+        }
     }
 }

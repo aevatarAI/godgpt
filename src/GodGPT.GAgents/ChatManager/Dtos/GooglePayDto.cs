@@ -37,11 +37,17 @@ public class GooglePlayVerificationDto
 public class PaymentVerificationResultDto
 {
     [Id(0)] public bool IsValid { get; set; }             // Verification success
-    [Id(1)] public string Message { get; set; }           // Result message
-    [Id(2)] public string TransactionId { get; set; }     // Transaction ID
+    [Id(1)] public string Message { get; set; } = string.Empty;           // Result message
+    [Id(2)] public string TransactionId { get; set; } = string.Empty;     // Transaction ID
     [Id(3)] public DateTime? SubscriptionStartDate { get; set; } // Subscription start time
     [Id(4)] public DateTime? SubscriptionEndDate { get; set; }   // Subscription end time
-    [Id(5)] public string ErrorCode { get; set; }         // Error code (when verification fails)
+    [Id(5)] public string ErrorCode { get; set; } = string.Empty;         // Error code (when verification fails)
+    [Id(6)] public string ProductId { get; set; } = string.Empty;         // Product ID
+    [Id(7)] public PaymentPlatform Platform { get; set; }        // Payment platform
+    [Id(8)] public int? PaymentState { get; set; }               // Google Play payment state
+    [Id(9)] public bool? AutoRenewing { get; set; }              // Auto-renewing subscription status
+    [Id(10)] public long? PurchaseTimeMillis { get; set; }       // Purchase time in milliseconds
+    [Id(11)] public string PurchaseToken { get; set; }          // Purchase token
 }
 
 /// <summary>
@@ -56,39 +62,11 @@ public class GooglePlayNotificationDto
     [Id(3)] public string ProductId { get; set; }         // Product ID
     [Id(4)] public DateTime NotificationTime { get; set; } // Notification time
     [Id(5)] public string PackageName { get; set; }       // Package name
+    [Id(6)] public long EventTimeMillis { get; set; }     // Event time in milliseconds
+    [Id(7)] public string Version { get; set; }           // Notification version
 }
 
-/// <summary>
-/// Google Play purchase details from API
-/// </summary>
-[GenerateSerializer]
-public class GooglePlayPurchaseDto
-{
-    [Id(0)] public string PurchaseToken { get; set; }
-    [Id(1)] public string ProductId { get; set; }
-    [Id(2)] public long PurchaseTimeMillis { get; set; }
-    [Id(3)] public int PurchaseState { get; set; }
-    [Id(4)] public string OrderId { get; set; }
-    [Id(5)] public string PackageName { get; set; }
-    [Id(6)] public bool AutoRenewing { get; set; }
-    [Id(7)] public string DeveloperPayload { get; set; }
-}
 
-/// <summary>
-/// Google Play subscription details from API
-/// </summary>
-[GenerateSerializer]
-public class GooglePlaySubscriptionDto
-{
-    [Id(0)] public string SubscriptionId { get; set; }
-    [Id(1)] public long StartTimeMillis { get; set; }
-    [Id(2)] public long ExpiryTimeMillis { get; set; }
-    [Id(3)] public bool AutoRenewing { get; set; }
-    [Id(4)] public int PaymentState { get; set; }
-    [Id(5)] public string OrderId { get; set; }
-    [Id(6)] public string PriceAmountMicros { get; set; }
-    [Id(7)] public string PriceCurrencyCode { get; set; }
-}
 
 /// <summary>
 /// Google Play RTDN notification structure

@@ -54,5 +54,6 @@ public class UserBillingInvoiceDetail
     [Id(7)] public string MembershipLevel { get; set; }
     [Id(8)] public decimal? Amount { get; set; }
     [Id(9)] public PlanType PlanType { get; set; }
+    [Id(10)] public string PurchaseToken { get; set; }
 }
 

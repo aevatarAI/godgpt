@@ -1,12 +1,14 @@
-using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Dtos;
+using Newtonsoft.Json;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
+using Aevatar.Application.Grains.Common.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.Concurrency;
-using System.Text.Json;
-using System.IdentityModel.Tokens.Jwt;
-using Microsoft.IdentityModel.Tokens;
-using System.Security.Cryptography;
+using System;
+using System.Text;
+using System.Threading.Tasks;
+using Aevatar.Application.Grains.ChatManager.Dtos;
 
 namespace Aevatar.Application.Grains.Webhook;
 
@@ -53,30 +55,37 @@ public class GooglePlayEventProcessingGrain : Grain, IGooglePlayEventProcessingG
                 return (Guid.Empty, string.Empty, string.Empty);
             }
 
-            // 1. Parse RTDN notification JSON
-            var notification = JsonSerializer.Deserialize<GooglePlayRTDNNotification>(json);
-            if (notification?.SubscriptionNotification == null)
+            var rtdnDto = JsonConvert.DeserializeObject<GooglePlayRTDNDto>(json);
+            if (rtdnDto?.Message?.Data == null)
+            {
+                _logger.LogWarning("[GooglePlayEventProcessingGrain][ParseEventAndGetUserIdAsync] Invalid RTDN format - missing message data.");
+                return (Guid.Empty, string.Empty, string.Empty);
+            }
+
+            var decodedData = Encoding.UTF8.GetString(Convert.FromBase64String(rtdnDto.Message.Data));
+            var developerNotification = JsonConvert.DeserializeObject<DeveloperNotification>(decodedData);
+            
+            if (developerNotification?.SubscriptionNotification == null)
             {
                 _logger.LogWarning("[GooglePlayEventProcessingGrain][ParseEventAndGetUserIdAsync] Invalid notification format or no subscription notification");
                 return (Guid.Empty, string.Empty, string.Empty);
             }
 
-            var subscriptionNotification = notification.SubscriptionNotification;
+            var subscriptionNotification = developerNotification.SubscriptionNotification;
             var notificationType = GetNotificationTypeName(subscriptionNotification.NotificationType);
             var purchaseToken = subscriptionNotification.PurchaseToken;
 
             _logger.LogDebug("[GooglePlayEventProcessingGrain][ParseEventAndGetUserIdAsync] NotificationType={0}, PurchaseToken={1}",
                 notificationType, purchaseToken?.Substring(0, Math.Min(10, purchaseToken?.Length ?? 0)) + "***");
 
-            // 2. Validate package name for security
-            if (!string.Equals(notification.PackageName, _options.PackageName, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(_options.PackageName) &&
+                !string.Equals(developerNotification.PackageName, _options.PackageName, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning("[GooglePlayEventProcessingGrain][ParseEventAndGetUserIdAsync] Package name mismatch. Expected: {Expected}, Actual: {Actual}",
-                    _options.PackageName, notification.PackageName);
+                    _options.PackageName, developerNotification.PackageName);
                 return (Guid.Empty, notificationType, purchaseToken);
             }
 
-            // 3. User ID mapping strategy (solving key business risks)
             if (string.IsNullOrWhiteSpace(purchaseToken))
             {
                 _logger.LogWarning("[GooglePlayEventProcessingGrain][ParseEventAndGetUserIdAsync] Purchase token is null or empty");
@@ -97,16 +106,10 @@ public class GooglePlayEventProcessingGrain : Grain, IGooglePlayEventProcessingG
         }
     }
 
-    /// <summary>
-    /// Map purchaseToken to user ID
-    /// Strategy: Use userId mapping table recorded when purchase was created
-    /// </summary>
     private async Task<Guid> MapPurchaseTokenToUserIdAsync(string purchaseToken)
     {
         try
         {
-            // Query user mapping records from when purchase was created
-            // This requires storing purchaseToken to userId association in database when user makes purchase
             var userMappingGrain = GrainFactory.GetGrain<IUserPurchaseTokenMappingGrain>(purchaseToken);
             var userId = await userMappingGrain.GetUserIdAsync();
             
@@ -125,9 +128,6 @@ public class GooglePlayEventProcessingGrain : Grain, IGooglePlayEventProcessingG
         }
     }
 
-    /// <summary>
-    /// Get notification type name from enum value
-    /// </summary>
     private string GetNotificationTypeName(int notificationType)
     {
         return notificationType switch
@@ -150,9 +150,6 @@ public class GooglePlayEventProcessingGrain : Grain, IGooglePlayEventProcessingG
     }
 }
 
-/// <summary>
-/// Implementation of user purchase token mapping grain
-/// </summary>
 [GenerateSerializer]
 public class UserPurchaseTokenMappingState
 {
@@ -164,6 +161,7 @@ public class UserPurchaseTokenMappingState
 public class UserPurchaseTokenMappingGrain : Grain<UserPurchaseTokenMappingState>, IUserPurchaseTokenMappingGrain
 {
     private readonly ILogger<UserPurchaseTokenMappingGrain> _logger;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Guid> InMemoryMap = new();
 
     public UserPurchaseTokenMappingGrain(ILogger<UserPurchaseTokenMappingGrain> logger)
     {
@@ -177,6 +175,11 @@ public class UserPurchaseTokenMappingGrain : Grain<UserPurchaseTokenMappingState
         State.LastUpdatedAt = DateTime.UtcNow;
         
         await WriteStateAsync();
+        var key = this.GetPrimaryKeyString();
+        if (!string.IsNullOrEmpty(key))
+        {
+            InMemoryMap[key] = userId;
+        }
         
         _logger.LogInformation("[UserPurchaseTokenMappingGrain][SetUserIdAsync] Set mapping for purchase token: {Token} -> {UserId}",
             this.GetPrimaryKeyString()?.Substring(0, Math.Min(10, this.GetPrimaryKeyString().Length)) + "***", userId);
@@ -184,9 +187,20 @@ public class UserPurchaseTokenMappingGrain : Grain<UserPurchaseTokenMappingState
 
     public Task<Guid> GetUserIdAsync()
     {
+        var key = this.GetPrimaryKeyString();
         _logger.LogDebug("[UserPurchaseTokenMappingGrain][GetUserIdAsync] Getting user ID for purchase token: {Token}",
-            this.GetPrimaryKeyString()?.Substring(0, Math.Min(10, this.GetPrimaryKeyString().Length)) + "***");
+            key?.Substring(0, Math.Min(10, key?.Length ?? 0)) + "***");
         
-        return Task.FromResult(State.UserId);
+        if (State.UserId != Guid.Empty)
+        {
+            return Task.FromResult(State.UserId);
+        }
+        
+        if (!string.IsNullOrEmpty(key) && InMemoryMap.TryGetValue(key, out var cachedUserId))
+        {
+            return Task.FromResult(cachedUserId);
+        }
+        
+        return Task.FromResult(Guid.Empty);
     }
 }

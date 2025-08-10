@@ -1,6 +1,10 @@
 using GodGPT.Webhook.Http;
 using Microsoft.AspNetCore.Http;
 using System.Text;
+using Xunit;
+using System;
+using System.Threading.Tasks;
+using Aevatar.Application.Grains.Common.Constants;
 
 namespace GodGPT.GooglePay.Tests;
 
@@ -47,7 +51,8 @@ public class GooglePayWebhookHandlerTests : GooglePayTestBase
         var mappingGrain = await GetUserPurchaseTokenMappingGrainAsync(testPurchaseToken);
         await mappingGrain.SetUserIdAsync(testUserId);
         
-        var notificationJson = CreateTestRTDNNotification(4, testPurchaseToken); // SUBSCRIPTION_PURCHASED
+        var notification = CreateTestRTDNSubscriptionNotification(GooglePlayNotificationType.SUBSCRIPTION_PURCHASED, "product_id", testPurchaseToken);
+        var notificationJson = CreateTestRTDN(notification);
         var request = CreateMockRequest(notificationJson);
 
         // Act
@@ -56,9 +61,7 @@ public class GooglePayWebhookHandlerTests : GooglePayTestBase
         // Assert
         Assert.NotNull(result);
         var response = result as dynamic;
-        Assert.NotNull(response);
-        // Note: The actual response verification depends on the implementation
-        // Since current implementation returns false for unimplemented methods
+        Assert.True(response.success);
     }
 
     [Fact]
@@ -67,7 +70,8 @@ public class GooglePayWebhookHandlerTests : GooglePayTestBase
         // Arrange
         var handler = GetService<GooglePayWebhookHandler>();
         var unmappedToken = "unmapped_purchase_token";
-        var notificationJson = CreateTestRTDNNotification(4, unmappedToken);
+        var notification = CreateTestRTDNSubscriptionNotification(GooglePlayNotificationType.SUBSCRIPTION_PURCHASED, "product_id", unmappedToken);
+        var notificationJson = CreateTestRTDN(notification);
         var request = CreateMockRequest(notificationJson);
 
         // Act
@@ -94,7 +98,8 @@ public class GooglePayWebhookHandlerTests : GooglePayTestBase
         await mappingGrain.SetUserIdAsync(testUserId);
         
         // Use a notification type that will be filtered (e.g., type 999 which is not a key business event)
-        var notificationJson = CreateTestRTDNNotification(999, testPurchaseToken);
+        var notification = CreateTestRTDNSubscriptionNotification((GooglePlayNotificationType)999, "product_id", testPurchaseToken);
+        var notificationJson = CreateTestRTDN(notification);
         var request = CreateMockRequest(notificationJson);
 
         // Act

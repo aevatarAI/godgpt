@@ -1,3 +1,8 @@
+using System;
+using System.Threading.Tasks;
+using Aevatar.Application.Grains.Common.Constants;
+using Xunit;
+
 namespace GodGPT.GooglePay.Tests;
 
 /// <summary>
@@ -17,7 +22,8 @@ public class GooglePlayEventProcessingGrainTests : GooglePayTestBase
         var mappingGrain = await GetUserPurchaseTokenMappingGrainAsync(testPurchaseToken);
         await mappingGrain.SetUserIdAsync(testUserId);
         
-        var notificationJson = CreateTestRTDNNotification(4, testPurchaseToken); // SUBSCRIPTION_PURCHASED
+        var notification = CreateTestRTDNSubscriptionNotification(GooglePlayNotificationType.SUBSCRIPTION_PURCHASED, "product_id", testPurchaseToken);
+        var notificationJson = CreateTestRTDN(notification);
 
         // Act
         var (userId, notificationType, purchaseToken) = await grain.ParseEventAndGetUserIdAsync(notificationJson);
@@ -65,7 +71,8 @@ public class GooglePlayEventProcessingGrainTests : GooglePayTestBase
         // Arrange
         var grain = await GetGooglePlayEventProcessingGrainAsync();
         var unmappedToken = "unmapped_purchase_token";
-        var notificationJson = CreateTestRTDNNotification(4, unmappedToken);
+        var notification = CreateTestRTDNSubscriptionNotification(GooglePlayNotificationType.SUBSCRIPTION_PURCHASED, "product_id", unmappedToken);
+        var notificationJson = CreateTestRTDN(notification);
 
         // Act
         var (userId, notificationType, purchaseToken) = await grain.ParseEventAndGetUserIdAsync(notificationJson);
@@ -94,7 +101,8 @@ public class GooglePlayEventProcessingGrainTests : GooglePayTestBase
         var mappingGrain = await GetUserPurchaseTokenMappingGrainAsync(testPurchaseToken);
         await mappingGrain.SetUserIdAsync(testUserId);
         
-        var notificationJson = CreateTestRTDNNotification(notificationTypeValue, testPurchaseToken);
+        var notification = CreateTestRTDNSubscriptionNotification((GooglePlayNotificationType)notificationTypeValue, "product_id", testPurchaseToken);
+        var notificationJson = CreateTestRTDN(notification);
 
         // Act
         var (userId, notificationType, purchaseToken) = await grain.ParseEventAndGetUserIdAsync(notificationJson);
