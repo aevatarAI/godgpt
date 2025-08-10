@@ -275,5 +275,31 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
         };
     }
 
+    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId,
+        string userId,
+        PurchaseType purchaseType,
+        string currency,
+        decimal amount)
+    {
+        _logger.LogInformation(
+            "Reporting {PurchaseType} payment success to Google Analytics: Platform={Platform}, TransactionId={TransactionId}, UserId={UserId}, Amount={Amount} {Currency}",
+            purchaseType, paymentPlatform, transactionId, userId, amount, currency);
+
+        // Delegate to the original method for now - could be enhanced later with additional analytics data
+        var result = await ReportPaymentSuccessAsync(paymentPlatform, transactionId, userId);
+        
+        // Log additional analytics tracking for the specific purchase type
+        if (result.IsSuccess)
+        {
+            _logger.LogInformation(
+                "Successfully reported {PurchaseType} payment analytics: Platform={Platform}, TransactionId={TransactionId}",
+                purchaseType, paymentPlatform, transactionId);
+        }
+        
+        return result;
+    }
+
     #endregion
 }

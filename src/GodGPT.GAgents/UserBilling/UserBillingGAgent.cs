@@ -11,6 +11,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
+
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Invitation;
@@ -986,33 +987,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             return false;
         }
 
-        try
-        {
-            // Report payment success to Google Analytics
-            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics"+PaymentPlatform.Stripe);
-            var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
-                PaymentPlatform.Stripe,
-                detailsDto.InvoiceId,
-                detailsDto.UserId.ToString()
-            );
-
-            if (analyticsResult.IsSuccess)
-            {
-                _logger.LogInformation($"[UserBillingGAgent][HandleStripeWebhookEventAsync] Successfully reported payment analytics for order {detailsDto.InvoiceId}, user {detailsDto.UserId}");
-            }
-            else
-            {
-                _logger.LogWarning($"[UserBillingGAgent][HandleStripeWebhookEventAsync] Failed to report payment analytics for order {detailsDto.InvoiceId}, user {detailsDto.UserId}: {analyticsResult.ErrorMessage}");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "[UserBillingGAgent][HandleStripeWebhookEventAsync] Exception while reporting payment analytics for order {A}, user {B}",
-                detailsDto.InvoiceId, detailsDto.UserId);
-            // Don't throw - analytics reporting shouldn't block payment processing
-        }
-        
         var paymentSummary = await CreateOrUpdatePaymentSummaryAsync(detailsDto, null);
         
         var userId = detailsDto.UserId;
@@ -1097,6 +1071,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             await ProcessInviteeSubscriptionAsync(userId, (PlanType) productConfig.PlanType, productConfig.IsUltimate, invoiceDetail.InvoiceId);
             _logger.LogWarning("[UserBillingGAgent][HandleStripeWebhookEventAsync] Process invitee subscription completed, user {UserId}",
                 userId);
+            
+            // Report payment success to Google Analytics
+            var purchaseType = !paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.InvoiceDetails.Count == 1
+                ? PurchaseType.Subscription
+                : PurchaseType.Renewal;
+            _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,productConfig.PriceId, productConfig.Currency, productConfig.Amount);
             
         } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
@@ -1635,6 +1615,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePlayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
+        return await CreateOrUpdateGooglePlayPaymentSummaryAsync(userId, verificationResult, null);
+    }
+
+    private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePlayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult, PurchaseType? purchaseType)
+    {
         var purchaseToken = verificationResult.PurchaseToken;
         var existingPayment = State.PaymentHistory.FirstOrDefault(p => p.Platform == PaymentPlatform.GooglePlay && p.InvoiceDetails.Any(i => i.PurchaseToken == purchaseToken));
         
@@ -1657,6 +1642,22 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             
             var (subscriptionStartDate, subscriptionEndDate) = await CalculateGooglePlaySubscriptionDurationAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate);
 
+            // Determine the correct PaymentType based on purchase type or fall back to product configuration
+            PaymentType paymentType;
+            if (purchaseType.HasValue)
+            {
+                paymentType = purchaseType.Value switch
+                {
+                    PurchaseType.Subscription => PaymentType.Subscription,
+                    PurchaseType.Renewal => PaymentType.Renewal,
+                    _ => productConfig.IsSubscription ? PaymentType.Subscription : PaymentType.OneTime
+                };
+            }
+            else
+            {
+                paymentType = productConfig.IsSubscription ? PaymentType.Subscription : PaymentType.OneTime;
+            }
+
             var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
             {
                 PaymentGrainId = Guid.NewGuid(),
@@ -1670,7 +1671,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 CreatedAt = DateTime.UtcNow,
                 CompletedAt = DateTime.UtcNow,
                 Status = PaymentStatus.Completed,
-                PaymentType = productConfig.IsSubscription ? PaymentType.Subscription : PaymentType.OneTime,
+                PaymentType = paymentType,
                 Platform = PaymentPlatform.GooglePlay,
                 SubscriptionId = verificationResult.TransactionId, // Using OrderId as subscription identifier
                 SubscriptionStartDate = subscriptionStartDate,
@@ -1733,7 +1734,46 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
         
-        await ReportPaymentSuccessAsync(userId, verificationResult.TransactionId, PaymentPlatform.GooglePlay);
+        // Determine purchase type based on payment history for proper analytics
+        var purchaseType = await DetermineGooglePlayPurchaseTypeAsync(userId, verificationResult.PurchaseToken);
+        
+        await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, purchaseType, 
+            PaymentPlatform.GooglePlay, verificationResult.ProductId, productConfig.Currency, productConfig.Amount);
+        
+        await ProcessInviteeSubscriptionAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate, verificationResult.TransactionId);
+    }
+
+    private async Task ProcessGooglePlayPurchaseSuccessAsync(Guid userId, PaymentVerificationResultDto verificationResult, PurchaseType purchaseType)
+    {
+        var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
+        if (productConfig == null)
+        {
+            _logger.LogError("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Could not find product configuration for ProductId: {ProductId}", verificationResult.ProductId);
+            return;
+        }
+
+        // Create or update payment summary with deduplication, using the specified purchase type
+        var paymentSummary = await CreateOrUpdateGooglePlayPaymentSummaryAsync(userId, verificationResult, purchaseType);
+
+        // Update user quota
+        var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+
+        var subscription = await userQuotaAgent.GetSubscriptionAsync();
+        if (subscription.SubscriptionIds.IsNullOrEmpty())
+        {
+            subscription.SubscriptionIds = new List<string>();
+        }
+
+        if (!subscription.SubscriptionIds.Contains(paymentSummary.SubscriptionId))
+        {
+            subscription.SubscriptionIds.Add(paymentSummary.SubscriptionId);
+        }
+
+        await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
+        
+        // Report payment success with the specified purchase type for accurate analytics
+        await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, purchaseType, 
+            PaymentPlatform.GooglePlay, verificationResult.ProductId, productConfig.Currency, productConfig.Amount);
         
         await ProcessInviteeSubscriptionAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate, verificationResult.TransactionId);
     }
@@ -1758,6 +1798,89 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             _logger.LogError(ex, "[UserBillingGAgent][ReportPaymentSuccessAsync] Exception while reporting {Platform} payment analytics for user {UserId}, transaction {TransactionId}", platform, userId, transactionId);
         }
+    }
+
+    private async Task ReportGooglePaymentSuccessAsync(Guid userId, string transactionId, PurchaseType purchaseType,
+        PaymentPlatform paymentPlatform, string productId, string currency, decimal amount)
+    {
+        // Record payment success event to OpenTelemetry
+        // TODO: Restore PaymentTelemetryMetrics.RecordPaymentSuccess when available
+        _logger.LogInformation("[UserBillingGAgent][ReportGooglePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}",
+            paymentPlatform, purchaseType, userId, productId);
+        
+        try
+        {
+            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics" + paymentPlatform);
+            var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
+                paymentPlatform,
+                transactionId,
+                userId.ToString(),
+                purchaseType,
+                currency,
+                amount
+            );
+
+            if (analyticsResult.IsSuccess)
+            {
+                _logger.LogInformation(
+                    "[UserBillingGAgent][ReportGooglePaymentSuccessAsync] Successfully reported {Platform} payment analytics for user {UserId}, TransactionId {TransactionId}, PurchaseType {PurchaseType}",
+                    paymentPlatform, userId, transactionId, purchaseType);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "[UserBillingGAgent][ReportGooglePaymentSuccessAsync] Failed to report {Platform} payment analytics for user {UserId}, TransactionId {TransactionId}, PurchaseType {PurchaseType}: {ErrorMessage}",
+                    paymentPlatform, userId, transactionId, purchaseType, analyticsResult.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGAgent][ReportGooglePaymentSuccessAsync] Exception while reporting {Platform} payment analytics for user {UserId}, transaction {TransactionId}, purchaseType {PurchaseType}",
+                paymentPlatform, userId, transactionId, purchaseType);
+            // Don't throw - analytics reporting shouldn't block payment processing
+        }
+    }
+
+    private async Task<PurchaseType> DetermineGooglePlayPurchaseTypeAsync(Guid userId, string purchaseToken)
+    {
+        try
+        {
+            // Check if this purchase token already exists in payment history
+            var existingPayment = State.PaymentHistory.FirstOrDefault(p => 
+                p.Platform == PaymentPlatform.GooglePlay && 
+                p.InvoiceDetails.Any(i => i.PurchaseToken == purchaseToken));
+
+            if (existingPayment != null)
+            {
+                // This is an update to existing payment - likely a renewal
+                _logger.LogDebug("[UserBillingGAgent][DetermineGooglePlayPurchaseTypeAsync] Found existing payment for purchase token, treating as renewal. UserId: {UserId}", userId);
+                return PurchaseType.Renewal;
+            }
+            else
+            {
+                // This is a new purchase token - new subscription
+                _logger.LogDebug("[UserBillingGAgent][DetermineGooglePlayPurchaseTypeAsync] New purchase token, treating as subscription. UserId: {UserId}", userId);
+                return PurchaseType.Subscription;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][DetermineGooglePlayPurchaseTypeAsync] Error determining purchase type, defaulting to Subscription. UserId: {UserId}", userId);
+            return PurchaseType.Subscription;
+        }
+    }
+
+    private PurchaseType MapGooglePlayNotificationTypeToPurchaseType(GooglePlayNotificationType notificationType)
+    {
+        return notificationType switch
+        {
+            GooglePlayNotificationType.SUBSCRIPTION_PURCHASED => PurchaseType.Subscription,
+            GooglePlayNotificationType.SUBSCRIPTION_RENEWED => PurchaseType.Renewal,
+            GooglePlayNotificationType.SUBSCRIPTION_RECOVERED => PurchaseType.Renewal,
+            GooglePlayNotificationType.SUBSCRIPTION_RESTARTED => PurchaseType.Renewal,
+            _ => PurchaseType.Subscription // Default to subscription for other types
+        };
     }
 
     private DateTime GetSubscriptionEndDate(PlanType planType, DateTime startDate)
@@ -1971,7 +2094,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         "[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Subscribed",
                         userId.ToString(), signedTransactionInfo.TransactionId);
                     //Report payment success to Google Analytics for completed payments
-                    _ = ReportPaymentSuccessAsync(userId, signedTransactionInfo.TransactionId);
+                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Subscription, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
                     break;
                 case AppStoreNotificationType.DID_RENEW:
                     // Handle successful renewal
@@ -1981,7 +2104,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         userId.ToString(), signedTransactionInfo.TransactionId);
 
                     //Report payment success to Google Analytics for completed payments
-                    _ = ReportPaymentSuccessAsync(userId, signedTransactionInfo.TransactionId);
+                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
 
                     break;
                 case AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS:
@@ -2027,6 +2150,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                             await HandleDidRenewAsync(userId, signedTransactionInfo, signedRenewalInfo);
                             _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, User upgraded subscription, effective immediately",
                                 userId.ToString(), signedTransactionInfo.TransactionId);
+                            //Report payment success to Google Analytics for completed payments
+                            _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
                             break;
                         case AppStoreNotificationSubtype.DOWNGRADE:
                             _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, User downgraded subscription, effective at next renewal",
@@ -2072,38 +2197,47 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
-    private async Task ReportPaymentSuccessAsync(Guid userId, string transactionId)
+    private async Task ReportApplePaymentSuccessAsync(Guid userId, string transactionId, PurchaseType purchaseType,
+        PaymentPlatform paymentPlatform, string productId, string currency, decimal amount)
     {
+        // Record payment success event to OpenTelemetry
+        // TODO: Restore PaymentTelemetryMetrics.RecordPaymentSuccess when available  
+        _logger.LogInformation("[UserBillingGAgent][ReportApplePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}",
+            paymentPlatform, purchaseType, userId, productId);
+        
         try
         {
             var analyticsGrain =
-                GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics" + PaymentPlatform.AppStore);
+                GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics" + paymentPlatform);
             var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(
-                PaymentPlatform.AppStore,
+                paymentPlatform,
                 transactionId,
-                userId.ToString()
+                userId.ToString(),
+                purchaseType,
+                currency,
+                amount
             );
 
             if (analyticsResult.IsSuccess)
             {
                 _logger.LogInformation(
-                    $"[UserBillingGAgent][UpdateSubscriptionStateAsync] Successfully reported AppStore payment analytics for user {userId}, TransactionId {transactionId}, event {AppStoreNotificationType.DID_RENEW}");
+                    $"[UserBillingGAgent][ReportApplePaymentSuccessAsync] Successfully reported {paymentPlatform.ToString()} payment analytics for user {userId}, TransactionId {transactionId}, event {AppStoreNotificationType.DID_RENEW}");
             }
             else
             {
                 _logger.LogWarning(
-                    $"[UserBillingGAgent][UpdateSubscriptionStateAsync] Failed to report AppStore payment analytics for user {userId}, TransactionId {transactionId}, event {AppStoreNotificationType.DID_RENEW}: {analyticsResult.ErrorMessage}");
+                    $"[UserBillingGAgent][ReportApplePaymentSuccessAsync] Failed to report {paymentPlatform.ToString()} payment analytics for user {userId}, TransactionId {transactionId}, event {AppStoreNotificationType.DID_RENEW}: {analyticsResult.ErrorMessage}");
             }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "[UserBillingGAgent][UpdateSubscriptionStateAsync] Exception while reporting AppStore payment analytics for user {UserId}, product {ProductId}, event {EventType}",
+                "[UserBillingGAgent][ReportApplePaymentSuccessAsync] Exception while reporting {paymentPlatform.ToString()} payment analytics for user {UserId}, product {ProductId}, event {EventType}",
                 userId, transactionId, AppStoreNotificationType.DID_RENEW);
             // Don't throw - analytics reporting shouldn't block payment processing
         }
     }
-
+    
     private async Task HandleAppStoreSubscriptionCancellationAsync(Guid userId, 
         AppStoreJWSTransactionDecodedPayload signedTransactionInfo, JWSRenewalInfoDecodedPayload signedRenewalInfo)
     {
@@ -3457,7 +3591,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 if (verificationResult?.IsValid ?? false)
                 {
                     _logger.LogInformation("[UserBillingGAgent][HandleSubscriptionNotification] Successfully verified purchase for {NotificationType}. TransactionId: {TransactionId}", notificationType, verificationResult.TransactionId);
-                    await ProcessGooglePlayPurchaseSuccessAsync(userId, verificationResult);
+                    
+                    // Determine purchase type based on notification type for accurate analytics
+                    var purchaseType = MapGooglePlayNotificationTypeToPurchaseType(notificationType);
+                    await ProcessGooglePlayPurchaseSuccessAsync(userId, verificationResult, purchaseType);
                 }
                 else
                 {
