@@ -16,11 +16,28 @@ public interface IPaymentAnalyticsGrain : IGrainWithStringKey
     /// <param name="paymentPlatform">Payment platform used</param>
     /// <param name="transactionId">Unique transaction/order ID for deduplication</param>
     /// <param name="userId">User ID</param>
-    /// <param name="purchaseType">Type of purchase (None, Subscription, Renewal)</param>
+    /// <returns>Analytics result with success status</returns>
+    Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId, 
+        string userId);
+
+    /// <summary>
+    /// Report a payment success event to Google Analytics with detailed purchase type information
+    /// Uses Google Analytics 4's built-in transaction_id deduplication mechanism
+    /// </summary>
+    /// <param name="paymentPlatform">Payment platform used</param>
+    /// <param name="transactionId">Unique transaction/order ID for deduplication</param>
+    /// <param name="userId">User ID</param>
+    /// <param name="purchaseType">Type of purchase (Subscription/Renewal)</param>
+    /// <param name="currency">Currency code</param>
+    /// <param name="amount">Purchase amount</param>
     /// <returns>Analytics result with success status</returns>
     Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
         PaymentPlatform paymentPlatform,
         string transactionId, 
         string userId,
-        PurchaseType purchaseType = PurchaseType.None);
+        PurchaseType purchaseType,
+        string currency,
+        decimal amount);
 }

@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using Aevatar;
 using Aevatar.Application.Grains;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
+using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
@@ -49,6 +51,34 @@ public class ClusterFixture : IDisposable, ISingletonDependency
     }
 
     public TestCluster Cluster { get; private set; }
+
+    private static void ConfigureGooglePayMock(Mock<Aevatar.Application.Grains.Common.Service.IGooglePayService> mock)
+    {
+        // Setup for successful subscription verification
+        mock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.Is<
+        GooglePlayVerificationDto>(dto => dto.PurchaseToken.Contains("valid_subscription_token"))))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = true, Message = "Subscription verified successfully" });
+
+        // Setup for successful product verification
+        mock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.Is<GooglePlayVerificationDto>(dto => dto.PurchaseToken.Contains("valid_product_token"))))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = true, Message = "Product purchase verified successfully" });
+        
+        // Setup for not found error
+        mock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.Is<GooglePlayVerificationDto>(dto => dto.PurchaseToken.Contains("not_found_token"))))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "INVALID_PURCHASE_TOKEN", Message = "Purchase token not found" });
+
+        // Setup for API error
+        mock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.Is<GooglePlayVerificationDto>(dto => dto.PurchaseToken.Contains("api_error_token"))))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "API_ERROR", Message = "API error occurred" });
+
+        // Default setup for any other request
+        mock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.IsAny<GooglePlayVerificationDto>()))
+            .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "INVALID_TOKEN", Message = "Invalid token" });
+
+        // Setup for web payment verification - removed to allow individual tests to set their own behavior
+        // mock.Setup(x => x.VerifyGooglePayPaymentAsync(It.IsAny<GooglePayVerificationDto>()))
+        //     .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "NOT_IMPLEMENTED", Message = "Google Pay web payment verification requires separate implementation" });
+    }
 
     private class TestSiloConfigurations : ISiloConfigurator
     {
@@ -126,10 +156,16 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                     services.Configure<SystemLLMConfigOptions>(configuration);
                     services.Configure<SpeechOptions>(configuration.GetSection("Speech"));
                     services.AddSingleton<ISpeechService, SpeechService>();
+                    services.AddSingleton<ILocalizationService, LocalizationService>();
                     services.AddSemanticKernel()
                         .AddQdrantVectorStore()
                         .AddAzureOpenAITextEmbedding()
                         .AddHttpClient();
+                    // Register Google Pay mock service for testing
+                    var googlePayServiceMock = new Mock<Aevatar.Application.Grains.Common.Service.IGooglePayService>();
+                    ConfigureGooglePayMock(googlePayServiceMock);
+                    services.AddSingleton(googlePayServiceMock.Object);
+                    services.AddSingleton(googlePayServiceMock); // Register the mock itself for tests
                 })
                 .AddMemoryStreams("Aevatar")
                 .AddMemoryGrainStorage("PubSubStore")
@@ -145,7 +181,10 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<TwitterAuthOptions>(configuration.GetSection("TwitterAuth"))
                 .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"))
                 .Configure<AwakeningOptions>(configuration.GetSection("Awakening"))
-                .Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
+                .Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"))
+                .Configure<Aevatar.Application.Grains.Common.Options.GooglePayOptions>(configuration.GetSection("GooglePay"));
+                    
+                    
         }
     }
 

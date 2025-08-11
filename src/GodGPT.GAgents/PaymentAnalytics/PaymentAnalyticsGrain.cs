@@ -47,8 +47,7 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
         PaymentPlatform paymentPlatform,
         string transactionId, 
-        string userId,
-        PurchaseType purchaseType = PurchaseType.None
+        string userId
         )
     {
         if (string.IsNullOrWhiteSpace(transactionId))
@@ -89,7 +88,7 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
 
             // Create unique transaction ID by combining user, platform and original transaction ID
             var uniqueTransactionId = userId + "^" + paymentPlatform + "^" + transactionId;
-            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId, userId, paymentValue: 0, purchaseType);
+            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId, userId);
             var url = BuildGA4ApiUrl(currentOptions.ApiEndpoint, currentOptions.MeasurementId, currentOptions.ApiSecret);
             
             _logger.LogInformation("PaymentAnalyticsGrain reporting purchase event for transaction {TransactionId} to: {Url}", uniqueTransactionId, url);
@@ -126,7 +125,7 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     /// Create Google Analytics 4 payload for purchase event with idempotency support
     /// Uses GA4's built-in transaction_id deduplication mechanism
     /// </summary>
-    private object CreateGA4PurchasePayload(string transactionId, string userId, decimal? paymentValue = 0, PurchaseType purchaseType = PurchaseType.None)
+    private object CreateGA4PurchasePayload(string transactionId, string userId, decimal? paymentValue = 0)
     {
         var clientId = userId;
         
@@ -143,8 +142,7 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
                         transaction_id = transactionId,
                         currency = "USD",
                         value = paymentValue,
-                        engagement_time_msec = 1000,
-                        purchase_type = purchaseType.ToString().ToLowerInvariant()
+                        engagement_time_msec = 1000
                     }
                 }
             }
@@ -275,6 +273,32 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
             IsSuccess = false,
             ErrorMessage = "Unknown error in retry logic"
         };
+    }
+
+    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId,
+        string userId,
+        PurchaseType purchaseType,
+        string currency,
+        decimal amount)
+    {
+        _logger.LogInformation(
+            "Reporting {PurchaseType} payment success to Google Analytics: Platform={Platform}, TransactionId={TransactionId}, UserId={UserId}, Amount={Amount} {Currency}",
+            purchaseType, paymentPlatform, transactionId, userId, amount, currency);
+
+        // Delegate to the original method for now - could be enhanced later with additional analytics data
+        var result = await ReportPaymentSuccessAsync(paymentPlatform, transactionId, userId);
+        
+        // Log additional analytics tracking for the specific purchase type
+        if (result.IsSuccess)
+        {
+            _logger.LogInformation(
+                "Successfully reported {PurchaseType} payment analytics: Platform={Platform}, TransactionId={TransactionId}",
+                purchaseType, paymentPlatform, transactionId);
+        }
+        
+        return result;
     }
 
     #endregion

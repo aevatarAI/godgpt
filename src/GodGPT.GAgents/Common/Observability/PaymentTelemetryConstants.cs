@@ -1,4 +1,4 @@
-namespace GodGPT.GAgents.Common.Observability
+namespace Aevatar.Application.Grains.Common.Observability
 {
     /// <summary>
     /// Payment telemetry constants following OpenTelemetry best practices
@@ -11,13 +11,9 @@ namespace GodGPT.GAgents.Common.Observability
         // Metric names - follow godgpt_payment_* pattern
         public const string PaymentSuccessEvents = "godgpt_payment_success_total";
         
-        // Event categories for labeling
-        public const string PaymentProcessingCategory = "payment_processing";
-        
         // Common tag names
         public const string PaymentPlatformTag = "payment_platform";
         public const string PurchaseTypeTag = "purchase_type";
-        public const string MethodNameTag = "method_name";
-        public const string EventCategoryTag = "event_category";
+        public const string ProductIdTag = "product_id";
     }
 } 
