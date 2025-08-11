@@ -5,6 +5,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -137,7 +138,7 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         });
 
         await ConfirmEvents();
-        await godChat.InitAsync(this.GetPrimaryKey()); // Initialize with AnonymousUserGAgent ID
+        //await godChat.InitAsync(this.GetPrimaryKey()); // Initialize with AnonymousUserGAgent ID
         
         // Update state
         State.CurrentSessionId = sessionId;
@@ -185,6 +186,10 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
             null, isHttpRequest: true);
         stopwatch.Stop();
         Logger.LogDebug($"[AnonymousUserGAgent][GuestChatAsync] Chat execution: {stopwatch.ElapsedMilliseconds}ms");
+
+        
+        // Record telemetry for this user's daily activity
+        await RecordDailyActivityTelemetryAsync(State.ChatCount + 1);
 
         // Mark session as used and increment chat count
         RaiseEvent(new GuestChatEventLog()
@@ -269,6 +274,38 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         {
             Logger.LogWarning(ex, "[AnonymousUserGAgent][GetMaxChatCount] Failed to get max chat count, using default: 3");
             return 3;
+        }
+    }
+
+    /// <summary>
+    /// Records daily activity telemetry for anonymous user
+    /// This method ensures each user is counted only once per day
+    /// </summary>
+    /// <param name="chatCount">Chat count at time of report</param>
+    private async Task RecordDailyActivityTelemetryAsync(int chatCount)
+    {
+        var reportDate = DateTime.UtcNow.Date;
+        if (State.LastChatTime != default && State.LastChatTime.Date == reportDate)
+        {
+            Logger.LogDebug(
+                $"[AnonymousUserGAgent][RecordDailyActivityTelemetryAsync] already recorded: {State.UserHashId}, chatCount: {chatCount}");
+            return;
+        }
+        try
+        {
+            // Record the telemetry metric
+            UserLifecycleTelemetryMetrics.RecordAnonymousUserActivity(
+                chatCount,
+                Logger);
+
+            Logger.LogDebug(
+                $"[AnonymousUserGAgent][RecordDailyActivityTelemetryAsync] Daily telemetry reported for user: {State.UserHashId}, chatCount: {chatCount}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, 
+                "[AnonymousUserGAgent][RecordDailyActivityTelemetryAsync] Failed to record daily activity telemetry for user: {UserHashId}", 
+                State.UserHashId);
         }
     }
 
