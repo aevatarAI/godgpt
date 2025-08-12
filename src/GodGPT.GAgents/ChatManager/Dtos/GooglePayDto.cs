@@ -5,20 +5,7 @@ using System;
 namespace Aevatar.Application.Grains.ChatManager.UserBilling;
 
 /// <summary>
-/// Google Pay Web payment verification request
-/// </summary>
-[GenerateSerializer]
-public class GooglePayVerificationDto
-{
-    [Id(0)] public string PaymentToken { get; set; }      // Google Pay Payment Token
-    [Id(1)] public string ProductId { get; set; }         // Product ID
-    [Id(2)] public string OrderId { get; set; }           // Google Pay order ID
-    [Id(3)] public string UserId { get; set; }            // User ID
-    [Id(4)] public string Environment { get; set; }       // "PRODUCTION" or "TEST"
-}
-
-/// <summary>
-/// Google Play purchase verification request
+/// Internal Google Play purchase verification request (used by transaction verification and webhook)
 /// </summary>
 [GenerateSerializer]
 public class GooglePlayVerificationDto
@@ -28,6 +15,32 @@ public class GooglePlayVerificationDto
     [Id(2)] public string PackageName { get; set; }       // App package name
     [Id(3)] public string OrderId { get; set; }           // Google Play order ID
     [Id(4)] public string UserId { get; set; }            // User ID
+}
+
+/// <summary>
+/// Google Play transaction verification request (similar to Apple's transaction verification)
+/// RevenueCat automatically handles sandbox/production environment detection
+/// </summary>
+[GenerateSerializer]
+public class GooglePlayTransactionVerificationDto
+{
+    [Id(0)] public string UserId { get; set; }                    // Internal user ID (from login context)
+    [Id(1)] public string TransactionIdentifier { get; set; }     // Transaction/Order ID from RevenueCat (similar to Apple's transactionId)
+}
+
+/// <summary>
+/// RevenueCat transaction information (similar to Apple's AppStoreJWSTransactionDecodedPayload)
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatTransactionInfo
+{
+    [Id(0)] public string TransactionId { get; set; }
+    [Id(1)] public string ProductId { get; set; }
+    [Id(2)] public DateTime? PurchaseDate { get; set; }
+    [Id(3)] public DateTime? ExpiresDate { get; set; }
+    [Id(4)] public Guid? UserId { get; set; }
+    [Id(5)] public decimal Amount { get; set; }
+    [Id(6)] public string Currency { get; set; }
 }
 
 /// <summary>

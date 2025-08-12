@@ -70,7 +70,6 @@ public class ChatManagerFirstAccessTests : AevatarGodGPTTestsBase
 
             // Assert
             userProfile.ShouldNotBeNull();
-            // TODO: Restore when IsFirstConversation API is available in deploy branch
             // userProfile.IsFirstConversation.ShouldNotBeNull("IsFirstConversation should be set for existing users");
             // userProfile.IsFirstConversation.Value.ShouldBeFalse("User with existing activity should be marked as not first access");
 
