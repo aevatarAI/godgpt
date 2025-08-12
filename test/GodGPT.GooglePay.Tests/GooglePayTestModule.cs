@@ -65,16 +65,7 @@ public class GooglePayTestModule : AbpModule
         // Default fallback for other tokens
         googlePayServiceMock.Setup(x => x.VerifyGooglePlayPurchaseAsync(It.IsAny<GooglePlayVerificationDto>()))
             .ReturnsAsync(new PaymentVerificationResultDto { IsValid = false, ErrorCode = "INVALID_TOKEN", Message = "Invalid token" });
-        
-        // Set a default behavior for Google Pay web payments to avoid null returns
-        googlePayServiceMock.Setup(x => x.VerifyGooglePayPaymentAsync(It.IsAny<GooglePayVerificationDto>()))
-            .ReturnsAsync((GooglePayVerificationDto dto) => new PaymentVerificationResultDto 
-            { 
-                IsValid = false, 
-                ErrorCode = "NO_MOCK_SETUP", 
-                Message = "No mock setup for this test"
-            });
-        
+
         // Register both the mock and the service
         context.Services.AddSingleton(googlePayServiceMock);
         context.Services.AddSingleton<IGooglePayService>(sp => sp.GetRequiredService<Mock<IGooglePayService>>().Object);

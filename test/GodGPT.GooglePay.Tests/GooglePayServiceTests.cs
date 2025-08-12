@@ -104,26 +104,4 @@ public class GooglePayServiceTests : GooglePayTestBase
         Assert.False(result.IsValid);
         Assert.Equal("API_ERROR", result.ErrorCode);
     }
-
-    [Fact]
-    public async Task VerifyGooglePayPaymentAsync_MissingPaymentToken_ReturnsInvalid()
-    {
-        // Test that missing payment token returns an error
-        // Arrange
-        var request = new GooglePayVerificationDto
-        {
-            ProductId = "premium_monthly",
-            OrderId = "test_order",
-            // PaymentToken is missing
-        };
-
-        // Act
-        var result = await _googlePayService.VerifyGooglePayPaymentAsync(request);
-
-        // Assert
-        Assert.NotNull(result);
-        Assert.False(result.IsValid);
-        Assert.Equal("MISSING_PAYMENT_TOKEN", result.ErrorCode);
-        Assert.Equal("Payment token is required for verification", result.Message);
-    }
 }

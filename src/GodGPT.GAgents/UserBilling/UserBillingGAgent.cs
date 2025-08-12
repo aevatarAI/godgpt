@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -3686,7 +3687,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     Platform = PaymentPlatform.GooglePlay,
                     SubscriptionStartDate = existingPayment.SubscriptionStartDate,
                     SubscriptionEndDate = existingPayment.SubscriptionEndDate,
-                    PurchaseTimeMillis = existingPayment.CreatedAt?.Subtract(DateTime.UnixEpoch).TotalMilliseconds ?? 0
+                    PurchaseTimeMillis = (long)existingPayment.CreatedAt.Subtract(DateTime.UnixEpoch).TotalMilliseconds
                 };
             }
 
@@ -3754,17 +3755,18 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             _logger.LogInformation("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Looking up purchase token for transaction: {TransactionId}", transactionId);
             
             // Option 1: Check stored payment records for purchaseToken
-            // If you store the original Google Play purchaseToken in payment records
+            // Look for the purchaseToken in the invoice details
             var existingPayment = await GetPaymentSummaryByTransactionIdAsync(transactionId);
-            if (existingPayment != null)
+            if (existingPayment != null && existingPayment.InvoiceDetails != null)
             {
-                // If you store purchaseToken in a field like InvoiceId or custom field
-                // This depends on how you structure your payment data
-                var storedPurchaseToken = existingPayment.InvoiceId; // Or wherever you store the purchaseToken
-                if (!string.IsNullOrEmpty(storedPurchaseToken) && storedPurchaseToken.Length > 20)
+                // Check if any invoice detail contains the purchase token
+                var invoiceWithPurchaseToken = existingPayment.InvoiceDetails
+                    .FirstOrDefault(detail => !string.IsNullOrEmpty(detail.PurchaseToken));
+                
+                if (invoiceWithPurchaseToken != null)
                 {
                     _logger.LogInformation("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Found stored purchase token for transaction: {TransactionId}", transactionId);
-                    return storedPurchaseToken;
+                    return invoiceWithPurchaseToken.PurchaseToken;
                 }
             }
 
@@ -3797,8 +3799,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // This could be in OrderId, SubscriptionId, or InvoiceId fields depending on how you store RevenueCat data
             return State.PaymentHistory?.FirstOrDefault(p => 
                 p.OrderId == transactionId || 
-                p.SubscriptionId == transactionId || 
-                p.InvoiceId == transactionId);
+                p.SubscriptionId == transactionId);
         }
         catch (Exception ex)
         {
