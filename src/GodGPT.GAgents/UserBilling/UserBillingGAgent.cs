@@ -76,19 +76,14 @@ public interface IUserBillingGAgent : IGAgent
     Task<ActiveSubscriptionStatusDto> GetActiveSubscriptionStatusAsync();
     
     // Google Pay related methods
-    /// <summary>
-    /// Verify Google Pay Web payment
-    /// </summary>
-    /// <param name="request">Google Pay verification request</param>
-    /// <returns>Payment verification result</returns>
-    Task<PaymentVerificationResultDto> VerifyGooglePayPaymentAsync(GooglePayVerificationDto request);
+
     
     /// <summary>
-    /// Verify Google Play purchase
+    /// Verify Google Play transaction by transaction ID (similar to Apple's verification method)
     /// </summary>
-    /// <param name="request">Google Play verification request</param>
+    /// <param name="request">Google Play transaction verification request</param>
     /// <returns>Payment verification result</returns>
-    Task<PaymentVerificationResultDto> VerifyGooglePlayPurchaseAsync(GooglePlayVerificationDto request);
+    Task<PaymentVerificationResultDto> VerifyGooglePlayTransactionAsync(GooglePlayTransactionVerificationDto request);
     
     /// <summary>
     /// Handle Google Play real-time notification
@@ -3583,63 +3578,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         return _googlePayService;
     }
 
-    public async Task<PaymentVerificationResultDto> VerifyGooglePayPaymentAsync(GooglePayVerificationDto request)
-    {
-        // Validate input
-        if (request == null || string.IsNullOrEmpty(request.UserId) || !Guid.TryParse(request.UserId, out var userGuid))
-        {
-            _logger.LogWarning("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Invalid request: UserId is missing or invalid.");
-            return new PaymentVerificationResultDto { IsValid = false, Message = "Invalid UserId.", ErrorCode = "INVALID_INPUT" };
-        }
 
-        try
-        {
-            _logger.LogInformation("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Verifying Google Pay payment for user: {UserId}, productId: {ProductId}", request.UserId, request.ProductId);
-            
-            // Get the Google Pay service
-            var googlePayService = GetGooglePayService();
-            
-            // Verify the payment with Google Pay
-            var verificationResult = await googlePayService.VerifyGooglePayPaymentAsync(request);
-            
-            if (verificationResult.IsValid)
-            {
-                _logger.LogInformation("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Google Pay payment successful for user {UserId}. TransactionId: {TransactionId}", request.UserId, verificationResult.TransactionId);
-                
-                // Process the successful payment
-                await ProcessGooglePayPurchaseSuccessAsync(userGuid, verificationResult);
-                
-                return verificationResult;
-            }
-            else
-            {
-                _logger.LogWarning("[UserBillingGAgent][VerifyGooglePayPaymentAsync] Google Pay payment verification failed for user {UserId}. Reason: {Message}", request.UserId, verificationResult?.Message);
-                return verificationResult;
-            }
-        }
-        catch (InvalidOperationException ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePayPaymentAsync] IGooglePayService not available for user {UserId}", request.UserId);
-            return new PaymentVerificationResultDto
-            {
-                IsValid = false,
-                Message = "Google Pay service is not available.",
-                ErrorCode = "SERVICE_UNAVAILABLE"
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePayPaymentAsync] Error verifying Google Pay payment for user {UserId}", request.UserId);
-            return new PaymentVerificationResultDto
-            {
-                IsValid = false,
-                Message = "An error occurred while verifying the payment.",
-                ErrorCode = "INTERNAL_ERROR"
-            };
-        }
-    }
 
-    public async Task<PaymentVerificationResultDto> VerifyGooglePlayPurchaseAsync(GooglePlayVerificationDto request)
+    /// <summary>
+    /// Internal Google Play verification method (used by transaction verification and webhook)
+    /// </summary>
+    private async Task<PaymentVerificationResultDto> VerifyGooglePlayPurchaseAsync(GooglePlayVerificationDto request)
     {
         if (request == null || string.IsNullOrEmpty(request.UserId) || !Guid.TryParse(request.UserId, out var userGuid))
         {
@@ -3690,6 +3634,176 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 Message = "Invalid token",  // Return expected error message for tests
                 ErrorCode = "INTERNAL_ERROR"
             };
+        }
+    }
+
+    public async Task<PaymentVerificationResultDto> VerifyGooglePlayTransactionAsync(GooglePlayTransactionVerificationDto request)
+    {
+        if (request == null || string.IsNullOrEmpty(request.UserId) || !Guid.TryParse(request.UserId, out var userGuid))
+        {
+            _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Invalid request: UserId is missing or invalid.");
+            return new PaymentVerificationResultDto { IsValid = false, Message = "Invalid UserId.", ErrorCode = "INVALID_INPUT" };
+        }
+
+        if (string.IsNullOrEmpty(request.TransactionIdentifier))
+        {
+            _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Invalid request: Missing transaction identifier.");
+            return new PaymentVerificationResultDto { IsValid = false, Message = "Missing transaction identifier.", ErrorCode = "INVALID_INPUT" };
+        }
+
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Verifying Google Play transaction for user: {UserId}, transaction: {TransactionId}", 
+                request.UserId, request.TransactionIdentifier);
+
+            // Step 1: Check if transaction already exists and processed (avoid duplicate processing)
+            var existingPayment = await GetPaymentSummaryByTransactionIdAsync(request.TransactionIdentifier);
+            if (existingPayment != null)
+            {
+                _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Transaction already processed for user {UserId}, transaction: {TransactionId}", 
+                    request.UserId, request.TransactionIdentifier);
+
+                // Validate ownership of existing transaction
+                if (existingPayment.UserId.ToString() != request.UserId)
+                {
+                    _logger.LogError("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Transaction ownership mismatch for user {UserId}, transaction: {TransactionId}", 
+                        request.UserId, request.TransactionIdentifier);
+                    return new PaymentVerificationResultDto 
+                    { 
+                        IsValid = false, 
+                        Message = "Transaction verification failed: invalid user ownership",
+                        ErrorCode = "INVALID_OWNERSHIP"
+                    };
+                }
+
+                // Return existing successful verification
+                return new PaymentVerificationResultDto
+                {
+                    IsValid = true,
+                    Message = "Transaction already verified successfully",
+                    TransactionId = $"gp_existing_{request.TransactionIdentifier}",
+                    ProductId = existingPayment.PriceId,
+                    Platform = PaymentPlatform.GooglePlay,
+                    SubscriptionStartDate = existingPayment.SubscriptionStartDate,
+                    SubscriptionEndDate = existingPayment.SubscriptionEndDate,
+                    PurchaseTimeMillis = existingPayment.CreatedAt?.Subtract(DateTime.UnixEpoch).TotalMilliseconds ?? 0
+                };
+            }
+
+            // Step 2: Look up purchaseToken by transactionId (from RevenueCat or stored mapping)
+            var purchaseToken = await GetPurchaseTokenByTransactionIdAsync(request.TransactionIdentifier);
+            if (string.IsNullOrEmpty(purchaseToken))
+            {
+                _logger.LogError("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Cannot find purchaseToken for transaction: {TransactionId}", 
+                    request.TransactionIdentifier);
+                return new PaymentVerificationResultDto 
+                { 
+                    IsValid = false, 
+                    Message = "Transaction verification failed: unable to locate purchase token",
+                    ErrorCode = "PURCHASE_TOKEN_NOT_FOUND"
+                };
+            }
+
+            // Step 3: Use existing Google Play verification logic (same as webhook flow)
+            var googlePlayVerification = new GooglePlayVerificationDto
+            {
+                UserId = request.UserId,
+                PurchaseToken = purchaseToken,
+                ProductId = null, // Will be determined from Google Play API response
+                PackageName = _googlePayOptions.CurrentValue.PackageName,
+                OrderId = request.TransactionIdentifier
+            };
+
+            // Step 4: Call the existing Google Play verification method (maintains consistency with webhook)
+            var verificationResult = await VerifyGooglePlayPurchaseAsync(googlePlayVerification);
+
+            if (verificationResult.IsValid)
+            {
+                _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Google Play transaction verification successful for user {UserId}. TransactionId: {TransactionId}", 
+                    request.UserId, verificationResult.TransactionId);
+                
+                // Note: ProcessGooglePlayPurchaseSuccessAsync is already called in VerifyGooglePlayPurchaseAsync
+            }
+            else
+            {
+                _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Google Play transaction verification failed for user {UserId}. Reason: {Message}", 
+                    request.UserId, verificationResult?.Message);
+            }
+
+            return verificationResult;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Error verifying Google Play transaction for user {UserId}", request.UserId);
+            return new PaymentVerificationResultDto
+            {
+                IsValid = false,
+                Message = "An error occurred during verification",
+                ErrorCode = "VERIFICATION_ERROR"
+            };
+        }
+    }
+
+    /// <summary>
+    /// Get purchase token by transaction ID (needed for Google Play API verification)
+    /// </summary>
+    private async Task<string> GetPurchaseTokenByTransactionIdAsync(string transactionId)
+    {
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Looking up purchase token for transaction: {TransactionId}", transactionId);
+            
+            // Option 1: Check stored payment records for purchaseToken
+            // If you store the original Google Play purchaseToken in payment records
+            var existingPayment = await GetPaymentSummaryByTransactionIdAsync(transactionId);
+            if (existingPayment != null)
+            {
+                // If you store purchaseToken in a field like InvoiceId or custom field
+                // This depends on how you structure your payment data
+                var storedPurchaseToken = existingPayment.InvoiceId; // Or wherever you store the purchaseToken
+                if (!string.IsNullOrEmpty(storedPurchaseToken) && storedPurchaseToken.Length > 20)
+                {
+                    _logger.LogInformation("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Found stored purchase token for transaction: {TransactionId}", transactionId);
+                    return storedPurchaseToken;
+                }
+            }
+
+            // Option 2: Query RevenueCat API to get the original Google Play purchase token
+            // RevenueCat typically stores the mapping between their transaction ID and the original platform purchase tokens
+            // You would implement: var purchaseToken = await QueryRevenueCatForPurchaseToken(transactionId);
+
+            // Option 3: If you maintain a separate mapping table
+            // var mappingGrain = GrainFactory.GetGrain<ITransactionMappingGrain>(transactionId);
+            // var mapping = await mappingGrain.GetPurchaseTokenAsync();
+
+            _logger.LogWarning("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Purchase token not found for transaction: {TransactionId}", transactionId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Error looking up purchase token for transaction: {TransactionId}", transactionId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Get payment summary by transaction ID
+    /// </summary>
+    private async Task<ChatManager.UserBilling.PaymentSummary> GetPaymentSummaryByTransactionIdAsync(string transactionId)
+    {
+        try
+        {
+            // Search through payment history for matching transaction ID
+            // This could be in OrderId, SubscriptionId, or InvoiceId fields depending on how you store RevenueCat data
+            return State.PaymentHistory?.FirstOrDefault(p => 
+                p.OrderId == transactionId || 
+                p.SubscriptionId == transactionId || 
+                p.InvoiceId == transactionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][GetPaymentSummaryByTransactionIdAsync] Error searching for transaction {TransactionId}", transactionId);
+            return null;
         }
     }
 

@@ -10,14 +10,7 @@ namespace Aevatar.Application.Grains.Common.Service;
 public interface IGooglePayService
 {
     /// <summary>
-    /// Verify Google Pay web payment token
-    /// </summary>
-    /// <param name="verificationDto">Google Pay verification request</param>
-    /// <returns>Payment verification result</returns>
-    Task<PaymentVerificationResultDto> VerifyGooglePayPaymentAsync(GooglePayVerificationDto verificationDto);
-    
-    /// <summary>
-    /// Verify Google Play purchase token
+    /// Verify Google Play purchase token (internal method used by transaction verification and webhook)
     /// </summary>
     /// <param name="verificationDto">Google Play verification request</param>
     /// <returns>Payment verification result</returns>
