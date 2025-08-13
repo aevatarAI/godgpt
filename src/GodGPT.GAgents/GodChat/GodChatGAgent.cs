@@ -460,6 +460,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         };
 
         // Send STT result using the same streaming mechanism
+        var sendToClientStopwatch = Stopwatch.StartNew();
+
         if (isHttpRequest)
         {
             await PushMessageToClientAsync(sttResultMessage);
@@ -468,8 +470,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         {
             await PublishAsync(sttResultMessage);
         }
+        sendToClientStopwatch.Stop();
 
-        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} STT result sent to frontend: '{voiceContent}'");
+        Logger.LogDebug($"[GodChatGAgent][StreamVoiceChatWithSession] {sessionId.ToString()} STT result sent to frontend: '{voiceContent}', duration:{sendToClientStopwatch.ElapsedMilliseconds}");
 
         var quotaStopwatch = Stopwatch.StartNew();
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
