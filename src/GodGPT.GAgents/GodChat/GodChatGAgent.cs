@@ -733,7 +733,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogDebug($"[GodChatGAgent][MockCallBackAsync] InitialDelay - Duration: {delayStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
             
             var callbackStopwatch = Stopwatch.StartNew();
-            for (var i = 1; i <= 20; i++)
+            for (var i = 1; i <= 2; i++)
             {
                 var IsLastChunk = i == 20;
                 var chunkStopwatch = Stopwatch.StartNew();
