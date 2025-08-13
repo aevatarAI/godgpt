@@ -152,7 +152,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 SubscriptionInfo = subscriptionDto,
                 IsUltimate = ultimate
             });
-            await ConfirmEvents();
+           // await ConfirmEvents();
 
             if (State.RateLimits.ContainsKey("conversation"))
             {
@@ -160,7 +160,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 {
                     ActionType = "conversation"
                 });
-                await ConfirmEvents();
+                //await ConfirmEvents();
             }
         }
 
@@ -909,7 +909,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     CreatedAt = userQuotaState.CreatedAt,
                     CanReceiveInviteReward = userQuotaState.CanReceiveInviteReward
                 });
-                await ConfirmEvents();
+                //await ConfirmEvents();
 
                 _logger.LogDebug(
                     "[UserQuotaGAgent][OnGAgentActivateAsync] State initialized from IUserQuotaGrain for user {UserId}",
@@ -922,7 +922,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     this.GetPrimaryKeyString());
                     
                 RaiseEvent(new MarkInitializedLogEvent());
-                await ConfirmEvents();
+                //await ConfirmEvents();
             }
         }
     }
