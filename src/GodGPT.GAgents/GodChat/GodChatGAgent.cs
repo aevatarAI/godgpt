@@ -733,32 +733,23 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogDebug($"[GodChatGAgent][MockCallBackAsync] InitialDelay - Duration: {delayStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
             
             var callbackStopwatch = Stopwatch.StartNew();
-            for (var i = 1; i <= 2; i++)
+            await ChatMessageCallbackAsync(new AIChatContextDto
             {
-                var IsLastChunk = i == 2;
-                var chunkStopwatch = Stopwatch.StartNew();
-
-                await ChatMessageCallbackAsync(new AIChatContextDto
+                RequestId = sessionId,
+                MessageId = JsonConvert.SerializeObject(new Dictionary<string, object>()
                 {
-                    RequestId = sessionId,
-                    MessageId = JsonConvert.SerializeObject(new Dictionary<string, object>()
-                    {
-                        { "IsHttpRequest", true }, { "LLM", sysmLLM }, { "StreamingModeEnabled", true },
-                        { "Message", content }
-                    }),
-                    ChatId = chatId
-                }, AIExceptionEnum.None, null, new AIStreamChatContent
-                {
-                    ResponseContent = "Mock data for stress testing environment." + i +"-line",
-                    SerialNumber = 1,
-                    IsLastChunk = IsLastChunk,
-                    IsAggregationMsg = IsLastChunk,
-                    AggregationMsg = "Mock data for stress testing environment." + i +"-line"
-                });
-                
-                chunkStopwatch.Stop();
-                Logger.LogDebug($"[GodChatGAgent][MockCallBackAsync] Chunk_{i} - Duration: {chunkStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}, IsLastChunk: {IsLastChunk}");
-            }
+                    { "IsHttpRequest", true }, { "LLM", sysmLLM }, { "StreamingModeEnabled", true },
+                    { "Message", content }
+                }),
+                ChatId = chatId
+            }, AIExceptionEnum.None, null, new AIStreamChatContent
+            {
+                ResponseContent = "Mock data for stress testing environment.",
+                SerialNumber = 1,
+                IsLastChunk = true,
+                IsAggregationMsg = true,
+                AggregationMsg = "Mock data for stress testing environment."
+            });
             
             callbackStopwatch.Stop();
             totalStopwatch.Stop();
