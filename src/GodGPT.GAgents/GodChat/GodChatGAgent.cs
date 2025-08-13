@@ -735,7 +735,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             var callbackStopwatch = Stopwatch.StartNew();
             for (var i = 1; i <= 2; i++)
             {
-                var IsLastChunk = i == 20;
+                var IsLastChunk = i == 2;
                 var chunkStopwatch = Stopwatch.StartNew();
 
                 await ChatMessageCallbackAsync(new AIChatContextDto
