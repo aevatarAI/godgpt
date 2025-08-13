@@ -129,7 +129,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Title = @event.Title
         });
 
-        await ConfirmEvents();
+        //await ConfirmEvents();
         
         Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] end:{JsonConvert.SerializeObject(@event)}");
 

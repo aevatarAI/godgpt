@@ -412,7 +412,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 ActionType = actionType,
                 RateLimitInfo = rateLimitInfo
             });
-            await ConfirmEvents();
+            //await ConfirmEvents();
 
             _logger.LogDebug(
                 "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} INIT RateLimitInfo: count={Count}, lastTime(UTC)={LastTime}",
@@ -435,7 +435,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     ActionType = actionType,
                     RateLimitInfo = rateLimitInfo
                 });
-                await ConfirmEvents();
+               // await ConfirmEvents();
 
                 _logger.LogDebug(
                     "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} REFILL: tokensToAdd={TokensToAdd}, newCount={Count}, now(UTC)={Now}",
@@ -485,7 +485,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             {
                 NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation
             });
-            await ConfirmEvents();
+           // await ConfirmEvents();
         }
 
         var updatedRateLimitInfo = State.RateLimits[actionType];
@@ -495,7 +495,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             ActionType = actionType,
             RateLimitInfo = updatedRateLimitInfo
         });
-        await ConfirmEvents();
+       // await ConfirmEvents();
 
         _logger.LogDebug(
             "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER decrement: count={Count}, now(UTC)={Now}",
