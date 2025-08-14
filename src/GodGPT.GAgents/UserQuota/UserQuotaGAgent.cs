@@ -940,7 +940,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     CreatedAt = userQuotaState.CreatedAt,
                     CanReceiveInviteReward = userQuotaState.CanReceiveInviteReward
                 });
-                //await ConfirmEvents();
 
                 _logger.LogDebug(
                     "[UserQuotaGAgent][OnGAgentActivateAsync] State initialized from IUserQuotaGrain for user {UserId}",
@@ -953,7 +952,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     this.GetPrimaryKeyString());
                     
                 RaiseEvent(new MarkInitializedLogEvent());
-                //await ConfirmEvents();
             }
         }
     }

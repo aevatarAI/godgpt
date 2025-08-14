@@ -1305,7 +1305,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 MaxShareCount = 10000
             });
-            //await ConfirmEvents();
         }
         await base.OnGAgentActivateAsync(cancellationToken);
     }
