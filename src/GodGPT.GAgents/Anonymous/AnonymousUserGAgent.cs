@@ -67,6 +67,7 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
     public async Task<Guid> CreateGuestSessionAsync(string? guider = null)
     {
         var stopwatch = Stopwatch.StartNew();
+        await EnsureInitializedAsync();
         // Check if user has exceeded chat limit
         if (!await CanChatAsync())
         {
@@ -87,11 +88,11 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
         }
 
         var configuration = GetConfiguration();
+
         // Create new GodChat session (mimic ChatManagerGAgent.CreateSessionAsync)
         IGodChat godChat = GrainFactory.GetGrain<IGodChat>(Guid.NewGuid());
 
         // Get system prompt and append role prompt if provided (exact copy from ChatManagerGAgent)
-        var getPromptStopwatch = Stopwatch.StartNew();
         var sysMessage = await configuration.GetPrompt();
         
         if (!string.IsNullOrEmpty(guider))
@@ -103,11 +104,8 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
                 Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Added role prompt for guider: {guider}");
             }
         }
-        getPromptStopwatch.Stop();
-        Logger.LogDebug("[AnonymousUserGAgent][CreateGuestSessionAsync] GetPrompt duration: {0}ms", getPromptStopwatch.ElapsedMilliseconds);
 
         // Configure GodChat with same settings as regular users (exact copy from ChatManagerGAgent)
-        var configGodChatStopwatch = Stopwatch.StartNew();
         var chatConfigDto = new ChatConfigDto()
         {
             Instructions = sysMessage, 
@@ -123,8 +121,6 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
         Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Config: {Newtonsoft.Json.JsonConvert.SerializeObject(chatConfigDto)}");
 
         await godChat.ConfigAsync(chatConfigDto);
-        configGodChatStopwatch.Stop();
-        Logger.LogDebug("[AnonymousUserGAgent][CreateGuestSessionAsync] Config GodChat: {0}ms", configGodChatStopwatch.ElapsedMilliseconds);
 
         // Record session creation event
         var sessionId = godChat.GetPrimaryKey();
@@ -139,7 +135,7 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
         State.CurrentSessionId = sessionId;
         State.CurrentGuider = guider;
         State.CurrentSessionUsed = false; // Mark as unused initially
-        
+        stopwatch.Stop();
         Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Session created: {sessionId} for user: {State.UserHashId} Total duration: {stopwatch.ElapsedMilliseconds}ms");
         return sessionId;
     }
