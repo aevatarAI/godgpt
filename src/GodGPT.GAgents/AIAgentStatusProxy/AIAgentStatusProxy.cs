@@ -4,6 +4,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.ProxySEvents;
 using Aevatar.Application.Grains.Common;
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
@@ -13,6 +14,8 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
 using Aevatar.GAgents.ChatAgent.Dtos;
+using System.Diagnostics;
+using Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent.GEvents;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.ProxyAgent;
 
@@ -29,22 +32,100 @@ public class AIAgentStatusProxy :
 
     protected sealed override async Task PerformConfigAsync(AIAgentStatusProxyConfig configuration)
     {
-        await InitializeAsync(
-            new InitializeDto()
+        var stopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] Start - SessionId: {this.GetPrimaryKey()}, ParentId: {configuration.ParentId}");
+        /*
+        var initializeStopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] Starting InitializeAsync - SessionId: {this.GetPrimaryKey()}");
+       
+        await PublishAsync(this.GetGrainId(),new AIAgentStatusProxyInitializeGEvent()
+        {
+            InitializeDto = new InitializeDto()
             {
                 Instructions = configuration.Instructions,
                 LLMConfig = configuration.LLMConfig,
                 StreamingModeEnabled = configuration.StreamingModeEnabled,
                 StreamingConfig = configuration.StreamingConfig
-            });
+            }
+        });
+        
+        initializeStopwatch.Stop();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] InitializeAsync completed - Duration: {initializeStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
+        */
+
+        var raiseEventStopwatch = Stopwatch.StartNew();
         RaiseEvent(new SetStatusProxyConfigLogEvent
         {
             RecoveryDelay = configuration.RequestRecoveryDelay,
             ParentId = configuration.ParentId
         });
-        await ConfirmEvents();
+        //await ConfirmEvents();
+        raiseEventStopwatch.Stop();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
+        
+        stopwatch.Stop();
+        Logger.LogDebug($"[AIAgentStatusProxy][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}, ParentId: {configuration.ParentId}");
+       
     }
+    /*private async Task PublishAsync<T>(GrainId grainId,T @event) where T : EventBase{
+        var grainIdString = grainId.ToString();
+        var streamId = StreamId.Create(AevatarOptions!.StreamNamespace, grainIdString);
+        var stream = StreamProvider.GetStream<EventWrapperBase>(streamId);
+        var eventWrapper = new EventWrapper<T>(@event, Guid.NewGuid(), this.GetGrainId());
+        await stream.OnNextAsync(eventWrapper);
+    }*/
+    [EventHandler]
+    private async Task HandlerEventAsync(AIAgentStatusProxyInitializeGEvent @event)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[HandlerEventAsync][AIAgentStatusProxyInitializeGEvent] Start- SessionId:{this.GetPrimaryKey()}, event:{JsonConvert.SerializeObject(@event)}");
+        
+        // Send status update to GodChatGAgent - Initializing
+        //await SendProxyInitStatusUpdateAsync(ProxyInitStatus.Initializing);
+        
+        await InitializeAsync(@event.InitializeDto);
+        
+        // Send status update to GodChatGAgent - Initialized
+        await SendProxyInitStatusUpdateAsync(ProxyInitStatus.Initialized);
+        
+        stopwatch.Stop();
 
+        Logger.LogDebug($"[HandlerEventAsync][AIAgentStatusProxyInitializeGEvent] End - SessionId: {this.GetPrimaryKey()} ,Duration: {stopwatch.ElapsedMilliseconds}ms");
+    }
+    
+    private async Task SendProxyInitStatusUpdateAsync(ProxyInitStatus status)
+    {
+        try
+        {
+            if (State.ParentId != Guid.Empty)
+            {
+                var godChatGrain = GrainFactory.GetGrain<IGodChat>(State.ParentId);
+                await PublishAsync(godChatGrain.GetGrainId(), new UpdateProxyInitStatusGEvent()
+                {
+                    ProxyId = this.GetPrimaryKey(),
+                    Status = status,
+                    ParentId = State.ParentId
+                });
+
+                Logger.LogDebug($"[AIAgentStatusProxy][SendProxyInitStatusUpdateAsync] Sent status update: {status} for proxy: {this.GetPrimaryKey()} to GodChatGAgent: {State.ParentId}");
+            }
+            else
+            {
+                Logger.LogWarning($"[AIAgentStatusProxy][SendProxyInitStatusUpdateAsync] ParentId is empty, cannot send status update");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"[AIAgentStatusProxy][SendProxyInitStatusUpdateAsync] Failed to send status update: {status} for proxy: {this.GetPrimaryKey()}");
+        }
+    }
+    private async Task PublishAsync<T>(GrainId grainId,T @event) where T : EventBase{
+        var grainIdString = grainId.ToString();
+        var streamId = StreamId.Create(AevatarOptions!.StreamNamespace, grainIdString);
+        var stream = StreamProvider.GetStream<EventWrapperBase>(streamId);
+        var eventWrapper = new EventWrapper<T>(@event, Guid.NewGuid(), this.GetGrainId());
+        await stream.OnNextAsync(eventWrapper);
+    }
     public async Task<List<ChatMessage>?> ChatWithHistory(string prompt, List<ChatMessage>? history = null,
         ExecutionPromptSettings? promptSettings = null, AIChatContextDto? context = null)
     {

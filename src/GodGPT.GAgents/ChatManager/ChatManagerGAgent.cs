@@ -1,4 +1,7 @@
 using System.Diagnostics;
+using Aevatar.AI.Exceptions;
+using Aevatar.AI.Feature.StreamSyncWoker;
+using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
@@ -9,10 +12,14 @@ using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.ChatManager.UserBilling;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.UserQuota;
+using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Aevatar.Core.Placement;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Agent;
@@ -20,6 +27,7 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using GodGPT.GAgents.SpeechChat;
+using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -34,7 +42,7 @@ namespace Aevatar.Application.Grains.Agents.ChatManager;
 [LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(ChatGAgentManager))]
 [Reentrant]
-public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManageEventLog>,
+public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEventLog>,
     IChatManagerGAgent
 {
     private const string FormattedDate = "yyyy-MM-dd";
@@ -50,6 +58,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         return Task.FromResult("Chat GAgent Manager");
     }
+    
     [EventHandler]
     public async Task HandleEventAsync(RequestStreamGodChatEvent @event)
     {
@@ -129,7 +138,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Title = @event.Title
         });
 
-        await ConfirmEvents();
+        //await ConfirmEvents();
         
         Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] end:{JsonConvert.SerializeObject(@event)}");
 
@@ -316,6 +325,9 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
 
     public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null, string? guider = null)
     {
+        var totalStopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Start - UserId: {this.GetPrimaryKey()}");
+        
         var configuration = GetConfiguration();
         Stopwatch sw = new Stopwatch();
         sw.Start();
@@ -323,7 +335,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         // await RegisterAsync(godChat);
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step,time use:{sw.ElapsedMilliseconds}");
-        Logger.LogDebug($"[ChatGAgentManager][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
+        Logger.LogDebug($"[ChatManagerGAgent][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
         
         sw.Reset();
         //var sysMessage = await configuration.GetPrompt();
@@ -338,7 +350,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             if (!string.IsNullOrEmpty(rolePrompt))
             {
                 sysMessage = rolePrompt;
-                Logger.LogDebug($"[ChatGAgentManager][CreateSessionAsync] Added role prompt for guider: {guider}");
+                Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Added role prompt for guider: {guider}");
             }
         }
 
@@ -353,7 +365,12 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         };
         Logger.LogDebug($"[GodChatGAgent][InitializeAsync] Detail : {JsonConvert.SerializeObject(chatConfigDto)}");
 
+        var configStopwatch = Stopwatch.StartNew();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Starting ConfigAsync for GodChat - SessionId: {godChat.GetPrimaryKey()}");
         await godChat.ConfigAsync(chatConfigDto);
+        configStopwatch.Stop();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] ConfigAsync completed - Duration: {configStopwatch.ElapsedMilliseconds}ms, SessionId: {godChat.GetPrimaryKey()}");
+        
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
 
@@ -370,7 +387,8 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         
         // Record user activity metrics for retention analysis (before RaiseEvent to ensure proper deduplication)
         await RecordUserActivityMetricsAsync();
-        
+        var raiseEventStopwatch = Stopwatch.StartNew();
+
         RaiseEvent(new CreateSessionInfoEventLog()
         {
             SessionId = sessionId,
@@ -379,10 +397,21 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             Guider = guider // Set the role information for the conversation
         });
 
-        await ConfirmEvents();
+        //await ConfirmEvents();
+        raiseEventStopwatch.Stop();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
+        
+        var initStopwatch = Stopwatch.StartNew();
         await godChat.InitAsync(this.GetPrimaryKey());
+        initStopwatch.Stop();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] InitAsync completed - Duration: {initStopwatch.ElapsedMilliseconds}ms");
+        
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
+        
+        totalStopwatch.Stop();
+        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] End - Total Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}, UserId: {this.GetPrimaryKey()}");
+        
         return godChat.GetPrimaryKey();
     }
 
@@ -512,101 +541,14 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     public async Task<Tuple<string, string>> ChatWithSessionAsync(Guid sessionId, string sysmLLM, string content,
         ExecutionPromptSettings promptSettings = null)
     {
-        var sessionInfo = State.GetSession(sessionId);
-        IGodChat godChat = GrainFactory.GetGrain<IGodChat>(sessionId);
-        
-        if (sessionInfo == null)
-        {
-            return new Tuple<string, string>("", "");
-        }
-
-        // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
-        var actionResult = await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(),
-            CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        if (!actionResult.Success)
-        {
-            // 2. If not allowed, return error message without further processing
-            return new Tuple<string, string>(actionResult.Message, "");
-        }
-
-        // 3. If allowed, continue with chat logic
-        var title = "";
-        if (sessionInfo.Title.IsNullOrEmpty())
-        {
-            var titleList = await ChatWithHistory(content,context: new AIChatContextDto());
-            title = titleList is { Count: > 0 }
-                ? titleList[0].Content!
-                : string.Join(" ", content.Split(" ").Take(4));
-
-            RaiseEvent(new RenameTitleEventLog()
-            {
-                SessionId = sessionId,
-                Title = title
-            });
-
-            await ConfirmEvents();
-        }
-
-        var configuration = GetConfiguration();
-        var response = await godChat.GodChatAsync(await configuration.GetSystemLLM(), content, promptSettings);
-        return new Tuple<string, string>(response, title);
+        throw new Exception("The method is outdated");
     }
     
     private async Task StreamChatWithSessionAsync(Guid sessionId,string sysmLLM, string content,string chatId,
         ExecutionPromptSettings promptSettings = null)
     {
-        Stopwatch sw = new Stopwatch();
-        sw.Start();
-        var sessionInfo = State.GetSession(sessionId);
-        IGodChat godChat = GrainFactory.GetGrain<IGodChat>(sessionId);
-        sw.Stop();
-        Logger.LogDebug($"StreamChatWithSessionAsync - step1,time use:{sw.ElapsedMilliseconds}");
+        throw new Exception("The method is outdated");
 
-        // 1. Check quota and rate limit using ExecuteActionAsync
-        var userQuotaGAgent =
-            GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
-        var actionResult = await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(),
-            CommonHelper.GetUserQuotaGAgentId(this.GetPrimaryKey()));
-        if (!actionResult.Success)
-        {
-            // 2. If not allowed, log and return early without further processing
-            Logger.LogWarning($"StreamChatWithSessionAsync: {actionResult.Message} for user {this.GetPrimaryKey()}. SessionId: {sessionId}");
-            return;
-        }
-
-        var title = "";
-        if (sessionInfo == null)
-        {
-            Logger.LogError("StreamChatWithSessionAsync sessionInfoIsNull sessionId={A}",sessionId);
-            return ;
-        }
-        if (sessionInfo.Title.IsNullOrEmpty())
-        {
-            sw.Reset();
-            sw.Start();
-            var titleList = await ChatWithHistory(content,context: new AIChatContextDto());
-            title = titleList is { Count: > 0 }
-                ? titleList[0].Content!
-                : string.Join(" ", content.Split(" ").Take(4));
-        
-            RaiseEvent(new RenameTitleEventLog()
-            {
-                SessionId = sessionId,
-                Title = title
-            });
-        
-            await ConfirmEvents();
-            sw.Stop();
-            Logger.LogDebug($"StreamChatWithSessionAsync - step3,time use:{sw.ElapsedMilliseconds}");
-        }
-
-        sw.Reset();
-        sw.Start();
-        var configuration = GetConfiguration();
-        godChat.GodStreamChatAsync(sessionId,await configuration.GetSystemLLM(), await configuration.GetStreamingModeEnabled(),content, chatId,promptSettings);
-        sw.Stop();
-        Logger.LogDebug($"StreamChatWithSessionAsync - step4,time use:{sw.ElapsedMilliseconds}");
     }
 
     public async Task<List<SessionInfoDto>> GetSessionListAsync()
@@ -870,6 +812,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
     {
         Logger.LogDebug($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}");
         var sessionInfo = State.GetSession(sessionId);
+        
         if (sessionInfo == null)
         {
             var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
@@ -970,7 +913,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             FullName = fullName
         });
 
-        await ConfirmEvents();
+        //await ConfirmEvents();
         return this.GetPrimaryKey();
     }
 
@@ -1216,7 +1159,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         return Task.FromResult(State.InviterId);
     }
 
-    protected override void AIGAgentTransitionState(ChatManagerGAgentState state,
+    protected override void GAgentTransitionState(ChatManagerGAgentState state,
         StateLogEventBase<ChatManageEventLog> @event)
     {
         switch (@event)
@@ -1372,7 +1315,7 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
         }
     }
 
-    protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
+    protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
         // Check and initialize first access status if needed
         var firstAccess = await CheckAndInitializeFirstAccessStatus();
@@ -1389,9 +1332,9 @@ public class ChatGAgentManager : AIGAgentBase<ChatManagerGAgentState, ChatManage
             {
                 MaxShareCount = 10000
             });
-            await ConfirmEvents();
+            //await ConfirmEvents();
         }
-        await base.OnAIGAgentActivateAsync(cancellationToken);
+        await base.OnGAgentActivateAsync(cancellationToken);
     }
 
     private IConfigurationGAgent GetConfiguration()
