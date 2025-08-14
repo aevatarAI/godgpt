@@ -1,7 +1,4 @@
 using System.Diagnostics;
-using Aevatar.AI.Exceptions;
-using Aevatar.AI.Feature.StreamSyncWoker;
-using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
@@ -12,22 +9,17 @@ using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Service;
-using Aevatar.Application.Grains.ChatManager.UserBilling;
-using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
-using Aevatar.Core.Placement;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
-using Aevatar.GAgents.AIGAgent.Agent;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using GodGPT.GAgents.SpeechChat;
-using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -138,8 +130,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Title = @event.Title
         });
 
-        //await ConfirmEvents();
-        
         Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] end:{JsonConvert.SerializeObject(@event)}");
 
     }
@@ -325,7 +315,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null, string? guider = null)
     {
-        var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Start - UserId: {this.GetPrimaryKey()}");
         
         var configuration = GetConfiguration();
@@ -364,12 +353,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             }
         };
         Logger.LogDebug($"[GodChatGAgent][InitializeAsync] Detail : {JsonConvert.SerializeObject(chatConfigDto)}");
-
-        var configStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Starting ConfigAsync for GodChat - SessionId: {godChat.GetPrimaryKey()}");
         await godChat.ConfigAsync(chatConfigDto);
-        configStopwatch.Stop();
-        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] ConfigAsync completed - Duration: {configStopwatch.ElapsedMilliseconds}ms, SessionId: {godChat.GetPrimaryKey()}");
         
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
@@ -387,8 +371,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         
         // Record user activity metrics for retention analysis (before RaiseEvent to ensure proper deduplication)
         await RecordUserActivityMetricsAsync();
-        var raiseEventStopwatch = Stopwatch.StartNew();
-
         RaiseEvent(new CreateSessionInfoEventLog()
         {
             SessionId = sessionId,
@@ -396,10 +378,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             CreateAt = DateTime.UtcNow,
             Guider = guider // Set the role information for the conversation
         });
-
-        //await ConfirmEvents();
-        raiseEventStopwatch.Stop();
-        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] RaiseEvent and ConfirmEvents - Duration: {raiseEventStopwatch.ElapsedMilliseconds}ms");
         
         var initStopwatch = Stopwatch.StartNew();
         await godChat.InitAsync(this.GetPrimaryKey());
@@ -408,10 +386,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
-        
-        totalStopwatch.Stop();
-        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] End - Total Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}, UserId: {this.GetPrimaryKey()}");
-        
         return godChat.GetPrimaryKey();
     }
 
@@ -913,7 +887,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             FullName = fullName
         });
 
-        //await ConfirmEvents();
         return this.GetPrimaryKey();
     }
 

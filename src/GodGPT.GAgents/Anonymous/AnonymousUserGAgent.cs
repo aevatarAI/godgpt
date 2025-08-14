@@ -8,10 +8,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
-using Aevatar.Core.Placement;
-using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
-using Aevatar.GAgents.AIGAgent.Agent;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using Json.Schema.Generation;
@@ -19,7 +16,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.Concurrency;
 using Orleans.Providers;
-using Volo.Abp;
 
 namespace Aevatar.Application.Grains.Agents.Anonymous;
 
@@ -48,12 +44,9 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
 
     public async Task<bool> CanChatAsync()
     {
-        var stopwatch = Stopwatch.StartNew();
         await EnsureInitializedAsync();
         var maxCount = GetMaxChatCount();
-        var canChat = State.ChatCount < maxCount;
-        Logger.LogDebug("[AnonymousUserGAgent][CanChatAsync] Total duration: {0}ms", stopwatch.ElapsedMilliseconds);
-        return canChat;
+        return State.ChatCount < maxCount;
     }
 
     public async Task<int> GetRemainingChatsAsync()
@@ -74,17 +67,12 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
     public async Task<Guid> CreateGuestSessionAsync(string? guider = null)
     {
         var stopwatch = Stopwatch.StartNew();
-        //await EnsureInitializedAsync();
-        
         // Check if user has exceeded chat limit
-        var canChatStopwatch = Stopwatch.StartNew();
         if (!await CanChatAsync())
         {
             Logger.LogWarning($"[AnonymousUserGAgent][CreateGuestSessionAsync] Chat limit exceeded for user: {State.UserHashId}");
             throw new InvalidOperationException("Daily chat limit exceeded for guest users");
         }
-        Logger.LogDebug("[AnonymousUserGAgent][CreateGuestSessionAsync] CanChatAsync duration: {0}ms", canChatStopwatch.ElapsedMilliseconds);
-
         // Check if existing session can be reused (same guider and not yet used)
         if (State.CurrentSessionId.HasValue && !State.CurrentSessionUsed)
         {
@@ -94,18 +82,13 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
             if (existingGuider.Equals(newGuider, StringComparison.OrdinalIgnoreCase))
             {
                 Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Reusing existing session: {State.CurrentSessionId.Value} for user: {State.UserHashId}");
-                Logger.LogDebug("[AnonymousUserGAgent][CreateGuestSessionAsync] Total duration: {0}ms", stopwatch.ElapsedMilliseconds);
                 return State.CurrentSessionId.Value;
             }
         }
 
         var configuration = GetConfiguration();
-        var createGodChatStopwatch = Stopwatch.StartNew();
-        
         // Create new GodChat session (mimic ChatManagerGAgent.CreateSessionAsync)
         IGodChat godChat = GrainFactory.GetGrain<IGodChat>(Guid.NewGuid());
-        createGodChatStopwatch.Stop();
-        Logger.LogDebug("[AnonymousUserGAgent][CreateGuestSessionAsync] Create GodChat: {0}ms", createGodChatStopwatch.ElapsedMilliseconds);
 
         // Get system prompt and append role prompt if provided (exact copy from ChatManagerGAgent)
         var getPromptStopwatch = Stopwatch.StartNew();
@@ -152,17 +135,12 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
             CreateAt = DateTime.UtcNow
         });
 
-        //await godChat.InitAsync(this.GetPrimaryKey()); // Initialize with AnonymousUserGAgent ID
-        //await ConfirmEvents();
-
         // Update state
         State.CurrentSessionId = sessionId;
         State.CurrentGuider = guider;
         State.CurrentSessionUsed = false; // Mark as unused initially
         
-        Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Session created: {sessionId} for user: {State.UserHashId}");
-        Logger.LogDebug("[AnonymousUserGAgent][CreateGuestSessionAsync] Total duration: {0}ms", stopwatch.ElapsedMilliseconds);
-        
+        Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Session created: {sessionId} for user: {State.UserHashId} Total duration: {stopwatch.ElapsedMilliseconds}ms");
         return sessionId;
     }
 
@@ -215,8 +193,6 @@ public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserE
             SessionUsed = true // Mark session as used
         });
 
-        //await ConfirmEvents();
-        
         Logger.LogDebug($"[AnonymousUserGAgent][GuestChatAsync] Chat completed for user: {State.UserHashId}, new count: {State.ChatCount + 1}");
     }
 
