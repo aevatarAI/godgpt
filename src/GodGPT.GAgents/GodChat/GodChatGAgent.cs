@@ -1884,7 +1884,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             const int maxRetries = 10;
             const int retryDelayMs = 200;
             var retryCount = 0;
-            ProxyInitStatus proxyInitStatus = ProxyInitStatus.Uninitialized;
+            ProxyInitStatus proxyInitStatus = ProxyInitStatus.NotInitialized;
             
             while (retryCount < maxRetries)
             {
