@@ -1,6 +1,5 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
-using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
@@ -153,7 +152,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 SubscriptionInfo = subscriptionDto,
                 IsUltimate = ultimate
             });
-            await ConfirmEvents();
 
             if (State.RateLimits.ContainsKey("conversation"))
             {
@@ -161,7 +159,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 {
                     ActionType = "conversation"
                 });
-                await ConfirmEvents();
             }
         }
 
@@ -315,7 +312,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             {
                 DailyImageConversation = dailyInfo
             });
-            await ConfirmEvents();
 
             _logger.LogDebug(
                 "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Image conversation allowed. New count={Count}",
@@ -417,7 +413,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 ActionType = actionType,
                 RateLimitInfo = rateLimitInfo
             });
-            await ConfirmEvents();
 
             _logger.LogDebug(
                 "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} INIT RateLimitInfo: count={Count}, lastTime(UTC)={LastTime}",
@@ -440,7 +435,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     ActionType = actionType,
                     RateLimitInfo = rateLimitInfo
                 });
-                await ConfirmEvents();
 
                 _logger.LogDebug(
                     "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} REFILL: tokensToAdd={TokensToAdd}, newCount={Count}, now(UTC)={Now}",
@@ -490,7 +484,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             {
                 NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation
             });
-            await ConfirmEvents();
 
             if (State.Credits == 0)
             {
@@ -506,7 +499,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             ActionType = actionType,
             RateLimitInfo = updatedRateLimitInfo
         });
-        await ConfirmEvents();
 
         _logger.LogDebug(
             "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER decrement: count={Count}, now(UTC)={Now}",
@@ -948,7 +940,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     CreatedAt = userQuotaState.CreatedAt,
                     CanReceiveInviteReward = userQuotaState.CanReceiveInviteReward
                 });
-                await ConfirmEvents();
 
                 _logger.LogDebug(
                     "[UserQuotaGAgent][OnGAgentActivateAsync] State initialized from IUserQuotaGrain for user {UserId}",
@@ -961,7 +952,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     this.GetPrimaryKeyString());
                     
                 RaiseEvent(new MarkInitializedLogEvent());
-                await ConfirmEvents();
             }
         }
     }
