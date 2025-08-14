@@ -652,14 +652,46 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         proxyStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] GetProxyByRegionAsync - Duration: {proxyStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}, Region: {region}");
         var proxyId = aiAgentStatusProxy.GetPrimaryKey();
-        if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out var proxyInitStatus))
+        
+        // Add retry loop for proxy initialization status checking
+        const int maxRetries = 10;
+        const int retryDelayMs = 200;
+        var retryCount = 0;
+        ProxyInitStatus proxyInitStatus = ProxyInitStatus.NotInitialized;
+        
+        while (retryCount < maxRetries)
         {
-            throw new Exception("proxy:" + proxyId +"Not start initializ");
-        }
+            if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
+            {
+                retryCount++;
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Proxy not started initializing - ProxyId: {proxyId}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
+                
+                if (retryCount >= maxRetries)
+                {
+                    throw new Exception("proxy:" + proxyId + "Not start initializ after " + maxRetries + " retries");
+                }
+                
+                await Task.Delay(retryDelayMs);
+                continue;
+            }
 
-        if (proxyInitStatus != ProxyInitStatus.Initialized)
-        {
-            throw new Exception("proxy:" + proxyId +"Not initialized,status:" + proxyInitStatus.ToString());
+            if (proxyInitStatus != ProxyInitStatus.Initialized)
+            {
+                retryCount++;
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Proxy not initialized - ProxyId: {proxyId}, Status: {proxyInitStatus}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
+                
+                if (retryCount >= maxRetries)
+                {
+                    throw new Exception("proxy:" + proxyId + "Not initialized after " + maxRetries + " retries, status:" + proxyInitStatus.ToString());
+                }
+                
+                await Task.Delay(retryDelayMs);
+                continue;
+            }
+            
+            // Proxy is initialized, break out of retry loop
+            Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Proxy initialization check successful - ProxyId: {proxyId}, Status: {proxyInitStatus}, Retries: {retryCount}, SessionId: {sessionId}");
+            break;
         }
 
         if (aiAgentStatusProxy != null)
@@ -1843,8 +1875,52 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
         proxyStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] GetProxyByRegionAsync - Duration: {proxyStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}, Region: {region}");
+        
         if (aiAgentStatusProxy != null)
         {
+            var proxyId = aiAgentStatusProxy.GetPrimaryKey();
+            
+            // Add retry loop for proxy initialization status checking (same as GodStreamChatAsync)
+            const int maxRetries = 10;
+            const int retryDelayMs = 200;
+            var retryCount = 0;
+            ProxyInitStatus proxyInitStatus = ProxyInitStatus.Uninitialized;
+            
+            while (retryCount < maxRetries)
+            {
+                if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
+                {
+                    retryCount++;
+                    Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Proxy not started initializing - ProxyId: {proxyId}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
+                    
+                    if (retryCount >= maxRetries)
+                    {
+                        throw new Exception("proxy:" + proxyId + "Not start initializ after " + maxRetries + " retries");
+                    }
+                    
+                    await Task.Delay(retryDelayMs);
+                    continue;
+                }
+
+                if (proxyInitStatus != ProxyInitStatus.Initialized)
+                {
+                    retryCount++;
+                    Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Proxy not initialized - ProxyId: {proxyId}, Status: {proxyInitStatus}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
+                    
+                    if (retryCount >= maxRetries)
+                    {
+                        throw new Exception("proxy:" + proxyId + "Not initialized after " + maxRetries + " retries, status:" + proxyInitStatus.ToString());
+                    }
+                    
+                    await Task.Delay(retryDelayMs);
+                    continue;
+                }
+                
+                // Proxy is initialized, break out of retry loop
+                Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Proxy initialization check successful - ProxyId: {proxyId}, Status: {proxyInitStatus}, Retries: {retryCount}, SessionId: {sessionId}");
+                break;
+            }
+            
             Logger.LogDebug(
                 $"[GodChatGAgent][GodVoiceStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
             
