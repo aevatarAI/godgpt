@@ -8,6 +8,7 @@ using Aevatar;
 using Aevatar.Application.Grains;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
@@ -55,8 +56,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
         public void Configure(ISiloBuilder hostBuilder)
         {
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json")
-                //.AddJsonFile("/opt/evn/godgpt.appsettings.json")
+                //.AddJsonFile("appsettings.json")
+                .AddJsonFile("/opt/evn/godgpt.appsettings.json")
                 // .AddJsonFile("appsettings.secrets.json")
                 .Build();
 
@@ -126,6 +127,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                     services.Configure<SystemLLMConfigOptions>(configuration);
                     services.Configure<SpeechOptions>(configuration.GetSection("Speech"));
                     services.AddSingleton<ISpeechService, SpeechService>();
+                    services.AddTransient<ILocalizationService, LocalizationService>();
                     services.AddSemanticKernel()
                         .AddQdrantVectorStore()
                         .AddAzureOpenAITextEmbedding()
