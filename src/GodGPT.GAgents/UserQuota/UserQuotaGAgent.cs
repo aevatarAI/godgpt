@@ -464,18 +464,30 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         }
 
         // Check rate limit
-        var oldValue = State.RateLimits[actionType].Count;
-        if (oldValue <= 0)
+        await ConfirmEvents();
+        try
         {
-            _logger.LogWarning(
-                "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED: count={Count}, now(UTC)={Now}",
-                actionType, sessionId, chatManagerGuid, oldValue, now);
-            return new ExecuteActionResultDto
+            var oldValue = State.RateLimits[actionType].Count;
+            if (oldValue <= 0)
             {
-                Code = ExecuteActionStatus.RateLimitExceeded,
-                Message = isVoiceMessage ? "Voice message limit reached. Please try again later." : "Message limit reached. Please try again later."
-            };
+                _logger.LogWarning(
+                    "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED: count={Count}, now(UTC)={Now}",
+                    actionType, sessionId, chatManagerGuid, oldValue, now);
+                return new ExecuteActionResultDto
+                {
+                    Code = ExecuteActionStatus.RateLimitExceeded,
+                    Message = isVoiceMessage ? "Voice message limit reached. Please try again later." : "Message limit reached. Please try again later."
+                };
+            }
         }
+        catch (Exception e)
+        {
+            _logger.LogError(
+                "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED:, now(UTC)={Now} msg:{errMsg}",
+                actionType, sessionId, chatManagerGuid, now, e.Message);
+        }
+
+        
 
         // Execute action - deduct credits and tokens
         if (!isSubscribed)
