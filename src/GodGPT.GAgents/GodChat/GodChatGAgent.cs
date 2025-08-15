@@ -614,6 +614,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         while (retryCount < maxRetries)
         {
+            if (State.ProxyInitStatuses == null)
+            {
+                Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] History data ,Proxy has Initialized - ProxyId: {proxyId}, SessionId: {sessionId}");
+                break;
+            }
             if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
             {
                 retryCount++;
@@ -2013,6 +2018,13 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             
             while (retryCount < maxRetries)
             {
+
+                if (State.ProxyInitStatuses == null)
+                {
+                    Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] History data ,Proxy has Initialized - ProxyId: {proxyId}, SessionId: {sessionId}");
+                    break;
+                }
+
                 if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
                 {
                     retryCount++;
