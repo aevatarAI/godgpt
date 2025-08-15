@@ -614,6 +614,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         while (retryCount < maxRetries)
         {
+            Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Historical data detected - ProxyInitStatuses is null or empty, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId} state:{JsonConvert.SerializeObject(State.ProxyInitStatuses)}");
             if (State.ProxyInitStatuses.IsNullOrEmpty())
             {
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Historical data detected - ProxyInitStatuses is null or empty, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
