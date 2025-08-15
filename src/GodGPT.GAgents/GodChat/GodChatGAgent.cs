@@ -614,12 +614,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         while (retryCount < maxRetries)
         {
-            if (State.ProxyInitStatuses == null)
+            if (State.ProxyInitStatuses.IsNullOrEmpty())
             {
-                Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] History data ,Proxy has Initialized - ProxyId: {proxyId}, SessionId: {sessionId}");
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Historical data detected - ProxyInitStatuses is null or empty, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
                 break;
             }
-            if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
+            if (!State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
             {
                 retryCount++;
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Proxy not started initializing - ProxyId: {proxyId}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
@@ -2019,13 +2019,13 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             while (retryCount < maxRetries)
             {
 
-                if (State.ProxyInitStatuses == null)
+                if (State.ProxyInitStatuses.IsNullOrEmpty())
                 {
-                    Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] History data ,Proxy has Initialized - ProxyId: {proxyId}, SessionId: {sessionId}");
+                    Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Historical data detected - ProxyInitStatuses is null or empty, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
                     break;
                 }
 
-                if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
+                if (!State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
                 {
                     retryCount++;
                     Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Proxy not started initializing - ProxyId: {proxyId}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
