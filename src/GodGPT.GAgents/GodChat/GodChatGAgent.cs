@@ -44,9 +44,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private const string ChatModelName = "GodGPT";
     private const string ConsoleModelName = "GodGPTConsole";
     
-    // Historical data cutoff time
-    private static readonly long HistoricalDataCutoffTimestamp = 1755187200; // 1755252000
-    
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
     private readonly ILocalizationService _localizationService;
@@ -618,27 +615,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         while (retryCount < maxRetries)
         {
-            if (State.FirstChatTime.HasValue)
-            {
-                var firstChatTimestamp = new DateTimeOffset(State.FirstChatTime.Value).ToUnixTimeSeconds();
-                if (firstChatTimestamp <= HistoricalDataCutoffTimestamp)
-                {
-                    Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Historical data detected based on FirstChatTime - FirstChatTime: {State.FirstChatTime:yyyy-MM-dd HH:mm:ss} UTC, FirstChatTimestamp: {firstChatTimestamp}, CutoffTimestamp: {HistoricalDataCutoffTimestamp}, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
-                    break;
-                }
-            }
             if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
             {
-                retryCount++;
-                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Proxy not started initializing - ProxyId: {proxyId}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
-                
-                if (retryCount >= maxRetries)
-                {
-                    throw new Exception("proxy:" + proxyId + "Not start initializ after " + maxRetries + " retries");
-                }
-                
-                await Task.Delay(retryDelayMs);
-                continue;
+                Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Historical data detected based on FirstChatTime skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
+                break;
             }
 
             if (proxyInitStatus != ProxyInitStatus.Initialized)
@@ -905,6 +885,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     StreamingConfig = new StreamingConfig { BufferingSize = 32 }
                 }
             });
+            RaiseEvent(new UpdateProxyInitStatusLogEvent
+            {
+                ProxyId = proxy.GetPrimaryKey(),
+                Status = ProxyInitStatus.Initializing
+            });
+            await ConfirmEvents();
+            Logger.LogDebug(
+                $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, UpdateProxyInitStatusLogEvent status Initializing proxyId {proxy.GetPrimaryKey().ToString()}");
             proxies.Add(proxy.GetPrimaryKey());
             Logger.LogDebug(
                 $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region} with LLM {llm}. id {proxy.GetPrimaryKey().ToString()}");
@@ -2026,27 +2014,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             
             while (retryCount < maxRetries)
             {
-                if (State.FirstChatTime.HasValue)
-                {
-                    var firstChatTimestamp = new DateTimeOffset(State.FirstChatTime.Value).ToUnixTimeSeconds();
-                    if (firstChatTimestamp <= HistoricalDataCutoffTimestamp)
-                    {
-                        Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Historical data detected based on FirstChatTime - FirstChatTime: {State.FirstChatTime:yyyy-MM-dd HH:mm:ss} UTC, FirstChatTimestamp: {firstChatTimestamp}, CutoffTimestamp: {HistoricalDataCutoffTimestamp}, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
-                        break;
-                    }
-                }
                 if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
                 {
-                    retryCount++;
-                    Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Proxy not started initializing - ProxyId: {proxyId}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
-                    
-                    if (retryCount >= maxRetries)
-                    {
-                        throw new Exception("proxy:" + proxyId + "Not start initializ after " + maxRetries + " retries");
-                    }
-                    
-                    await Task.Delay(retryDelayMs);
-                    continue;
+                    Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Historical data detected based on FirstChatTime , skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
+                    break;
                 }
 
                 if (proxyInitStatus != ProxyInitStatus.Initialized)
