@@ -42,6 +42,8 @@ public class AIAgentStatusProxy :
     {
         var stopwatch = Stopwatch.StartNew();
         Logger.LogDebug($"[HandlerEventAsync][AIAgentStatusProxyInitializeGEvent] Start- SessionId:{this.GetPrimaryKey()}, event:{JsonConvert.SerializeObject(@event)}");
+        await SendProxyInitStatusUpdateAsync(ProxyInitStatus.Initializing);
+
         await InitializeAsync(@event.InitializeDto);
         // Send status update to GodChatGAgent - Initialized
         await SendProxyInitStatusUpdateAsync(ProxyInitStatus.Initialized);
