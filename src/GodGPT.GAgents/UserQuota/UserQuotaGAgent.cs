@@ -475,20 +475,18 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             if (oldValue <= 0)
             {
                 _logger.LogWarning(
-                    "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED: count={Count}, now(UTC)={Now}",
-                    actionType, sessionId, chatManagerGuid, oldValue, now);
+                    $"[UserQuotaGrain][ExecuteStandardActionAsync] {actionType} sessionId={sessionId} chatManagerGuid={chatManagerGuid} RATE LIMITED: count={oldValue}, now(UTC)={now}");
                 return new ExecuteActionResultDto
                 {
                     Code = ExecuteActionStatus.RateLimitExceeded,
-                    Message = isVoiceMessage ? "Voice message limit reached. Please try again later." : "Message limit reached. Please try again later."
+                    Message = isVoiceMessage ? voiceLocalizedMessage : localizedMessage
                 };
             }
         }
         catch (Exception e)
         {
-            _logger.LogError(
-                "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED:, now(UTC)={Now} msg:{errMsg}",
-                actionType, sessionId, chatManagerGuid, now, e.Message);
+            _logger.LogWarning(
+                $"[UserQuotaGrain][ExecuteStandardActionAsync] RateLimits check error {actionType} sessionId={sessionId} chatManagerGuid={chatManagerGuid} RATE LIMITED:, now(UTC)={now} msg:{e.Message}");
         }
 
         
@@ -496,16 +494,26 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         // Execute action - deduct credits and tokens
         if (!isSubscribed)
         {
-            RaiseEvent(new UpdateCreditsLogEvent
+            try
             {
-                NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation
-            });
+                RaiseEvent(new UpdateCreditsLogEvent
+                {
+                    NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation
+                });
 
-            if (State.Credits == 0)
-            {
-                // Report credits exhausted event for conversion analysis
-                await ReportCreditsExhaustedAsync();
+                if (State.Credits == 0)
+                {
+                    // Report credits exhausted event for conversion analysis
+                    await ReportCreditsExhaustedAsync();
+                }
             }
+            catch (Exception e)
+            {
+                _logger.LogWarning(
+                    $"[UserQuotaGrain][ExecuteStandardActionAsync] ReportCreditsExhaustedAsync error {actionType} sessionId={sessionId} chatManagerGuid={chatManagerGuid} RATE LIMITED:, now(UTC)={now} msg:{e.Message}");
+            }
+
+            
         }
 
         var updatedRateLimitInfo = State.RateLimits[actionType];
