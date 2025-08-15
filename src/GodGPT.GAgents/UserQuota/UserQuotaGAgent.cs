@@ -467,6 +467,10 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         await ConfirmEvents();
         try
         {
+            var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.ChatRateLimit,language);
+            var voiceLocalizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.VoiceChatRateLimit,language);
+
             var oldValue = State.RateLimits[actionType].Count;
             if (oldValue <= 0)
             {
