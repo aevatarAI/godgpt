@@ -26,10 +26,7 @@ public class GodChatState:ChatGAgentState
     /// Key: proxyId (Guid), Value: initialization status
     /// Initialized with a dummy entry to distinguish from historical data (null)
     /// </summary>
-    [Id(8)] public Dictionary<Guid, ProxyInitStatus> ProxyInitStatuses { get; set; } = new Dictionary<Guid, ProxyInitStatus>
-    {
-        { Guid.Empty, ProxyInitStatus.Initialized } // Dummy entry to distinguish from historical data
-    };
+    [Id(8)] public Dictionary<Guid, ProxyInitStatus> ProxyInitStatuses { get; set; } = new Dictionary<Guid, ProxyInitStatus>();
 }
 
 [GenerateSerializer]

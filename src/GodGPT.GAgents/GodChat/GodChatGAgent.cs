@@ -43,6 +43,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private const string ProxyGPTModelName = "HyperEcho";
     private const string ChatModelName = "GodGPT";
     private const string ConsoleModelName = "GodGPTConsole";
+    
+    // Historical data cutoff time
+    private static readonly long HistoricalDataCutoffTimestamp = 1755187200; // 1755252000
+    
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
     private readonly ILocalizationService _localizationService;
@@ -614,13 +618,16 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         while (retryCount < maxRetries)
         {
-            Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Historical data detected - ProxyInitStatuses is null or empty, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId} state:{JsonConvert.SerializeObject(State.ProxyInitStatuses)}");
-            if (State.ProxyInitStatuses.IsNullOrEmpty())
+            if (State.FirstChatTime.HasValue)
             {
-                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Historical data detected - ProxyInitStatuses is null or empty, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
-                break;
+                var firstChatTimestamp = new DateTimeOffset(State.FirstChatTime.Value).ToUnixTimeSeconds();
+                if (firstChatTimestamp <= HistoricalDataCutoffTimestamp)
+                {
+                    Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Historical data detected based on FirstChatTime - FirstChatTime: {State.FirstChatTime:yyyy-MM-dd HH:mm:ss} UTC, FirstChatTimestamp: {firstChatTimestamp}, CutoffTimestamp: {HistoricalDataCutoffTimestamp}, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
+                    break;
+                }
             }
-            if (!State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
+            if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
             {
                 retryCount++;
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Proxy not started initializing - ProxyId: {proxyId}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
@@ -2019,14 +2026,16 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             
             while (retryCount < maxRetries)
             {
-
-                if (State.ProxyInitStatuses.IsNullOrEmpty())
+                if (State.FirstChatTime.HasValue)
                 {
-                    Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Historical data detected - ProxyInitStatuses is null or empty, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
-                    break;
+                    var firstChatTimestamp = new DateTimeOffset(State.FirstChatTime.Value).ToUnixTimeSeconds();
+                    if (firstChatTimestamp <= HistoricalDataCutoffTimestamp)
+                    {
+                        Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Historical data detected based on FirstChatTime - FirstChatTime: {State.FirstChatTime:yyyy-MM-dd HH:mm:ss} UTC, FirstChatTimestamp: {firstChatTimestamp}, CutoffTimestamp: {HistoricalDataCutoffTimestamp}, skipping proxy initialization check - ProxyId: {proxyId}, SessionId: {sessionId}");
+                        break;
+                    }
                 }
-
-                if (!State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
+                if (State.ProxyInitStatuses.IsNullOrEmpty() || !State.ProxyInitStatuses.TryGetValue(proxyId, out proxyInitStatus))
                 {
                     retryCount++;
                     Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] Proxy not started initializing - ProxyId: {proxyId}, Retry: {retryCount}/{maxRetries}, SessionId: {sessionId}");
