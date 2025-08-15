@@ -496,12 +496,13 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         {
             try
             {
+                var NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation;
                 RaiseEvent(new UpdateCreditsLogEvent
                 {
-                    NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation
+                    NewCredits = NewCredits
                 });
 
-                if (State.Credits == 0)
+                if (NewCredits == 0)
                 {
                     // Report credits exhausted event for conversion analysis
                     await ReportCreditsExhaustedAsync();
