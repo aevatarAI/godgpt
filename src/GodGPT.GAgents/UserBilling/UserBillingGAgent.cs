@@ -3691,7 +3691,38 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 };
             }
 
-            // Step 2: Look up purchaseToken by transactionId (from RevenueCat or stored mapping)
+            // Step 2: Query RevenueCat API for transaction verification
+            // If RevenueCat has the transaction, consider it verified (RevenueCat is the authoritative source)
+            var revenueCatTransaction = await QueryRevenueCatForTransactionAsync(request.TransactionIdentifier, request.UserId);
+            if (revenueCatTransaction != null)
+            {
+                _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Transaction verified via RevenueCat for user {UserId}. TransactionId: {TransactionId}", 
+                    request.UserId, request.TransactionIdentifier);
+                
+                // Transaction exists in RevenueCat, so it's already verified
+                // Process the verified transaction and save to local records
+                var verificationResult = new PaymentVerificationResultDto
+                {
+                    IsValid = true,
+                    Message = "Transaction verified via RevenueCat",
+                    TransactionId = request.TransactionIdentifier,
+                    ProductId = revenueCatTransaction.ProductId,
+                    Platform = PaymentPlatform.GooglePlay,
+                    PurchaseTimeMillis = revenueCatTransaction.PurchaseDate != default 
+                        ? (long)revenueCatTransaction.PurchaseDate.Subtract(DateTime.UnixEpoch).TotalMilliseconds 
+                        : (long)DateTime.UtcNow.Subtract(DateTime.UnixEpoch).TotalMilliseconds
+                };
+                
+                // Process the successful verification
+                await ProcessGooglePlayPurchaseSuccessAsync(userGuid, verificationResult);
+                
+                return verificationResult;
+            }
+
+            // Step 3: Fallback to Google Play API verification (if RevenueCat doesn't have the transaction)
+            _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Transaction not found in RevenueCat, attempting Google Play API verification for transaction: {TransactionId}", 
+                request.TransactionIdentifier);
+                
             var purchaseToken = await GetPurchaseTokenByTransactionIdAsync(request.TransactionIdentifier);
             if (string.IsNullOrEmpty(purchaseToken))
             {
@@ -3705,7 +3736,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 };
             }
 
-            // Step 3: Use existing Google Play verification logic (same as webhook flow)
+            // Step 4: Use existing Google Play verification logic (fallback verification)
             var googlePlayVerification = new GooglePlayVerificationDto
             {
                 UserId = request.UserId,
@@ -3715,23 +3746,23 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 OrderId = request.TransactionIdentifier
             };
 
-            // Step 4: Call the existing Google Play verification method (maintains consistency with webhook)
-            var verificationResult = await VerifyGooglePlayPurchaseAsync(googlePlayVerification);
+            // Step 5: Call the existing Google Play verification method (maintains consistency with webhook)
+            var fallbackVerificationResult = await VerifyGooglePlayPurchaseAsync(googlePlayVerification);
 
-            if (verificationResult.IsValid)
+            if (fallbackVerificationResult.IsValid)
             {
                 _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Google Play transaction verification successful for user {UserId}. TransactionId: {TransactionId}", 
-                    request.UserId, verificationResult.TransactionId);
+                    request.UserId, fallbackVerificationResult.TransactionId);
                 
                 // Note: ProcessGooglePlayPurchaseSuccessAsync is already called in VerifyGooglePlayPurchaseAsync
             }
             else
             {
                 _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Google Play transaction verification failed for user {UserId}. Reason: {Message}", 
-                    request.UserId, verificationResult?.Message);
+                    request.UserId, fallbackVerificationResult?.Message);
             }
 
-            return verificationResult;
+            return fallbackVerificationResult;
         }
         catch (Exception ex)
         {
@@ -3771,12 +3802,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             }
 
             // Option 2: Query RevenueCat API to get the original Google Play purchase token
-            // RevenueCat typically stores the mapping between their transaction ID and the original platform purchase tokens
-            // You would implement: var purchaseToken = await QueryRevenueCatForPurchaseToken(transactionId);
-
-            // Option 3: If you maintain a separate mapping table
-            // var mappingGrain = GrainFactory.GetGrain<ITransactionMappingGrain>(transactionId);
-            // var mapping = await mappingGrain.GetPurchaseTokenAsync();
+            var userId = this.GetPrimaryKey().ToString();
+            var revenueCatTransaction = await QueryRevenueCatForTransactionAsync(transactionId, userId);
+            if (revenueCatTransaction != null && !string.IsNullOrEmpty(revenueCatTransaction.PurchaseToken))
+            {
+                _logger.LogInformation("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Found purchase token via RevenueCat for transaction: {TransactionId}", transactionId);
+                return revenueCatTransaction.PurchaseToken;
+            }
 
             _logger.LogWarning("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Purchase token not found for transaction: {TransactionId}", transactionId);
             return null;
@@ -3784,6 +3816,103 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         catch (Exception ex)
         {
             _logger.LogError(ex, "[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Error looking up purchase token for transaction: {TransactionId}", transactionId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Query RevenueCat API to get transaction information by transaction ID
+    /// This method searches for the transaction in RevenueCat's records and returns the complete transaction details
+    /// </summary>
+    /// <param name="transactionId">Google Play transaction/order ID (e.g., GPA.xxxx-xxxx-xxxx-xxxxx)</param>
+    /// <param name="userId">Internal user ID for RevenueCat subscriber lookup</param>
+    /// <returns>RevenueCat transaction information if found, null otherwise</returns>
+    private async Task<RevenueCatTransaction> QueryRevenueCatForTransactionAsync(string transactionId, string userId)
+    {
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Querying RevenueCat for transaction: {TransactionId}, userId: {UserId}", transactionId, userId);
+            
+            // Validate RevenueCat configuration
+            var revenueCatApiKey = _googlePayOptions.CurrentValue.RevenueCatApiKey;
+            var revenueCatBaseUrl = _googlePayOptions.CurrentValue.RevenueCatBaseUrl;
+            
+            if (string.IsNullOrEmpty(revenueCatApiKey))
+            {
+                _logger.LogError("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] RevenueCat API key is not configured");
+                return null;
+            }
+            
+            if (string.IsNullOrEmpty(revenueCatBaseUrl))
+            {
+                _logger.LogError("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] RevenueCat base URL is not configured");
+                return null;
+            }
+            
+            // Build RevenueCat API URL - query subscriber information
+            string requestUrl = $"{revenueCatBaseUrl}/subscribers/{userId}";
+            
+            // Create HTTP client with authentication
+            using var client = _httpClientFactory.CreateClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", revenueCatApiKey);
+            client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            
+            _logger.LogDebug("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Sending request to RevenueCat: {RequestUrl}", requestUrl);
+            
+            // Send request to RevenueCat API
+            var response = await client.GetAsync(requestUrl);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                _logger.LogError("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] RevenueCat API error: {StatusCode}, Content: {ErrorContent}", 
+                    response.StatusCode, errorContent);
+                return null;
+            }
+            
+            // Parse RevenueCat response
+            var responseContent = await response.Content.ReadAsStringAsync();
+            _logger.LogDebug("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] RevenueCat response: {ResponseContent}", responseContent);
+            
+            var revenueCatResponse = JsonConvert.DeserializeObject<RevenueCatSubscriberResponse>(responseContent);
+            
+            if (revenueCatResponse?.Subscriber?.Transactions == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] No transactions found in RevenueCat response for user: {UserId}", userId);
+                return null;
+            }
+            
+            // Search for matching transaction in RevenueCat records
+            // RevenueCat may store the transaction ID in different fields depending on integration
+            var matchingTransaction = revenueCatResponse.Subscriber.Transactions
+                .FirstOrDefault(t => 
+                    t.TransactionId == transactionId || 
+                    t.OriginalTransactionId == transactionId ||
+                    (t.ProductId != null && t.TransactionId != null && t.TransactionId.Contains(transactionId)));
+            
+            if (matchingTransaction != null)
+            {
+                _logger.LogInformation("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Found matching transaction in RevenueCat: {TransactionId}, PurchaseToken: {PurchaseTokenPrefix}***", 
+                    transactionId, matchingTransaction.PurchaseToken?.Substring(0, Math.Min(10, matchingTransaction.PurchaseToken?.Length ?? 0)));
+                return matchingTransaction;
+            }
+            
+            _logger.LogWarning("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Transaction not found in RevenueCat records: {TransactionId}", transactionId);
+            return null;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][QueryRevenueCatForTransactionAsync] HTTP error querying RevenueCat for transaction: {TransactionId}", transactionId);
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][QueryRevenueCatForTransactionAsync] JSON parsing error for RevenueCat response, transaction: {TransactionId}", transactionId);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Unexpected error querying RevenueCat for transaction: {TransactionId}", transactionId);
             return null;
         }
     }
