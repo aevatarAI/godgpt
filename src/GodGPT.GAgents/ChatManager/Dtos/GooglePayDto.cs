@@ -137,3 +137,55 @@ public enum GooglePlayNotificationType
     SUBSCRIPTION_REVOKED = 12,
     SUBSCRIPTION_EXPIRED = 13
 }
+
+/// <summary>
+/// RevenueCat subscriber response structure
+/// Used for querying transaction information from RevenueCat API
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatSubscriberResponse
+{
+    [Id(0)] public RevenueCatSubscriber Subscriber { get; set; }
+}
+
+/// <summary>
+/// RevenueCat subscriber information
+/// Contains transaction history and subscription details
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatSubscriber
+{
+    [Id(0)] public string AppUserId { get; set; }
+    [Id(1)] public List<RevenueCatTransaction> Transactions { get; set; } = new List<RevenueCatTransaction>();
+    [Id(2)] public Dictionary<string, RevenueCatSubscription> Subscriptions { get; set; } = new Dictionary<string, RevenueCatSubscription>();
+}
+
+/// <summary>
+/// RevenueCat transaction information
+/// Contains the mapping between transaction ID and purchase token
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatTransaction
+{
+    [Id(0)] public string TransactionId { get; set; }
+    [Id(1)] public string OriginalTransactionId { get; set; }
+    [Id(2)] public string PurchaseToken { get; set; }
+    [Id(3)] public string ProductId { get; set; }
+    [Id(4)] public string Store { get; set; }
+    [Id(5)] public DateTime PurchaseDate { get; set; }
+    [Id(6)] public DateTime? ExpirationDate { get; set; }
+}
+
+/// <summary>
+/// RevenueCat subscription information
+/// Contains subscription status and related transactions
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatSubscription
+{
+    [Id(0)] public string ProductId { get; set; }
+    [Id(1)] public DateTime? ExpirationDate { get; set; }
+    [Id(2)] public string Store { get; set; }
+    [Id(3)] public bool IsActive { get; set; }
+    [Id(4)] public List<string> TransactionIds { get; set; } = new List<string>();
+}
