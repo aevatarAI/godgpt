@@ -150,14 +150,17 @@ public class RevenueCatSubscriberResponse
 
 /// <summary>
 /// RevenueCat subscriber information
-/// Contains transaction history and subscription details
+/// Contains subscription details that match the actual API response structure
 /// </summary>
 [GenerateSerializer]
 public class RevenueCatSubscriber
 {
     [Id(0)] public string AppUserId { get; set; }
-    [Id(1)] public List<RevenueCatTransaction> Transactions { get; set; } = new List<RevenueCatTransaction>();
-    [Id(2)] public Dictionary<string, RevenueCatSubscription> Subscriptions { get; set; } = new Dictionary<string, RevenueCatSubscription>();
+    [Id(1)] public Dictionary<string, RevenueCatSubscription> Subscriptions { get; set; } = new Dictionary<string, RevenueCatSubscription>();
+    [Id(2)] public Dictionary<string, object> Entitlements { get; set; } = new Dictionary<string, object>();
+    [Id(3)] public string FirstSeen { get; set; }
+    [Id(4)] public string LastSeen { get; set; }
+    [Id(5)] public string OriginalAppUserId { get; set; }
 }
 
 /// <summary>
@@ -178,14 +181,29 @@ public class RevenueCatTransaction
 
 /// <summary>
 /// RevenueCat subscription information
-/// Contains subscription status and related transactions
+/// Contains subscription status and transaction details from actual API response
 /// </summary>
 [GenerateSerializer]
 public class RevenueCatSubscription
 {
-    [Id(0)] public string ProductId { get; set; }
-    [Id(1)] public DateTime? ExpirationDate { get; set; }
+    [Id(0)] public string StoreTransactionId { get; set; }
+    [Id(1)] public string ExpiresDate { get; set; }
     [Id(2)] public string Store { get; set; }
-    [Id(3)] public bool IsActive { get; set; }
-    [Id(4)] public List<string> TransactionIds { get; set; } = new List<string>();
+    [Id(3)] public string OriginalPurchaseDate { get; set; }
+    [Id(4)] public string PurchaseDate { get; set; }
+    [Id(5)] public bool IsSandbox { get; set; }
+    [Id(6)] public string PeriodType { get; set; }
+    [Id(7)] public string ProductPlanIdentifier { get; set; }
+    [Id(8)] public RevenueCatPrice Price { get; set; }
+    [Id(9)] public string ManagementUrl { get; set; }
+}
+
+/// <summary>
+/// RevenueCat price information
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatPrice
+{
+    [Id(0)] public double Amount { get; set; }
+    [Id(1)] public string Currency { get; set; }
 }

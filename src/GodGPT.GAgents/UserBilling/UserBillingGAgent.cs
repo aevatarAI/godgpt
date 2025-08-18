@@ -3849,8 +3849,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 return null;
             }
             
-            // Build RevenueCat API URL - query subscriber information
-            string requestUrl = $"{revenueCatBaseUrl}/subscribers/{userId}";
+            // Build RevenueCat API URL - query subscriber information with transaction filter
+            string requestUrl = $"{revenueCatBaseUrl}/subscribers/{userId}?transaction_id={transactionId}";
             
             // Create HTTP client with authentication
             using var client = _httpClientFactory.CreateClient();
@@ -3876,28 +3876,67 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             
             var revenueCatResponse = JsonConvert.DeserializeObject<RevenueCatSubscriberResponse>(responseContent);
             
-            if (revenueCatResponse?.Subscriber?.Transactions == null)
+            if (revenueCatResponse?.Subscriber?.Subscriptions == null)
             {
-                _logger.LogWarning("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] No transactions found in RevenueCat response for user: {UserId}", userId);
+                _logger.LogWarning("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] No subscriptions found in RevenueCat response for user: {UserId}", userId);
                 return null;
             }
             
-            // Search for matching transaction in RevenueCat records
-            // RevenueCat may store the transaction ID in different fields depending on integration
-            var matchingTransaction = revenueCatResponse.Subscriber.Transactions
-                .FirstOrDefault(t => 
-                    t.TransactionId == transactionId || 
-                    t.OriginalTransactionId == transactionId ||
-                    (t.ProductId != null && t.TransactionId != null && t.TransactionId.Contains(transactionId)));
-            
-            if (matchingTransaction != null)
+            // Search for matching transaction in RevenueCat subscription records
+            // Look for the transaction ID in store_transaction_id field
+            // Note: subscriptionKey (e.g., "premium_weekly_test1") corresponds to ProductId in our configuration
+            foreach (var subscriptionKey in revenueCatResponse.Subscriber.Subscriptions.Keys)
             {
-                _logger.LogInformation("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Found matching transaction in RevenueCat: {TransactionId}, PurchaseToken: {PurchaseTokenPrefix}***", 
-                    transactionId, matchingTransaction.PurchaseToken?.Substring(0, Math.Min(10, matchingTransaction.PurchaseToken?.Length ?? 0)));
-                return matchingTransaction;
+                var subscription = revenueCatResponse.Subscriber.Subscriptions[subscriptionKey];
+                
+                _logger.LogDebug("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Checking subscription: " +
+                    "ProductId: {ProductId}, StoreTransactionId: {StoreTransactionId}, IsSandbox: {IsSandbox}, " +
+                    "ProductPlanIdentifier: {ProductPlanIdentifier}", 
+                    subscriptionKey, subscription.StoreTransactionId, subscription.IsSandbox, subscription.ProductPlanIdentifier);
+                
+                if (subscription.StoreTransactionId != null && 
+                    (subscription.StoreTransactionId == transactionId || 
+                     subscription.StoreTransactionId.StartsWith(transactionId)))
+                {
+                    _logger.LogInformation("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Found matching transaction in RevenueCat: " +
+                        "TransactionId: {TransactionId}, StoreTransactionId: {StoreTransactionId}, " +
+                        "ProductId: {ProductId}, IsSandbox: {IsSandbox}, Store: {Store}, " +
+                        "ProductPlanIdentifier: {ProductPlanIdentifier}, " +
+                        "PurchaseDate: {PurchaseDate}, ExpiresDate: {ExpiresDate}", 
+                        transactionId, subscription.StoreTransactionId, subscriptionKey, subscription.IsSandbox, 
+                        subscription.Store, subscription.ProductPlanIdentifier,
+                        subscription.PurchaseDate, subscription.ExpiresDate);
+                    
+                    // Convert RevenueCat subscription data to our transaction format
+                    // Use subscriptionKey as ProductId since it matches our configuration
+                    var matchingTransaction = new RevenueCatTransaction
+                    {
+                        TransactionId = subscription.StoreTransactionId,
+                        OriginalTransactionId = subscription.StoreTransactionId,
+                        PurchaseToken = subscription.StoreTransactionId, // Use as purchase token reference
+                        ProductId = subscriptionKey, // This matches our GooglePay Products configuration
+                        Store = subscription.Store ?? "play_store",
+                        PurchaseDate = DateTime.TryParse(subscription.PurchaseDate, out var purchaseDate) ? purchaseDate : DateTime.UtcNow,
+                        ExpirationDate = DateTime.TryParse(subscription.ExpiresDate, out var expirationDate) ? expirationDate : null
+                    };
+                    
+                    return matchingTransaction;
+                }
             }
             
-            _logger.LogWarning("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Transaction not found in RevenueCat records: {TransactionId}", transactionId);
+            _logger.LogWarning("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Transaction not found in RevenueCat records: {TransactionId}. " +
+                "Available product subscriptions: {SubscriptionKeys}", transactionId, 
+                string.Join(", ", revenueCatResponse.Subscriber.Subscriptions.Keys));
+            
+            // Log details of available transactions for debugging
+            foreach (var kvp in revenueCatResponse.Subscriber.Subscriptions)
+            {
+                _logger.LogDebug("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Available subscription: " +
+                    "ProductId: {ProductId}, StoreTransactionId: {StoreTransactionId}, IsSandbox: {IsSandbox}, " +
+                    "ProductPlanIdentifier: {ProductPlanIdentifier}", 
+                    kvp.Key, kvp.Value.StoreTransactionId, kvp.Value.IsSandbox, kvp.Value.ProductPlanIdentifier);
+            }
+            
             return null;
         }
         catch (HttpRequestException ex)
