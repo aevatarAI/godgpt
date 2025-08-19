@@ -16,7 +16,9 @@ namespace Aevatar.Application.Grains.Common.Options
         
         /// <summary>
         /// RevenueCat API key for Google Play (starts with 'goog_')
-        /// Used to query transaction information from RevenueCat API
+        /// Used for both:
+        /// 1. Query transaction information from RevenueCat API
+        /// 2. Webhook authorization verification (as Authorization header value)
         /// </summary>
         public string RevenueCatApiKey { get; set; }
         
