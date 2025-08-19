@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 using Aevatar.Application.Grains.Common.Constants;
 using System;
 
@@ -145,7 +146,7 @@ public enum GooglePlayNotificationType
 [GenerateSerializer]
 public class RevenueCatSubscriberResponse
 {
-    [Id(0)] public RevenueCatSubscriber Subscriber { get; set; }
+    [Id(0)] [JsonProperty("subscriber")] public RevenueCatSubscriber Subscriber { get; set; }
 }
 
 /// <summary>
@@ -155,12 +156,12 @@ public class RevenueCatSubscriberResponse
 [GenerateSerializer]
 public class RevenueCatSubscriber
 {
-    [Id(0)] public string AppUserId { get; set; }
-    [Id(1)] public Dictionary<string, RevenueCatSubscription> Subscriptions { get; set; } = new Dictionary<string, RevenueCatSubscription>();
-    [Id(2)] public Dictionary<string, object> Entitlements { get; set; } = new Dictionary<string, object>();
-    [Id(3)] public string FirstSeen { get; set; }
-    [Id(4)] public string LastSeen { get; set; }
-    [Id(5)] public string OriginalAppUserId { get; set; }
+    [Id(0)] [JsonProperty("app_user_id")] public string AppUserId { get; set; }
+    [Id(1)] [JsonProperty("subscriptions")] public Dictionary<string, RevenueCatSubscription> Subscriptions { get; set; } = new Dictionary<string, RevenueCatSubscription>();
+    [Id(2)] [JsonProperty("entitlements")] public Dictionary<string, object> Entitlements { get; set; } = new Dictionary<string, object>();
+    [Id(3)] [JsonProperty("first_seen")] public string FirstSeen { get; set; }
+    [Id(4)] [JsonProperty("last_seen")] public string LastSeen { get; set; }
+    [Id(5)] [JsonProperty("original_app_user_id")] public string OriginalAppUserId { get; set; }
 }
 
 /// <summary>
@@ -186,16 +187,16 @@ public class RevenueCatTransaction
 [GenerateSerializer]
 public class RevenueCatSubscription
 {
-    [Id(0)] public string StoreTransactionId { get; set; }
-    [Id(1)] public string ExpiresDate { get; set; }
-    [Id(2)] public string Store { get; set; }
-    [Id(3)] public string OriginalPurchaseDate { get; set; }
-    [Id(4)] public string PurchaseDate { get; set; }
-    [Id(5)] public bool IsSandbox { get; set; }
-    [Id(6)] public string PeriodType { get; set; }
-    [Id(7)] public string ProductPlanIdentifier { get; set; }
-    [Id(8)] public RevenueCatPrice Price { get; set; }
-    [Id(9)] public string ManagementUrl { get; set; }
+    [Id(0)] [JsonProperty("store_transaction_id")] public string StoreTransactionId { get; set; }
+    [Id(1)] [JsonProperty("expires_date")] public string ExpiresDate { get; set; }
+    [Id(2)] [JsonProperty("store")] public string Store { get; set; }
+    [Id(3)] [JsonProperty("original_purchase_date")] public string OriginalPurchaseDate { get; set; }
+    [Id(4)] [JsonProperty("purchase_date")] public string PurchaseDate { get; set; }
+    [Id(5)] [JsonProperty("is_sandbox")] public bool IsSandbox { get; set; }
+    [Id(6)] [JsonProperty("period_type")] public string PeriodType { get; set; }
+    [Id(7)] [JsonProperty("product_plan_identifier")] public string ProductPlanIdentifier { get; set; }
+    [Id(8)] [JsonProperty("price")] public RevenueCatPrice Price { get; set; }
+    [Id(9)] [JsonProperty("management_url")] public string ManagementUrl { get; set; }
 }
 
 /// <summary>
@@ -204,6 +205,6 @@ public class RevenueCatSubscription
 [GenerateSerializer]
 public class RevenueCatPrice
 {
-    [Id(0)] public double Amount { get; set; }
-    [Id(1)] public string Currency { get; set; }
+    [Id(0)] [JsonProperty("amount")] public double Amount { get; set; }
+    [Id(1)] [JsonProperty("currency")] public string Currency { get; set; }
 }
