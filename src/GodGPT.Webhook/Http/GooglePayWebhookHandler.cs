@@ -186,11 +186,14 @@ public class GooglePayWebhookHandler : IWebhookHandler
         var expirationDate = eventData.ExpirationAtMs.HasValue ?
             DateTimeOffset.FromUnixTimeMilliseconds(eventData.ExpirationAtMs.Value).DateTime : (DateTime?)null;
 
+        // Log ProductId format for verification  
+        _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId in key1:key2 format: {ProductId}", eventData.ProductId);
+
         return new PaymentVerificationResultDto
         {
             IsValid = true,
             TransactionId = eventData.TransactionId ?? eventData.OriginalTransactionId,
-            ProductId = eventData.ProductId,
+            ProductId = eventData.ProductId, // This is already in key1:key2 format from RevenueCat
             SubscriptionStartDate = purchaseDate,
             SubscriptionEndDate = expirationDate,
             Platform = PaymentPlatform.GooglePlay,

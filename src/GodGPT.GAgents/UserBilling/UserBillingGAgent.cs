@@ -1602,24 +1602,33 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task<GooglePayProduct> GetGooglePayProductConfigAsync(string productId)
     {
-        // Handle Google Play product ID format: "product_id:base_plan_id"
-        // Extract the base product ID before the colon
-        var baseProductId = productId.Contains(':') ? productId.Split(':')[0] : productId;
+        // Configuration is now in key1:key2 format, so we need to ensure productId is also in that format
+        string fullProductId = productId;
         
-        var productConfig = _googlePayOptions.CurrentValue.Products.FirstOrDefault(p => p.ProductId == baseProductId);
-        if (productConfig == null)
+        // If productId doesn't contain colon, we need to construct it from RevenueCat data or configuration
+        if (!productId.Contains(':'))
         {
-            _logger.LogError(
-                "[UserBillingGAgent][GetGooglePayProductConfigAsync] Invalid ProductId: {ProductId} (base: {BaseProductId}). Product not found in configuration.",
-                productId, baseProductId);
-            throw new ArgumentException($"Invalid ProductId: {productId} (base: {baseProductId}). Product not found in configuration.");
+            _logger.LogWarning(
+                "[UserBillingGAgent][GetGooglePayProductConfigAsync] ProductId is in base format: {ProductId}. Expected full format key1:key2.",
+                productId);
+            // For now, we'll still try to find it, but this should not happen with the new flow
+        }
+        
+        // Direct match with full format configuration (key1:key2)
+        var productConfig = _googlePayOptions.CurrentValue.Products.FirstOrDefault(p => p.ProductId == fullProductId);
+        
+        if (productConfig != null)
+        {
+            _logger.LogInformation(
+                "[UserBillingGAgent][GetGooglePayProductConfigAsync] Found product configuration for ProductId: {ProductId}, planType: {PlanType}, amount: {Amount} {Currency}",
+                fullProductId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
+            return productConfig;
         }
 
-        _logger.LogInformation(
-            "[UserBillingGAgent][GetGooglePayProductConfigAsync] Found product with ProductId: {ProductId} (base: {BaseProductId}), planType: {PlanType}, amount: {Amount} {Currency}",
-            productId, baseProductId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
-
-        return productConfig;
+        _logger.LogError(
+            "[UserBillingGAgent][GetGooglePayProductConfigAsync] Invalid ProductId: {ProductId}. Product not found in configuration. Available products: {AvailableProducts}",
+            fullProductId, string.Join(", ", _googlePayOptions.CurrentValue.Products.Select(p => p.ProductId)));
+        throw new ArgumentException($"Invalid ProductId: {fullProductId}. Product not found in configuration.");
     }
 
     private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePlayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult)
@@ -3921,13 +3930,30 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         subscription.PurchaseDate, subscription.ExpiresDate);
                     
                     // Convert RevenueCat subscription data to our transaction format
-                    // Use subscriptionKey as ProductId since it matches our configuration
+                    // Configuration is now key1:key2 format, so we must construct the full ProductId
+                    string productIdForConfig;
+                    
+                    if (!string.IsNullOrEmpty(subscription.ProductPlanIdentifier))
+                    {
+                        // Construct full format: "subscriptionKey:ProductPlanIdentifier" (key1:key2)
+                        productIdForConfig = $"{subscriptionKey}:{subscription.ProductPlanIdentifier}";
+                        _logger.LogDebug("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Constructed full product ID: {ProductId} from key1={Key1}, key2={Key2}", 
+                            productIdForConfig, subscriptionKey, subscription.ProductPlanIdentifier);
+                    }
+                    else
+                    {
+                        // This should not happen with proper Google Play subscription setup
+                        _logger.LogError("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Missing ProductPlanIdentifier for subscription: {SubscriptionKey}. Cannot construct key1:key2 format.", 
+                            subscriptionKey);
+                        throw new InvalidOperationException($"RevenueCat subscription missing ProductPlanIdentifier for {subscriptionKey}. Cannot match with key1:key2 configuration format.");
+                    }
+                    
                     var matchingTransaction = new RevenueCatTransaction
                     {
                         TransactionId = subscription.StoreTransactionId,
                         OriginalTransactionId = subscription.StoreTransactionId,
                         PurchaseToken = subscription.StoreTransactionId, // Use as purchase token reference
-                        ProductId = subscriptionKey, // This matches our GooglePay Products configuration
+                        ProductId = productIdForConfig, // Handle both base and full format based on configuration
                         Store = subscription.Store ?? "play_store",
                         PurchaseDate = DateTime.TryParse(subscription.PurchaseDate, out var purchaseDate) ? purchaseDate : DateTime.UtcNow,
                         ExpirationDate = DateTime.TryParse(subscription.ExpiresDate, out var expirationDate) ? expirationDate : null
