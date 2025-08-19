@@ -208,3 +208,75 @@ public class RevenueCatPrice
     [Id(0)] [JsonProperty("amount")] public double Amount { get; set; }
     [Id(1)] [JsonProperty("currency")] public string Currency { get; set; }
 }
+
+/// <summary>
+/// RevenueCat webhook event structure
+/// This represents the format that RevenueCat sends to our webhook endpoint
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatWebhookEvent
+{
+    [Id(0)] [JsonProperty("api_version")] public string ApiVersion { get; set; }
+    [Id(1)] [JsonProperty("event")] public RevenueCatEvent Event { get; set; }
+}
+
+/// <summary>
+/// RevenueCat event information
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatEvent
+{
+    [Id(0)] [JsonProperty("id")] public string Id { get; set; }
+    [Id(1)] [JsonProperty("type")] public string Type { get; set; }
+    [Id(2)] [JsonProperty("event_timestamp_ms")] public long EventTimestampMs { get; set; }
+    [Id(3)] [JsonProperty("app_user_id")] public string AppUserId { get; set; }
+    [Id(4)] [JsonProperty("aliases")] public List<string> Aliases { get; set; } = new List<string>();
+    [Id(5)] [JsonProperty("original_app_user_id")] public string OriginalAppUserId { get; set; }
+    [Id(6)] [JsonProperty("product_id")] public string ProductId { get; set; }
+    [Id(7)] [JsonProperty("period_type")] public string PeriodType { get; set; }
+    [Id(8)] [JsonProperty("purchased_at_ms")] public long? PurchasedAtMs { get; set; }
+    [Id(9)] [JsonProperty("expiration_at_ms")] public long? ExpirationAtMs { get; set; }
+    [Id(10)] [JsonProperty("environment")] public string Environment { get; set; }
+    [Id(11)] [JsonProperty("entitlement_id")] public string EntitlementId { get; set; }
+    [Id(12)] [JsonProperty("entitlement_ids")] public List<string> EntitlementIds { get; set; } = new List<string>();
+    [Id(13)] [JsonProperty("presented_offering_id")] public string PresentedOfferingId { get; set; }
+    [Id(14)] [JsonProperty("transaction_id")] public string TransactionId { get; set; }
+    [Id(15)] [JsonProperty("original_transaction_id")] public string OriginalTransactionId { get; set; }
+    [Id(16)] [JsonProperty("is_family_share")] public bool? IsFamilyShare { get; set; }
+    [Id(17)] [JsonProperty("country_code")] public string CountryCode { get; set; }
+    [Id(18)] [JsonProperty("app_id")] public string AppId { get; set; }
+    [Id(19)] [JsonProperty("offer_code")] public string OfferCode { get; set; }
+    [Id(20)] [JsonProperty("currency")] public string Currency { get; set; }
+    [Id(21)] [JsonProperty("price")] public double? Price { get; set; }
+    [Id(22)] [JsonProperty("price_in_purchased_currency")] public double? PriceInPurchasedCurrency { get; set; }
+    [Id(23)] [JsonProperty("subscriber_attributes")] public Dictionary<string, RevenueCatSubscriberAttribute> SubscriberAttributes { get; set; } = new Dictionary<string, RevenueCatSubscriberAttribute>();
+    [Id(24)] [JsonProperty("store")] public string Store { get; set; }
+    [Id(25)] [JsonProperty("takehome_percentage")] public double? TakehomePercentage { get; set; }
+    [Id(26)] [JsonProperty("commission_percentage")] public double? CommissionPercentage { get; set; }
+}
+
+/// <summary>
+/// RevenueCat subscriber attribute
+/// </summary>
+[GenerateSerializer]
+public class RevenueCatSubscriberAttribute
+{
+    [Id(0)] [JsonProperty("value")] public string Value { get; set; }
+    [Id(1)] [JsonProperty("updated_at_ms")] public long? UpdatedAtMs { get; set; }
+}
+
+/// <summary>
+/// RevenueCat webhook event types
+/// </summary>
+public static class RevenueCatWebhookEventTypes
+{
+    public const string INITIAL_PURCHASE = "INITIAL_PURCHASE";
+    public const string RENEWAL = "RENEWAL";
+    public const string CANCELLATION = "CANCELLATION";
+    public const string UNCANCELLATION = "UNCANCELLATION";
+    public const string NON_RENEWING_PURCHASE = "NON_RENEWING_PURCHASE";
+    public const string EXPIRATION = "EXPIRATION";
+    public const string BILLING_ISSUE = "BILLING_ISSUE";
+    public const string PRODUCT_CHANGE = "PRODUCT_CHANGE";
+    public const string TRANSFER = "TRANSFER";
+}

@@ -80,20 +80,30 @@ namespace Aevatar.Application.Grains.Common.Security
         }
 
         /// <summary>
-        /// Additional security checks for the webhook request
+        /// Security checks for RevenueCat webhook requests
         /// </summary>
         /// <param name="userAgent">User-Agent header</param>
         /// <param name="contentType">Content-Type header</param>
-        /// <returns>True if request appears to be from Google, false otherwise</returns>
-        public bool ValidateRequestHeaders(string userAgent, string contentType)
+        /// <param name="authorizationHeader">Authorization header (optional)</param>
+        /// <returns>True if request appears to be from RevenueCat, false otherwise</returns>
+        public bool ValidateRequestHeaders(string userAgent, string contentType, string authorizationHeader = null)
         {
             try
             {
-                // Check User-Agent (Google Pub/Sub uses specific user agents)
-                if (!string.IsNullOrEmpty(userAgent) && 
-                    !userAgent.Contains("Google-Cloud-Pub-Sub", StringComparison.OrdinalIgnoreCase))
+                // Check User-Agent - only accept RevenueCat
+                if (!string.IsNullOrEmpty(userAgent))
                 {
-                    _logger.LogWarning("[GooglePaySecurityValidator] Suspicious User-Agent: {UserAgent}", userAgent);
+                    if (!userAgent.Contains("RevenueCat", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _logger.LogWarning("[GooglePaySecurityValidator] Invalid User-Agent, expected RevenueCat: {UserAgent}", userAgent);
+                        return false;
+                    }
+                    
+                    _logger.LogDebug("[GooglePaySecurityValidator] Valid RevenueCat User-Agent detected: {UserAgent}", userAgent);
+                }
+                else
+                {
+                    _logger.LogWarning("[GooglePaySecurityValidator] Missing User-Agent header");
                     return false;
                 }
 
@@ -103,6 +113,48 @@ namespace Aevatar.Application.Grains.Common.Security
                 {
                     _logger.LogWarning("[GooglePaySecurityValidator] Invalid Content-Type: {ContentType}", contentType);
                     return false;
+                }
+
+                // Check Authorization header using RevenueCat API Key
+                if (!string.IsNullOrEmpty(_options.RevenueCatApiKey))
+                {
+                    if (string.IsNullOrEmpty(authorizationHeader))
+                    {
+                        _logger.LogWarning("[GooglePaySecurityValidator] Missing Authorization header, but RevenueCat API key is configured");
+                        return false;
+                    }
+
+                    // Support both formats: direct API key or "Bearer API_KEY"
+                    bool isValid = false;
+                    if (authorizationHeader.Equals(_options.RevenueCatApiKey, StringComparison.Ordinal))
+                    {
+                        // Direct API key format
+                        isValid = true;
+                        _logger.LogDebug("[GooglePaySecurityValidator] Valid Authorization header (direct API key format)");
+                    }
+                    else if (authorizationHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Bearer token format: "Bearer goog_xxxxx"
+                        var token = authorizationHeader.Substring(7); // Remove "Bearer " prefix
+                        if (token.Equals(_options.RevenueCatApiKey, StringComparison.Ordinal))
+                        {
+                            isValid = true;
+                            _logger.LogDebug("[GooglePaySecurityValidator] Valid Authorization header (Bearer format)");
+                        }
+                    }
+
+                    if (!isValid)
+                    {
+                        // Mask authorization header in error logs to prevent leakage
+                        var maskedAuth = authorizationHeader.Length > 4 ? 
+                            authorizationHeader.Substring(0, 4) + "***" : "***";
+                        _logger.LogWarning("[GooglePaySecurityValidator] Invalid Authorization header value: {maskedAuth}", maskedAuth);
+                        return false;
+                    }
+                }
+                else
+                {
+                    _logger.LogInformation("[GooglePaySecurityValidator] No RevenueCat API key configured - skipping Authorization header validation");
                 }
 
                 return true;
