@@ -148,6 +148,8 @@ public class LocalizationService : ILocalizationService
                 ["en.AudioFormatUnsupported"] = "Audio file corrupted or unsupported format",
                 ["en.LanguageNotRecognised"] = "Language not recognised. Please try again in the selected language.",
                 ["en.FailedGetUserInfo"] = "Failed to get user information",
+                ["en.ChatRateLimit"] = "Message limit reached. Please try again later.",
+                ["en.VoiceChatRateLimit"] = "Voice message limit reached. Please try again later.",
 
                 
                 //chinese
@@ -164,7 +166,8 @@ public class LocalizationService : ILocalizationService
                 ["zh-tw.AudioFormatUnsupported"] = "音頻文件損壞或格式不受支持",
                 ["zh-tw.LanguageNotRecognised"] = "語言無法識別。請在選定的語言中重試。",
                 ["zh-tw.FailedGetUserInfo"] = "無法獲取用戶資訊。",
-
+                ["zh-tw.ChatRateLimit"] = "訊息已達上限。請稍後再試。",
+                ["zh-tw.VoiceChatRateLimit"] = "語音訊息已達上限。請稍後再試。",
                 // Spanish translations
                 ["es.SharesReached"] = "Se alcanzó el máximo de {MaxShareCount} compartidos. ¡Elimina algunos para continuar! ",
                 ["es.InvalidSession"] = "Sesión inválida para generar un enlace de compartido.  ",
@@ -178,8 +181,9 @@ public class LocalizationService : ILocalizationService
                 ["es.SpeechServiceUnavailable"] = "Servicio de reconocimiento de voz no disponible",
                 ["es.AudioFormatUnsupported"] = "Archivo de audio corrupto o formato no compatible",
                 ["es.LanguageNotRecognised"] = "Idioma no reconocido. Por favor, intenta de nuevo en el idioma seleccionado.",
-                ["es.FailedGetUserInfo"] = "No se pudo obtener la información del usuario."
-
+                ["es.FailedGetUserInfo"] = "No se pudo obtener la información del usuario.",
+                ["es.ChatRateLimit"] = "Se ha alcanzado el límite de mensajes. Por favor, inténtalo de nuevo más tarde.",
+                ["es.VoiceChatRateLimit"] = "Se ha alcanzado el límite de mensajes de voz. Por favor, inténtalo de nuevo más tarde."
             },
             
             ["validation"] = new Dictionary<string, string>

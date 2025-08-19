@@ -14,6 +14,10 @@ public class ApplePayOptions
     [Id(6)] public string NotificationToken { get; set; }
     [Id(7)] public List<AppleProduct> Products { get; set; } = new List<AppleProduct>();
     
+    // Refund configuration
+    [Id(8)] public bool EnableRefund { get; set; } = true;
+    [Id(9)] public List<string> RefundAllowedUserIds { get; set; } = new List<string>();
+    
 }
 
 [GenerateSerializer]

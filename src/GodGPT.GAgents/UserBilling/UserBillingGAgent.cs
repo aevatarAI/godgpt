@@ -8,6 +8,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
@@ -1054,33 +1055,44 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Refund User subscription {0}, {1}, {2}",
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
             
-            var diff = GetDaysForPlanType(paymentSummary.PlanType);
-            subscriptionInfoDto.EndDate = subscriptionInfoDto.EndDate.AddDays(-diff);
-            subscriptionIds.Remove(paymentSummary.SubscriptionId);
-            
-            //reset plantype
-            subscriptionInfoDto.PlanType = await GetMaxPlanTypeAsync(DateTime.UtcNow, productConfig.IsUltimate);
-            
-            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
-
-            if (productConfig.IsUltimate)
-            {
-                var diffTimeSpan = (invoiceDetail.SubscriptionEndDate - DateTime.UtcNow);
-                if (diffTimeSpan.TotalMilliseconds > 0)
-                {
-                    var premiumSubscription = await userQuotaGAgent.GetSubscriptionAsync();
-                    if (premiumSubscription.IsActive)
-                    {
-                        premiumSubscription.StartDate = premiumSubscription.StartDate.Add(- diffTimeSpan);
-                        premiumSubscription.EndDate = premiumSubscription.EndDate.Add(- diffTimeSpan);
-                        await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscription);
-                    }
-                }
-            }
+            await RollbackQuotaAfterRefundAsync(userId, paymentSummary.SubscriptionId, productConfig.IsUltimate, paymentSummary.PlanType, invoiceDetail);
         }
         
         return true;
+    }
+
+    private async Task RollbackQuotaAfterRefundAsync(Guid userId, string subscriptionId, bool isUltimate, PlanType planType, UserBillingInvoiceDetail invoiceDetail)
+    {
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+        var subscriptionInfoDto = await userQuotaGAgent.GetSubscriptionAsync(isUltimate);
+        var subscriptionIds = subscriptionInfoDto.SubscriptionIds ?? new List<string>();
+        
+        var diff = GetDaysForPlanType(planType);
+        subscriptionInfoDto.EndDate = subscriptionInfoDto.EndDate.AddDays(-diff);
+        subscriptionIds.Remove(subscriptionId);
+
+        //reset plantype
+        subscriptionInfoDto.PlanType = await GetMaxPlanTypeAsync(DateTime.UtcNow, isUltimate);
+
+        subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+        
+        
+        await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, isUltimate);
+
+        if (isUltimate)
+        {
+            var diffTimeSpan = (invoiceDetail.SubscriptionEndDate - DateTime.UtcNow);
+            if (diffTimeSpan.TotalMilliseconds > 0)
+            {
+                var premiumSubscription = await userQuotaGAgent.GetSubscriptionAsync();
+                if (premiumSubscription.IsActive)
+                {
+                    premiumSubscription.StartDate = premiumSubscription.StartDate.Add(-diffTimeSpan);
+                    premiumSubscription.EndDate = premiumSubscription.EndDate.Add(-diffTimeSpan);
+                    await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscription);
+                }
+            }
+        }
     }
 
     private async Task<Tuple<DateTime, DateTime>> CalculateSubscriptionDurationAsync(Guid userId, StripeProduct productConfig)
@@ -1719,6 +1731,31 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // 4. Extract notification details from decoded payload
             var notificationType = decodedPayload.NotificationType;
             var subtype = decodedPayload.Subtype ?? string.Empty;
+
+            // 4.5. Check refund permission if this is a REFUND notification
+            if (notificationType == "REFUND")
+            {
+                var appleOptions = _appleOptions.CurrentValue;
+                if (!appleOptions.EnableRefund)
+                {
+                    // Refund is disabled, only allow specific user IDs
+                    var currentUserId = userId.ToString();
+                    if (appleOptions.RefundAllowedUserIds == null || !appleOptions.RefundAllowedUserIds.Contains(currentUserId))
+                    {
+                        _logger.LogWarning("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId} Refund is disabled and user is not in the allowed list. Notification ignored.", 
+                            currentUserId);
+                        return false; // Return true to acknowledge receipt but skip processing
+                    }
+                    
+                    _logger.LogDebug("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId} Refund is disabled but user is in the allowed list. Processing refund.", 
+                        currentUserId);
+                }
+                else
+                {
+                    _logger.LogDebug("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId} Refund is enabled globally. Processing refund.", 
+                        userId.ToString());
+                }
+            }
                 
             // 5. Extract transaction info from decoded payload
             var (appStoreTransactionInfo, signedTransactionInfo, signedRenewalInfo) = ExtractTransactionInfoFromV2(decodedPayload);
@@ -1843,12 +1880,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         userId.ToString(), signedTransactionInfo.TransactionId);
                     break;
 
-                //----------------------------------------------------------------------
                 case AppStoreNotificationType.REFUND:
+                    await HandleRefundAsync(userId, signedTransactionInfo, signedRenewalInfo);
                     _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Purchase refunded",
                         userId.ToString(), signedTransactionInfo.TransactionId);
-                    await HandleRefundAsync(userId.ToString(), appStoreTransactionInfo);
                     break;
+                //---------------------------------------------------------------------
                 case AppStoreNotificationType.CONSUMPTION_REQUEST: // Handle consumption data request for refund
                 case AppStoreNotificationType.DID_FAIL_TO_RENEW: // Handle renewal failure
                 case AppStoreNotificationType.OFFER_REDEEMED: // Handle offer redemption
@@ -2041,21 +2078,77 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
-    private async Task HandleRefundAsync(string userId, AppStoreSubscriptionInfo transactionInfo)
+    private async Task HandleRefundAsync(Guid userId, AppStoreJWSTransactionDecodedPayload transactionInfo,
+        JWSRenewalInfoDecodedPayload jwsRenewalInfoDecodedPayload)
     {
-        if (string.IsNullOrEmpty(userId))
+        _logger.LogInformation("[UserBillingGAgent][HandleRefundAsync] Processing refund for user {UserId}, originalTransactionId {OriginalTransactionId}, transactionId {TransactionId}", 
+            userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
+        
+        try
         {
-            _logger.LogWarning("[UserBillingGAgent][HandleRefundAsync] UserId is empty for transaction: {Id}", 
-                transactionInfo.OriginalTransactionId);
-            return;
+            // 1. Find main payment record by OriginalTransactionId (subscription record)
+            var existingPayment = await GetPaymentSummaryBySubscriptionIdAsync(transactionInfo.OriginalTransactionId);
+            if (existingPayment == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][HandleRefundAsync] Main payment record not found for OriginalTransactionId: {OriginalTransactionId}", 
+                    transactionInfo.OriginalTransactionId);
+                return;
+            }
+
+            // 2. Find specific transaction record by TransactionId (invoice record)
+            var invoiceDetails = existingPayment.InvoiceDetails ?? new List<ChatManager.UserBilling.UserBillingInvoiceDetail>();
+            var invoiceDetail = invoiceDetails.FirstOrDefault(t => t.InvoiceId == transactionInfo.TransactionId);
+            if (invoiceDetail == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][HandleRefundAsync] Invoice detail not found for TransactionId: {TransactionId}", 
+                    transactionInfo.TransactionId);
+                return;
+            }
+
+            // Skip if already refunded
+            if (invoiceDetail.Status == PaymentStatus.Refunded)
+            {
+                _logger.LogInformation("[UserBillingGAgent][HandleRefundAsync] Invoice {TransactionId} is already refunded", 
+                    transactionInfo.TransactionId);
+                return;
+            }
+
+            // 3. Get product configuration from transaction info to determine planType and isUltimate
+            var appleProduct = await GetAppleProductConfigAsync(transactionInfo.ProductId);
+
+            // 4. Update invoice status to Refunded
+            var oldStatus = invoiceDetail.Status;
+            invoiceDetail.Status = PaymentStatus.Refunded;
+            
+            // Check if this invoiceDetail is the last record and update main payment status
+            if (invoiceDetail == invoiceDetails.LastOrDefault())
+            {
+                existingPayment.Status = PaymentStatus.Refunded;
+            }
+            
+            RaiseEvent(new UpdatePaymentLogEvent
+            {
+                PaymentId = existingPayment.PaymentGrainId,
+                PaymentSummary = existingPayment
+            });
+            await ConfirmEvents();  
+
+            _logger.LogInformation("[UserBillingGAgent][HandleRefundAsync] Invoice status updated from {OldStatus} to Refunded for transaction {TransactionId}", 
+                oldStatus, transactionInfo.TransactionId);
+
+            // 5. Rollback user quota and subscription - reuse existing Stripe refund logic
+            await RollbackQuotaAfterRefundAsync(userId, transactionInfo.OriginalTransactionId, 
+                appleProduct.IsUltimate, (PlanType)appleProduct.PlanType, invoiceDetail);
+
+            _logger.LogInformation("[UserBillingGAgent][HandleRefundAsync] Successfully processed refund for user {UserId}, originalTransactionId {OriginalTransactionId}, transactionId {TransactionId}", 
+                userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId);
         }
-        
-        _logger.LogInformation("[UserBillingGAgent][HandleRefundAsync] Processing refund for user {UserId}, product {ProductId}", 
-            userId, transactionInfo.ProductId);
-        
-        // Update subscription status to refunded and immediately revoke user rights
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][HandleRefundAsync] Error processing refund for user {UserId}, originalTransactionId {OriginalTransactionId}, transactionId {TransactionId}: {Error}", 
+                userId, transactionInfo.OriginalTransactionId, transactionInfo.TransactionId, ex.Message);
+        }
     }
- 
 
     // Filter payment history by ultimate status
     private List<ChatManager.UserBilling.PaymentSummary> GetFilteredPaymentHistoryByUltimate(bool isUltimate)
