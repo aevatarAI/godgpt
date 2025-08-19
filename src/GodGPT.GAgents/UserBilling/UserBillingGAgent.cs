@@ -1602,18 +1602,22 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task<GooglePayProduct> GetGooglePayProductConfigAsync(string productId)
     {
-        var productConfig = _googlePayOptions.CurrentValue.Products.FirstOrDefault(p => p.ProductId == productId);
+        // Handle Google Play product ID format: "product_id:base_plan_id"
+        // Extract the base product ID before the colon
+        var baseProductId = productId.Contains(':') ? productId.Split(':')[0] : productId;
+        
+        var productConfig = _googlePayOptions.CurrentValue.Products.FirstOrDefault(p => p.ProductId == baseProductId);
         if (productConfig == null)
         {
             _logger.LogError(
-                "[UserBillingGAgent][GetGooglePayProductConfigAsync] Invalid ProductId: {ProductId}. Product not found in configuration.",
-                productId);
-            throw new ArgumentException($"Invalid ProductId: {productId}. Product not found in configuration.");
+                "[UserBillingGAgent][GetGooglePayProductConfigAsync] Invalid ProductId: {ProductId} (base: {BaseProductId}). Product not found in configuration.",
+                productId, baseProductId);
+            throw new ArgumentException($"Invalid ProductId: {productId} (base: {baseProductId}). Product not found in configuration.");
         }
 
         _logger.LogInformation(
-            "[UserBillingGAgent][GetGooglePayProductConfigAsync] Found product with ProductId: {ProductId}, planType: {PlanType}, amount: {Amount} {Currency}",
-            productConfig.ProductId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
+            "[UserBillingGAgent][GetGooglePayProductConfigAsync] Found product with ProductId: {ProductId} (base: {BaseProductId}), planType: {PlanType}, amount: {Amount} {Currency}",
+            productId, baseProductId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
 
         return productConfig;
     }
@@ -4186,11 +4190,33 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 case RevenueCatWebhookEventTypes.INITIAL_PURCHASE:
                 case RevenueCatWebhookEventTypes.UNCANCELLATION:
                 case RevenueCatWebhookEventTypes.PRODUCT_CHANGE:
-                    await ProcessGooglePlayPurchaseSuccessAsync(userId, verificationResult);
+                    // Check if product configuration exists before processing
+                    try
+                    {
+                        var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
+                        await ProcessGooglePlayPurchaseSuccessAsync(userId, verificationResult);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Product configuration not found for ProductId: {ProductId}, UserId: {UserId}", 
+                            verificationResult.ProductId, userId);
+                        return false;
+                    }
                     break;
                     
                 case RevenueCatWebhookEventTypes.RENEWAL:
-                    await ProcessRevenueCatRenewalAsync(userId, verificationResult);
+                    // Check if product configuration exists before processing
+                    try
+                    {
+                        var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
+                        await ProcessRevenueCatRenewalAsync(userId, verificationResult);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Product configuration not found for RENEWAL, ProductId: {ProductId}, UserId: {UserId}", 
+                            verificationResult.ProductId, userId);
+                        return false;
+                    }
                     break;
                     
                 case RevenueCatWebhookEventTypes.CANCELLATION:
