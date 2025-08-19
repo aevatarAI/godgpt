@@ -6,10 +6,9 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Common.Observability;
+using Aevatar.Core;
 using Aevatar.Core.Abstractions;
-using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
-using Aevatar.GAgents.AIGAgent.Agent;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using Json.Schema.Generation;
@@ -17,7 +16,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.Concurrency;
 using Orleans.Providers;
-using Volo.Abp;
 
 namespace Aevatar.Application.Grains.Agents.Anonymous;
 
@@ -30,7 +28,7 @@ namespace Aevatar.Application.Grains.Agents.Anonymous;
 [LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(AnonymousUserGAgent))]
 [Reentrant]
-public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUserEventLog>, 
+public class AnonymousUserGAgent : GAgentBase<AnonymousUserState, AnonymousUserEventLog>, 
     IAnonymousUserGAgent
 {
     public override Task<string> GetDescriptionAsync()
@@ -53,9 +51,12 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
 
     public async Task<int> GetRemainingChatsAsync()
     {
+        var stopwatch = Stopwatch.StartNew();
         await EnsureInitializedAsync();
         var maxCount = GetMaxChatCount();
-        return Math.Max(0, maxCount - State.ChatCount);
+        var remainingChats = Math.Max(0, maxCount - State.ChatCount);
+        Logger.LogDebug("[AnonymousUserGAgent][GetRemainingChatsAsync] Total duration: {0}ms", stopwatch.ElapsedMilliseconds);
+        return remainingChats;
     }
 
     public async Task<int> GetMaxChatCountAsync()
@@ -65,15 +66,14 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
 
     public async Task<Guid> CreateGuestSessionAsync(string? guider = null)
     {
+        var stopwatch = Stopwatch.StartNew();
         await EnsureInitializedAsync();
-        
         // Check if user has exceeded chat limit
         if (!await CanChatAsync())
         {
             Logger.LogWarning($"[AnonymousUserGAgent][CreateGuestSessionAsync] Chat limit exceeded for user: {State.UserHashId}");
             throw new InvalidOperationException("Daily chat limit exceeded for guest users");
         }
-
         // Check if existing session can be reused (same guider and not yet used)
         if (State.CurrentSessionId.HasValue && !State.CurrentSessionUsed)
         {
@@ -88,15 +88,11 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         }
 
         var configuration = GetConfiguration();
-        var stopwatch = Stopwatch.StartNew();
-        
+
         // Create new GodChat session (mimic ChatManagerGAgent.CreateSessionAsync)
         IGodChat godChat = GrainFactory.GetGrain<IGodChat>(Guid.NewGuid());
-        stopwatch.Stop();
-        Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Create GodChat: {stopwatch.ElapsedMilliseconds}ms");
 
         // Get system prompt and append role prompt if provided (exact copy from ChatManagerGAgent)
-        stopwatch.Restart();
         var sysMessage = await configuration.GetPrompt();
         
         if (!string.IsNullOrEmpty(guider))
@@ -125,8 +121,6 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
         Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Config: {Newtonsoft.Json.JsonConvert.SerializeObject(chatConfigDto)}");
 
         await godChat.ConfigAsync(chatConfigDto);
-        stopwatch.Stop();
-        Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Config GodChat: {stopwatch.ElapsedMilliseconds}ms");
 
         // Record session creation event
         var sessionId = godChat.GetPrimaryKey();
@@ -137,16 +131,12 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
             CreateAt = DateTime.UtcNow
         });
 
-        await ConfirmEvents();
-        //await godChat.InitAsync(this.GetPrimaryKey()); // Initialize with AnonymousUserGAgent ID
-        
         // Update state
         State.CurrentSessionId = sessionId;
         State.CurrentGuider = guider;
         State.CurrentSessionUsed = false; // Mark as unused initially
-        
-        Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Session created: {sessionId} for user: {State.UserHashId}");
-        
+        stopwatch.Stop();
+        Logger.LogDebug($"[AnonymousUserGAgent][CreateGuestSessionAsync] Session created: {sessionId} for user: {State.UserHashId} Total duration: {stopwatch.ElapsedMilliseconds}ms");
         return sessionId;
     }
 
@@ -199,8 +189,6 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
             SessionUsed = true // Mark session as used
         });
 
-        await ConfirmEvents();
-        
         Logger.LogDebug($"[AnonymousUserGAgent][GuestChatAsync] Chat completed for user: {State.UserHashId}, new count: {State.ChatCount + 1}");
     }
 
@@ -334,7 +322,7 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
     /// <summary>
     /// Handle state transitions for events (mimic ChatManagerGAgent.AIGAgentTransitionState)
     /// </summary>
-    protected override void AIGAgentTransitionState(AnonymousUserState state, StateLogEventBase<AnonymousUserEventLog> @event)
+    protected override void GAgentTransitionState(AnonymousUserState state, StateLogEventBase<AnonymousUserEventLog> @event)
     {
         switch (@event)
         {
@@ -362,11 +350,11 @@ public class AnonymousUserGAgent : AIGAgentBase<AnonymousUserState, AnonymousUse
     /// <summary>
     /// Initialization on grain activation (mimic ChatManagerGAgent.OnAIGAgentActivateAsync)
     /// </summary>
-    protected override async Task OnAIGAgentActivateAsync(CancellationToken cancellationToken)
+    protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
         Logger.LogDebug("[AnonymousUserGAgent][OnAIGAgentActivateAsync] Activating anonymous user grain");
         await EnsureInitializedAsync();
-        await base.OnAIGAgentActivateAsync(cancellationToken);
+        await base.OnGAgentActivateAsync(cancellationToken);
     }
 }
  
