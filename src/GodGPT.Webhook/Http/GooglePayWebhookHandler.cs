@@ -3,6 +3,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.Webhook;
 using Aevatar.Application.Grains.Common.Security;
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Webhook.SDK.Handler;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -106,9 +107,9 @@ public class GooglePayWebhookHandler : IWebhookHandler
             // Process the event through UserBillingGAgent
             var userBillingGAgent = _clusterClient.GetGrain<IUserBillingGAgent>(userId);
             
-            // Create a synthetic notification in Google Play format for backward compatibility
-            var syntheticNotification = CreateSyntheticGooglePlayNotification(eventData);
-            var result = await userBillingGAgent.HandleGooglePlayNotificationAsync(userId.ToString(), syntheticNotification);
+            // Create RevenueCat verification result from webhook data
+            var verificationResult = CreateRevenueCatVerificationResult(eventData);
+            var result = await userBillingGAgent.ProcessRevenueCatWebhookEventAsync(userId, eventData.Type, verificationResult);
             
             if (!result)
             {
@@ -176,74 +177,29 @@ public class GooglePayWebhookHandler : IWebhookHandler
     }
     
     /// <summary>
-    /// Create a synthetic Google Play notification for backward compatibility
+    /// Create PaymentVerificationResultDto from RevenueCat webhook event data
     /// </summary>
-    private string CreateSyntheticGooglePlayNotification(RevenueCatEvent eventData)
+    private PaymentVerificationResultDto CreateRevenueCatVerificationResult(RevenueCatEvent eventData)
     {
-        var notificationType = MapRevenueCatEventToGooglePlayNotification(eventData.Type);
-        
-        var syntheticNotification = new
+        var purchaseDate = eventData.PurchasedAtMs.HasValue ? 
+            DateTimeOffset.FromUnixTimeMilliseconds(eventData.PurchasedAtMs.Value).DateTime : DateTime.UtcNow;
+        var expirationDate = eventData.ExpirationAtMs.HasValue ?
+            DateTimeOffset.FromUnixTimeMilliseconds(eventData.ExpirationAtMs.Value).DateTime : (DateTime?)null;
+
+        return new PaymentVerificationResultDto
         {
-            message = new
-            {
-                data = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(new
-                {
-                    version = "1.0",
-                    packageName = "com.aevatar.godgpt", // Use your actual package name
-                    eventTimeMillis = eventData.EventTimestampMs,
-                    subscriptionNotification = new
-                    {
-                        version = "1.0",
-                        notificationType = GetGooglePlayNotificationTypeCode(notificationType),
-                        purchaseToken = eventData.TransactionId ?? eventData.OriginalTransactionId,
-                        subscriptionId = eventData.ProductId
-                    }
-                })))
-            }
-        };
-        
-        return JsonConvert.SerializeObject(syntheticNotification);
-    }
-    
-    /// <summary>
-    /// Map RevenueCat event types to Google Play notification types
-    /// </summary>
-    private string MapRevenueCatEventToGooglePlayNotification(string revenueCatEventType)
-    {
-        return revenueCatEventType switch
-        {
-            RevenueCatWebhookEventTypes.INITIAL_PURCHASE => "SUBSCRIPTION_PURCHASED",
-            RevenueCatWebhookEventTypes.RENEWAL => "SUBSCRIPTION_RENEWED",
-            RevenueCatWebhookEventTypes.CANCELLATION => "SUBSCRIPTION_CANCELED",
-            RevenueCatWebhookEventTypes.UNCANCELLATION => "SUBSCRIPTION_RECOVERED",
-            RevenueCatWebhookEventTypes.EXPIRATION => "SUBSCRIPTION_EXPIRED",
-            RevenueCatWebhookEventTypes.BILLING_ISSUE => "SUBSCRIPTION_ON_HOLD",
-            RevenueCatWebhookEventTypes.PRODUCT_CHANGE => "SUBSCRIPTION_PURCHASED", // Treat as new purchase
-            _ => "SUBSCRIPTION_PURCHASED" // Default to purchase
+            IsValid = true,
+            TransactionId = eventData.TransactionId ?? eventData.OriginalTransactionId,
+            ProductId = eventData.ProductId,
+            SubscriptionStartDate = purchaseDate,
+            SubscriptionEndDate = expirationDate,
+            Platform = PaymentPlatform.GooglePlay,
+            PurchaseToken = eventData.TransactionId ?? eventData.OriginalTransactionId,
+            Message = "RevenueCat webhook verification successful",
+            PaymentState = 1, // Purchased state
+            AutoRenewing = eventData.PeriodType == "NORMAL",
+            PurchaseTimeMillis = eventData.PurchasedAtMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         };
     }
-    
-    /// <summary>
-    /// Get Google Play notification type code for the given notification type
-    /// </summary>
-    private int GetGooglePlayNotificationTypeCode(string notificationType)
-    {
-        return notificationType switch
-        {
-            "SUBSCRIPTION_RECOVERED" => 1,
-            "SUBSCRIPTION_RENEWED" => 2,
-            "SUBSCRIPTION_CANCELED" => 3,
-            "SUBSCRIPTION_PURCHASED" => 4,
-            "SUBSCRIPTION_ON_HOLD" => 5,
-            "SUBSCRIPTION_IN_GRACE_PERIOD" => 6,
-            "SUBSCRIPTION_RESTARTED" => 7,
-            "SUBSCRIPTION_PRICE_CHANGE_CONFIRMED" => 8,
-            "SUBSCRIPTION_DEFERRED" => 9,
-            "SUBSCRIPTION_PAUSED" => 10,
-            "SUBSCRIPTION_PAUSE_SCHEDULE_CHANGED" => 11,
-            "SUBSCRIPTION_REVOKED" => 12,
-            "SUBSCRIPTION_EXPIRED" => 13,
-            _ => 4 // Default to SUBSCRIPTION_PURCHASED
-        };
-    }
+
 }

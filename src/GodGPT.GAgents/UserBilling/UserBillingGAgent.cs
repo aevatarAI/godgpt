@@ -100,6 +100,15 @@ public interface IUserBillingGAgent : IGAgent
     /// <param name="subscriptionId">Subscription ID</param>
     /// <returns>Synchronization success</returns>
     Task<bool> SyncGooglePlaySubscriptionAsync(string subscriptionId);
+    
+    /// <summary>
+    /// Process RevenueCat webhook event
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <param name="eventType">RevenueCat event type</param>
+    /// <param name="verificationResult">Payment verification result from RevenueCat data</param>
+    /// <returns>Processing success</returns>
+    Task<bool> ProcessRevenueCatWebhookEventAsync(Guid userId, string eventType, PaymentVerificationResultDto verificationResult);
 }
 
 [GAgent(nameof(UserBillingGAgent))]
@@ -4150,6 +4159,241 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             _logger.LogError(ex, "[UserBillingGAgent][SyncGooglePlaySubscriptionAsync] Error syncing Google Play subscription");
             return false;
+        }
+    }
+    
+    public async Task<bool> ProcessRevenueCatWebhookEventAsync(Guid userId, string eventType, PaymentVerificationResultDto verificationResult)
+    {
+        try
+        {
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Processing RevenueCat event: {EventType} for user {UserId}, TransactionId: {TransactionId}", 
+                eventType, userId, verificationResult.TransactionId);
+
+            // Check for duplicate processing using transaction ID
+            var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
+                p.Platform == PaymentPlatform.GooglePlay && 
+                (p.OrderId == verificationResult.TransactionId || p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.TransactionId)));
+            
+            if (existingPayment != null)
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Duplicate transaction detected, skipping. TransactionId: {TransactionId}", verificationResult.TransactionId);
+                return true; // Return success to avoid retries
+            }
+
+            // Process based on event type
+            switch (eventType)
+            {
+                case RevenueCatWebhookEventTypes.INITIAL_PURCHASE:
+                case RevenueCatWebhookEventTypes.UNCANCELLATION:
+                case RevenueCatWebhookEventTypes.PRODUCT_CHANGE:
+                    await ProcessGooglePlayPurchaseSuccessAsync(userId, verificationResult);
+                    break;
+                    
+                case RevenueCatWebhookEventTypes.RENEWAL:
+                    await ProcessRevenueCatRenewalAsync(userId, verificationResult);
+                    break;
+                    
+                case RevenueCatWebhookEventTypes.CANCELLATION:
+                case RevenueCatWebhookEventTypes.EXPIRATION:
+                    await ProcessRevenueCatCancellationAsync(userId, verificationResult);
+                    break;
+                    
+                case RevenueCatWebhookEventTypes.BILLING_ISSUE:
+                    // For billing issues, we may want to just log and not immediately revoke access
+                    _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Billing issue detected for user {UserId}, TransactionId: {TransactionId}", 
+                        userId, verificationResult.TransactionId);
+                    break;
+                    
+                default:
+                    _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Unhandled event type: {EventType} for user {UserId}", eventType, userId);
+                    break;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Error processing RevenueCat webhook event {EventType} for user {UserId}", eventType, userId);
+            return false;
+        }
+    }
+
+    private async Task ProcessRevenueCatCancellationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
+    {
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing cancellation for user {UserId}, TransactionId: {TransactionId}", 
+            userId, verificationResult.TransactionId);
+
+        // Find and update existing payment record
+        var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
+            p.Platform == PaymentPlatform.GooglePlay && 
+            (p.OrderId == verificationResult.TransactionId || p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.TransactionId)));
+
+        if (paymentSummary != null)
+        {
+            var invoiceDetail = paymentSummary.InvoiceDetails.FirstOrDefault(i => i.PurchaseToken == verificationResult.TransactionId);
+            if (invoiceDetail != null)
+            {
+                invoiceDetail.Status = PaymentStatus.Cancelled;
+                paymentSummary.Status = PaymentStatus.Cancelled;
+
+                // Update user quota to remove subscription
+                var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
+                if (productConfig != null)
+                {
+                    var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+                    var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
+                    
+                    if (subscription.IsActive && subscription.SubscriptionIds?.Contains(paymentSummary.SubscriptionId) == true)
+                    {
+                        subscription.IsActive = false;
+                        subscription.Status = PaymentStatus.Cancelled;
+                        subscription.SubscriptionIds.Remove(paymentSummary.SubscriptionId);
+                        await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
+                        
+                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Revoked subscription {SubscriptionId} for user {UserId}", 
+                            paymentSummary.SubscriptionId, userId);
+                    }
+                }
+
+                RaiseEvent(new UpdatePaymentLogEvent
+                {
+                    PaymentId = paymentSummary.PaymentGrainId,
+                    PaymentSummary = paymentSummary
+                });
+                await ConfirmEvents();
+            }
+        }
+        else
+        {
+            _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Could not find payment record for transaction: {TransactionId}", verificationResult.TransactionId);
+        }
+    }
+
+    private async Task ProcessRevenueCatRenewalAsync(Guid userId, PaymentVerificationResultDto verificationResult)
+    {
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Processing renewal for user {UserId}, TransactionId: {TransactionId}", 
+            userId, verificationResult.TransactionId);
+
+        try
+        {
+            // Find existing subscription by OriginalTransactionId (similar to Apple's approach)
+            var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
+                p.Platform == PaymentPlatform.GooglePlay && 
+                (p.OrderId == verificationResult.PurchaseToken || // Try using PurchaseToken as OriginalTransactionId
+                 p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
+
+            if (existingPayment == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] No existing payment found for renewal, treating as new purchase. UserId: {UserId}, TransactionId: {TransactionId}", 
+                    userId, verificationResult.TransactionId);
+                // Fallback to regular purchase processing
+                await ProcessGooglePlayPurchaseSuccessAsync(userId, verificationResult);
+                return;
+            }
+
+            // Check if this renewal transaction already exists
+            var existingInvoice = existingPayment.InvoiceDetails?.FirstOrDefault(i => i.InvoiceId == verificationResult.TransactionId);
+            if (existingInvoice != null)
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Renewal transaction already processed. UserId: {UserId}, TransactionId: {TransactionId}", 
+                    userId, verificationResult.TransactionId);
+                return;
+            }
+
+            // Get product configuration
+            var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
+            if (productConfig == null)
+            {
+                _logger.LogError("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Could not find product configuration for ProductId: {ProductId}", verificationResult.ProductId);
+                return;
+            }
+
+            // Create new invoice detail for the renewal
+            var renewalInvoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
+            {
+                InvoiceId = verificationResult.TransactionId,
+                PurchaseToken = verificationResult.PurchaseToken,
+                CreatedAt = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow,
+                CompletedAt = DateTime.UtcNow,
+                Status = PaymentStatus.Completed,
+                SubscriptionStartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow,
+                SubscriptionEndDate = verificationResult.SubscriptionEndDate ?? DateTime.UtcNow.AddDays(30),
+                PriceId = verificationResult.ProductId,
+                MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
+                Amount = productConfig.Amount,
+                PlanType = (PlanType)productConfig.PlanType
+            };
+
+            // Add the new invoice detail
+            if (existingPayment.InvoiceDetails == null)
+            {
+                existingPayment.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail>();
+            }
+            existingPayment.InvoiceDetails.Add(renewalInvoiceDetail);
+
+            // Update the main payment summary with latest info
+            existingPayment.CompletedAt = DateTime.UtcNow;
+            existingPayment.Status = PaymentStatus.Completed;
+            existingPayment.SubscriptionEndDate = verificationResult.SubscriptionEndDate ?? existingPayment.SubscriptionEndDate;
+
+            // Save the updated payment summary
+            RaiseEvent(new UpdatePaymentLogEvent
+            {
+                PaymentId = existingPayment.PaymentGrainId,
+                PaymentSummary = existingPayment
+            });
+            await ConfirmEvents();
+
+            // Update user quota to extend subscription
+            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+            var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
+            
+            // Extend the subscription end date
+            if (subscription.IsActive)
+            {
+                subscription.EndDate = verificationResult.SubscriptionEndDate ?? subscription.EndDate;
+                subscription.Status = PaymentStatus.Completed;
+                if (!subscription.SubscriptionIds.Contains(existingPayment.SubscriptionId))
+                {
+                    subscription.SubscriptionIds.Add(existingPayment.SubscriptionId);
+                }
+            }
+            else
+            {
+                // Reactivate if it was inactive
+                subscription.IsActive = true;
+                subscription.StartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow;
+                subscription.EndDate = verificationResult.SubscriptionEndDate ?? DateTime.UtcNow.AddDays(30);
+                subscription.Status = PaymentStatus.Completed;
+                subscription.PlanType = (PlanType)productConfig.PlanType;
+                if (subscription.SubscriptionIds == null)
+                {
+                    subscription.SubscriptionIds = new List<string>();
+                }
+                if (!subscription.SubscriptionIds.Contains(existingPayment.SubscriptionId))
+                {
+                    subscription.SubscriptionIds.Add(existingPayment.SubscriptionId);
+                }
+                await userQuotaAgent.ResetRateLimitsAsync();
+            }
+
+            await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
+
+            // Report analytics with proper renewal type
+            await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, PurchaseType.Renewal,
+                PaymentPlatform.GooglePlay, verificationResult.ProductId, productConfig.Currency, productConfig.Amount);
+
+            // Process invitee rewards
+            await ProcessInviteeSubscriptionAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate, verificationResult.TransactionId);
+
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Successfully processed renewal for user {UserId}, TransactionId: {TransactionId}", 
+                userId, verificationResult.TransactionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Error processing renewal for user {UserId}, TransactionId: {TransactionId}", 
+                userId, verificationResult.TransactionId);
+            throw;
         }
     }
 
