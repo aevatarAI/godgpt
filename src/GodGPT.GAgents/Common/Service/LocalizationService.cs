@@ -173,7 +173,7 @@ public class LocalizationService : ILocalizationService
                 ["es.InvalidSession"] = "Sesión inválida para generar un enlace de compartido.  ",
                 ["es.ConversationDeleted"] = "Lo siento, esta conversación ha sido eliminada por el propietario. ",
                 ["es.InvalidConversation"] = "No se pudo cargar la conversación {SessionId} ",
-                ["es.DailyUpdateLimit"] = "Se ha alcanzado el límite de carga diaria. Actualiza a Premium para continuar.",
+                ["es.DailyUpdateLimit"] = "Límite de carga diaria alcanzado. Actualiza a premium para continuar.",
                 ["es.InvalidVoiceMessage"] = "Mensaje de voz no válido. Por favor, intente de nuevo.",
                 ["es.UnSetVoiceLanguage"] = "Por favor, establezca el idioma de voz.",
                 ["es.SpeechTimeout"] = "Tiempo de espera del servicio de reconocimiento de voz",
