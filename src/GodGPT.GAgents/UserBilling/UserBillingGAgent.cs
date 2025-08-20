@@ -3913,20 +3913,29 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 
                 _logger.LogDebug("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Checking subscription: " +
                     "ProductId: {ProductId}, StoreTransactionId: {StoreTransactionId}, IsSandbox: {IsSandbox}, " +
-                    "ProductPlanIdentifier: {ProductPlanIdentifier}", 
-                    subscriptionKey, subscription.StoreTransactionId, subscription.IsSandbox, subscription.ProductPlanIdentifier);
+                    "ProductPlanIdentifier: {ProductPlanIdentifier}, Price: {Price} {Currency}", 
+                    subscriptionKey, subscription.StoreTransactionId, subscription.IsSandbox, subscription.ProductPlanIdentifier,
+                    subscription.Price?.Amount, subscription.Price?.Currency);
                 
                 if (subscription.StoreTransactionId != null && 
                     (subscription.StoreTransactionId == transactionId || 
                      subscription.StoreTransactionId.StartsWith(transactionId)))
                 {
-                    _logger.LogInformation("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Found matching transaction in RevenueCat: " +
+                    // Validate payment amount - must be greater than 0 for valid paid transactions
+                    if (subscription.Price?.Amount <= 0)
+                    {
+                        _logger.LogInformation("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Filtering transaction {TransactionId} with price {Price} - requires payment > 0", 
+                            transactionId, subscription.Price?.Amount);
+                        continue; // Skip this subscription and check next one
+                    }
+                    
+                    _logger.LogInformation("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Found matching paid transaction in RevenueCat: " +
                         "TransactionId: {TransactionId}, StoreTransactionId: {StoreTransactionId}, " +
                         "ProductId: {ProductId}, IsSandbox: {IsSandbox}, Store: {Store}, " +
                         "ProductPlanIdentifier: {ProductPlanIdentifier}, " +
-                        "PurchaseDate: {PurchaseDate}, ExpiresDate: {ExpiresDate}", 
+                        "Price: {Price} {Currency}, PurchaseDate: {PurchaseDate}, ExpiresDate: {ExpiresDate}", 
                         transactionId, subscription.StoreTransactionId, subscriptionKey, subscription.IsSandbox, 
-                        subscription.Store, subscription.ProductPlanIdentifier,
+                        subscription.Store, subscription.ProductPlanIdentifier, subscription.Price?.Amount, subscription.Price?.Currency,
                         subscription.PurchaseDate, subscription.ExpiresDate);
                     
                     // Convert RevenueCat subscription data to our transaction format
@@ -3972,8 +3981,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             {
                 _logger.LogDebug("[UserBillingGAgent][QueryRevenueCatForTransactionAsync] Available subscription: " +
                     "ProductId: {ProductId}, StoreTransactionId: {StoreTransactionId}, IsSandbox: {IsSandbox}, " +
-                    "ProductPlanIdentifier: {ProductPlanIdentifier}", 
-                    kvp.Key, kvp.Value.StoreTransactionId, kvp.Value.IsSandbox, kvp.Value.ProductPlanIdentifier);
+                    "ProductPlanIdentifier: {ProductPlanIdentifier}, Price: {Price} {Currency}", 
+                    kvp.Key, kvp.Value.StoreTransactionId, kvp.Value.IsSandbox, kvp.Value.ProductPlanIdentifier,
+                    kvp.Value.Price?.Amount, kvp.Value.Price?.Currency);
             }
             
             return null;
