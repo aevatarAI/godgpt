@@ -19,7 +19,8 @@ public enum GodGPTLanguage
     /// <summary>
     /// Spanish language
     /// </summary>
-    Spanish = 2
+    Spanish = 2,
+    CN = 3
 }
 
 /// <summary>
