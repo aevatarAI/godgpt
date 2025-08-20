@@ -3834,50 +3834,17 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 return verificationResult;
             }
 
-            // Step 3: Fallback to Google Play API verification (if RevenueCat doesn't have the transaction)
-            _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Transaction not found in RevenueCat, attempting Google Play API verification for transaction: {TransactionId}", 
-                request.TransactionIdentifier);
+            // RevenueCat is the authoritative source for Google Play transactions
+            // If transaction is not found in RevenueCat, consider it invalid
+            _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Transaction not found in RevenueCat for user {UserId}, transaction: {TransactionId}", 
+                request.UserId, request.TransactionIdentifier);
                 
-            var purchaseToken = await GetPurchaseTokenByTransactionIdAsync(request.TransactionIdentifier);
-            if (string.IsNullOrEmpty(purchaseToken))
-            {
-                _logger.LogError("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Cannot find purchaseToken for transaction: {TransactionId}", 
-                    request.TransactionIdentifier);
-                return new PaymentVerificationResultDto 
-                { 
-                    IsValid = false, 
-                    Message = "Transaction verification failed: unable to locate purchase token",
-                    ErrorCode = "PURCHASE_TOKEN_NOT_FOUND"
-                };
-            }
-
-            // Step 4: Use existing Google Play verification logic (fallback verification)
-            var googlePlayVerification = new GooglePlayVerificationDto
-            {
-                UserId = request.UserId,
-                PurchaseToken = purchaseToken,
-                ProductId = null, // Will be determined from Google Play API response
-                PackageName = _googlePayOptions.CurrentValue.PackageName,
-                OrderId = request.TransactionIdentifier
+            return new PaymentVerificationResultDto 
+            { 
+                IsValid = false, 
+                Message = "Transaction verification failed: transaction not found in RevenueCat",
+                ErrorCode = "TRANSACTION_NOT_FOUND_IN_REVENUECAT"
             };
-
-            // Step 5: Call the existing Google Play verification method (maintains consistency with webhook)
-            var fallbackVerificationResult = await VerifyGooglePlayPurchaseAsync(googlePlayVerification);
-
-            if (fallbackVerificationResult.IsValid)
-            {
-                _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Google Play transaction verification successful for user {UserId}. TransactionId: {TransactionId}", 
-                    request.UserId, fallbackVerificationResult.TransactionId);
-                
-                // Note: ProcessGooglePlayPurchaseSuccessAsync is already called in VerifyGooglePlayPurchaseAsync
-            }
-            else
-            {
-                _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayTransactionAsync] Google Play transaction verification failed for user {UserId}. Reason: {Message}", 
-                    request.UserId, fallbackVerificationResult?.Message);
-            }
-
-            return fallbackVerificationResult;
         }
         catch (Exception ex)
         {
