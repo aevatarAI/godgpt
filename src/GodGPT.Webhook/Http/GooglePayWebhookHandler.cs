@@ -87,14 +87,15 @@ public class GooglePayWebhookHandler : IWebhookHandler
             }
 
             var eventData = webhookEvent.Event;
-            _logger.LogInformation("[GooglePayWebhookHandler][RevenueCat] Event: {eventType}, UserId: {userId}, ProductId: {productId}, TransactionId: {transactionId}",
-                eventData.Type, eventData.AppUserId, eventData.ProductId, eventData.TransactionId);
+            _logger.LogInformation("[GooglePayWebhookHandler][RevenueCat] Event: {eventType}, UserId: {userId}, ProductId: {productId}, TransactionId: {transactionId}, Price: {price}",
+                eventData.Type, eventData.AppUserId, eventData.ProductId, eventData.TransactionId, eventData.PriceInPurchasedCurrency);
 
-            // Filter by event type (only process key business events)
-            if (!IsKeyRevenueCatBusinessEvent(eventData.Type))
+            // Filter by event type and payment amount (only process paid events)
+            if (!IsKeyRevenueCatBusinessEvent(eventData.Type, eventData.PriceInPurchasedCurrency))
             {
-                _logger.LogInformation("[GooglePayWebhookHandler][RevenueCat] Filtering event type: {eventType}", eventData.Type);
-                return new { success = true, message = "Event received but filtered by type" };
+                _logger.LogInformation("[GooglePayWebhookHandler][RevenueCat] Filtering event: Type={eventType}, Price={price}", 
+                    eventData.Type, eventData.PriceInPurchasedCurrency);
+                return new { success = true, message = "Event received but filtered by type or amount" };
             }
 
             // Extract user ID from app_user_id or original_app_user_id
@@ -128,21 +129,34 @@ public class GooglePayWebhookHandler : IWebhookHandler
     }
     
     /// <summary>
-    /// Determine if the RevenueCat event type represents a key business event
+    /// Determine if the RevenueCat event should be processed
+    /// Only process INITIAL_PURCHASE and RENEWAL events with payment amount > 0
     /// </summary>
-    private bool IsKeyRevenueCatBusinessEvent(string eventType)
+    private bool IsKeyRevenueCatBusinessEvent(string eventType, double? priceInPurchasedCurrency)
     {
-        return eventType switch
+        // Only process core payment events
+        bool isCorePaymentEvent = eventType switch
         {
             RevenueCatWebhookEventTypes.INITIAL_PURCHASE => true,      // Initial purchase
             RevenueCatWebhookEventTypes.RENEWAL => true,              // Subscription renewal
-            RevenueCatWebhookEventTypes.CANCELLATION => true,         // Subscription cancellation
-            RevenueCatWebhookEventTypes.UNCANCELLATION => true,       // Subscription reactivation
-            RevenueCatWebhookEventTypes.EXPIRATION => true,           // Subscription expiration
-            RevenueCatWebhookEventTypes.BILLING_ISSUE => true,        // Payment issues
-            RevenueCatWebhookEventTypes.PRODUCT_CHANGE => true,       // Product upgrade/downgrade
-            _ => false // Other types temporarily filtered
+            _ => false // Only focus on these two events for simplicity
         };
+        
+        if (!isCorePaymentEvent)
+        {
+            return false;
+        }
+        
+        // Must have valid payment amount > 0
+        bool hasValidPayment = priceInPurchasedCurrency.HasValue && priceInPurchasedCurrency.Value > 0;
+        
+        if (!hasValidPayment)
+        {
+            _logger.LogInformation("[GooglePayWebhookHandler][IsKeyRevenueCatBusinessEvent] Filtering event {EventType} with price {Price} - requires payment > 0", 
+                eventType, priceInPurchasedCurrency);
+        }
+        
+        return hasValidPayment;
     }
     
     /// <summary>
@@ -186,8 +200,9 @@ public class GooglePayWebhookHandler : IWebhookHandler
         var expirationDate = eventData.ExpirationAtMs.HasValue ?
             DateTimeOffset.FromUnixTimeMilliseconds(eventData.ExpirationAtMs.Value).DateTime : (DateTime?)null;
 
-        // Log ProductId format for verification  
-        _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId in key1:key2 format: {ProductId}", eventData.ProductId);
+        // Log ProductId format and payment amount for verification  
+        _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId: {ProductId}, Price: {Price} {Currency}", 
+            eventData.ProductId, eventData.PriceInPurchasedCurrency, eventData.Currency);
 
         return new PaymentVerificationResultDto
         {
