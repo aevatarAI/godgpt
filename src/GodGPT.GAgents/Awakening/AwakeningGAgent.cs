@@ -461,7 +461,7 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
                 };
                 
                 // Call IGodChat.ChatWithHistory with our prompt
-                var response = await godChat.ChatWithUserId(userId, string.Empty, prompt, chatId, settings, true, region);
+                var response = await godChat.ChatWithoutHistoryAsync(userId, string.Empty, prompt, chatId, settings, true, region);
                 
                 string responseContent;
                 if (response.IsNullOrEmpty())
