@@ -4342,8 +4342,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task ProcessRevenueCatCancellationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
-        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing cancellation for user {UserId}, TransactionId: {TransactionId}", 
-            userId, verificationResult.TransactionId);
+        // Determine if this is a refund or regular cancellation based on cancel reason and price
+        var isRefund = IsRevenueCatRefund(verificationResult);
+        var eventType = isRefund ? "refund" : "cancellation";
+        
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing {EventType} for user {UserId}, TransactionId: {TransactionId}, CancelReason: {CancelReason}", 
+            eventType, userId, verificationResult.TransactionId, ExtractCancelReason(verificationResult));
 
         // Find and update existing payment record
         var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
@@ -4355,8 +4359,15 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var invoiceDetail = paymentSummary.InvoiceDetails.FirstOrDefault(i => i.PurchaseToken == verificationResult.TransactionId);
             if (invoiceDetail != null)
             {
-                invoiceDetail.Status = PaymentStatus.Cancelled;
-                paymentSummary.Status = PaymentStatus.Cancelled;
+                var oldStatus = invoiceDetail.Status;
+                // Set appropriate status based on whether this is a refund or cancellation
+                var newStatus = isRefund ? PaymentStatus.Refunded : PaymentStatus.Cancelled;
+                
+                invoiceDetail.Status = newStatus;
+                paymentSummary.Status = newStatus;
+
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Updated payment status from {OldStatus} to {NewStatus} for transaction {TransactionId}", 
+                    oldStatus, newStatus, verificationResult.TransactionId);
 
                 // Update user quota to remove subscription
                 var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
@@ -4368,12 +4379,27 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     if (subscription.IsActive && subscription.SubscriptionIds?.Contains(paymentSummary.SubscriptionId) == true)
                     {
                         subscription.IsActive = false;
-                        subscription.Status = PaymentStatus.Cancelled;
+                        subscription.Status = newStatus;
                         subscription.SubscriptionIds.Remove(paymentSummary.SubscriptionId);
                         await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
                         
-                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Revoked subscription {SubscriptionId} for user {UserId}", 
-                            paymentSummary.SubscriptionId, userId);
+                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Revoked subscription {SubscriptionId} for user {UserId} due to {EventType}", 
+                            paymentSummary.SubscriptionId, userId, eventType);
+                    }
+
+                    // For refunds, perform additional rollback similar to Apple/Stripe
+                    if (isRefund)
+                    {
+                        await RollbackQuotaAfterRefundAsync(userId, paymentSummary.SubscriptionId, 
+                            productConfig.IsUltimate, (PlanType)productConfig.PlanType, invoiceDetail);
+                        
+                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Completed quota rollback for refund. User: {UserId}, Subscription: {SubscriptionId}", 
+                            userId, paymentSummary.SubscriptionId);
+
+                        // Report refund event to analytics
+                        var cancelReason = ExtractCancelReason(verificationResult) ?? "UNKNOWN";
+                        _ = ReportGooglePayRefundAsync(userId, verificationResult.TransactionId, cancelReason, 
+                            productConfig.Currency, Math.Abs(productConfig.Amount));
                     }
                 }
 
@@ -4388,6 +4414,77 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         else
         {
             _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Could not find payment record for transaction: {TransactionId}", verificationResult.TransactionId);
+        }
+    }
+
+    private bool IsRevenueCatRefund(PaymentVerificationResultDto verificationResult)
+    {
+        var cancelReason = ExtractCancelReason(verificationResult);
+        
+        // Consider it a refund if:
+        // 1. Cancel reason indicates customer support or unsubscribed (typical refund scenarios)
+        // 2. Or if the message contains negative price information (already logged from webhook)
+        var refundReasons = new[] { "CUSTOMER_SUPPORT", "UNSUBSCRIBED", "BILLING_ERROR" };
+        var isRefundByReason = !string.IsNullOrEmpty(cancelReason) && 
+                              refundReasons.Any(reason => cancelReason.Contains(reason, StringComparison.OrdinalIgnoreCase));
+        
+        var hasNegativePrice = verificationResult.Message?.Contains("Price: -") == true;
+        
+        var isRefund = isRefundByReason || hasNegativePrice;
+        
+        _logger.LogDebug("[UserBillingGAgent][IsRevenueCatRefund] CancelReason: {CancelReason}, HasNegativePrice: {HasNegativePrice}, IsRefund: {IsRefund}", 
+            cancelReason, hasNegativePrice, isRefund);
+        
+        return isRefund;
+    }
+
+    private string ExtractCancelReason(PaymentVerificationResultDto verificationResult)
+    {
+        // Cancel reason is encoded in OrderId as "CANCEL_{reason}" or in Message
+        if (!string.IsNullOrEmpty(verificationResult.OrderId) && verificationResult.OrderId.StartsWith("CANCEL_"))
+        {
+            return verificationResult.OrderId.Substring(7); // Remove "CANCEL_" prefix
+        }
+        
+        return null;
+    }
+
+    private async Task ReportGooglePayRefundAsync(Guid userId, string transactionId, string refundReason, string currency, decimal refundAmount)
+    {
+        _logger.LogInformation("[UserBillingGAgent][ReportGooglePayRefundAsync] Reporting Google Pay refund to analytics: UserId={UserId}, TransactionId={TransactionId}, RefundReason={RefundReason}, RefundAmount={RefundAmount} {Currency}",
+            userId, transactionId, refundReason, refundAmount, currency);
+        
+        try
+        {
+            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics" + PaymentPlatform.GooglePlay);
+            var analyticsResult = await analyticsGrain.ReportRefundEventAsync(
+                PaymentPlatform.GooglePlay,
+                transactionId,
+                userId.ToString(),
+                refundReason,
+                currency,
+                refundAmount
+            );
+
+            if (analyticsResult.IsSuccess)
+            {
+                _logger.LogInformation(
+                    "[UserBillingGAgent][ReportGooglePayRefundAsync] Successfully reported Google Pay refund analytics for user {UserId}, TransactionId {TransactionId}",
+                    userId, transactionId);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "[UserBillingGAgent][ReportGooglePayRefundAsync] Failed to report Google Pay refund analytics for user {UserId}, TransactionId {TransactionId}: {ErrorMessage}",
+                    userId, transactionId, analyticsResult.ErrorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserBillingGAgent][ReportGooglePayRefundAsync] Exception while reporting Google Pay refund analytics for user {UserId}, TransactionId {TransactionId}",
+                userId, transactionId);
+            // Don't throw - analytics reporting shouldn't block payment processing
         }
     }
 

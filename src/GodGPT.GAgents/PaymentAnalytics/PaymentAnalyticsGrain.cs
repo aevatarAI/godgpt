@@ -301,5 +301,116 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
         return result;
     }
 
+    public async Task<PaymentAnalyticsResultDto> ReportRefundEventAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId, 
+        string userId,
+        string refundReason,
+        string currency,
+        decimal refundAmount)
+    {
+        if (string.IsNullOrWhiteSpace(transactionId))
+        {
+            return new PaymentAnalyticsResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = "Transaction ID is required for refund reporting"
+            };
+        }
+
+        try
+        {
+            var currentOptions = _options.CurrentValue;
+            
+            if (!currentOptions.EnableAnalytics)
+            {
+                _logger.LogDebug("Analytics reporting is disabled in configuration");
+                return new PaymentAnalyticsResultDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Analytics reporting is disabled"
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(currentOptions.MeasurementId) || 
+                string.IsNullOrWhiteSpace(currentOptions.ApiSecret))
+            {
+                _logger.LogError("Google Analytics configuration is incomplete. MeasurementId and ApiSecret are required");
+                return new PaymentAnalyticsResultDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Google Analytics configuration is incomplete"
+                };
+            }
+
+            _logger.LogInformation(
+                "Reporting refund event to Google Analytics: Platform={Platform}, TransactionId={TransactionId}, UserId={UserId}, RefundReason={RefundReason}, RefundAmount={RefundAmount} {Currency}",
+                paymentPlatform, transactionId, userId, refundReason, refundAmount, currency);
+
+            // Create unique refund transaction ID
+            var refundTransactionId = userId + "^" + paymentPlatform + "^REFUND^" + transactionId;
+            var eventPayload = CreateGA4RefundPayload(refundTransactionId, transactionId, userId, refundReason, currency, refundAmount);
+            var url = BuildGA4ApiUrl(currentOptions.ApiEndpoint, currentOptions.MeasurementId, currentOptions.ApiSecret);
+            
+            _logger.LogDebug("Sending refund event for transaction {TransactionId} to: {Url}", refundTransactionId, url);
+            
+            var result = await SendEventToGA4Async(url, eventPayload, currentOptions.TimeoutSeconds);
+            
+            if (result.IsSuccess)
+            {
+                _logger.LogInformation("[PaymentAnalytics] Successfully reported refund event for transaction {TransactionId}", refundTransactionId);
+            }
+            else
+            {
+                _logger.LogWarning("[PaymentAnalytics] Failed to report refund event for transaction {TransactionId}: {ErrorMessage}", 
+                    refundTransactionId, result.ErrorMessage);
+            }
+            
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reporting refund event for transaction {TransactionId}", transactionId);
+            return new PaymentAnalyticsResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    #endregion
+
+    #region Private Methods
+
+    /// <summary>
+    /// Create Google Analytics 4 payload for refund event
+    /// </summary>
+    private object CreateGA4RefundPayload(string refundTransactionId, string originalTransactionId, string userId, string refundReason, string currency, decimal refundAmount)
+    {
+        var clientId = userId;
+        
+        return new
+        {
+            client_id = clientId,
+            events = new[]
+            {
+                new
+                {
+                    name = "refund",  // Using refund event for GA4
+                    @params = new
+                    {
+                        transaction_id = refundTransactionId,
+                        original_transaction_id = originalTransactionId,
+                        currency = currency ?? "USD",
+                        value = refundAmount,
+                        refund_reason = refundReason ?? "unknown",
+                        engagement_time_msec = 1000
+                    }
+                }
+            }
+        };
+    }
+
     #endregion
 }
