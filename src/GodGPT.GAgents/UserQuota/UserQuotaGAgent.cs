@@ -1,9 +1,9 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.ChatManager.Dtos;
-using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.UserQuota.SEvents;
@@ -152,7 +152,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 SubscriptionInfo = subscriptionDto,
                 IsUltimate = ultimate
             });
-            await ConfirmEvents();
 
             if (State.RateLimits.ContainsKey("conversation"))
             {
@@ -160,7 +159,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 {
                     ActionType = "conversation"
                 });
-                await ConfirmEvents();
             }
         }
 
@@ -314,7 +312,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             {
                 DailyImageConversation = dailyInfo
             });
-            await ConfirmEvents();
 
             _logger.LogDebug(
                 "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Image conversation allowed. New count={Count}",
@@ -416,7 +413,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 ActionType = actionType,
                 RateLimitInfo = rateLimitInfo
             });
-            await ConfirmEvents();
 
             _logger.LogDebug(
                 "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} INIT RateLimitInfo: count={Count}, lastTime(UTC)={LastTime}",
@@ -439,7 +435,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     ActionType = actionType,
                     RateLimitInfo = rateLimitInfo
                 });
-                await ConfirmEvents();
 
                 _logger.LogDebug(
                     "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} REFILL: tokensToAdd={TokensToAdd}, newCount={Count}, now(UTC)={Now}",
@@ -469,27 +464,57 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         }
 
         // Check rate limit
-        var oldValue = State.RateLimits[actionType].Count;
-        if (oldValue <= 0)
+        await ConfirmEvents();
+        try
+        {
+            var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.ChatRateLimit,language);
+            var voiceLocalizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.VoiceChatRateLimit,language);
+
+            var oldValue = State.RateLimits[actionType].Count;
+            if (oldValue <= 0)
+            {
+                _logger.LogWarning(
+                    $"[UserQuotaGrain][ExecuteStandardActionAsync] {actionType} sessionId={sessionId} chatManagerGuid={chatManagerGuid} RATE LIMITED: count={oldValue}, now(UTC)={now}");
+                return new ExecuteActionResultDto
+                {
+                    Code = ExecuteActionStatus.RateLimitExceeded,
+                    Message = isVoiceMessage ? voiceLocalizedMessage : localizedMessage
+                };
+            }
+        }
+        catch (Exception e)
         {
             _logger.LogWarning(
-                "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} RATE LIMITED: count={Count}, now(UTC)={Now}",
-                actionType, sessionId, chatManagerGuid, oldValue, now);
-            return new ExecuteActionResultDto
-            {
-                Code = ExecuteActionStatus.RateLimitExceeded,
-                Message = isVoiceMessage ? "Voice message limit reached. Please try again later." : "Message limit reached. Please try again later."
-            };
+                $"[UserQuotaGrain][ExecuteStandardActionAsync] RateLimits check error {actionType} sessionId={sessionId} chatManagerGuid={chatManagerGuid} RATE LIMITED:, now(UTC)={now} msg:{e.Message}");
         }
+
+        
 
         // Execute action - deduct credits and tokens
         if (!isSubscribed)
         {
-            RaiseEvent(new UpdateCreditsLogEvent
+            try
             {
-                NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation
-            });
-            await ConfirmEvents();
+                var NewCredits = State.Credits - _creditsOptions.CurrentValue.CreditsPerConversation;
+                RaiseEvent(new UpdateCreditsLogEvent
+                {
+                    NewCredits = NewCredits
+                });
+
+                if (NewCredits == 0)
+                {
+                    // Report credits exhausted event for conversion analysis
+                    await ReportCreditsExhaustedAsync();
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.LogWarning(
+                    $"[UserQuotaGrain][ExecuteStandardActionAsync] ReportCreditsExhaustedAsync error {actionType} sessionId={sessionId} chatManagerGuid={chatManagerGuid} RATE LIMITED:, now(UTC)={now} msg:{e.Message}");
+            }
+
+            
         }
 
         var updatedRateLimitInfo = State.RateLimits[actionType];
@@ -499,7 +524,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             ActionType = actionType,
             RateLimitInfo = updatedRateLimitInfo
         });
-        await ConfirmEvents();
 
         _logger.LogDebug(
             "[UserQuotaGrain][ExecuteStandardActionAsync] {MessageType} sessionId={SessionId} chatManagerGuid={ChatManagerGuid} AFTER decrement: count={Count}, now(UTC)={Now}",
@@ -509,6 +533,34 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
     }
 
     #endregion
+
+    /// <summary>
+    /// Reports credits exhausted event to OpenTelemetry for conversion tracking
+    /// </summary>
+    private Task ReportCreditsExhaustedAsync()
+    {
+        try
+        {
+            // Calculate days since signup
+            var daysSinceSignup = (int)(DateTime.UtcNow - State.CreatedAt).TotalDays;
+
+            // Report the telemetry event
+            UserLifecycleTelemetryMetrics.RecordCreditsExhausted(
+                this.GetPrimaryKey().ToString(),
+                daysSinceSignup,
+                _logger);
+
+            _logger.LogDebug(
+                "[UserQuotaGAgent] Credits exhausted event reported - User: {UserId}, Days: {DaysSinceSignup}",
+                this.GetPrimaryKey().ToString(), daysSinceSignup);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserQuotaGAgent] Failed to report credits exhausted event for user: {UserId}", this.GetPrimaryKeyString());
+        }
+        
+        return Task.CompletedTask;
+    }
 
     public async Task UpdateQuotaAsync(string productId, DateTime expiresDate)
     {
@@ -874,9 +926,9 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 
             case ClearAllLogEvent clearAll:
                 var canReceiveInviteReward = state.CanReceiveInviteReward;
-                state.Credits = 0;
-                state.HasInitialCredits = false;
-                state.HasShownInitialCreditsToast = false;
+                //state.Credits = 0;
+               // state.HasInitialCredits = false;
+                //state.HasShownInitialCreditsToast = false;
                 state.Subscription = new SubscriptionInfo();
                 state.RateLimits = new Dictionary<string, RateLimitInfo>();
                 state.UltimateSubscription = new SubscriptionInfo();
@@ -913,7 +965,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     CreatedAt = userQuotaState.CreatedAt,
                     CanReceiveInviteReward = userQuotaState.CanReceiveInviteReward
                 });
-                await ConfirmEvents();
 
                 _logger.LogDebug(
                     "[UserQuotaGAgent][OnGAgentActivateAsync] State initialized from IUserQuotaGrain for user {UserId}",
@@ -926,7 +977,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                     this.GetPrimaryKeyString());
                     
                 RaiseEvent(new MarkInitializedLogEvent());
-                await ConfirmEvents();
             }
         }
     }

@@ -57,14 +57,14 @@ public class AppleStoreWebhookHandler : IWebhookHandler
             
             //2. Filter by type
             if (notificationType != AppStoreNotificationType.SUBSCRIBED.ToString()
-                && notificationType != AppStoreNotificationType.DID_RENEW.ToString() 
-                /*&& decodedPayload.NotificationType != AppStoreNotificationType.REFUND.ToString()*/
+                && notificationType != AppStoreNotificationType.DID_RENEW.ToString()
                 && !(notificationType ==  AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS.ToString() 
                      && subtype == AppStoreNotificationSubtype.AUTO_RENEW_DISABLED.ToString())
                 && notificationType != AppStoreNotificationType.EXPIRED.ToString()
                 && notificationType != AppStoreNotificationType.GRACE_PERIOD_EXPIRED.ToString()
                 && notificationType != AppStoreNotificationType.REVOKE.ToString()
                 && notificationType != AppStoreNotificationType.DID_CHANGE_RENEWAL_PREF.ToString()
+                && notificationType != AppStoreNotificationType.REFUND.ToString()
                )
             {
                 _logger.LogInformation("[AppleStoreWebhookHandler][webhook] Filter NotificationType {0}, SubType={1}",

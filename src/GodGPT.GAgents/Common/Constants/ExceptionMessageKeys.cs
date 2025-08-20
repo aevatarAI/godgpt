@@ -16,5 +16,7 @@ public static class ExceptionMessageKeys
     public const string AudioFormatUnsupported = "AudioFormatUnsupported";
     public const string LanguageNotRecognised = "LanguageNotRecognised";
     public const string FailedGetUserInfo = "FailedGetUserInfo";
+    public const string ChatRateLimit = "ChatRateLimit";
+    public const string VoiceChatRateLimit = "VoiceChatRateLimit";
 
 } 
