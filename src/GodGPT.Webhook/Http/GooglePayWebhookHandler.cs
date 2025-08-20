@@ -130,24 +130,36 @@ public class GooglePayWebhookHandler : IWebhookHandler
     
     /// <summary>
     /// Determine if the RevenueCat event should be processed
-    /// Only process INITIAL_PURCHASE and RENEWAL events with payment amount > 0
+    /// Process INITIAL_PURCHASE, RENEWAL events with payment amount > 0
+    /// Process CANCELLATION events (including refunds with negative amounts)
     /// </summary>
     private bool IsKeyRevenueCatBusinessEvent(string eventType, double? priceInPurchasedCurrency)
     {
-        // Only process core payment events
-        bool isCorePaymentEvent = eventType switch
+        // Process core payment and cancellation events
+        bool isCoreBusinessEvent = eventType switch
         {
             RevenueCatWebhookEventTypes.INITIAL_PURCHASE => true,      // Initial purchase
             RevenueCatWebhookEventTypes.RENEWAL => true,              // Subscription renewal
-            _ => false // Only focus on these two events for simplicity
+            RevenueCatWebhookEventTypes.CANCELLATION => true,         // Cancellation/refund events
+            _ => false
         };
         
-        if (!isCorePaymentEvent)
+        if (!isCoreBusinessEvent)
         {
             return false;
         }
         
-        // Must have valid payment amount > 0
+        // For CANCELLATION events, allow negative prices (refunds)
+        if (eventType == RevenueCatWebhookEventTypes.CANCELLATION)
+        {
+            // CANCELLATION events should be processed regardless of price
+            // Negative prices indicate refunds, which are valid business events
+            _logger.LogInformation("[GooglePayWebhookHandler][IsKeyRevenueCatBusinessEvent] Processing CANCELLATION event with price {Price}", 
+                priceInPurchasedCurrency);
+            return true;
+        }
+        
+        // For payment events (INITIAL_PURCHASE, RENEWAL), must have valid payment amount > 0
         bool hasValidPayment = priceInPurchasedCurrency.HasValue && priceInPurchasedCurrency.Value > 0;
         
         if (!hasValidPayment)
@@ -201,8 +213,8 @@ public class GooglePayWebhookHandler : IWebhookHandler
             DateTimeOffset.FromUnixTimeMilliseconds(eventData.ExpirationAtMs.Value).DateTime : (DateTime?)null;
 
         // Log ProductId format and payment amount for verification  
-        _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId: {ProductId}, Price: {Price} {Currency}", 
-            eventData.ProductId, eventData.PriceInPurchasedCurrency, eventData.Currency);
+        _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId: {ProductId}, Price: {Price} {Currency}, CancelReason: {CancelReason}", 
+            eventData.ProductId, eventData.PriceInPurchasedCurrency, eventData.Currency, eventData.CancelReason);
 
         return new PaymentVerificationResultDto
         {
@@ -213,10 +225,12 @@ public class GooglePayWebhookHandler : IWebhookHandler
             SubscriptionEndDate = expirationDate,
             Platform = PaymentPlatform.GooglePlay,
             PurchaseToken = eventData.TransactionId ?? eventData.OriginalTransactionId,
-            Message = "RevenueCat webhook verification successful",
+            Message = $"RevenueCat webhook verification successful. CancelReason: {eventData.CancelReason}",
             PaymentState = 1, // Purchased state
             AutoRenewing = eventData.PeriodType == "NORMAL",
-            PurchaseTimeMillis = eventData.PurchasedAtMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            PurchaseTimeMillis = eventData.PurchasedAtMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            // Store additional information about the cancellation/refund event
+            OrderId = !string.IsNullOrEmpty(eventData.CancelReason) ? $"CANCEL_{eventData.CancelReason}" : null
         };
     }
 

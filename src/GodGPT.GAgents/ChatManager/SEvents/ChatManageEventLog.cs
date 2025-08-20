@@ -80,3 +80,39 @@ public class SetRegisteredAtUtcEventLog : ChatManageEventLog
 {
     [Id(0)] public DateTime RegisteredAtUtc { get; set; }
 }
+
+/// <summary>
+/// Event for initializing user first access status
+/// This event is used to consolidate multiple related field settings to reduce event sending frequency
+/// Applicable for complete initialization of new users and status marking of existing users
+/// </summary>
+[GenerateSerializer]
+public class InitializeNewUserStatusLogEvent : ChatManageEventLog
+{
+    /// <summary>
+    /// Marks whether this is the first access to ChatManagerGAgent (reused field, actually used for first access marking)
+    /// true: New user's first access
+    /// false: Existing user's non-first access
+    /// </summary>
+    [Id(0)] public bool IsFirstConversation { get; set; }
+    
+    /// <summary>
+    /// User unique identifier
+    /// Obtained from Grain's PrimaryKey
+    /// </summary>
+    [Id(1)] public Guid UserId { get; set; }
+    
+    /// <summary>
+    /// Registration time (UTC time)
+    /// New users: Set to current time
+    /// Existing users: May be null (maintain historical compatibility)
+    /// </summary>
+    [Id(2)] public DateTime? RegisteredAtUtc { get; set; }
+    
+    /// <summary>
+    /// Maximum share count limit
+    /// New users: Set to default value (e.g., 10000)
+    /// Existing users: Set as needed, avoid overwriting existing values
+    /// </summary>
+    [Id(3)] public int MaxShareCount { get; set; }
+}

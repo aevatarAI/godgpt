@@ -62,6 +62,7 @@ public class PaymentVerificationResultDto
     [Id(9)] public bool? AutoRenewing { get; set; }              // Auto-renewing subscription status
     [Id(10)] public long? PurchaseTimeMillis { get; set; }       // Purchase time in milliseconds
     [Id(11)] public string PurchaseToken { get; set; }          // Purchase token
+    [Id(12)] public string OrderId { get; set; } = string.Empty; // Order ID for additional context
 }
 
 /// <summary>
@@ -253,6 +254,7 @@ public class RevenueCatEvent
     [Id(24)] [JsonProperty("store")] public string Store { get; set; }
     [Id(25)] [JsonProperty("takehome_percentage")] public double? TakehomePercentage { get; set; }
     [Id(26)] [JsonProperty("commission_percentage")] public double? CommissionPercentage { get; set; }
+    [Id(27)] [JsonProperty("cancel_reason")] public string CancelReason { get; set; }
 }
 
 /// <summary>

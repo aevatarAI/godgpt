@@ -1,4 +1,5 @@
 using Aevatar.GAgents.ChatAgent.GAgent.State;
+using Aevatar.Application.Grains.Common.Constants;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager.Chat;
 
@@ -19,6 +20,13 @@ public class GodChatState:ChatGAgentState
     /// Parallel list to ChatHistory from base class
     /// </summary>
     [Id(7)] public List<ChatMessageMeta> ChatMessageMetas { get; set; } = new List<Aevatar.Application.Grains.Agents.ChatManager.ChatMessageMeta>();
+    
+    /// <summary>
+    /// Proxy initialization status tracking
+    /// Key: proxyId (Guid), Value: initialization status
+    /// Initialized with a dummy entry to distinguish from historical data (null)
+    /// </summary>
+    [Id(8)] public Dictionary<Guid, ProxyInitStatus> ProxyInitStatuses { get; set; } = new Dictionary<Guid, ProxyInitStatus>();
 }
 
 [GenerateSerializer]

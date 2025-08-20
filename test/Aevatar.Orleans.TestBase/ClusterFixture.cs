@@ -85,8 +85,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
         public void Configure(ISiloBuilder hostBuilder)
         {
             var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json")
-                //.AddJsonFile("/opt/evn/godgpt.appsettings.json")
+                //.AddJsonFile("appsettings.json")
+                .AddJsonFile("/opt/evn/godgpt.appsettings.json")
                 // .AddJsonFile("appsettings.secrets.json")
                 .Build();
 
@@ -156,7 +156,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                     services.Configure<SystemLLMConfigOptions>(configuration);
                     services.Configure<SpeechOptions>(configuration.GetSection("Speech"));
                     services.AddSingleton<ISpeechService, SpeechService>();
-                    services.AddSingleton<ILocalizationService, LocalizationService>();
+                    services.AddTransient<ILocalizationService, LocalizationService>();
                     services.AddSemanticKernel()
                         .AddQdrantVectorStore()
                         .AddAzureOpenAITextEmbedding()

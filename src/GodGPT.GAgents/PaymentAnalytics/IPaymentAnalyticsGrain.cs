@@ -40,4 +40,22 @@ public interface IPaymentAnalyticsGrain : IGrainWithStringKey
         PurchaseType purchaseType,
         string currency,
         decimal amount);
+
+    /// <summary>
+    /// Report a refund event to Google Analytics
+    /// </summary>
+    /// <param name="paymentPlatform">Payment platform used</param>
+    /// <param name="transactionId">Original transaction/order ID for the refunded purchase</param>
+    /// <param name="userId">User ID</param>
+    /// <param name="refundReason">Reason for the refund</param>
+    /// <param name="currency">Currency code</param>
+    /// <param name="refundAmount">Refund amount (positive value)</param>
+    /// <returns>Analytics result with success status</returns>
+    Task<PaymentAnalyticsResultDto> ReportRefundEventAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId, 
+        string userId,
+        string refundReason,
+        string currency,
+        decimal refundAmount);
 }
