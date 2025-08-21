@@ -87,8 +87,8 @@ public class GooglePayWebhookHandler : IWebhookHandler
             }
 
             var eventData = webhookEvent.Event;
-            _logger.LogInformation("[GooglePayWebhookHandler][RevenueCat] Event: {eventType}, UserId: {userId}, ProductId: {productId}, TransactionId: {transactionId}, Price: {price}",
-                eventData.Type, eventData.AppUserId, eventData.ProductId, eventData.TransactionId, eventData.PriceInPurchasedCurrency);
+            _logger.LogInformation("[GooglePayWebhookHandler][RevenueCat] Event: {eventType}, UserId: {userId}, ProductId: {productId}, TransactionId: {transactionId}, OriginalTransactionId: {originalTransactionId}, Price: {price}",
+                eventData.Type, eventData.AppUserId, eventData.ProductId, eventData.TransactionId, eventData.OriginalTransactionId, eventData.PriceInPurchasedCurrency);
 
             // Filter by event type and payment amount (only process paid events)
             if (!IsKeyRevenueCatBusinessEvent(eventData.Type, eventData.PriceInPurchasedCurrency))
@@ -215,8 +215,8 @@ public class GooglePayWebhookHandler : IWebhookHandler
             DateTimeOffset.FromUnixTimeMilliseconds(eventData.ExpirationAtMs.Value).DateTime : (DateTime?)null;
 
         // Log ProductId format and payment amount for verification  
-        _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId: {ProductId}, Price: {Price} {Currency}, CancelReason: {CancelReason}", 
-            eventData.ProductId, eventData.PriceInPurchasedCurrency, eventData.Currency, eventData.CancelReason);
+        _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId: {ProductId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price} {Currency}, CancelReason: {CancelReason}", 
+            eventData.ProductId, eventData.TransactionId, eventData.OriginalTransactionId, eventData.PriceInPurchasedCurrency, eventData.Currency, eventData.CancelReason);
 
         return new PaymentVerificationResultDto
         {
@@ -226,7 +226,7 @@ public class GooglePayWebhookHandler : IWebhookHandler
             SubscriptionStartDate = purchaseDate,
             SubscriptionEndDate = expirationDate,
             Platform = PaymentPlatform.GooglePlay,
-            PurchaseToken = eventData.TransactionId ?? eventData.OriginalTransactionId,
+            PurchaseToken = eventData.OriginalTransactionId ?? eventData.TransactionId, // Use OriginalTransactionId for subscription matching
             Message = $"RevenueCat webhook verification successful. CancelReason: {eventData.CancelReason}, Price: {eventData.PriceInPurchasedCurrency} {eventData.Currency}",
             PaymentState = 1, // Purchased state
             AutoRenewing = eventData.PeriodType == "NORMAL",
