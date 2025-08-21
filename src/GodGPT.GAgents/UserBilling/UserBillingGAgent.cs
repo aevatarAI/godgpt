@@ -1788,7 +1788,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         // Update user quota
         var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
 
-        var subscription = await userQuotaAgent.GetSubscriptionAsync();
+        // Fix: Use productConfig.IsUltimate to get the correct subscription type
+        var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
         if (subscription.SubscriptionIds.IsNullOrEmpty())
         {
             subscription.SubscriptionIds = new List<string>();
@@ -4321,8 +4322,22 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     break;
                     
                 case RevenueCatWebhookEventTypes.CANCELLATION:
+                    // Handle CANCELLATION: distinguish between cancellation (Price=0) and refund (Price<0)
+                    if (verificationResult.PriceInPurchasedCurrency.HasValue && verificationResult.PriceInPurchasedCurrency.Value < 0)
+                    {
+                        // This is a refund (negative price)
+                        await ProcessRevenueCatRefundAsync(userId, verificationResult);
+                    }
+                    else
+                    {
+                        // This is a subscription cancellation (Price=0 or null)
+                        await ProcessRevenueCatCancellationAsync(userId, verificationResult);
+                    }
+                    break;
+                    
                 case RevenueCatWebhookEventTypes.EXPIRATION:
-                    await ProcessRevenueCatCancellationAsync(userId, verificationResult);
+                    // Handle EXPIRATION: subscription expired (similar to Apple's EXPIRED event)
+                    await ProcessRevenueCatExpirationAsync(userId, verificationResult);
                     break;
                     
                 case RevenueCatWebhookEventTypes.BILLING_ISSUE:
@@ -4347,12 +4362,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task ProcessRevenueCatCancellationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
-        // Determine if this is a refund or regular cancellation based on cancel reason and price
-        var isRefund = IsRevenueCatRefund(verificationResult);
-        var eventType = isRefund ? "refund" : "cancellation";
-        
-        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing {EventType} for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, CancelReason: {CancelReason}", 
-            eventType, userId, verificationResult.TransactionId, verificationResult.PurchaseToken, ExtractCancelReason(verificationResult));
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing subscription cancellation for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}", 
+            userId, verificationResult.TransactionId, verificationResult.PurchaseToken, verificationResult.PriceInPurchasedCurrency);
 
         // Find payment record using OriginalTransactionId (similar to Apple's approach)
         // PurchaseToken contains the OriginalTransactionId which is the stable subscription identifier
@@ -4379,14 +4390,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             if (invoiceDetail != null)
             {
                 var oldStatus = invoiceDetail.Status;
-                // Set appropriate status based on whether this is a refund or cancellation
-                var newStatus = isRefund ? PaymentStatus.Refunded : PaymentStatus.Cancelled;
-                
-                invoiceDetail.Status = newStatus;
-                paymentSummary.Status = newStatus;
+                // Set status to Cancelled for subscription cancellation
+                invoiceDetail.Status = PaymentStatus.Cancelled;
+                paymentSummary.Status = PaymentStatus.Cancelled;
 
                 _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Updated payment status from {OldStatus} to {NewStatus} for transaction {TransactionId}", 
-                    oldStatus, newStatus, verificationResult.TransactionId);
+                    oldStatus, PaymentStatus.Cancelled, verificationResult.TransactionId);
 
                 // Update user quota to remove subscription
                 var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
@@ -4398,28 +4407,15 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     if (subscription.IsActive && subscription.SubscriptionIds?.Contains(paymentSummary.SubscriptionId) == true)
                     {
                         subscription.IsActive = false;
-                        subscription.Status = newStatus;
+                        subscription.Status = PaymentStatus.Cancelled;
                         subscription.SubscriptionIds.Remove(paymentSummary.SubscriptionId);
                         await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
                         
-                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Revoked subscription {SubscriptionId} for user {UserId} due to {EventType}", 
-                            paymentSummary.SubscriptionId, userId, eventType);
+                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Revoked subscription {SubscriptionId} for user {UserId} due to cancellation", 
+                            paymentSummary.SubscriptionId, userId);
                     }
 
-                    // For refunds, perform additional rollback similar to Apple/Stripe
-                    if (isRefund)
-                    {
-                        await RollbackQuotaAfterRefundAsync(userId, paymentSummary.SubscriptionId, 
-                            productConfig.IsUltimate, (PlanType)productConfig.PlanType, invoiceDetail);
-                        
-                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Completed quota rollback for refund. User: {UserId}, Subscription: {SubscriptionId}", 
-                            userId, paymentSummary.SubscriptionId);
-
-                        // Report refund event to analytics
-                        var cancelReason = ExtractCancelReason(verificationResult) ?? "UNKNOWN";
-                        _ = ReportGooglePayRefundAsync(userId, verificationResult.TransactionId, cancelReason, 
-                            productConfig.Currency, Math.Abs(productConfig.Amount));
-                    }
+                    // No additional processing needed for regular cancellation
                 }
 
                 RaiseEvent(new UpdatePaymentLogEvent
@@ -4639,6 +4635,228 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Error processing renewal for user {UserId}, TransactionId: {TransactionId}", 
                 userId, verificationResult.TransactionId);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Process Google Pay refund event (CANCELLATION with negative price)
+    /// Similar to Apple's HandleRefundAsync
+    /// </summary>
+    private async Task ProcessRevenueCatRefundAsync(Guid userId, PaymentVerificationResultDto verificationResult)
+    {
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRefundAsync] Processing refund for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}", 
+            userId, verificationResult.TransactionId, verificationResult.PurchaseToken, verificationResult.PriceInPurchasedCurrency);
+
+        try
+        {
+            // Find payment record using OriginalTransactionId (similar to Apple's approach)
+            var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
+                p.Platform == PaymentPlatform.GooglePlay && 
+                (p.OrderId == verificationResult.PurchaseToken || 
+                 p.SubscriptionId == verificationResult.PurchaseToken ||
+                 p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
+            
+            if (paymentSummary == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatRefundAsync] Payment record not found for refund. UserId: {UserId}, OriginalTransactionId: {OriginalTransactionId}", 
+                    userId, verificationResult.PurchaseToken);
+                return;
+            }
+
+            // Find specific invoice detail for this transaction
+            var invoiceDetail = paymentSummary.InvoiceDetails?.FirstOrDefault(i => i.InvoiceId == verificationResult.TransactionId);
+            if (invoiceDetail == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatRefundAsync] Invoice detail not found for refund. UserId: {UserId}, TransactionId: {TransactionId}", 
+                    userId, verificationResult.TransactionId);
+                return;
+            }
+
+            // Skip if already refunded
+            if (invoiceDetail.Status == PaymentStatus.Refunded)
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRefundAsync] Invoice {TransactionId} is already refunded", 
+                    verificationResult.TransactionId);
+                return;
+            }
+
+            // Update invoice status to Refunded (similar to Apple's refund handling)
+            var oldStatus = invoiceDetail.Status;
+            invoiceDetail.Status = PaymentStatus.Refunded;
+            
+            // Update main payment summary if this is the latest transaction
+            var latestInvoice = paymentSummary.InvoiceDetails?.OrderByDescending(i => i.CreatedAt).FirstOrDefault();
+            if (latestInvoice?.InvoiceId == verificationResult.TransactionId)
+            {
+                paymentSummary.Status = PaymentStatus.Refunded;
+            }
+
+            // Save the updated payment
+            RaiseEvent(new UpdatePaymentLogEvent
+            {
+                PaymentId = paymentSummary.PaymentGrainId,
+                PaymentSummary = paymentSummary
+            });
+            await ConfirmEvents();
+
+            // Update user quota - revoke subscription access if refunded
+            await UpdateUserQuotaOnRefundAsync(userId, paymentSummary, invoiceDetail);
+
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRefundAsync] Successfully processed refund for user {UserId}, TransactionId: {TransactionId}, Status: {OldStatus} -> {NewStatus}", 
+                userId, verificationResult.TransactionId, oldStatus, PaymentStatus.Refunded);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatRefundAsync] Error processing refund for user {UserId}, TransactionId: {TransactionId}", 
+                userId, verificationResult.TransactionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Process Google Pay expiration event (EXPIRATION)
+    /// Similar to Apple's EXPIRED event handling
+    /// </summary>
+    private async Task ProcessRevenueCatExpirationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
+    {
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatExpirationAsync] Processing subscription expiration for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}", 
+            userId, verificationResult.TransactionId, verificationResult.PurchaseToken);
+
+        try
+        {
+            // Find payment record using OriginalTransactionId
+            var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
+                p.Platform == PaymentPlatform.GooglePlay && 
+                (p.OrderId == verificationResult.PurchaseToken || 
+                 p.SubscriptionId == verificationResult.PurchaseToken ||
+                 p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
+            
+            if (paymentSummary == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatExpirationAsync] Payment record not found for expiration. UserId: {UserId}, OriginalTransactionId: {OriginalTransactionId}", 
+                    userId, verificationResult.PurchaseToken);
+                return;
+            }
+
+            // Skip if already cancelled
+            if (paymentSummary.Status == PaymentStatus.Cancelled)
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatExpirationAsync] Subscription is already cancelled. UserId: {UserId}, Status: {Status}", 
+                    userId, paymentSummary.Status);
+                return;
+            }
+
+            // Update subscription status to Cancelled (similar to Apple's EXPIRED handling)
+            var oldStatus = paymentSummary.Status;
+            paymentSummary.Status = PaymentStatus.Cancelled;
+
+            // Update the latest invoice detail status as well
+            var latestInvoice = paymentSummary.InvoiceDetails?.OrderByDescending(i => i.CreatedAt).FirstOrDefault();
+            if (latestInvoice != null)
+            {
+                latestInvoice.Status = PaymentStatus.Cancelled;
+            }
+
+            // Save the updated payment
+            RaiseEvent(new UpdatePaymentLogEvent
+            {
+                PaymentId = paymentSummary.PaymentGrainId,
+                PaymentSummary = paymentSummary
+            });
+            await ConfirmEvents();
+
+            // Update user quota - remove subscription access due to expiration
+            await UpdateUserQuotaOnExpirationAsync(userId, paymentSummary);
+
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatExpirationAsync] Successfully processed expiration for user {UserId}, SubscriptionId: {SubscriptionId}, Status: {OldStatus} -> {NewStatus}", 
+                userId, paymentSummary.SubscriptionId, oldStatus, PaymentStatus.Cancelled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatExpirationAsync] Error processing expiration for user {UserId}, TransactionId: {TransactionId}", 
+                userId, verificationResult.TransactionId);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Update user quota when a refund occurs
+    /// </summary>
+    private async Task UpdateUserQuotaOnRefundAsync(Guid userId, ChatManager.UserBilling.PaymentSummary paymentSummary, ChatManager.UserBilling.UserBillingInvoiceDetail invoiceDetail)
+    {
+        try
+        {
+            // Get product configuration to determine subscription type
+            var productConfig = await GetGooglePayProductConfigAsync(invoiceDetail.PriceId);
+            if (productConfig == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Product configuration not found for PriceId: {PriceId}", invoiceDetail.PriceId);
+                return;
+            }
+
+            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+            var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
+
+            // Remove the subscription ID from the active list
+            if (subscription.SubscriptionIds != null && subscription.SubscriptionIds.Contains(paymentSummary.SubscriptionId))
+            {
+                subscription.SubscriptionIds.Remove(paymentSummary.SubscriptionId);
+            }
+
+            // If no more active subscription IDs, deactivate the subscription
+            if (subscription.SubscriptionIds == null || !subscription.SubscriptionIds.Any())
+            {
+                subscription.IsActive = false;
+                subscription.Status = PaymentStatus.Refunded;
+            }
+
+            await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
+
+            _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Updated user quota for refund. UserId: {UserId}, SubscriptionId: {SubscriptionId}, IsActive: {IsActive}", 
+                userId, paymentSummary.SubscriptionId, subscription.IsActive);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Error updating user quota for refund. UserId: {UserId}", userId);
+        }
+    }
+
+    /// <summary>
+    /// Update user quota when a subscription expires
+    /// </summary>
+    private async Task UpdateUserQuotaOnExpirationAsync(Guid userId, ChatManager.UserBilling.PaymentSummary paymentSummary)
+    {
+        try
+        {
+            // Get product configuration to determine subscription type
+            var productConfig = await GetGooglePayProductConfigAsync(paymentSummary.PriceId);
+            if (productConfig == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][UpdateUserQuotaOnExpirationAsync] Product configuration not found for PriceId: {PriceId}", paymentSummary.PriceId);
+                return;
+            }
+
+            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+            var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
+
+            // Remove the subscription ID from the active list
+            if (subscription.SubscriptionIds != null && subscription.SubscriptionIds.Contains(paymentSummary.SubscriptionId))
+            {
+                subscription.SubscriptionIds.Remove(paymentSummary.SubscriptionId);
+            }
+
+            // Deactivate the subscription due to expiration
+            subscription.IsActive = false;
+            subscription.Status = PaymentStatus.Cancelled;
+
+            await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
+
+            _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnExpirationAsync] Updated user quota for expiration. UserId: {UserId}, SubscriptionId: {SubscriptionId}, IsActive: {IsActive}", 
+                userId, paymentSummary.SubscriptionId, subscription.IsActive);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][UpdateUserQuotaOnExpirationAsync] Error updating user quota for expiration. UserId: {UserId}", userId);
         }
     }
 
