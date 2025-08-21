@@ -4423,14 +4423,16 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 }
             }
             
-            // Find payment record using OriginalTransactionId (similar to Apple's approach)
-            // PurchaseToken contains the OriginalTransactionId which is the stable subscription identifier
-            // This ensures we can find the subscription regardless of which renewal transaction triggered the cancellation
+            // Find payment record using multiple matching strategies for backward compatibility
+            // 1. Try PaymentSummary level matching first (most reliable)
+            // 2. Try InvoiceDetail matching with both TransactionId and PurchaseToken (for historical data compatibility)
             var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
-                (p.OrderId == verificationResult.PurchaseToken || 
-                 p.SubscriptionId == verificationResult.PurchaseToken ||
-                 p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
+                (p.OrderId == verificationResult.PurchaseToken ||  // New format: OrderId = OriginalTransactionId
+                 p.SubscriptionId == verificationResult.PurchaseToken ||  // New format: SubscriptionId = OriginalTransactionId
+                 p.OrderId == verificationResult.TransactionId ||  // Legacy format: OrderId = TransactionId
+                 p.InvoiceDetails.Any(i => i.InvoiceId == verificationResult.TransactionId) ||  // Match by current TransactionId (always available)
+                 p.InvoiceDetails.Any(i => !string.IsNullOrEmpty(i.PurchaseToken) && i.PurchaseToken == verificationResult.PurchaseToken)));  // Match by PurchaseToken if available
             
             _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by PurchaseToken (OriginalTransactionId) {PurchaseToken}: {Found}", 
                 verificationResult.PurchaseToken, paymentSummary != null ? "Found" : "Not Found");
@@ -4605,12 +4607,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         try
         {
-            // Find existing subscription by OriginalTransactionId (similar to Apple's approach)
+            // Find existing subscription using multiple matching strategies for backward compatibility
             var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
-                (p.OrderId == verificationResult.PurchaseToken || // Try using PurchaseToken as OriginalTransactionId
-                 p.SubscriptionId == verificationResult.PurchaseToken ||
-                 p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
+                (p.OrderId == verificationResult.PurchaseToken ||  // New format: OrderId = OriginalTransactionId
+                 p.SubscriptionId == verificationResult.PurchaseToken ||  // New format: SubscriptionId = OriginalTransactionId
+                 p.OrderId == verificationResult.TransactionId ||  // Legacy format: OrderId = TransactionId (for first renewal)
+                 p.InvoiceDetails.Any(i => !string.IsNullOrEmpty(i.PurchaseToken) && i.PurchaseToken == verificationResult.PurchaseToken)));
 
             if (existingPayment == null)
             {
@@ -4738,12 +4741,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         try
         {
-            // Find payment record using OriginalTransactionId (similar to Apple's approach)
+            // Find payment record using multiple matching strategies for backward compatibility
             var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
-                (p.OrderId == verificationResult.PurchaseToken || 
-                 p.SubscriptionId == verificationResult.PurchaseToken ||
-                 p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
+                (p.OrderId == verificationResult.PurchaseToken ||  // New format: OrderId = OriginalTransactionId
+                 p.SubscriptionId == verificationResult.PurchaseToken ||  // New format: SubscriptionId = OriginalTransactionId
+                 p.OrderId == verificationResult.TransactionId ||  // Legacy format: OrderId = TransactionId
+                 p.InvoiceDetails.Any(i => i.InvoiceId == verificationResult.TransactionId) ||  // Match by current TransactionId (always available)
+                 p.InvoiceDetails.Any(i => !string.IsNullOrEmpty(i.PurchaseToken) && i.PurchaseToken == verificationResult.PurchaseToken)));  // Match by PurchaseToken if available
             
             if (paymentSummary == null)
             {
