@@ -1933,7 +1933,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
             {
                 PaymentGrainId = Guid.NewGuid(),
-                OrderId = verificationResult.PurchaseToken, // Use OriginalTransactionId for consistent subscription matching
+                OrderId = verificationResult.PurchaseToken, // Use RevenueCat's OriginalTransactionId for consistent subscription matching
                 UserId = userId,
                 PriceId = verificationResult.ProductId,
                 PlanType = (PlanType)productConfig.PlanType,
@@ -1957,10 +1957,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                         Amount = productConfig.Amount,
                         PlanType = (PlanType)productConfig.PlanType,
-                        PurchaseToken = verificationResult.PurchaseToken // Add PurchaseToken for consistent matching
+                        PurchaseToken = verificationResult.PurchaseToken // Store RevenueCat's OriginalTransactionId for subscription matching
                     }
                 },
-                SubscriptionId = verificationResult.PurchaseToken, // Use OriginalTransactionId as stable subscription identifier
+                SubscriptionId = verificationResult.PurchaseToken, // Use RevenueCat's OriginalTransactionId as stable subscription identifier
                 SubscriptionStartDate = subscriptionStartDate,
                 SubscriptionEndDate = subscriptionEndDate
             };
@@ -4423,16 +4423,19 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 }
             }
             
-            // Find payment record using multiple matching strategies for backward compatibility
-            // 1. Try PaymentSummary level matching first (most reliable)
-            // 2. Try InvoiceDetail matching with both TransactionId and PurchaseToken (for historical data compatibility)
+            // Find payment record using RevenueCat's actual fields only
+            // RevenueCat provides: transaction_id (current) and original_transaction_id (stable subscription identifier)
+            // We should use original_transaction_id as the stable subscription identifier, similar to Apple's approach
+            var originalTransactionId = verificationResult.PurchaseToken; // This is actually OriginalTransactionId from RevenueCat
+            var currentTransactionId = verificationResult.TransactionId;   // This is TransactionId from RevenueCat
+            
             var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
-                (p.OrderId == verificationResult.PurchaseToken ||  // New format: OrderId = OriginalTransactionId
-                 p.SubscriptionId == verificationResult.PurchaseToken ||  // New format: SubscriptionId = OriginalTransactionId
-                 p.OrderId == verificationResult.TransactionId ||  // Legacy format: OrderId = TransactionId
-                 p.InvoiceDetails.Any(i => i.InvoiceId == verificationResult.TransactionId) ||  // Match by current TransactionId (always available)
-                 p.InvoiceDetails.Any(i => !string.IsNullOrEmpty(i.PurchaseToken) && i.PurchaseToken == verificationResult.PurchaseToken)));  // Match by PurchaseToken if available
+                (p.OrderId == originalTransactionId ||        // OrderId stored as OriginalTransactionId (stable)
+                 p.SubscriptionId == originalTransactionId || // SubscriptionId stored as OriginalTransactionId (stable)
+                 p.OrderId == currentTransactionId ||         // Legacy: OrderId stored as current TransactionId
+                 p.InvoiceDetails.Any(i => i.InvoiceId == currentTransactionId) ||  // Always match by current TransactionId
+                 p.InvoiceDetails.Any(i => i.InvoiceId == originalTransactionId))); // Also try matching by OriginalTransactionId
             
             _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by PurchaseToken (OriginalTransactionId) {PurchaseToken}: {Found}", 
                 verificationResult.PurchaseToken, paymentSummary != null ? "Found" : "Not Found");
@@ -4607,13 +4610,16 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         try
         {
-            // Find existing subscription using multiple matching strategies for backward compatibility
+            // Find existing subscription using RevenueCat's actual fields only
+            var originalTransactionId = verificationResult.PurchaseToken; // This is actually OriginalTransactionId from RevenueCat
+            var currentTransactionId = verificationResult.TransactionId;   // This is TransactionId from RevenueCat
+            
             var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
-                (p.OrderId == verificationResult.PurchaseToken ||  // New format: OrderId = OriginalTransactionId
-                 p.SubscriptionId == verificationResult.PurchaseToken ||  // New format: SubscriptionId = OriginalTransactionId
-                 p.OrderId == verificationResult.TransactionId ||  // Legacy format: OrderId = TransactionId (for first renewal)
-                 p.InvoiceDetails.Any(i => !string.IsNullOrEmpty(i.PurchaseToken) && i.PurchaseToken == verificationResult.PurchaseToken)));
+                (p.OrderId == originalTransactionId ||        // OrderId stored as OriginalTransactionId (stable)
+                 p.SubscriptionId == originalTransactionId || // SubscriptionId stored as OriginalTransactionId (stable)
+                 p.OrderId == currentTransactionId ||         // Legacy: OrderId stored as current TransactionId
+                 p.InvoiceDetails.Any(i => i.InvoiceId == originalTransactionId))); // Original subscription InvoiceId
 
             if (existingPayment == null)
             {
@@ -4741,14 +4747,17 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         try
         {
-            // Find payment record using multiple matching strategies for backward compatibility
+            // Find payment record using RevenueCat's actual fields only
+            var originalTransactionId = verificationResult.PurchaseToken; // This is actually OriginalTransactionId from RevenueCat
+            var currentTransactionId = verificationResult.TransactionId;   // This is TransactionId from RevenueCat
+            
             var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
-                (p.OrderId == verificationResult.PurchaseToken ||  // New format: OrderId = OriginalTransactionId
-                 p.SubscriptionId == verificationResult.PurchaseToken ||  // New format: SubscriptionId = OriginalTransactionId
-                 p.OrderId == verificationResult.TransactionId ||  // Legacy format: OrderId = TransactionId
-                 p.InvoiceDetails.Any(i => i.InvoiceId == verificationResult.TransactionId) ||  // Match by current TransactionId (always available)
-                 p.InvoiceDetails.Any(i => !string.IsNullOrEmpty(i.PurchaseToken) && i.PurchaseToken == verificationResult.PurchaseToken)));  // Match by PurchaseToken if available
+                (p.OrderId == originalTransactionId ||        // OrderId stored as OriginalTransactionId (stable)
+                 p.SubscriptionId == originalTransactionId || // SubscriptionId stored as OriginalTransactionId (stable) 
+                 p.OrderId == currentTransactionId ||         // Legacy: OrderId stored as current TransactionId
+                 p.InvoiceDetails.Any(i => i.InvoiceId == currentTransactionId) ||  // Always match by current TransactionId
+                 p.InvoiceDetails.Any(i => i.InvoiceId == originalTransactionId))); // Also try matching by OriginalTransactionId
             
             if (paymentSummary == null)
             {
