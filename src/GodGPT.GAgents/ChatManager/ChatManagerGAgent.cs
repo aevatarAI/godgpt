@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using GodGPT.GAgents.DailyPush;
+using GodGPT.GAgents.DailyPush.SEvents;
 using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
@@ -1236,6 +1238,23 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 }
                 state.MaxShareCount = initializeNewUserStatusLogEvent.MaxShareCount;
                 break;
+            case RegisterOrUpdateDeviceEventLog registerDeviceEvent:
+                // Remove old token mapping if token changed
+                if (!string.IsNullOrEmpty(registerDeviceEvent.OldPushToken))
+                {
+                    state.TokenToDeviceMap.Remove(registerDeviceEvent.OldPushToken);
+                }
+                
+                // Update device info and token mapping
+                state.UserDevices[registerDeviceEvent.DeviceId] = registerDeviceEvent.DeviceInfo;
+                if (!string.IsNullOrEmpty(registerDeviceEvent.DeviceInfo.PushToken))
+                {
+                    state.TokenToDeviceMap[registerDeviceEvent.DeviceInfo.PushToken] = registerDeviceEvent.DeviceId;
+                }
+                break;
+            case MarkDailyPushReadEventLog markReadEvent:
+                state.DailyPushReadStatus[markReadEvent.DateKey] = true;
+                break;
         }   
     }
 
@@ -1343,4 +1362,234 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             return string.Empty;
         }
     }
+
+    // === Daily Push Notification Methods ===
+
+    public async Task<bool> RegisterOrUpdateDeviceAsync(DeviceRequest request)
+    {
+        var isNewDevice = !State.UserDevices.ContainsKey(request.DeviceId);
+        var deviceInfo = isNewDevice ? new GodGPT.GAgents.DailyPush.UserDeviceInfo() : 
+            new GodGPT.GAgents.DailyPush.UserDeviceInfo
+            {
+                DeviceId = State.UserDevices[request.DeviceId].DeviceId,
+                PushToken = State.UserDevices[request.DeviceId].PushToken,
+                TimeZoneId = State.UserDevices[request.DeviceId].TimeZoneId,
+                PushLanguage = State.UserDevices[request.DeviceId].PushLanguage,
+                PushEnabled = State.UserDevices[request.DeviceId].PushEnabled,
+                RegisteredAt = State.UserDevices[request.DeviceId].RegisteredAt,
+                LastTokenUpdate = State.UserDevices[request.DeviceId].LastTokenUpdate
+            };
+        
+        // Store old values for cleanup and change detection
+        var oldPushToken = deviceInfo.PushToken;
+        var oldTimeZone = deviceInfo.TimeZoneId;
+        
+        // Update device information
+        deviceInfo.DeviceId = request.DeviceId;
+        if (!string.IsNullOrEmpty(request.PushToken))
+        {
+            deviceInfo.PushToken = request.PushToken;
+            deviceInfo.LastTokenUpdate = DateTime.UtcNow;
+        }
+        if (!string.IsNullOrEmpty(request.TimeZoneId))
+            deviceInfo.TimeZoneId = request.TimeZoneId;
+        if (!string.IsNullOrEmpty(request.PushLanguage))
+            deviceInfo.PushLanguage = request.PushLanguage;
+        if (request.PushEnabled.HasValue)
+            deviceInfo.PushEnabled = request.PushEnabled.Value;
+        
+        if (isNewDevice)
+        {
+            deviceInfo.RegisteredAt = DateTime.UtcNow;
+        }
+        
+        // Use event-driven state update
+        RaiseEvent(new RegisterOrUpdateDeviceEventLog
+        {
+            DeviceId = request.DeviceId,
+            DeviceInfo = deviceInfo,
+            IsNewDevice = isNewDevice,
+            OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
+        });
+        
+        await ConfirmEvents();
+        
+        // Synchronize timezone index if timezone changed
+        var newTimeZone = deviceInfo.TimeZoneId;
+        if (!string.IsNullOrEmpty(newTimeZone) && oldTimeZone != newTimeZone)
+        {
+            await UpdateTimezoneIndexAsync(oldTimeZone, newTimeZone);
+        }
+        
+        Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {request.DeviceId}");
+        return isNewDevice;
+    }
+
+    public async Task MarkPushAsReadAsync(string pushToken)
+    {
+        if (State.TokenToDeviceMap.TryGetValue(pushToken, out var deviceId))
+        {
+            var dateKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            
+            // Use event-driven state update
+            RaiseEvent(new MarkDailyPushReadEventLog
+            {
+                DateKey = dateKey,
+                ReadTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
+            
+            Logger.LogInformation($"Marked daily push as read for device: {deviceId} on {dateKey}");
+        }
+        else
+        {
+            Logger.LogWarning($"Device not found for push token: {pushToken}");
+        }
+    }
+
+    public async Task<GodGPT.GAgents.DailyPush.UserDeviceInfo?> GetDeviceStatusAsync(string deviceId)
+    {
+
+        return State.UserDevices.TryGetValue(deviceId, out var device) ? device : null;
+    }
+
+    public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
+    {
+
+        return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
+    }
+
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
+    {
+        var dateKey = targetDate.ToString("yyyy-MM-dd");
+        if (State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead)
+        {
+            Logger.LogDebug($"Daily push already read for {dateKey}, skipping");
+            return;
+        }
+        
+        // Only process devices in the specified timezone
+        var enabledDevices = State.UserDevices.Values
+            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId)
+            .ToList();
+        if (enabledDevices.Count == 0)
+        {
+            Logger.LogDebug("No enabled devices for daily push");
+            return;
+        }
+        
+        // Send push notifications via Firebase FCM
+        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+        if (firebaseService == null)
+        {
+            Logger.LogError("FirebaseService not available for push notifications");
+            return;
+        }
+        
+        var successCount = 0;
+        var failureCount = 0;
+        
+        // Create push notifications for each device (one push per device with multiple contents)
+        var pushTasks = enabledDevices.Select(async device =>
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(device.PushToken))
+                {
+                    Logger.LogWarning($"Device {device.DeviceId} has empty push token, skipping");
+                    return false;
+                }
+                
+                // Send only the first content as main push notification
+                // Additional contents can be included in the data payload
+                var firstContent = contents.FirstOrDefault();
+                if (firstContent == null)
+                {
+                    Logger.LogWarning($"No content available for device {device.DeviceId}");
+                    return false;
+                }
+                
+                var localizedContent = firstContent.GetLocalizedContent(device.PushLanguage);
+                
+                // Include all content IDs in the data payload for app to handle
+                var pushData = new Dictionary<string, object>
+                {
+                    ["type"] = "daily_push",
+                    ["date"] = dateKey,
+                    ["content_ids"] = string.Join(",", contents.Select(c => c.Id)),
+                    ["device_id"] = device.DeviceId,
+                    ["total_contents"] = contents.Count
+                };
+                
+                var success = await firebaseService.SendPushNotificationAsync(
+                    device.PushToken,
+                    localizedContent.Title,
+                    $"{localizedContent.Content} (+{contents.Count - 1} more)",
+                    pushData);
+                
+                if (success)
+                {
+                    Logger.LogDebug($"Daily push sent successfully to device {device.DeviceId}");
+                    return true;
+                }
+                else
+                {
+                    Logger.LogWarning($"Failed to send daily push to device {device.DeviceId}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, $"Error sending daily push to device {device.DeviceId}");
+                return false;
+            }
+        });
+        
+        // Execute all push tasks concurrently
+        var results = await Task.WhenAll(pushTasks);
+        successCount = results.Count(r => r);
+        failureCount = results.Count(r => !r);
+        
+        Logger.LogInformation($"Processed daily push: {successCount} success, {failureCount} failures for {enabledDevices.Count} devices");
+    }
+
+    public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
+    {
+
+        
+        var dateKey = targetDate.ToString("yyyy-MM-dd");
+        var isRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var readStatus) && readStatus;
+        
+        return !isRead && State.UserDevices.Values.Any(d => d.PushEnabled);
+    }
+
+    public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
+    {
+        try
+        {
+            // Remove user from old timezone index
+            if (!string.IsNullOrEmpty(oldTimeZone))
+            {
+                var oldIndexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(oldTimeZone);
+                await oldIndexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
+                Logger.LogDebug($"Removed user {State.UserId} from timezone index: {oldTimeZone}");
+            }
+            
+            // Add user to new timezone index
+            if (!string.IsNullOrEmpty(newTimeZone))
+            {
+                var newIndexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(newTimeZone);
+                await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
+                Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");
+            }
+            
+            Logger.LogInformation($"Updated timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to update timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
+        }
+    }
+
 }

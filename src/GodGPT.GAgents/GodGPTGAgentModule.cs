@@ -8,6 +8,7 @@ using Volo.Abp.Modularity;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using GodGPT.GAgents.Awakening.Options;
 using GodGPT.GAgents.SpeechChat;
+using GodGPT.GAgents.DailyPush;
 using Microsoft.Extensions.Configuration;
 
 namespace Aevatar.Application.Grains;
@@ -34,8 +35,14 @@ public class GodGPTGAgentModule : AbpModule
         Configure<AwakeningOptions>(configuration.GetSection("Awakening"));
 
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
+        
         // Register speech services
         context.Services.AddSingleton<ISpeechService, SpeechService>();
+        
+        // Register daily push services
+        context.Services.AddSingleton<DailyPushRedisService>();
+        context.Services.AddSingleton<FirebaseService>();
+        
         context.Services.AddHttpClient();
     }
 }

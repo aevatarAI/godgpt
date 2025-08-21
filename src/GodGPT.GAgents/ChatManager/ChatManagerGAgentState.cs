@@ -1,6 +1,7 @@
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AIGAgent.State;
 using GodGPT.GAgents.SpeechChat;
+using GodGPT.GAgents.DailyPush;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
@@ -35,6 +36,22 @@ public class ChatManagerGAgentState : AIGAgentStateBase
     
     [Id(11)] public Guid? InviterId { get; set; }
     [Id(12)] public VoiceLanguageEnum VoiceLanguage { get; set; } = VoiceLanguageEnum.Unset;
+    
+    // === Daily Push Notification Fields ===
+    /// <summary>
+    /// User devices for daily push notifications (key: deviceId)
+    /// </summary>
+    [Id(13)] public Dictionary<string, UserDeviceInfo> UserDevices { get; set; } = new();
+
+    /// <summary>
+    /// Mapping from pushToken to deviceId for efficient lookup when token changes
+    /// </summary>
+    [Id(14)] public Dictionary<string, string> TokenToDeviceMap { get; set; } = new();
+
+    /// <summary>
+    /// Daily push read status for current user (key: yyyy-MM-dd)
+    /// </summary>
+    [Id(15)] public Dictionary<string, bool> DailyPushReadStatus { get; set; } = new();
 
     public SessionInfo? GetSession(Guid sessionId)
     {
