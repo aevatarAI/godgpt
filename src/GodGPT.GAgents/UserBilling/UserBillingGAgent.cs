@@ -4914,11 +4914,18 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
             var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
 
+            // Apply the same refund logic as Apple Pay: rollback subscription days
+            var diff = GetDaysForPlanType(paymentSummary.PlanType);
+            subscription.EndDate = subscription.EndDate.AddDays(-diff);
+            
             // Remove the subscription ID from the active list
             if (subscription.SubscriptionIds != null && subscription.SubscriptionIds.Contains(paymentSummary.SubscriptionId))
             {
                 subscription.SubscriptionIds.Remove(paymentSummary.SubscriptionId);
             }
+
+            // Reset plan type to the highest active plan (same as Apple's logic)
+            subscription.PlanType = await GetMaxPlanTypeAsync(DateTime.UtcNow, productConfig.IsUltimate);
 
             // If no more active subscription IDs, deactivate the subscription
             if (subscription.SubscriptionIds == null || !subscription.SubscriptionIds.Any())
@@ -4928,9 +4935,25 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             }
 
             await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
+            
+            // Handle Ultimate subscription adjustment (same as Apple's logic)
+            if (productConfig.IsUltimate)
+            {
+                var diffTimeSpan = (invoiceDetail.SubscriptionEndDate - DateTime.UtcNow);
+                if (diffTimeSpan.TotalMilliseconds > 0)
+                {
+                    var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
+                    if (premiumSubscription.IsActive)
+                    {
+                        premiumSubscription.StartDate = premiumSubscription.StartDate.Add(-diffTimeSpan);
+                        premiumSubscription.EndDate = premiumSubscription.EndDate.Add(-diffTimeSpan);
+                        await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
+                    }
+                }
+            }
 
-            _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Updated user quota for refund. UserId: {UserId}, SubscriptionId: {SubscriptionId}, IsActive: {IsActive}", 
-                userId, paymentSummary.SubscriptionId, subscription.IsActive);
+            _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Applied refund rollback consistent with Apple Pay. UserId: {UserId}, SubscriptionId: {SubscriptionId}, RolledBackDays: {Days}, EndDate: {EndDate}, IsActive: {IsActive}", 
+                userId, paymentSummary.SubscriptionId, diff, subscription.EndDate, subscription.IsActive);
         }
         catch (Exception ex)
         {
