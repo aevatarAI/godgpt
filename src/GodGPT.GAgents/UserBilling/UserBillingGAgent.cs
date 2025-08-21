@@ -4275,15 +4275,30 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Processing RevenueCat event: {EventType} for user {UserId}, TransactionId: {TransactionId}", 
                 eventType, userId, verificationResult.TransactionId);
 
-            // Check for duplicate processing using transaction ID
-            // Only check for existing InvoiceDetail with the same TransactionId to avoid false duplicates
-            var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
-                p.Platform == PaymentPlatform.GooglePlay && 
-                p.InvoiceDetails.Any(i => i.InvoiceId == verificationResult.TransactionId));
+            // Check for duplicate processing - different logic for different event types
+            bool isDuplicate = false;
             
-            if (existingPayment != null)
+            if (eventType == RevenueCatWebhookEventTypes.INITIAL_PURCHASE || 
+                eventType == RevenueCatWebhookEventTypes.RENEWAL)
             {
-                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Duplicate transaction detected, skipping. TransactionId: {TransactionId}", verificationResult.TransactionId);
+                // For creation events: check if InvoiceDetail with same TransactionId already exists
+                var existingInvoice = State.PaymentHistory?.FirstOrDefault(p => 
+                    p.Platform == PaymentPlatform.GooglePlay && 
+                    p.InvoiceDetails.Any(i => i.InvoiceId == verificationResult.TransactionId));
+                
+                if (existingInvoice != null)
+                {
+                    isDuplicate = true;
+                    _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Duplicate creation event detected for {EventType}, TransactionId: {TransactionId}", 
+                        eventType, verificationResult.TransactionId);
+                }
+            }
+            // For status update events (CANCELLATION, REFUND, EXPIRATION): 
+            // Allow them to proceed - they should update existing records, not create new ones
+            // The specific handler methods will determine if the update is needed
+            
+            if (isDuplicate)
+            {
                 return true; // Return success to avoid retries
             }
 
