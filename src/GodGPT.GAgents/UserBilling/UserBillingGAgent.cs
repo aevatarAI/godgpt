@@ -1912,22 +1912,22 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         if (existingPayment != null)
         {
             // Check if this specific transaction already exists
-            var existingInvoice = existingPayment.InvoiceDetails.FirstOrDefault(i => i.InvoiceId == transactionId);
+            var existingInvoice = existingPayment.InvoiceDetails.FirstOrDefault(i => i.InvoiceId == currentTransactionId);
             
             if (existingInvoice != null)
             {
-                _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Transaction already processed: {TransactionId}", transactionId);
+                _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Transaction already processed: {TransactionId}", currentTransactionId);
                 return existingPayment; // Duplicate transaction, return existing
             }
             
             // This should not happen for INITIAL_PURCHASE - it suggests incorrect event routing
             _logger.LogWarning("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Found existing payment for INITIAL_PURCHASE event. This may indicate event routing issue. TransactionId: {TransactionId}, ExistingOrderId: {OrderId}", 
-                transactionId, existingPayment.OrderId);
+                currentTransactionId, existingPayment.OrderId);
             
             // For safety, add new invoice detail instead of updating existing ones
             var newInvoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
             {
-                InvoiceId = transactionId,
+                InvoiceId = currentTransactionId,
                 PriceId = verificationResult.ProductId,
                 Status = PaymentStatus.Completed,
                 CreatedAt = DateTime.UtcNow,
@@ -1949,7 +1949,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         else
         {
-            _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Creating new Google Pay payment for transaction: {TransactionId}", transactionId);
+            _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Creating new Google Pay payment for transaction: {TransactionId}", currentTransactionId);
 
             var subscriptionStartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow;
             var subscriptionEndDate = verificationResult.SubscriptionEndDate ?? 
@@ -1972,7 +1972,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 {
                     new UserBillingInvoiceDetail
                     {
-                        InvoiceId = transactionId, // Current transaction ID for invoice details
+                        InvoiceId = currentTransactionId, // Current transaction ID for invoice details
                         PriceId = verificationResult.ProductId,
                         Status = PaymentStatus.Completed,
                         CreatedAt = DateTime.UtcNow,
