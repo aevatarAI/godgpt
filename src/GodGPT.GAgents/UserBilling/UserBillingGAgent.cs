@@ -1691,7 +1691,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
             {
                 PaymentGrainId = Guid.NewGuid(),
-                OrderId = verificationResult.TransactionId,
+                OrderId = verificationResult.PurchaseToken, // Use OriginalTransactionId (PurchaseToken) for consistent subscription identification
                 UserId = userId,
                 PriceId = verificationResult.ProductId,
                 PlanType = (PlanType)productConfig.PlanType,
@@ -1703,7 +1703,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 Status = PaymentStatus.Completed,
                 PaymentType = paymentType,
                 Platform = PaymentPlatform.GooglePlay,
-                SubscriptionId = verificationResult.TransactionId, // Using OrderId as subscription identifier
+                SubscriptionId = verificationResult.PurchaseToken, // Use OriginalTransactionId (PurchaseToken) as stable subscription identifier, similar to Apple's approach
                 SubscriptionStartDate = subscriptionStartDate,
                 SubscriptionEndDate = subscriptionEndDate
             };
@@ -3530,20 +3530,25 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 case PaymentPlatform.Stripe:
                     result.HasActiveStripeSubscription = true;
                     break;
+                case PaymentPlatform.GooglePlay:
+                    result.HasActiveGooglePlaySubscription = true;
+                    break;
             }
             
-            // Early termination: if both platforms have active subscriptions, no need to continue
-            if (result.HasActiveAppleSubscription && result.HasActiveStripeSubscription)
+            // Early termination: if all platforms have active subscriptions, no need to continue
+            if (result.HasActiveAppleSubscription && result.HasActiveStripeSubscription && result.HasActiveGooglePlaySubscription)
             {
                 break;
             }
         }
         
-        // Set overall subscription status
-        result.HasActiveSubscription = result.HasActiveAppleSubscription || result.HasActiveStripeSubscription;
+        // Set overall subscription status (include all supported platforms)
+        result.HasActiveSubscription = result.HasActiveAppleSubscription || 
+                                     result.HasActiveStripeSubscription || 
+                                     result.HasActiveGooglePlaySubscription;
         
-        _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Apple: {Apple}, Stripe: {Stripe}, Overall: {Overall}", 
-            result.HasActiveAppleSubscription, result.HasActiveStripeSubscription, result.HasActiveSubscription);
+        _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Apple: {Apple}, Stripe: {Stripe}, GooglePlay: {GooglePlay}, Overall: {Overall}", 
+            result.HasActiveAppleSubscription, result.HasActiveStripeSubscription, result.HasActiveGooglePlaySubscription, result.HasActiveSubscription);
             
         return result;
     }
@@ -4349,16 +4354,17 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing {EventType} for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, CancelReason: {CancelReason}", 
             eventType, userId, verificationResult.TransactionId, verificationResult.PurchaseToken, ExtractCancelReason(verificationResult));
 
-        // Find payment record using the same logic as subscription creation
-        // Since OrderId and SubscriptionId are both stored as verificationResult.TransactionId during creation,
-        // we should search using the same TransactionId value
+        // Find payment record using OriginalTransactionId (similar to Apple's approach)
+        // PurchaseToken contains the OriginalTransactionId which is the stable subscription identifier
+        // This ensures we can find the subscription regardless of which renewal transaction triggered the cancellation
         var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
             p.Platform == PaymentPlatform.GooglePlay && 
-            (p.OrderId == verificationResult.TransactionId || 
-             p.SubscriptionId == verificationResult.TransactionId));
+            (p.OrderId == verificationResult.PurchaseToken || 
+             p.SubscriptionId == verificationResult.PurchaseToken ||
+             p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
         
-        _logger.LogDebug("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by TransactionId {TransactionId}: {Found}", 
-            verificationResult.TransactionId, paymentSummary != null ? "Found" : "Not Found");
+        _logger.LogDebug("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by PurchaseToken (OriginalTransactionId) {PurchaseToken}: {Found}", 
+            verificationResult.PurchaseToken, paymentSummary != null ? "Found" : "Not Found");
 
         if (paymentSummary != null)
         {
@@ -4518,6 +4524,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
                 (p.OrderId == verificationResult.PurchaseToken || // Try using PurchaseToken as OriginalTransactionId
+                 p.SubscriptionId == verificationResult.PurchaseToken ||
                  p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
 
             if (existingPayment == null)

@@ -221,12 +221,12 @@ public class GooglePayWebhookHandler : IWebhookHandler
         return new PaymentVerificationResultDto
         {
             IsValid = true,
-            TransactionId = eventData.TransactionId ?? eventData.OriginalTransactionId,
+            TransactionId = eventData.TransactionId ?? eventData.OriginalTransactionId, // Current transaction ID for invoice details
             ProductId = eventData.ProductId, // This is already in key1:key2 format from RevenueCat
             SubscriptionStartDate = purchaseDate,
             SubscriptionEndDate = expirationDate,
             Platform = PaymentPlatform.GooglePlay,
-            PurchaseToken = eventData.OriginalTransactionId ?? eventData.TransactionId, // Use OriginalTransactionId for subscription matching
+            PurchaseToken = eventData.OriginalTransactionId ?? eventData.TransactionId, // Use OriginalTransactionId for subscription matching - this is the stable identifier
             Message = $"RevenueCat webhook verification successful. CancelReason: {eventData.CancelReason}, Price: {eventData.PriceInPurchasedCurrency} {eventData.Currency}",
             PaymentState = 1, // Purchased state
             AutoRenewing = eventData.PeriodType == "NORMAL",

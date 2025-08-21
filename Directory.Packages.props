@@ -7,6 +7,8 @@
 <!--    <AevatarGAgentVerion>1.4.17</AevatarGAgentVerion>-->
     <AevatarVerion>1.5.2</AevatarVerion>
     <AevatarGAgentVerion>1.5.4</AevatarGAgentVerion>
+    <!-- Suppress package dependency warnings for third-party packages -->
+    <NoWarn>$(NoWarn);NU1603</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- GodGPT -->
@@ -49,8 +51,12 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="9.0.2" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite.Core" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.32.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.32.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.57.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.57.0" />
+    <!-- Override to suppress NU1603 warnings from Aevatar.GAgents.SemanticKernel -->
+    <PackageVersion Include="Microsoft.SemanticKernel.Abstractions" Version="1.57.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.AI.OpenAI" Version="1.57.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Functions.OpenAPI" Version="1.57.0" />
     <PackageVersion Include="NJsonSchema" Version="11.1.0" />
     <PackageVersion Include="OpenAI.API" Version="1.0.0" />
     <PackageVersion Include="Orleans.SyncWork" Version="8.1.12" />
