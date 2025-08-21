@@ -4272,19 +4272,48 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     {
         try
         {
-            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Processing RevenueCat event: {EventType} for user {UserId}, TransactionId: {TransactionId}", 
-                eventType, userId, verificationResult.TransactionId);
+                    _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Processing RevenueCat event: {EventType} for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}", 
+            eventType, userId, verificationResult.TransactionId, verificationResult.PurchaseToken, verificationResult.PriceInPurchasedCurrency);
 
-            // Check for duplicate processing using transaction ID
-            var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
+        // Check for duplicate processing - different logic for different event types
+        bool isDuplicate = false;
+        
+        if (eventType == RevenueCatWebhookEventTypes.INITIAL_PURCHASE || 
+            eventType == RevenueCatWebhookEventTypes.RENEWAL)
+        {
+            // For creation events: check if InvoiceDetail with same TransactionId already exists
+            var existingInvoice = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
-                (p.OrderId == verificationResult.TransactionId || p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.TransactionId)));
+                p.InvoiceDetails.Any(i => i.InvoiceId == verificationResult.TransactionId));
             
-            if (existingPayment != null)
+            if (existingInvoice != null)
             {
-                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Duplicate transaction detected, skipping. TransactionId: {TransactionId}", verificationResult.TransactionId);
-                return true; // Return success to avoid retries
+                isDuplicate = true;
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Duplicate creation event detected for {EventType}, TransactionId: {TransactionId}", 
+                    eventType, verificationResult.TransactionId);
             }
+            else
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] No duplicate found for creation event {EventType}, TransactionId: {TransactionId}", 
+                    eventType, verificationResult.TransactionId);
+            }
+        }
+        else
+        {
+            // For status update events (CANCELLATION, REFUND, EXPIRATION): 
+            // Allow them to proceed - they should update existing records, not create new ones
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Status update event {EventType} - skipping duplicate check, allowing through", eventType);
+        }
+        
+        if (isDuplicate)
+        {
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Skipping duplicate event {EventType}, TransactionId: {TransactionId}", 
+                eventType, verificationResult.TransactionId);
+            return true; // Return success to avoid retries
+        }
+
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Proceeding to process event {EventType}, TransactionId: {TransactionId}", 
+            eventType, verificationResult.TransactionId);
 
             // Process based on event type
             switch (eventType)
@@ -4323,14 +4352,19 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     
                 case RevenueCatWebhookEventTypes.CANCELLATION:
                     // Handle CANCELLATION: distinguish between cancellation (Price=0) and refund (Price<0)
+                    _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Processing CANCELLATION event - Price: {Price}", 
+                        verificationResult.PriceInPurchasedCurrency);
+                    
                     if (verificationResult.PriceInPurchasedCurrency.HasValue && verificationResult.PriceInPurchasedCurrency.Value < 0)
                     {
                         // This is a refund (negative price)
+                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Routing to ProcessRevenueCatRefundAsync for refund (Price < 0)");
                         await ProcessRevenueCatRefundAsync(userId, verificationResult);
                     }
                     else
                     {
                         // This is a subscription cancellation (Price=0 or null)
+                        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatWebhookEventAsync] Routing to ProcessRevenueCatCancellationAsync for cancellation (Price = 0 or null)");
                         await ProcessRevenueCatCancellationAsync(userId, verificationResult);
                     }
                     break;
@@ -4360,40 +4394,75 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
-    private async Task ProcessRevenueCatCancellationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
+        private async Task ProcessRevenueCatCancellationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
-        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing subscription cancellation for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}", 
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing subscription cancellation for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}",
             userId, verificationResult.TransactionId, verificationResult.PurchaseToken, verificationResult.PriceInPurchasedCurrency);
 
-        // Find payment record using OriginalTransactionId (similar to Apple's approach)
-        // PurchaseToken contains the OriginalTransactionId which is the stable subscription identifier
-        // This ensures we can find the subscription regardless of which renewal transaction triggered the cancellation
-        var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
-            p.Platform == PaymentPlatform.GooglePlay && 
-            (p.OrderId == verificationResult.PurchaseToken || 
-             p.SubscriptionId == verificationResult.PurchaseToken ||
-             p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
-        
-        _logger.LogDebug("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by PurchaseToken (OriginalTransactionId) {PurchaseToken}: {Found}", 
-            verificationResult.PurchaseToken, paymentSummary != null ? "Found" : "Not Found");
+        try
+        {
+            // Debug: Log current payment history
+            var googlePlayPayments = State.PaymentHistory?.Where(p => p.Platform == PaymentPlatform.GooglePlay).ToList() ?? new List<PaymentSummary>();
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Found {Count} Google Play payments in history", googlePlayPayments.Count);
+            
+            foreach (var payment in googlePlayPayments)
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Existing Payment - OrderId: {OrderId}, SubscriptionId: {SubscriptionId}, Status: {Status}, InvoiceCount: {InvoiceCount}",
+                    payment.OrderId, payment.SubscriptionId, payment.Status, payment.InvoiceDetails.Count);
+                
+                foreach (var invoice in payment.InvoiceDetails)
+                {
+                    _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] - Invoice: InvoiceId={InvoiceId}, PurchaseToken={PurchaseToken}, Status={Status}",
+                        invoice.InvoiceId, invoice.PurchaseToken, invoice.Status);
+                }
+            }
+            
+            // Find payment record using OriginalTransactionId (similar to Apple's approach)
+            // PurchaseToken contains the OriginalTransactionId which is the stable subscription identifier
+            // This ensures we can find the subscription regardless of which renewal transaction triggered the cancellation
+            var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
+                p.Platform == PaymentPlatform.GooglePlay && 
+                (p.OrderId == verificationResult.PurchaseToken || 
+                 p.SubscriptionId == verificationResult.PurchaseToken ||
+                 p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
+            
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by PurchaseToken (OriginalTransactionId) {PurchaseToken}: {Found}", 
+                verificationResult.PurchaseToken, paymentSummary != null ? "Found" : "Not Found");
 
         if (paymentSummary != null)
         {
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Found PaymentSummary - OrderId: {OrderId}, SubscriptionId: {SubscriptionId}, Status: {Status}, InvoiceCount: {InvoiceCount}", 
+                paymentSummary.OrderId, paymentSummary.SubscriptionId, paymentSummary.Status, paymentSummary.InvoiceDetails.Count);
+            
             // Find specific invoice detail using the same logic as creation
             // Since InvoiceId is stored as verificationResult.TransactionId during creation,
             // we should search using the same TransactionId value
             var invoiceDetail = paymentSummary.InvoiceDetails.FirstOrDefault(i => i.InvoiceId == verificationResult.TransactionId);
             
-            _logger.LogDebug("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Looking for invoice with InvoiceId {TransactionId} in {InvoiceCount} invoices: {Found}", 
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Looking for invoice with InvoiceId {TransactionId} in {InvoiceCount} invoices: {Found}", 
                 verificationResult.TransactionId, paymentSummary.InvoiceDetails.Count, invoiceDetail != null ? "Found" : "Not Found");
+                
+            if (invoiceDetail == null && paymentSummary.InvoiceDetails.Count > 0)
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Available InvoiceIds: {InvoiceIds}", 
+                    string.Join(", ", paymentSummary.InvoiceDetails.Select(i => i.InvoiceId)));
+            }
             
             if (invoiceDetail != null)
             {
                 var oldStatus = invoiceDetail.Status;
+                var oldPaymentSummaryStatus = paymentSummary.Status;
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Before update - InvoiceDetail.Status: {OldInvoiceStatus}, PaymentSummary.Status: {OldPaymentStatus}", 
+                    oldStatus, oldPaymentSummaryStatus);
+                
                 // Set status to Cancelled for subscription cancellation
                 invoiceDetail.Status = PaymentStatus.Cancelled;
                 paymentSummary.Status = PaymentStatus.Cancelled;
 
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] After update - InvoiceDetail.Status: {NewInvoiceStatus}, PaymentSummary.Status: {NewPaymentStatus}", 
+                    invoiceDetail.Status, paymentSummary.Status);
+                    
                 _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Updated payment status from {OldStatus} to {NewStatus} for transaction {TransactionId}", 
                     oldStatus, PaymentStatus.Cancelled, verificationResult.TransactionId);
 
@@ -4418,12 +4487,19 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     // No additional processing needed for regular cancellation
                 }
 
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Raising UpdatePaymentLogEvent for PaymentId: {PaymentId}", 
+                    paymentSummary.PaymentGrainId);
+                    
                 RaiseEvent(new UpdatePaymentLogEvent
                 {
                     PaymentId = paymentSummary.PaymentGrainId,
                     PaymentSummary = paymentSummary
                 });
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Confirming events...");
                 await ConfirmEvents();
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Events confirmed successfully");
             }
             else
             {
@@ -4435,6 +4511,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Could not find payment record for user {UserId}. TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}", 
                 userId, verificationResult.TransactionId, verificationResult.PurchaseToken);
+        }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Error processing cancellation for user {UserId}, TransactionId: {TransactionId}", 
+                userId, verificationResult.TransactionId);
+            throw;
         }
     }
 
