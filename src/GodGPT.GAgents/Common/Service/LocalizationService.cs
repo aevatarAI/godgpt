@@ -164,7 +164,7 @@ public class LocalizationService : ILocalizationService
                 ["zh-tw.TranscriptUnavailable"] = "轉錄不可用",
                 ["zh-tw.SpeechServiceUnavailable"] = "語音識別服務不可用",
                 ["zh-tw.AudioFormatUnsupported"] = "音頻文件損壞或格式不受支持",
-                ["zh-tw.LanguageNotRecognised"] = "語言無法識別。請在選定的語言中重試。",
+                ["zh-tw.LanguageNotRecognised"] = "抱歉,語言未被識別。請使用所選語言再次嘗試。",
                 ["zh-tw.FailedGetUserInfo"] = "無法獲取用戶資訊。",
                 ["zh-tw.ChatRateLimit"] = "訊息已達上限。請稍後再試。",
                 ["zh-tw.VoiceChatRateLimit"] = "語音訊息已達上限。請稍後再試。",
