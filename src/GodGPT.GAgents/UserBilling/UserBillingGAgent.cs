@@ -1896,9 +1896,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
         var transactionId = verificationResult.TransactionId;
+        // Use consistent lookup logic: check both TransactionId and PurchaseToken (OriginalTransactionId) 
+        // to ensure we can find existing payments regardless of which ID was used during creation
         var existingPayment = State.PaymentHistory.FirstOrDefault(p => 
             p.Platform == PaymentPlatform.GooglePlay && 
-            p.OrderId == transactionId);
+            (p.OrderId == transactionId || 
+             p.OrderId == verificationResult.PurchaseToken || 
+             p.SubscriptionId == verificationResult.PurchaseToken ||
+             p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
 
         var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
 
@@ -1928,7 +1933,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
             {
                 PaymentGrainId = Guid.NewGuid(),
-                OrderId = transactionId,
+                OrderId = verificationResult.PurchaseToken, // Use OriginalTransactionId for consistent subscription matching
                 UserId = userId,
                 PriceId = verificationResult.ProductId,
                 PlanType = (PlanType)productConfig.PlanType,
@@ -1942,7 +1947,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 {
                     new UserBillingInvoiceDetail
                     {
-                        InvoiceId = transactionId,
+                        InvoiceId = transactionId, // Current transaction ID for invoice details
                         PriceId = verificationResult.ProductId,
                         Status = PaymentStatus.Completed,
                         CreatedAt = DateTime.UtcNow,
@@ -1951,10 +1956,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         SubscriptionEndDate = subscriptionEndDate,
                         MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                         Amount = productConfig.Amount,
-                        PlanType = (PlanType)productConfig.PlanType
+                        PlanType = (PlanType)productConfig.PlanType,
+                        PurchaseToken = verificationResult.PurchaseToken // Add PurchaseToken for consistent matching
                     }
                 },
-                SubscriptionId = $"gp_web_{verificationResult.ProductId}_{userId}",
+                SubscriptionId = verificationResult.PurchaseToken, // Use OriginalTransactionId as stable subscription identifier
                 SubscriptionStartDate = subscriptionStartDate,
                 SubscriptionEndDate = subscriptionEndDate
             };
