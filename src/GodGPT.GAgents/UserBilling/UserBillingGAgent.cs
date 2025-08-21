@@ -1909,14 +1909,37 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         if (existingPayment != null)
         {
-            _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Updating existing Google Pay payment for transaction: {TransactionId}", transactionId);
+            // Check if this specific transaction already exists
+            var existingInvoice = existingPayment.InvoiceDetails.FirstOrDefault(i => i.InvoiceId == transactionId);
             
-            // Update existing payment status
-            existingPayment.InvoiceDetails.ForEach(detail => 
+            if (existingInvoice != null)
             {
-                detail.Status = PaymentStatus.Completed;
-                detail.CompletedAt = DateTime.UtcNow;
-            });
+                _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Transaction already processed: {TransactionId}", transactionId);
+                return existingPayment; // Duplicate transaction, return existing
+            }
+            
+            // This should not happen for INITIAL_PURCHASE - it suggests incorrect event routing
+            _logger.LogWarning("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Found existing payment for INITIAL_PURCHASE event. This may indicate event routing issue. TransactionId: {TransactionId}, ExistingOrderId: {OrderId}", 
+                transactionId, existingPayment.OrderId);
+            
+            // For safety, add new invoice detail instead of updating existing ones
+            var newInvoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
+            {
+                InvoiceId = transactionId,
+                PriceId = verificationResult.ProductId,
+                Status = PaymentStatus.Completed,
+                CreatedAt = DateTime.UtcNow,
+                CompletedAt = DateTime.UtcNow,
+                SubscriptionStartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow,
+                SubscriptionEndDate = verificationResult.SubscriptionEndDate ?? DateTime.UtcNow.AddDays(30),
+                MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
+                Amount = productConfig.Amount,
+                PlanType = (PlanType)productConfig.PlanType,
+                PurchaseToken = verificationResult.PurchaseToken
+            };
+            
+            existingPayment.InvoiceDetails.Add(newInvoiceDetail);
+            existingPayment.SubscriptionEndDate = newInvoiceDetail.SubscriptionEndDate;
             
             RaiseEvent(new UpdatePaymentLogEvent { PaymentId = existingPayment.PaymentGrainId, PaymentSummary = existingPayment });
             await ConfirmEvents();
