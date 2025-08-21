@@ -25,7 +25,7 @@ public abstract class AevatarTestBase<TStartupModule> : AbpIntegratedTest<TStart
         var builder = new ConfigurationBuilder();
         
         // Use in-memory configuration for testing - no external file dependency
-        var testConfiguration = new Dictionary<string, string>
+        var testConfiguration = new Dictionary<string, string?>
         {
             // MongoDB connection
             ["ConnectionStrings:Default"] = "mongodb://127.0.0.1:27017/TestAevatar",
