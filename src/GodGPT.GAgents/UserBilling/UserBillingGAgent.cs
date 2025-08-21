@@ -1895,15 +1895,17 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
-        var transactionId = verificationResult.TransactionId;
-        // Use consistent lookup logic: check both TransactionId and PurchaseToken (OriginalTransactionId) 
-        // to ensure we can find existing payments regardless of which ID was used during creation
+        // Use RevenueCat's actual fields for consistent lookup
+        var originalTransactionId = verificationResult.PurchaseToken; // This is actually OriginalTransactionId from RevenueCat
+        var currentTransactionId = verificationResult.TransactionId;   // This is TransactionId from RevenueCat
+        
         var existingPayment = State.PaymentHistory.FirstOrDefault(p => 
             p.Platform == PaymentPlatform.GooglePlay && 
-            (p.OrderId == transactionId || 
-             p.OrderId == verificationResult.PurchaseToken || 
-             p.SubscriptionId == verificationResult.PurchaseToken ||
-             p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
+            (p.OrderId == originalTransactionId ||        // OrderId stored as OriginalTransactionId (stable)
+             p.SubscriptionId == originalTransactionId || // SubscriptionId stored as OriginalTransactionId (stable)
+             p.OrderId == currentTransactionId ||         // Legacy: OrderId stored as current TransactionId
+             p.InvoiceDetails.Any(i => i.InvoiceId == currentTransactionId) ||  // Always match by current TransactionId
+             p.InvoiceDetails.Any(i => i.InvoiceId == originalTransactionId))); // Also try matching by OriginalTransactionId
 
         var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
 
