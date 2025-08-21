@@ -1712,11 +1712,15 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             {
                 InvoiceId = verificationResult.TransactionId,
                 PurchaseToken = purchaseToken,
+                PriceId = verificationResult.ProductId,
                 CreatedAt = DateTime.UtcNow,
                 CompletedAt = DateTime.UtcNow,
                 Status = PaymentStatus.Completed,
                 SubscriptionStartDate = subscriptionStartDate,
-                SubscriptionEndDate = subscriptionEndDate
+                SubscriptionEndDate = subscriptionEndDate,
+                PlanType = (PlanType)productConfig.PlanType,
+                Amount = productConfig.Amount,
+                MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate)
             };
             
             newPaymentSummary.InvoiceDetails.Add(invoiceDetail);
@@ -1937,7 +1941,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                 Amount = productConfig.Amount,
                 PlanType = (PlanType)productConfig.PlanType,
-                PurchaseToken = verificationResult.PurchaseToken
+                PurchaseToken = verificationResult.OriginalTransactionId // Fix: Use OriginalTransactionId for consistency
             };
             
             existingPayment.InvoiceDetails.Add(newInvoiceDetail);
@@ -4914,8 +4918,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
             var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
 
-            // Apply the same refund logic as Apple Pay: rollback subscription days
-            var diff = GetDaysForPlanType(paymentSummary.PlanType);
+            // Apply the same refund logic as Apple Pay: rollback subscription days using the product configuration's PlanType (like Apple uses appleProduct.PlanType)
+            var diff = GetDaysForPlanType((PlanType)productConfig.PlanType);
             subscription.EndDate = subscription.EndDate.AddDays(-diff);
             
             // Remove the subscription ID from the active list
@@ -4952,8 +4956,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 }
             }
 
-            _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Applied refund rollback consistent with Apple Pay. UserId: {UserId}, SubscriptionId: {SubscriptionId}, RolledBackDays: {Days}, EndDate: {EndDate}, IsActive: {IsActive}", 
-                userId, paymentSummary.SubscriptionId, diff, subscription.EndDate, subscription.IsActive);
+            _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Applied refund rollback consistent with Apple Pay. UserId: {UserId}, SubscriptionId: {SubscriptionId}, ProductPlanType: {ProductPlanType}, RolledBackDays: {Days}, NewEndDate: {EndDate}, IsActive: {IsActive}", 
+                userId, paymentSummary.SubscriptionId, productConfig.PlanType, diff, subscription.EndDate, subscription.IsActive);
         }
         catch (Exception ex)
         {
