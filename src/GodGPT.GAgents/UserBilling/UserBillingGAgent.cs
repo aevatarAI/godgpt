@@ -4419,21 +4419,21 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private bool IsRevenueCatRefund(PaymentVerificationResultDto verificationResult)
     {
-        var cancelReason = ExtractCancelReason(verificationResult);
+        // For RevenueCat CANCELLATION events, refunds are identified by negative price
+        // This is the most reliable indicator as confirmed by testing
+        var hasNegativePrice = verificationResult.PriceInPurchasedCurrency.HasValue && 
+                              verificationResult.PriceInPurchasedCurrency.Value < 0;
         
-        // Consider it a refund if:
-        // 1. Cancel reason indicates customer support or unsubscribed (typical refund scenarios)
-        // 2. Or if the message contains negative price information (already logged from webhook)
+        // Fallback: Also check cancel reason for edge cases
+        var cancelReason = ExtractCancelReason(verificationResult);
         var refundReasons = new[] { "CUSTOMER_SUPPORT", "UNSUBSCRIBED", "BILLING_ERROR" };
         var isRefundByReason = !string.IsNullOrEmpty(cancelReason) && 
                               refundReasons.Any(reason => cancelReason.Contains(reason, StringComparison.OrdinalIgnoreCase));
         
-        var hasNegativePrice = verificationResult.Message?.Contains("Price: -") == true;
+        var isRefund = hasNegativePrice || isRefundByReason;
         
-        var isRefund = isRefundByReason || hasNegativePrice;
-        
-        _logger.LogDebug("[UserBillingGAgent][IsRevenueCatRefund] CancelReason: {CancelReason}, HasNegativePrice: {HasNegativePrice}, IsRefund: {IsRefund}", 
-            cancelReason, hasNegativePrice, isRefund);
+        _logger.LogDebug("[UserBillingGAgent][IsRevenueCatRefund] Price: {Price}, CancelReason: {CancelReason}, HasNegativePrice: {HasNegativePrice}, IsRefundByReason: {IsRefundByReason}, IsRefund: {IsRefund}", 
+            verificationResult.PriceInPurchasedCurrency, cancelReason, hasNegativePrice, isRefundByReason, isRefund);
         
         return isRefund;
     }

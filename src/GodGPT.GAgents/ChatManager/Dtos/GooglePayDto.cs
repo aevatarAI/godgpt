@@ -63,6 +63,7 @@ public class PaymentVerificationResultDto
     [Id(10)] public long? PurchaseTimeMillis { get; set; }       // Purchase time in milliseconds
     [Id(11)] public string PurchaseToken { get; set; }          // Purchase token
     [Id(12)] public string OrderId { get; set; } = string.Empty; // Order ID for additional context
+    [Id(13)] public double? PriceInPurchasedCurrency { get; set; } // Price from RevenueCat (negative for refunds)
 }
 
 /// <summary>
