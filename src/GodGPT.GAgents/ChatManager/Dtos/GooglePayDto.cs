@@ -61,9 +61,10 @@ public class PaymentVerificationResultDto
     [Id(8)] public int? PaymentState { get; set; }               // Google Play payment state
     [Id(9)] public bool? AutoRenewing { get; set; }              // Auto-renewing subscription status
     [Id(10)] public long? PurchaseTimeMillis { get; set; }       // Purchase time in milliseconds
-    [Id(11)] public string PurchaseToken { get; set; }          // Purchase token
-    [Id(12)] public string OrderId { get; set; } = string.Empty; // Order ID for additional context
-    [Id(13)] public double? PriceInPurchasedCurrency { get; set; } // Price from RevenueCat (negative for refunds)
+    [Id(11)] public string PurchaseToken { get; set; }          // Purchase token (for direct Google Play integration)
+    [Id(12)] public string OriginalTransactionId { get; set; } = string.Empty; // RevenueCat's original_transaction_id (stable subscription identifier)
+    [Id(13)] public string OrderId { get; set; } = string.Empty; // Order ID for additional context
+    [Id(14)] public double? PriceInPurchasedCurrency { get; set; } // Price from RevenueCat (negative for refunds)
 }
 
 /// <summary>
