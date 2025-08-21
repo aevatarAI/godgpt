@@ -4365,7 +4365,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing subscription cancellation for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}", 
             userId, verificationResult.TransactionId, verificationResult.PurchaseToken, verificationResult.PriceInPurchasedCurrency);
 
-        // Find payment record using OriginalTransactionId (similar to Apple's approach)
+        try
+        {
+            // Find payment record using OriginalTransactionId (similar to Apple's approach)
         // PurchaseToken contains the OriginalTransactionId which is the stable subscription identifier
         // This ensures we can find the subscription regardless of which renewal transaction triggered the cancellation
         var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
@@ -4374,26 +4376,43 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
              p.SubscriptionId == verificationResult.PurchaseToken ||
              p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.PurchaseToken)));
         
-        _logger.LogDebug("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by PurchaseToken (OriginalTransactionId) {PurchaseToken}: {Found}", 
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by PurchaseToken (OriginalTransactionId) {PurchaseToken}: {Found}", 
             verificationResult.PurchaseToken, paymentSummary != null ? "Found" : "Not Found");
 
         if (paymentSummary != null)
         {
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Found PaymentSummary - OrderId: {OrderId}, SubscriptionId: {SubscriptionId}, Status: {Status}, InvoiceCount: {InvoiceCount}", 
+                paymentSummary.OrderId, paymentSummary.SubscriptionId, paymentSummary.Status, paymentSummary.InvoiceDetails.Count);
+            
             // Find specific invoice detail using the same logic as creation
             // Since InvoiceId is stored as verificationResult.TransactionId during creation,
             // we should search using the same TransactionId value
             var invoiceDetail = paymentSummary.InvoiceDetails.FirstOrDefault(i => i.InvoiceId == verificationResult.TransactionId);
             
-            _logger.LogDebug("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Looking for invoice with InvoiceId {TransactionId} in {InvoiceCount} invoices: {Found}", 
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Looking for invoice with InvoiceId {TransactionId} in {InvoiceCount} invoices: {Found}", 
                 verificationResult.TransactionId, paymentSummary.InvoiceDetails.Count, invoiceDetail != null ? "Found" : "Not Found");
+                
+            if (invoiceDetail == null && paymentSummary.InvoiceDetails.Count > 0)
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Available InvoiceIds: {InvoiceIds}", 
+                    string.Join(", ", paymentSummary.InvoiceDetails.Select(i => i.InvoiceId)));
+            }
             
             if (invoiceDetail != null)
             {
                 var oldStatus = invoiceDetail.Status;
+                var oldPaymentSummaryStatus = paymentSummary.Status;
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Before update - InvoiceDetail.Status: {OldInvoiceStatus}, PaymentSummary.Status: {OldPaymentStatus}", 
+                    oldStatus, oldPaymentSummaryStatus);
+                
                 // Set status to Cancelled for subscription cancellation
                 invoiceDetail.Status = PaymentStatus.Cancelled;
                 paymentSummary.Status = PaymentStatus.Cancelled;
 
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] After update - InvoiceDetail.Status: {NewInvoiceStatus}, PaymentSummary.Status: {NewPaymentStatus}", 
+                    invoiceDetail.Status, paymentSummary.Status);
+                    
                 _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Updated payment status from {OldStatus} to {NewStatus} for transaction {TransactionId}", 
                     oldStatus, PaymentStatus.Cancelled, verificationResult.TransactionId);
 
@@ -4418,12 +4437,19 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     // No additional processing needed for regular cancellation
                 }
 
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Raising UpdatePaymentLogEvent for PaymentId: {PaymentId}", 
+                    paymentSummary.PaymentGrainId);
+                    
                 RaiseEvent(new UpdatePaymentLogEvent
                 {
                     PaymentId = paymentSummary.PaymentGrainId,
                     PaymentSummary = paymentSummary
                 });
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Confirming events...");
                 await ConfirmEvents();
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Events confirmed successfully");
             }
             else
             {
@@ -4435,6 +4461,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Could not find payment record for user {UserId}. TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}", 
                 userId, verificationResult.TransactionId, verificationResult.PurchaseToken);
+        }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Error processing cancellation for user {UserId}, TransactionId: {TransactionId}", 
+                userId, verificationResult.TransactionId);
+            throw;
         }
     }
 
