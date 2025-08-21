@@ -29,7 +29,26 @@ public enum GodGPTLanguage
 public static class GodGPTLanguageHelper
 {
     private const string GodGPTLanguageKey = "GodGPTLanguage";
-    
+    private const string IsCN = "IsCN";
+    public static bool CheckClientIsCNFromContext()
+    {
+        try
+        {
+            var context = RequestContext.Get(IsCN);
+            if (context != null && context is bool isCN)
+            {
+                return true;
+            }
+        }
+        catch (Exception)
+        {
+            // Log error if needed, but return default English
+            return false;
+        }
+        
+        // Return English as default when language cannot be retrieved or on exception
+        return false;
+    }
     /// <summary>
     /// Gets the GodGPT language from RequestContext with error handling
     /// Returns English as default if language cannot be retrieved or on exception
