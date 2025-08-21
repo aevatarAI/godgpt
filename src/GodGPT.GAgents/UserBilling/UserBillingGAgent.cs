@@ -4276,9 +4276,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 eventType, userId, verificationResult.TransactionId);
 
             // Check for duplicate processing using transaction ID
+            // Only check for existing InvoiceDetail with the same TransactionId to avoid false duplicates
             var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
-                (p.OrderId == verificationResult.TransactionId || p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.TransactionId)));
+                p.InvoiceDetails.Any(i => i.InvoiceId == verificationResult.TransactionId));
             
             if (existingPayment != null)
             {
