@@ -4346,17 +4346,30 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var isRefund = IsRevenueCatRefund(verificationResult);
         var eventType = isRefund ? "refund" : "cancellation";
         
-        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing {EventType} for user {UserId}, TransactionId: {TransactionId}, CancelReason: {CancelReason}", 
-            eventType, userId, verificationResult.TransactionId, ExtractCancelReason(verificationResult));
+        _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing {EventType} for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, CancelReason: {CancelReason}", 
+            eventType, userId, verificationResult.TransactionId, verificationResult.PurchaseToken, ExtractCancelReason(verificationResult));
 
-        // Find and update existing payment record
+        // Find payment record using the same logic as subscription creation
+        // Since OrderId and SubscriptionId are both stored as verificationResult.TransactionId during creation,
+        // we should search using the same TransactionId value
         var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
             p.Platform == PaymentPlatform.GooglePlay && 
-            (p.OrderId == verificationResult.TransactionId || p.InvoiceDetails.Any(i => i.PurchaseToken == verificationResult.TransactionId)));
+            (p.OrderId == verificationResult.TransactionId || 
+             p.SubscriptionId == verificationResult.TransactionId));
+        
+        _logger.LogDebug("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by TransactionId {TransactionId}: {Found}", 
+            verificationResult.TransactionId, paymentSummary != null ? "Found" : "Not Found");
 
         if (paymentSummary != null)
         {
-            var invoiceDetail = paymentSummary.InvoiceDetails.FirstOrDefault(i => i.PurchaseToken == verificationResult.TransactionId);
+            // Find specific invoice detail using the same logic as creation
+            // Since InvoiceId is stored as verificationResult.TransactionId during creation,
+            // we should search using the same TransactionId value
+            var invoiceDetail = paymentSummary.InvoiceDetails.FirstOrDefault(i => i.InvoiceId == verificationResult.TransactionId);
+            
+            _logger.LogDebug("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Looking for invoice with InvoiceId {TransactionId} in {InvoiceCount} invoices: {Found}", 
+                verificationResult.TransactionId, paymentSummary.InvoiceDetails.Count, invoiceDetail != null ? "Found" : "Not Found");
+            
             if (invoiceDetail != null)
             {
                 var oldStatus = invoiceDetail.Status;
@@ -4410,10 +4423,16 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 });
                 await ConfirmEvents();
             }
+            else
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Payment record found but invoice detail not found. PaymentSummary OrderId: {OrderId}, SubscriptionId: {SubscriptionId}, TransactionId: {TransactionId}", 
+                    paymentSummary.OrderId, paymentSummary.SubscriptionId, verificationResult.TransactionId);
+            }
         }
         else
         {
-            _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Could not find payment record for transaction: {TransactionId}", verificationResult.TransactionId);
+            _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Could not find payment record for user {UserId}. TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}", 
+                userId, verificationResult.TransactionId, verificationResult.PurchaseToken);
         }
     }
 
