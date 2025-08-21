@@ -1896,8 +1896,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
         // Use RevenueCat's actual fields for consistent lookup
-        var originalTransactionId = verificationResult.PurchaseToken; // This is actually OriginalTransactionId from RevenueCat
-        var currentTransactionId = verificationResult.TransactionId;   // This is TransactionId from RevenueCat
+        var originalTransactionId = verificationResult.OriginalTransactionId; // RevenueCat's original_transaction_id (stable subscription identifier)
+        var currentTransactionId = verificationResult.TransactionId;           // RevenueCat's transaction_id (current transaction)
         
         var existingPayment = State.PaymentHistory.FirstOrDefault(p => 
             p.Platform == PaymentPlatform.GooglePlay && 
@@ -1958,7 +1958,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
             {
                 PaymentGrainId = Guid.NewGuid(),
-                OrderId = verificationResult.PurchaseToken, // Use RevenueCat's OriginalTransactionId for consistent subscription matching
+                OrderId = verificationResult.OriginalTransactionId, // Use RevenueCat's original_transaction_id for consistent subscription matching
                 UserId = userId,
                 PriceId = verificationResult.ProductId,
                 PlanType = (PlanType)productConfig.PlanType,
@@ -1982,10 +1982,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                         Amount = productConfig.Amount,
                         PlanType = (PlanType)productConfig.PlanType,
-                        PurchaseToken = verificationResult.PurchaseToken // Store RevenueCat's OriginalTransactionId for subscription matching
+                        PurchaseToken = verificationResult.OriginalTransactionId // Store RevenueCat's original_transaction_id for subscription matching
                     }
                 },
-                SubscriptionId = verificationResult.PurchaseToken, // Use RevenueCat's OriginalTransactionId as stable subscription identifier
+                SubscriptionId = verificationResult.OriginalTransactionId, // Use RevenueCat's original_transaction_id as stable subscription identifier
                 SubscriptionStartDate = subscriptionStartDate,
                 SubscriptionEndDate = subscriptionEndDate
             };
@@ -4428,7 +4428,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         private async Task ProcessRevenueCatCancellationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
         _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing subscription cancellation for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}",
-            userId, verificationResult.TransactionId, verificationResult.PurchaseToken, verificationResult.PriceInPurchasedCurrency);
+            userId, verificationResult.TransactionId, verificationResult.OriginalTransactionId, verificationResult.PriceInPurchasedCurrency);
 
         try
         {
@@ -4451,8 +4451,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // Find payment record using RevenueCat's actual fields only
             // RevenueCat provides: transaction_id (current) and original_transaction_id (stable subscription identifier)
             // We should use original_transaction_id as the stable subscription identifier, similar to Apple's approach
-            var originalTransactionId = verificationResult.PurchaseToken; // This is actually OriginalTransactionId from RevenueCat
-            var currentTransactionId = verificationResult.TransactionId;   // This is TransactionId from RevenueCat
+            var originalTransactionId = verificationResult.OriginalTransactionId; // RevenueCat's original_transaction_id (stable subscription identifier)
+            var currentTransactionId = verificationResult.TransactionId;           // RevenueCat's transaction_id (current transaction)
             
             var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
@@ -4462,8 +4462,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                  p.InvoiceDetails.Any(i => i.InvoiceId == currentTransactionId) ||  // Always match by current TransactionId
                  p.InvoiceDetails.Any(i => i.InvoiceId == originalTransactionId))); // Also try matching by OriginalTransactionId
             
-            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by PurchaseToken (OriginalTransactionId) {PurchaseToken}: {Found}", 
-                verificationResult.PurchaseToken, paymentSummary != null ? "Found" : "Not Found");
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Search by OriginalTransactionId {OriginalTransactionId}: {Found}", 
+                verificationResult.OriginalTransactionId, paymentSummary != null ? "Found" : "Not Found");
 
         if (paymentSummary != null)
         {
@@ -4545,8 +4545,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         else
         {
-            _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Could not find payment record for user {UserId}. TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}", 
-                userId, verificationResult.TransactionId, verificationResult.PurchaseToken);
+                        _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Could not find payment record for user {UserId}. TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}",
+                userId, verificationResult.TransactionId, verificationResult.OriginalTransactionId);
         }
         }
         catch (Exception ex)
@@ -4636,8 +4636,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         try
         {
             // Find existing subscription using RevenueCat's actual fields only
-            var originalTransactionId = verificationResult.PurchaseToken; // This is actually OriginalTransactionId from RevenueCat
-            var currentTransactionId = verificationResult.TransactionId;   // This is TransactionId from RevenueCat
+            var originalTransactionId = verificationResult.OriginalTransactionId; // RevenueCat's original_transaction_id (stable subscription identifier)
+            var currentTransactionId = verificationResult.TransactionId;           // RevenueCat's transaction_id (current transaction)
             
             var existingPayment = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
@@ -4676,7 +4676,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var renewalInvoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
             {
                 InvoiceId = verificationResult.TransactionId,
-                PurchaseToken = verificationResult.PurchaseToken,
+                PurchaseToken = verificationResult.OriginalTransactionId,
                 CreatedAt = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow,
                 CompletedAt = DateTime.UtcNow,
                 Status = PaymentStatus.Completed,
@@ -4768,13 +4768,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     private async Task ProcessRevenueCatRefundAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
         _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRefundAsync] Processing refund for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}", 
-            userId, verificationResult.TransactionId, verificationResult.PurchaseToken, verificationResult.PriceInPurchasedCurrency);
+            userId, verificationResult.TransactionId, verificationResult.OriginalTransactionId, verificationResult.PriceInPurchasedCurrency);
 
         try
         {
             // Find payment record using RevenueCat's actual fields only
-            var originalTransactionId = verificationResult.PurchaseToken; // This is actually OriginalTransactionId from RevenueCat
-            var currentTransactionId = verificationResult.TransactionId;   // This is TransactionId from RevenueCat
+            var originalTransactionId = verificationResult.OriginalTransactionId; // RevenueCat's original_transaction_id (stable subscription identifier)
+            var currentTransactionId = verificationResult.TransactionId;           // RevenueCat's transaction_id (current transaction)
             
             var paymentSummary = State.PaymentHistory?.FirstOrDefault(p => 
                 p.Platform == PaymentPlatform.GooglePlay && 
@@ -4787,7 +4787,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             if (paymentSummary == null)
             {
                 _logger.LogWarning("[UserBillingGAgent][ProcessRevenueCatRefundAsync] Payment record not found for refund. UserId: {UserId}, OriginalTransactionId: {OriginalTransactionId}", 
-                    userId, verificationResult.PurchaseToken);
+                    userId, verificationResult.OriginalTransactionId);
                 return;
             }
 
