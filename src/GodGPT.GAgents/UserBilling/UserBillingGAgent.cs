@@ -1788,7 +1788,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         // Update user quota
         var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
 
-        var subscription = await userQuotaAgent.GetSubscriptionAsync();
+        // Fix: Use productConfig.IsUltimate to get the correct subscription type
+        var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
         if (subscription.SubscriptionIds.IsNullOrEmpty())
         {
             subscription.SubscriptionIds = new List<string>();
