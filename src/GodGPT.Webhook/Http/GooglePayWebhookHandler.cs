@@ -218,6 +218,23 @@ public class GooglePayWebhookHandler : IWebhookHandler
         _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId: {ProductId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price} {Currency}, CancelReason: {CancelReason}", 
             eventData.ProductId, eventData.TransactionId, eventData.OriginalTransactionId, eventData.PriceInPurchasedCurrency, eventData.Currency, eventData.CancelReason);
 
+        // Determine payment state based on event context
+        int paymentState = 1; // Default: Purchased state
+        bool autoRenewing = true;
+        
+        // Adjust state based on event type and cancel reason
+        if (!string.IsNullOrEmpty(eventData.CancelReason))
+        {
+            autoRenewing = false;
+            // For cancellation/refund events, payment state can remain as purchased since we're tracking the cancellation separately
+        }
+        
+        // Set AutoRenewing based on period type and cancel reason
+        if (eventData.PeriodType != "NORMAL" || !string.IsNullOrEmpty(eventData.CancelReason))
+        {
+            autoRenewing = false;
+        }
+
         return new PaymentVerificationResultDto
         {
             IsValid = true,
@@ -229,12 +246,12 @@ public class GooglePayWebhookHandler : IWebhookHandler
             PurchaseToken = eventData.OriginalTransactionId ?? eventData.TransactionId, // Keep for backward compatibility
             OriginalTransactionId = eventData.OriginalTransactionId ?? eventData.TransactionId, // RevenueCat's original_transaction_id (stable subscription identifier)
             Message = $"RevenueCat webhook verification successful. CancelReason: {eventData.CancelReason}, Price: {eventData.PriceInPurchasedCurrency} {eventData.Currency}",
-            PaymentState = 1, // Purchased state
-            AutoRenewing = eventData.PeriodType == "NORMAL",
+            PaymentState = paymentState,
+            AutoRenewing = autoRenewing,
             PurchaseTimeMillis = eventData.PurchasedAtMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             PriceInPurchasedCurrency = eventData.PriceInPurchasedCurrency, // Direct price value for refund detection
-            // Store additional information about the cancellation/refund event
-            OrderId = !string.IsNullOrEmpty(eventData.CancelReason) ? $"CANCEL_{eventData.CancelReason}" : null
+            // Fix: Always provide a non-null OrderId - use OriginalTransactionId as stable identifier, similar to Apple Pay approach
+            OrderId = eventData.OriginalTransactionId ?? eventData.TransactionId ?? Guid.NewGuid().ToString()
         };
     }
 
