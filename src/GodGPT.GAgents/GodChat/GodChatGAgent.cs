@@ -46,6 +46,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private const string ConsoleModelName = "GodGPTConsole";
     private const string CNConsoleRegion = "CNCONSOLE";
     private const string ConsoleRegion = "CONSOLE";
+    private const string CNConsoleModelName = "CNConsole";
+    private const string BytePlusDeepSeekV3ModelName = "BytePlusDeepSeekV3";
 
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
@@ -868,7 +870,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         {
             var systemPrompt = State.PromptTemplate;
 
-            if (llm == ProxyGPTModelName || llm == ChatModelName || llm == ConsoleModelName)
+            if (llm == ProxyGPTModelName || llm == ChatModelName || llm == ConsoleModelName || llm == CNConsoleModelName || llm == BytePlusDeepSeekV3ModelName)
             {
                 systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
             }
