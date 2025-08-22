@@ -1792,11 +1792,28 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             await userQuotaAgent.ResetRateLimitsAsync();
         }
+
+        // Fix: Use cumulative logic consistent with Apple Pay and Stripe
+        if (subscription.IsActive)
+        {
+            // Only upgrade plan if new plan is higher or equal level
+            if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscription.PlanType) <= 
+                SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType)productConfig.PlanType))
+            {
+                subscription.PlanType = (PlanType)productConfig.PlanType;
+            }
+            // Extend subscription from current EndDate (cumulative approach)
+            subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.EndDate);
+        }
+        else
+        {
+            // New subscription - use payment summary dates
+            subscription.IsActive = true;
+            subscription.PlanType = (PlanType)productConfig.PlanType;
+            subscription.StartDate = paymentSummary.SubscriptionStartDate;
+            subscription.EndDate = paymentSummary.SubscriptionEndDate;
+        }
         
-        subscription.IsActive = true;
-        subscription.PlanType = (PlanType)productConfig.PlanType;
-        subscription.StartDate = paymentSummary.SubscriptionStartDate;
-        subscription.EndDate = paymentSummary.SubscriptionEndDate;
         subscription.Status = PaymentStatus.Completed;
         if (!subscription.SubscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
@@ -1811,16 +1828,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
             if (premiumSubscription.IsActive)
             {
-                // Calculate the Ultimate subscription duration to add to Premium
-                var ultimateTimeSpan = paymentSummary.SubscriptionEndDate - paymentSummary.SubscriptionStartDate;
-                
-                // Extend Premium subscription by Ultimate's duration (following Apple Pay pattern)
-                premiumSubscription.StartDate = premiumSubscription.StartDate.Add(ultimateTimeSpan);
-                premiumSubscription.EndDate = premiumSubscription.EndDate.Add(ultimateTimeSpan);
+                // Use Apple Pay pattern: extend Premium subscription by Ultimate's plan duration
+                premiumSubscription.StartDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.StartDate);
+                premiumSubscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.EndDate);
                 await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
                 
-                _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Extended Premium subscription by {TimeSpan} due to Ultimate activation. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
-                    ultimateTimeSpan, premiumSubscription.StartDate, premiumSubscription.EndDate);
+                _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Extended Premium subscription by Ultimate plan duration. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
+                    premiumSubscription.StartDate, premiumSubscription.EndDate);
             }
         }
         
@@ -1860,6 +1874,33 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             subscription.SubscriptionIds.Add(paymentSummary.SubscriptionId);
         }
 
+        if (!subscription.IsActive)
+        {
+            await userQuotaAgent.ResetRateLimitsAsync();
+        }
+
+        // Fix: Use cumulative logic consistent with Apple Pay and Stripe
+        if (subscription.IsActive)
+        {
+            // Only upgrade plan if new plan is higher or equal level
+            if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscription.PlanType) <= 
+                SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType)productConfig.PlanType))
+            {
+                subscription.PlanType = (PlanType)productConfig.PlanType;
+            }
+            // Extend subscription from current EndDate (cumulative approach)
+            subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.EndDate);
+        }
+        else
+        {
+            // New subscription - use payment summary dates
+            subscription.IsActive = true;
+            subscription.PlanType = (PlanType)productConfig.PlanType;
+            subscription.StartDate = paymentSummary.SubscriptionStartDate;
+            subscription.EndDate = paymentSummary.SubscriptionEndDate;
+        }
+        
+        subscription.Status = PaymentStatus.Completed;
         await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
         
         // Fix: Handle Ultimate subscription activation - extend Premium subscription time (same as Apple Pay logic)
@@ -1868,16 +1909,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
             if (premiumSubscription.IsActive)
             {
-                // Calculate the Ultimate subscription duration to add to Premium
-                var ultimateTimeSpan = paymentSummary.SubscriptionEndDate - paymentSummary.SubscriptionStartDate;
-                
-                // Extend Premium subscription by Ultimate's duration (following Apple Pay pattern)
-                premiumSubscription.StartDate = premiumSubscription.StartDate.Add(ultimateTimeSpan);
-                premiumSubscription.EndDate = premiumSubscription.EndDate.Add(ultimateTimeSpan);
+                // Use Apple Pay pattern: extend Premium subscription by Ultimate's plan duration
+                premiumSubscription.StartDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.StartDate);
+                premiumSubscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.EndDate);
                 await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
                 
-                _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Extended Premium subscription by {TimeSpan} due to Ultimate activation. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
-                    ultimateTimeSpan, premiumSubscription.StartDate, premiumSubscription.EndDate);
+                _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Extended Premium subscription by Ultimate plan duration. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
+                    premiumSubscription.StartDate, premiumSubscription.EndDate);
             }
         }
         
