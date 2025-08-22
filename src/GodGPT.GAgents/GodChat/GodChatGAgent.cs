@@ -90,7 +90,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         Logger.LogDebug(
             $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()},isCN:{isCN}, region:{defaultRegion}");
 
-        var proxyIds = await InitializeRegionProxiesAsync(defaultRegion);
+        var proxyIds = await InitializeRegionProxiesAsync(DefaultRegion, configuration.Instructions);
         
         Dictionary<string, List<Guid>> regionProxies = new();
         regionProxies[defaultRegion] = proxyIds;
@@ -114,6 +114,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             PromptTemplate = configuration.Instructions,
             MaxHistoryCount = maxHistoryCount
         });
+
+        await ConfirmEvents();
+        
         stopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] End - Total Duration: {stopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
     }
@@ -850,8 +853,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         return await GetProxyByRegionAsync(DefaultRegion);
     }
 
- private async Task<List<Guid>> InitializeRegionProxiesAsync(string region)
- {
+ private async Task<List<Guid>> InitializeRegionProxiesAsync(string region, string rolePrompts = "")
+    {
         var stopwatch = Stopwatch.StartNew();
         var llmsForRegion = GetLLMsForRegion(region);
         if (llmsForRegion.IsNullOrEmpty())
@@ -868,7 +871,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var totalProxyStopwatch = Stopwatch.StartNew();
         foreach (var llm in llmsForRegion)
         {
-            var systemPrompt = State.PromptTemplate;
+            var systemPrompt = rolePrompts.IsNullOrWhiteSpace() ? State.PromptTemplate : rolePrompts;
 
             if (llm == ProxyGPTModelName || llm == ChatModelName || llm == ConsoleModelName || llm == CNConsoleModelName || llm == BytePlusDeepSeekV3ModelName)
             {
