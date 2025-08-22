@@ -1807,11 +1807,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         else
         {
-            // New subscription - use payment summary dates
+            // New subscription - use system time for consistency with Apple Pay and Stripe
             subscription.IsActive = true;
             subscription.PlanType = (PlanType)productConfig.PlanType;
-            subscription.StartDate = paymentSummary.SubscriptionStartDate;
-            subscription.EndDate = paymentSummary.SubscriptionEndDate;
+            subscription.StartDate = DateTime.UtcNow;
+            subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.StartDate);
+            await userQuotaAgent.ResetRateLimitsAsync();
         }
         
         subscription.Status = PaymentStatus.Completed;
@@ -1893,11 +1894,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         else
         {
-            // New subscription - use payment summary dates
+            // New subscription - use system time for consistency with Apple Pay and Stripe
             subscription.IsActive = true;
             subscription.PlanType = (PlanType)productConfig.PlanType;
-            subscription.StartDate = paymentSummary.SubscriptionStartDate;
-            subscription.EndDate = paymentSummary.SubscriptionEndDate;
+            subscription.StartDate = DateTime.UtcNow;
+            subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.StartDate);
+            await userQuotaAgent.ResetRateLimitsAsync();
         }
         
         subscription.Status = PaymentStatus.Completed;
@@ -1975,11 +1977,25 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 await userQuotaAgent.ResetRateLimitsAsync();
             }
 
-            // Update subscription details
-            subscription.IsActive = true;
-            subscription.PlanType = (PlanType)productConfig.PlanType;
-            subscription.StartDate = paymentSummary.SubscriptionStartDate;
-            subscription.EndDate = paymentSummary.SubscriptionEndDate;
+            // Update subscription details - use consistent time calculation logic
+            if (subscription.IsActive)
+            {
+                // Existing active subscription - use cumulative approach (same as other methods)
+                if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscription.PlanType) <= 
+                    SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType)productConfig.PlanType))
+                {
+                    subscription.PlanType = (PlanType)productConfig.PlanType;
+                }
+                subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.EndDate);
+            }
+            else
+            {
+                // New subscription - use system time for consistency
+                subscription.IsActive = true;
+                subscription.PlanType = (PlanType)productConfig.PlanType;
+                subscription.StartDate = DateTime.UtcNow;
+                subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.StartDate);
+            }
             subscription.Status = PaymentStatus.Completed;
             
             if (subscription.SubscriptionIds == null)
@@ -2000,16 +2016,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
                 if (premiumSubscription.IsActive)
                 {
-                    // Calculate the Ultimate subscription duration to add to Premium
-                    var ultimateTimeSpan = paymentSummary.SubscriptionEndDate - paymentSummary.SubscriptionStartDate;
-                    
-                    // Extend Premium subscription by Ultimate's duration (following Apple Pay pattern)
-                    premiumSubscription.StartDate = premiumSubscription.StartDate.Add(ultimateTimeSpan);
-                    premiumSubscription.EndDate = premiumSubscription.EndDate.Add(ultimateTimeSpan);
+                    // Use Apple Pay pattern: extend Premium subscription by Ultimate's plan duration
+                    premiumSubscription.StartDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.StartDate);
+                    premiumSubscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.EndDate);
                     await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
                     
-                    _logger.LogInformation("[UserBillingGAgent][ProcessGooglePayWebPurchaseSuccessAsync] Extended Premium subscription by {TimeSpan} due to Ultimate activation. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
-                        ultimateTimeSpan, premiumSubscription.StartDate, premiumSubscription.EndDate);
+                    _logger.LogInformation("[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Extended Premium subscription by Ultimate plan duration. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
+                        premiumSubscription.StartDate, premiumSubscription.EndDate);
                 }
             }
 
