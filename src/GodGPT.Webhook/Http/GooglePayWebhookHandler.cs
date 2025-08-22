@@ -250,7 +250,7 @@ public class GooglePayWebhookHandler : IWebhookHandler
             AutoRenewing = autoRenewing,
             PurchaseTimeMillis = eventData.PurchasedAtMs ?? DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             PriceInPurchasedCurrency = eventData.PriceInPurchasedCurrency, // Direct price value for refund detection
-            // Fix: Always provide a non-null OrderId - use OriginalTransactionId as stable identifier, similar to Apple Pay approach
+            // Fix: Always provide a non-null OrderId - use OriginalTransactionId as stable subscription identifier, following Apple Pay pattern
             OrderId = eventData.OriginalTransactionId ?? eventData.TransactionId ?? Guid.NewGuid().ToString()
         };
     }

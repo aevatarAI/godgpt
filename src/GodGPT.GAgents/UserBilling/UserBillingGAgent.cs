@@ -3880,7 +3880,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     Platform = PaymentPlatform.GooglePlay,
                     SubscriptionStartDate = existingPayment.SubscriptionStartDate,
                     SubscriptionEndDate = existingPayment.SubscriptionEndDate,
-                    PurchaseTimeMillis = (long)existingPayment.CreatedAt.Subtract(DateTime.UnixEpoch).TotalMilliseconds
+                    PurchaseTimeMillis = (long)existingPayment.CreatedAt.Subtract(DateTime.UnixEpoch).TotalMilliseconds,
+                    // Fix: Add missing fields to ensure consistency with webhook path
+                    PurchaseToken = existingPayment.SubscriptionId ?? request.TransactionIdentifier,
+                    OriginalTransactionId = existingPayment.SubscriptionId ?? request.TransactionIdentifier,
+                    OrderId = existingPayment.OrderId ?? existingPayment.SubscriptionId ?? request.TransactionIdentifier, // Use existing OrderId (subscription identifier)
+                    PaymentState = 1, // Purchased state
+                    AutoRenewing = true // Default for existing transactions
                 };
             }
 
@@ -3903,7 +3909,16 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     Platform = PaymentPlatform.GooglePlay,
                     PurchaseTimeMillis = revenueCatTransaction.PurchaseDate != default 
                         ? (long)revenueCatTransaction.PurchaseDate.Subtract(DateTime.UnixEpoch).TotalMilliseconds 
-                        : (long)DateTime.UtcNow.Subtract(DateTime.UnixEpoch).TotalMilliseconds
+                        : (long)DateTime.UtcNow.Subtract(DateTime.UnixEpoch).TotalMilliseconds,
+                    // Fix: Add missing fields to ensure OrderId is not null
+                    // OrderId should be OriginalTransactionId (subscription identifier), following Apple Pay pattern
+                    PurchaseToken = revenueCatTransaction.OriginalTransactionId ?? request.TransactionIdentifier,
+                    OriginalTransactionId = revenueCatTransaction.OriginalTransactionId ?? request.TransactionIdentifier,
+                    OrderId = revenueCatTransaction.OriginalTransactionId ?? request.TransactionIdentifier,
+                    PaymentState = 1, // Purchased state
+                    AutoRenewing = true, // Default for RevenueCat transactions
+                    SubscriptionStartDate = revenueCatTransaction.PurchaseDate != default ? revenueCatTransaction.PurchaseDate : DateTime.UtcNow,
+                    SubscriptionEndDate = revenueCatTransaction.ExpirationDate
                 };
                 
                 // Process the successful verification
@@ -4977,7 +4992,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
             await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
             
-            // Handle Ultimate subscription adjustment (same as Apple's logic)
+            // Handle Ultimate subscription adjustment (exactly same as Apple's logic)
             if (productConfig.IsUltimate)
             {
                 var diffTimeSpan = (invoiceDetail.SubscriptionEndDate - DateTime.UtcNow);
@@ -4986,9 +5001,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
                     if (premiumSubscription.IsActive)
                     {
+                        // Fix: Follow Apple's exact logic - rollback Premium subscription time
+                        // This restores Premium to its state before Ultimate was active
                         premiumSubscription.StartDate = premiumSubscription.StartDate.Add(-diffTimeSpan);
                         premiumSubscription.EndDate = premiumSubscription.EndDate.Add(-diffTimeSpan);
                         await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
+                        
+                        _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Rolled back Premium subscription by {TimeSpan} due to Ultimate refund, matching Apple Pay logic. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
+                            diffTimeSpan, premiumSubscription.StartDate, premiumSubscription.EndDate);
                     }
                 }
             }
