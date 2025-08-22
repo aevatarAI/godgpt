@@ -1670,7 +1670,31 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePlayPaymentSummaryAsync] Creating new Google Play payment for purchase token: {PurchaseToken}", purchaseToken);
             
-            var (subscriptionStartDate, subscriptionEndDate) = await CalculateGooglePlaySubscriptionDurationAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate);
+            // First calculate standard subscription duration
+            var (calculatedStartDate, calculatedEndDate) = await CalculateGooglePlaySubscriptionDurationAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate);
+            
+            // Override with RevenueCat dates if they are valid and make sense
+            DateTime subscriptionStartDate = calculatedStartDate;
+            DateTime subscriptionEndDate = calculatedEndDate;
+            
+            // Use RevenueCat's subscription dates if they're provided and valid
+            if (verificationResult.SubscriptionStartDate.HasValue && verificationResult.SubscriptionEndDate.HasValue)
+            {
+                var revenueCatStart = verificationResult.SubscriptionStartDate.Value;
+                var revenueCatEnd = verificationResult.SubscriptionEndDate.Value;
+                
+                // Only use RevenueCat dates if they make sense (end date is after start date and not too far in the past)
+                if (revenueCatEnd > revenueCatStart && revenueCatStart >= DateTime.UtcNow.AddDays(-30))
+                {
+                    subscriptionStartDate = revenueCatStart;
+                    subscriptionEndDate = revenueCatEnd;
+                    _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePlayPaymentSummaryAsync] Using RevenueCat subscription dates: Start={Start}, End={End}", subscriptionStartDate, subscriptionEndDate);
+                }
+                else
+                {
+                    _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePlayPaymentSummaryAsync] RevenueCat dates seem invalid, using calculated dates: Start={Start}, End={End}", subscriptionStartDate, subscriptionEndDate);
+                }
+            }
 
             // Determine the correct PaymentType based on purchase type or fall back to product configuration
             PaymentType paymentType;
@@ -1691,7 +1715,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
             {
                 PaymentGrainId = Guid.NewGuid(),
-                OrderId = verificationResult.PurchaseToken, // Use OriginalTransactionId (PurchaseToken) for consistent subscription identification
+                OrderId = verificationResult.OrderId ?? verificationResult.PurchaseToken ?? verificationResult.TransactionId, // Fix: Ensure OrderId is never null, use hierarchy of fallbacks
                 UserId = userId,
                 PriceId = verificationResult.ProductId,
                 PlanType = (PlanType)productConfig.PlanType,
@@ -1703,7 +1727,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 Status = PaymentStatus.Completed,
                 PaymentType = paymentType,
                 Platform = PaymentPlatform.GooglePlay,
-                SubscriptionId = verificationResult.PurchaseToken, // Use OriginalTransactionId (PurchaseToken) as stable subscription identifier, similar to Apple's approach
+                SubscriptionId = verificationResult.PurchaseToken ?? verificationResult.OriginalTransactionId ?? verificationResult.TransactionId, // Fix: Ensure SubscriptionId is never null using hierarchy
                 SubscriptionStartDate = subscriptionStartDate,
                 SubscriptionEndDate = subscriptionEndDate
             };
@@ -1735,8 +1759,21 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         var subscription = await userQuotaAgent.GetSubscriptionAsync(isUltimate);
 
-        DateTime subscriptionStartDate = subscription.IsActive ? subscription.EndDate : DateTime.UtcNow;
-        DateTime subscriptionEndDate = GetSubscriptionEndDate(planType, subscriptionStartDate);
+        DateTime subscriptionStartDate;
+        DateTime subscriptionEndDate;
+        
+        if (subscription.IsActive)
+        {
+            // For active subscriptions, extend from current end date (same as Apple and Stripe logic)
+            subscriptionStartDate = subscription.EndDate;
+        }
+        else
+        {
+            // For new subscriptions, start from now
+            subscriptionStartDate = DateTime.UtcNow;
+        }
+        
+        subscriptionEndDate = GetSubscriptionEndDate(planType, subscriptionStartDate);
 
         return (subscriptionStartDate, subscriptionEndDate);
     }
