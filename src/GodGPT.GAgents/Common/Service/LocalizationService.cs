@@ -180,7 +180,7 @@ public class LocalizationService : ILocalizationService
                 ["es.TranscriptUnavailable"] = "Transcripción no disponible",
                 ["es.SpeechServiceUnavailable"] = "Servicio de reconocimiento de voz no disponible",
                 ["es.AudioFormatUnsupported"] = "Archivo de audio corrupto o formato no compatible",
-                ["es.LanguageNotRecognised"] = "Idioma no reconocido. Por favor, intenta de nuevo en el idioma seleccionado.",
+                ["es.LanguageNotRecognised"] = "¡Lo siento, el idioma no fue reconocido! Por favor, intenta de nuevo en el idioma seleccionado.",
                 ["es.FailedGetUserInfo"] = "No se pudo obtener la información del usuario.",
                 ["es.ChatRateLimit"] = "Se ha alcanzado el límite de mensajes. Por favor, inténtalo de nuevo más tarde.",
                 ["es.VoiceChatRateLimit"] = "Se ha alcanzado el límite de mensajes de voz. Por favor, inténtalo de nuevo más tarde."
