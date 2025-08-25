@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using GodGPT.GAgents.DailyPush.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -50,7 +51,7 @@ public class DailyPushContentService
     /// <summary>
     /// Get random daily push content for specified language
     /// </summary>
-    public async Task<(string title, string content)> GetRandomContentAsync(string language = "en")
+    public async Task<(string title, string content)> GetRandomContentAsync(GodGPTLanguage language = GodGPTLanguage.English)
     {
         _logger.LogDebug("🎲 Requesting random content for language: {Language}", language);
         
@@ -69,19 +70,20 @@ public class DailyPushContentService
         _logger.LogDebug("🎯 Selected content #{Index}/{Total}: Key={ContentKey} for language={Language}", 
             selectedIndex + 1, _contents.Count, selectedContent.ContentKey, language);
         
-        return language.ToLowerInvariant() switch
+        return language switch
         {
-            "zh" or "zh-cn" => (selectedContent.TitleZh, selectedContent.ContentZh),
-            "zh-tw" or "zh-hk" => (selectedContent.TitleZhSc, selectedContent.ContentZhSc),
-            "es" => (selectedContent.TitleEs, selectedContent.ContentEs),
-            _ => (selectedContent.TitleEn, selectedContent.ContentEn)
+            GodGPTLanguage.CN => (selectedContent.TitleZhSc, selectedContent.ContentZhSc), // 简体中文
+            GodGPTLanguage.TraditionalChinese => (selectedContent.TitleZh, selectedContent.ContentZh), // 繁体中文
+            GodGPTLanguage.Spanish => (selectedContent.TitleEs, selectedContent.ContentEs), // 西班牙文
+            GodGPTLanguage.English => (selectedContent.TitleEn, selectedContent.ContentEn), // 英文
+            _ => (selectedContent.TitleEn, selectedContent.ContentEn) // 默认英文
         };
     }
     
     /// <summary>
     /// Get content by specific key
     /// </summary>
-    public async Task<(string title, string content)> GetContentByKeyAsync(string contentKey, string language = "en")
+    public async Task<(string title, string content)> GetContentByKeyAsync(string contentKey, GodGPTLanguage language = GodGPTLanguage.English)
     {
         await EnsureContentLoadedAsync();
         
@@ -93,12 +95,13 @@ public class DailyPushContentService
             return GetFallbackContent(language);
         }
         
-        return language.ToLowerInvariant() switch
+        return language switch
         {
-            "zh" or "zh-cn" => (content.TitleZh, content.ContentZh),
-            "zh-tw" or "zh-hk" => (content.TitleZhSc, content.ContentZhSc),
-            "es" => (content.TitleEs, content.ContentEs),
-            _ => (content.TitleEn, content.ContentEn)
+            GodGPTLanguage.CN => (content.TitleZhSc, content.ContentZhSc), // 简体中文
+            GodGPTLanguage.TraditionalChinese => (content.TitleZh, content.ContentZh), // 繁体中文
+            GodGPTLanguage.Spanish => (content.TitleEs, content.ContentEs), // 西班牙文
+            GodGPTLanguage.English => (content.TitleEn, content.ContentEn), // 英文
+            _ => (content.TitleEn, content.ContentEn) // 默认英文
         };
     }
     
@@ -349,14 +352,15 @@ public class DailyPushContentService
     /// <summary>
     /// Get fallback content when CSV is not available
     /// </summary>
-    private (string title, string content) GetFallbackContent(string language)
+    private (string title, string content) GetFallbackContent(GodGPTLanguage language)
     {
-        return language.ToLowerInvariant() switch
+        return language switch
         {
-            "zh" or "zh-cn" => ("每日提醒", "今天也要保持正念，专注当下。"),
-            "zh-tw" or "zh-hk" => ("每日提醒", "今天也要保持正念，專注當下。"),
-            "es" => ("Recordatorio Diario", "Mantén la atención plena y concéntrate en el presente."),
-            _ => ("Daily Reminder", "Stay mindful and focus on the present moment.")
+            GodGPTLanguage.CN => ("每日提醒", "今天也要保持正念，专注当下。"), // 简体中文
+            GodGPTLanguage.TraditionalChinese => ("每日提醒", "今天也要保持正念，專注當下。"), // 繁体中文
+            GodGPTLanguage.Spanish => ("Recordatorio Diario", "Mantén la atención plena y concéntrate en el presente."), // 西班牙文
+            GodGPTLanguage.English => ("Daily Reminder", "Stay mindful and focus on the present moment."), // 英文
+            _ => ("Daily Reminder", "Stay mindful and focus on the present moment.") // 默认英文
         };
     }
 }
