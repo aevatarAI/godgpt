@@ -24,6 +24,13 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     private string _timeZoneId = "";
     
+    // Reminder constants
+    private const string MORNING_REMINDER = "MorningPush";
+    private const string AFTERNOON_REMINDER = "AfternoonRetry";
+    
+    // Tolerance window for time-based execution (±5 minutes)
+    private readonly TimeSpan _toleranceWindow = TimeSpan.FromMinutes(5);
+    
     public TimezoneSchedulerGAgent(
         ILogger<TimezoneSchedulerGAgent> logger, 
         IGrainFactory grainFactory,
@@ -258,54 +265,148 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     // Orleans Reminder implementation for scheduled pushes
     public async Task ReceiveReminder(string reminderName, TickStatus status)
     {
+        var now = DateTime.UtcNow;
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
-        
-        // Version control check - only authorized instances should execute
-        if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
-        {
-            _logger.LogWarning("Unauthorized instance received reminder {ReminderName} for {TimeZone}. " +
-                "Current: {Current}, Expected: {Expected}. Cleaning up reminder.", 
-                reminderName, _timeZoneId, State.ReminderTargetId, configuredTargetId);
-            
-            // Clean up unauthorized reminder
-            try
-            {
-                var existingReminder = await this.GetReminder(reminderName);
-                if (existingReminder != null)
-                {
-                    await this.UnregisterReminder(existingReminder);
-                    _logger.LogInformation("Cleaned up unauthorized reminder {ReminderName} for {TimeZone}", 
-                        reminderName, _timeZoneId);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error cleaning up unauthorized reminder {ReminderName} for {TimeZone}", 
-                    reminderName, _timeZoneId);
-            }
-            return;
-        }
-        
-        var targetDate = DateTime.UtcNow.Date;
         
         try
         {
-            switch (reminderName)
+            // Version control check - only authorized instances should execute
+            if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
             {
-                case "MorningPush":
-                    await ProcessMorningPushAsync(targetDate);
-                    break;
-                case "AfternoonRetry":
-                    await ProcessAfternoonRetryAsync(targetDate);
-                    break;
-                default:
-                    _logger.LogWarning("Unknown reminder: {ReminderName}", reminderName);
-                    break;
+                _logger.LogWarning("Unauthorized instance received reminder {ReminderName} for {TimeZone}. " +
+                    "Current: {Current}, Expected: {Expected}. Cleaning up reminder.", 
+                    reminderName, _timeZoneId, State.ReminderTargetId, configuredTargetId);
+                
+                // Clean up unauthorized reminder
+                await UnregisterSpecificReminderAsync(reminderName);
+                return;
             }
+            
+            // Check if within execution window
+            if (IsWithinExecutionWindow(reminderName, now))
+            {
+                _logger.LogInformation("Executing scheduled task: {ReminderName} for {TimeZone}", 
+                    reminderName, _timeZoneId);
+                
+                var targetDate = now.Date;
+                
+                switch (reminderName)
+                {
+                    case MORNING_REMINDER:
+                        await ProcessMorningPushAsync(targetDate);
+                        break;
+                    case AFTERNOON_REMINDER:
+                        await ProcessAfternoonRetryAsync(targetDate);
+                        break;
+                    default:
+                        _logger.LogWarning("Unknown reminder: {ReminderName}", reminderName);
+                        break;
+                }
+            }
+            else
+            {
+                _logger.LogInformation("Outside execution window for {ReminderName}, skipping execution", 
+                    reminderName);
+            }
+            
+            // Always reschedule the next reminder (best practice from documentation)
+            await RescheduleReminderAsync(reminderName, now);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing reminder {ReminderName} for {TimeZone}", 
+                reminderName, _timeZoneId);
+            
+            // Even on error, try to reschedule next reminder
+            try
+            {
+                await RescheduleReminderAsync(reminderName, now);
+            }
+            catch (Exception scheduleEx)
+            {
+                _logger.LogError(scheduleEx, "Failed to reschedule reminder {ReminderName}", reminderName);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Check if current time is within the execution window for the reminder
+    /// </summary>
+    private bool IsWithinExecutionWindow(string reminderName, DateTime currentUtc)
+    {
+        var options = _options.CurrentValue;
+        var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(currentUtc, timeZoneInfo);
+        var currentTimeOfDay = localNow.TimeOfDay;
+        
+        TimeSpan targetTime = reminderName switch
+        {
+            MORNING_REMINDER => options.MorningTime,
+            AFTERNOON_REMINDER => options.AfternoonRetryTime,
+            _ => TimeSpan.Zero
+        };
+        
+        if (targetTime == TimeSpan.Zero) return false;
+        
+        double minutesDifference = Math.Abs((currentTimeOfDay - targetTime).TotalMinutes);
+        bool withinWindow = minutesDifference <= _toleranceWindow.TotalMinutes;
+        
+        if (!withinWindow)
+        {
+            _logger.LogInformation("Outside execution window for {ReminderName}. " +
+                "Current time: {Current}, Target time: {Target}, Difference: {Diff} minutes", 
+                reminderName, currentTimeOfDay, targetTime, minutesDifference);
+        }
+        
+        return withinWindow;
+    }
+    
+    /// <summary>
+    /// Reschedule a specific reminder for the next execution
+    /// </summary>
+    private async Task RescheduleReminderAsync(string reminderName, DateTime currentUtc)
+    {
+        var options = _options.CurrentValue;
+        
+        TimeSpan targetTime = reminderName switch
+        {
+            MORNING_REMINDER => options.MorningTime,
+            AFTERNOON_REMINDER => options.AfternoonRetryTime,
+            _ => TimeSpan.Zero
+        };
+        
+        if (targetTime == TimeSpan.Zero) return;
+        
+        TimeSpan nextDueTime = CalculateNextExecutionTime(targetTime, currentUtc);
+        
+        await this.RegisterOrUpdateReminder(
+            reminderName,
+            nextDueTime,
+            TimeSpan.FromHours(23) // Use 23 hours as per best practices
+        );
+        
+        _logger.LogInformation("Rescheduled {ReminderName}, next execution at: {NextTime}", 
+            reminderName, currentUtc.Add(nextDueTime));
+    }
+    
+    /// <summary>
+    /// Unregister a specific reminder
+    /// </summary>
+    private async Task UnregisterSpecificReminderAsync(string reminderName)
+    {
+        try
+        {
+            var existingReminder = await this.GetReminder(reminderName);
+            if (existingReminder != null)
+            {
+                await this.UnregisterReminder(existingReminder);
+                _logger.LogInformation("Unregistered reminder {ReminderName} for {TimeZone}", 
+                    reminderName, _timeZoneId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error unregistering reminder {ReminderName} for {TimeZone}", 
                 reminderName, _timeZoneId);
         }
     }
@@ -332,55 +433,60 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     private async Task RegisterRemindersAsync()
     {
         var options = _options.CurrentValue;
-        var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
         var now = DateTime.UtcNow;
-        var localNow = TimeZoneInfo.ConvertTimeFromUtc(now, timeZoneInfo);
         
-        // Calculate next morning push time (configured time local)
-        var nextMorning = localNow.Date.Add(options.MorningTime);
-        if (nextMorning <= localNow)
-            nextMorning = nextMorning.AddDays(1);
-            
-        var nextMorningUtc = TimeZoneInfo.ConvertTimeToUtc(nextMorning, timeZoneInfo);
+        // Calculate next morning push time
+        var nextMorningDueTime = CalculateNextExecutionTime(options.MorningTime, now);
         
-        // Calculate next afternoon retry time (configured time local)
-        var nextAfternoon = localNow.Date.Add(options.AfternoonRetryTime);
-        if (nextAfternoon <= localNow)
-            nextAfternoon = nextAfternoon.AddDays(1);
-            
-        var nextAfternoonUtc = TimeZoneInfo.ConvertTimeToUtc(nextAfternoon, timeZoneInfo);
+        // Calculate next afternoon retry time  
+        var nextAfternoonDueTime = CalculateNextExecutionTime(options.AfternoonRetryTime, now);
         
-        // Register reminders (23-hour period for DST compatibility)
-        await this.RegisterOrUpdateReminder("MorningPush", 
-            nextMorningUtc - now, DailyPushConstants.DAILY_CYCLE);
-        await this.RegisterOrUpdateReminder("AfternoonRetry", 
-            nextAfternoonUtc - now, DailyPushConstants.DAILY_CYCLE);
+        // Register reminders with 23-hour period (best practice from documentation)
+        await this.RegisterOrUpdateReminder(
+            MORNING_REMINDER, 
+            nextMorningDueTime, 
+            TimeSpan.FromHours(23)
+        );
+        
+        await this.RegisterOrUpdateReminder(
+            AFTERNOON_REMINDER, 
+            nextAfternoonDueTime, 
+            TimeSpan.FromHours(23)
+        );
         
         _logger.LogInformation("Registered reminders for {TimeZone} - Morning: {Morning}, Afternoon: {Afternoon}", 
-            _timeZoneId, nextMorningUtc, nextAfternoonUtc);
+            _timeZoneId, now.Add(nextMorningDueTime), now.Add(nextAfternoonDueTime));
+    }
+    
+    /// <summary>
+    /// Calculate time until next execution for a given target time in the timezone
+    /// </summary>
+    private TimeSpan CalculateNextExecutionTime(TimeSpan targetTime, DateTime currentUtc)
+    {
+        var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(currentUtc, timeZoneInfo);
+        
+        // Today's target time in local timezone
+        var todayTarget = localNow.Date.Add(targetTime);
+        
+        // If today's target time has passed, calculate until tomorrow's target time
+        if (todayTarget <= localNow)
+        {
+            todayTarget = todayTarget.AddDays(1);
+        }
+        
+        // Convert back to UTC and calculate the time difference
+        var nextTargetUtc = TimeZoneInfo.ConvertTimeToUtc(todayTarget, timeZoneInfo);
+        return nextTargetUtc - currentUtc;
     }
     
     private async Task CleanupRemindersAsync()
     {
-        string[] reminderNames = { "MorningPush", "AfternoonRetry" };
+        string[] reminderNames = { MORNING_REMINDER, AFTERNOON_REMINDER };
         
         foreach (var reminderName in reminderNames)
         {
-            try
-            {
-                var existingReminder = await this.GetReminder(reminderName);
-                if (existingReminder != null)
-                {
-                    await this.UnregisterReminder(existingReminder);
-                    _logger.LogInformation("Cleaned up reminder {ReminderName} for {TimeZone}", 
-                        reminderName, _timeZoneId);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error cleaning up reminder {ReminderName} for {TimeZone}", 
-                    reminderName, _timeZoneId);
-            }
+            await UnregisterSpecificReminderAsync(reminderName);
         }
     }
 
