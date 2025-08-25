@@ -37,4 +37,19 @@ public interface ITimezoneSchedulerGAgent : IGAgent, IGrainWithStringKey
     /// Set reminder target ID for version control
     /// </summary>
     Task SetReminderTargetIdAsync(Guid targetId);
+    
+    /// <summary>
+    /// Start test mode with rapid push testing - TODO: Remove before production
+    /// </summary>
+    Task StartTestModeAsync();
+    
+    /// <summary>
+    /// Stop test mode and cleanup test reminders - TODO: Remove before production
+    /// </summary>
+    Task StopTestModeAsync();
+    
+    /// <summary>
+    /// Get test mode status - TODO: Remove before production
+    /// </summary>
+    Task<(bool IsActive, DateTime StartTime, int RoundsCompleted, int MaxRounds)> GetTestStatusAsync();
 }

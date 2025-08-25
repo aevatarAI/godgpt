@@ -28,6 +28,17 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     private const string MORNING_REMINDER = "MorningPush";
     private const string AFTERNOON_REMINDER = "AfternoonRetry";
     
+    // Test mode constants - TODO: Remove before production
+    private static class TestModeConstants
+    {
+        public const string TEST_PUSH_REMINDER = "TEST_PUSH_REMINDER";
+        public const string TEST_RETRY_REMINDER = "TEST_RETRY_REMINDER";
+        
+        public static readonly TimeSpan PUSH_INTERVAL = TimeSpan.FromMinutes(10);    // 每10分钟推送
+        public static readonly TimeSpan RETRY_DELAY = TimeSpan.FromMinutes(5);       // 5分钟重试
+        public const int MAX_TEST_ROUNDS = 6;                                        // 最多6轮测试
+    }
+    
     // Tolerance window for time-based execution (±5 minutes)
     private readonly TimeSpan _toleranceWindow = TimeSpan.FromMinutes(5);
     
@@ -115,6 +126,73 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             // Clean up existing reminders if no longer authorized
             await CleanupRemindersAsync();
         }
+    }
+    
+    /// <summary>
+    /// Start test mode with rapid push testing - TODO: Remove before production
+    /// </summary>
+    public async Task StartTestModeAsync()
+    {
+        if (State.TestModeActive)
+        {
+            _logger.LogWarning("Test mode already active for timezone {TimeZone}", _timeZoneId);
+            return;
+        }
+        
+        _logger.LogInformation("Starting test mode for timezone {TimeZone}", _timeZoneId);
+        
+        // Initialize test state
+        State.TestModeActive = true;
+        State.TestStartTime = DateTime.UtcNow;
+        State.TestRoundsCompleted = 0;
+        State.LastUpdated = DateTime.UtcNow;
+        
+        await ConfirmEvents();
+        
+        // Register first test reminder (immediate execution)
+        await this.RegisterOrUpdateReminder(
+            TestModeConstants.TEST_PUSH_REMINDER,
+            TimeSpan.FromSeconds(10), // Start in 10 seconds
+            TestModeConstants.PUSH_INTERVAL);
+            
+        _logger.LogInformation("Test mode started for {TimeZone}. Max rounds: {MaxRounds}, Interval: {Interval}", 
+            _timeZoneId, TestModeConstants.MAX_TEST_ROUNDS, TestModeConstants.PUSH_INTERVAL);
+    }
+    
+    /// <summary>
+    /// Stop test mode and cleanup test reminders - TODO: Remove before production
+    /// </summary>
+    public async Task StopTestModeAsync()
+    {
+        if (!State.TestModeActive)
+        {
+            _logger.LogInformation("Test mode not active for timezone {TimeZone}", _timeZoneId);
+            return;
+        }
+        
+        _logger.LogInformation("Stopping test mode for timezone {TimeZone}. Completed {Rounds} rounds", 
+            _timeZoneId, State.TestRoundsCompleted);
+        
+        // Cleanup test reminders
+        await CleanupTestRemindersAsync();
+        
+        // Reset test state
+        State.TestModeActive = false;
+        State.TestStartTime = DateTime.MinValue;
+        State.TestRoundsCompleted = 0;
+        State.LastUpdated = DateTime.UtcNow;
+        
+        await ConfirmEvents();
+        
+        _logger.LogInformation("Test mode stopped and cleaned up for timezone {TimeZone}", _timeZoneId);
+    }
+    
+    /// <summary>
+    /// Get test mode status - TODO: Remove before production
+    /// </summary>
+    public async Task<(bool IsActive, DateTime StartTime, int RoundsCompleted, int MaxRounds)> GetTestStatusAsync()
+    {
+        return (State.TestModeActive, State.TestStartTime, State.TestRoundsCompleted, TestModeConstants.MAX_TEST_ROUNDS);
     }
 
     public async Task ProcessMorningPushAsync(DateTime targetDate)
@@ -270,6 +348,18 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         
         try
         {
+            // Handle test mode reminders first - TODO: Remove before production
+            if (reminderName == TestModeConstants.TEST_PUSH_REMINDER)
+            {
+                await HandleTestPushReminderAsync(now);
+                return;
+            }
+            
+            if (reminderName == TestModeConstants.TEST_RETRY_REMINDER)
+            {
+                await HandleTestRetryReminderAsync(now);
+                return;
+            }
             // Version control check - only authorized instances should execute
             if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
             {
@@ -565,5 +655,134 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         
         await Task.WhenAll(tasks);
         return (retryCount, failureCount);
+    }
+    
+    // Test mode reminder handlers - TODO: Remove before production
+    
+    /// <summary>
+    /// Handle test push reminder - executes test push and schedules retry
+    /// </summary>
+    private async Task HandleTestPushReminderAsync(DateTime now)
+    {
+        if (!State.TestModeActive)
+        {
+            _logger.LogWarning("Received test push reminder but test mode not active for {TimeZone}", _timeZoneId);
+            await CleanupTestRemindersAsync();
+            return;
+        }
+        
+        // Check if reached maximum rounds
+        if (State.TestRoundsCompleted >= TestModeConstants.MAX_TEST_ROUNDS)
+        {
+            _logger.LogInformation("Test mode completed maximum rounds ({MaxRounds}) for {TimeZone}. Stopping test mode.", 
+                TestModeConstants.MAX_TEST_ROUNDS, _timeZoneId);
+            await StopTestModeAsync();
+            return;
+        }
+        
+        try
+        {
+            _logger.LogInformation("Executing test push round {Round}/{MaxRounds} for {TimeZone}", 
+                State.TestRoundsCompleted + 1, TestModeConstants.MAX_TEST_ROUNDS, _timeZoneId);
+            
+            // Execute test push (use current date)
+            var targetDate = now.Date;
+            await ProcessMorningPushAsync(targetDate);
+            
+            // Increment round counter
+            State.TestRoundsCompleted++;
+            State.LastUpdated = DateTime.UtcNow;
+            await ConfirmEvents();
+            
+            // Schedule retry reminder
+            await this.RegisterOrUpdateReminder(
+                TestModeConstants.TEST_RETRY_REMINDER,
+                TestModeConstants.RETRY_DELAY,
+                TestModeConstants.RETRY_DELAY);
+                
+            _logger.LogInformation("Test push executed and retry scheduled for {TimeZone}. Round {Round} completed.", 
+                _timeZoneId, State.TestRoundsCompleted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to execute test push for {TimeZone}", _timeZoneId);
+            
+            // Continue with next round even if current failed
+            await RescheduleTestPushReminderAsync();
+        }
+    }
+    
+    /// <summary>
+    /// Handle test retry reminder - executes retry logic for unread messages
+    /// </summary>
+    private async Task HandleTestRetryReminderAsync(DateTime now)
+    {
+        if (!State.TestModeActive)
+        {
+            _logger.LogWarning("Received test retry reminder but test mode not active for {TimeZone}", _timeZoneId);
+            await CleanupTestRemindersAsync();
+            return;
+        }
+        
+        try
+        {
+            _logger.LogInformation("Executing test retry for {TimeZone}", _timeZoneId);
+            
+            // Execute retry logic (use current date)
+            var targetDate = now.Date;
+            await ProcessAfternoonRetryAsync(targetDate);
+            
+            // Schedule next push round if not completed
+            await RescheduleTestPushReminderAsync();
+            
+            _logger.LogInformation("Test retry executed for {TimeZone}", _timeZoneId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to execute test retry for {TimeZone}", _timeZoneId);
+            
+            // Continue with next round even if retry failed
+            await RescheduleTestPushReminderAsync();
+        }
+    }
+    
+    /// <summary>
+    /// Schedule next test push reminder if test mode still active and under limit
+    /// </summary>
+    private async Task RescheduleTestPushReminderAsync()
+    {
+        if (!State.TestModeActive)
+            return;
+            
+        if (State.TestRoundsCompleted >= TestModeConstants.MAX_TEST_ROUNDS)
+        {
+            _logger.LogInformation("Test mode reached maximum rounds for {TimeZone}. Stopping.", _timeZoneId);
+            await StopTestModeAsync();
+            return;
+        }
+        
+        // Schedule next push round
+        await this.RegisterOrUpdateReminder(
+            TestModeConstants.TEST_PUSH_REMINDER,
+            TestModeConstants.PUSH_INTERVAL,
+            TestModeConstants.PUSH_INTERVAL);
+    }
+    
+    /// <summary>
+    /// Cleanup test mode reminders
+    /// </summary>
+    private async Task CleanupTestRemindersAsync()
+    {
+        try
+        {
+            await UnregisterSpecificReminderAsync(TestModeConstants.TEST_PUSH_REMINDER);
+            await UnregisterSpecificReminderAsync(TestModeConstants.TEST_RETRY_REMINDER);
+            
+            _logger.LogInformation("Test reminders cleaned up for {TimeZone}", _timeZoneId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to cleanup test reminders for {TimeZone}", _timeZoneId);
+        }
     }
 }

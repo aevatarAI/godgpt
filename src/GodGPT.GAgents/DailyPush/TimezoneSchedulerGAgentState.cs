@@ -52,6 +52,21 @@ public class TimezoneSchedulerGAgentState : StateBase
     /// Reminder target ID for version control
     /// </summary>
     [Id(8)] public Guid ReminderTargetId { get; set; } = Guid.Empty;
+    
+    /// <summary>
+    /// Test mode active flag
+    /// </summary>
+    [Id(9)] public bool TestModeActive { get; set; } = false;
+    
+    /// <summary>
+    /// Test mode start time
+    /// </summary>
+    [Id(10)] public DateTime TestStartTime { get; set; } = DateTime.MinValue;
+    
+    /// <summary>
+    /// Number of test rounds completed
+    /// </summary>
+    [Id(11)] public int TestRoundsCompleted { get; set; } = 0;
 }
 
 /// <summary>
