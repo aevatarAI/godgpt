@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 
 namespace GodGPT.GAgents.DailyPush;
 
@@ -26,7 +27,7 @@ public class DeviceRequest
     /// <summary>
     /// Push language setting (optional for updates)
     /// </summary>
-    public string? PushLanguage { get; set; }
+    public GodGPTLanguage? PushLanguage { get; set; }
     
     /// <summary>
     /// Push enabled/disabled switch (optional for updates)
