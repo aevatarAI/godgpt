@@ -5111,21 +5111,22 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // Handle Ultimate subscription adjustment (exactly same as Apple's logic)
             if (productConfig.IsUltimate)
             {
-                var diffTimeSpan = (invoiceDetail.SubscriptionEndDate - DateTime.UtcNow);
-                if (diffTimeSpan.TotalMilliseconds > 0)
+                // Fix: Use fixed-day calculation instead of webhook-based end date for consistency
+                // Calculate the time span using the product's PlanType and fixed days, not RevenueCat webhook data
+                var ultimateDays = GetDaysForPlanType((PlanType)productConfig.PlanType);
+                var diffTimeSpan = TimeSpan.FromDays(ultimateDays);
+                
+                var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
+                if (premiumSubscription.IsActive)
                 {
-                    var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
-                    if (premiumSubscription.IsActive)
-                    {
-                        // Fix: Follow Apple's exact logic - rollback Premium subscription time
-                        // This restores Premium to its state before Ultimate was active
-                        premiumSubscription.StartDate = premiumSubscription.StartDate.Add(-diffTimeSpan);
-                        premiumSubscription.EndDate = premiumSubscription.EndDate.Add(-diffTimeSpan);
-                        await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
-                        
-                        _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Rolled back Premium subscription by {TimeSpan} due to Ultimate refund, matching Apple Pay logic. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
-                            diffTimeSpan, premiumSubscription.StartDate, premiumSubscription.EndDate);
-                    }
+                    // Fix: Follow Apple's exact logic - rollback Premium subscription time
+                    // This restores Premium to its state before Ultimate was active
+                    premiumSubscription.StartDate = premiumSubscription.StartDate.Add(-diffTimeSpan);
+                    premiumSubscription.EndDate = premiumSubscription.EndDate.Add(-diffTimeSpan);
+                    await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
+                    
+                    _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Rolled back Premium subscription by {TimeSpan} ({Days} days) due to Ultimate refund, using fixed-day calculation. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
+                        diffTimeSpan, ultimateDays, premiumSubscription.StartDate, premiumSubscription.EndDate);
                 }
             }
 
