@@ -42,6 +42,9 @@ public class DailyPushContentService
     {
         _logger = logger;
         _options = options;
+        
+        _logger.LogDebug("🚀 Initializing DailyPushContentService...");
+        _logger.LogDebug("📂 Configured CSV path: {CsvPath}", options.CurrentValue.FilePaths.CsvDictionaryPath);
     }
     
     /// <summary>
@@ -49,16 +52,22 @@ public class DailyPushContentService
     /// </summary>
     public async Task<(string title, string content)> GetRandomContentAsync(string language = "en")
     {
+        _logger.LogDebug("🎲 Requesting random content for language: {Language}", language);
+        
         await EnsureContentLoadedAsync();
         
         if (_contents.Count == 0)
         {
-            _logger.LogWarning("No daily push content available, using fallback");
+            _logger.LogWarning("⚠️ No daily push content available, using fallback for language: {Language}", language);
             return GetFallbackContent(language);
         }
         
         var random = new Random();
-        var selectedContent = _contents[random.Next(_contents.Count)];
+        var selectedIndex = random.Next(_contents.Count);
+        var selectedContent = _contents[selectedIndex];
+        
+        _logger.LogDebug("🎯 Selected content #{Index}/{Total}: Key={ContentKey} for language={Language}", 
+            selectedIndex + 1, _contents.Count, selectedContent.ContentKey, language);
         
         return language.ToLowerInvariant() switch
         {
@@ -115,9 +124,27 @@ public class DailyPushContentService
     /// </summary>
     private async Task EnsureContentLoadedAsync()
     {
-        if (_contents.Count == 0 || DateTime.UtcNow - _lastLoadTime > _cacheExpiry)
+        var now = DateTime.UtcNow;
+        var cacheAge = now - _lastLoadTime;
+        var needsReload = _contents.Count == 0 || cacheAge > _cacheExpiry;
+        
+        if (needsReload)
         {
+            if (_contents.Count == 0)
+            {
+                _logger.LogDebug("📋 Content cache is empty, loading CSV for first time");
+            }
+            else
+            {
+                _logger.LogDebug("🕐 Content cache expired (Age: {CacheAge}, Expiry: {CacheExpiry}), reloading CSV", 
+                    cacheAge, _cacheExpiry);
+            }
+            
             await LoadContentFromCsvAsync();
+        }
+        else
+        {
+            _logger.LogDebug("✅ Content cache is valid ({Count} entries, Age: {CacheAge})", _contents.Count, cacheAge);
         }
     }
     
@@ -131,30 +158,50 @@ public class DailyPushContentService
             var filePaths = _options.CurrentValue.FilePaths;
             var csvPath = GetFullPath(filePaths.CsvDictionaryPath, filePaths.BaseDirectory);
             
+            _logger.LogDebug("Attempting to load CSV from configured path: {CsvPath}", csvPath);
+            
             if (!File.Exists(csvPath))
             {
-                _logger.LogError("CSV dictionary file not found at path: {CsvPath}", csvPath);
+                _logger.LogError("❌ CSV dictionary file not found at path: {CsvPath}", csvPath);
                 return;
             }
             
-            _logger.LogInformation("Loading daily push content from CSV: {CsvPath}", csvPath);
+            var fileInfo = new FileInfo(csvPath);
+            _logger.LogInformation("📁 Found CSV file: {CsvPath} (Size: {FileSize} bytes, Modified: {LastModified})", 
+                csvPath, fileInfo.Length, fileInfo.LastWriteTime);
             
             var lines = await File.ReadAllLinesAsync(csvPath);
             
+            _logger.LogDebug("📄 CSV file contains {TotalLines} lines (including header)", lines.Length);
+            
             if (lines.Length <= 1)
             {
-                _logger.LogWarning("CSV file is empty or has no data rows");
+                _logger.LogWarning("⚠️ CSV file is empty or has no data rows (only {LineCount} lines)", lines.Length);
                 return;
+            }
+            
+            // Log header for debugging
+            if (lines.Length > 0)
+            {
+                _logger.LogDebug("📋 CSV header: {Header}", lines[0]);
             }
             
             // Clear existing content if force reload or first load
             if (forceReload || _contents.Count == 0)
             {
+                var previousCount = _contents.Count;
                 _contents.Clear();
+                if (previousCount > 0)
+                {
+                    _logger.LogInformation("🔄 Cleared {PreviousCount} existing content entries for reload", previousCount);
+                }
             }
             
             // Skip header row and process data
             var loadedCount = 0;
+            var failedCount = 0;
+            var dataRowCount = lines.Length - 1; // Exclude header
+            
             for (int i = 1; i < lines.Length; i++)
             {
                 try
@@ -164,20 +211,41 @@ public class DailyPushContentService
                     {
                         _contents.Add(content);
                         loadedCount++;
+                        
+                        // Log first few entries for debugging
+                        if (loadedCount <= 3)
+                        {
+                            _logger.LogDebug("✅ Loaded content #{LoadedCount}: Key={ContentKey}, TitleEn='{TitleEn}', TitleZh='{TitleZh}'",
+                                loadedCount, content.ContentKey, content.TitleEn, content.TitleZh);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Skipped line {LineNumber}: Invalid content or empty key", i + 1);
+                        failedCount++;
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to parse CSV line {LineNumber}: {Line}", i + 1, lines[i]);
+                    _logger.LogWarning(ex, "❌ Failed to parse CSV line {LineNumber}: {Line}", i + 1, lines[i]);
+                    failedCount++;
                 }
             }
             
             _lastLoadTime = DateTime.UtcNow;
-            _logger.LogInformation("Successfully loaded {Count} daily push contents from CSV", loadedCount);
+            
+            _logger.LogInformation("🎯 CSV loading completed: {LoadedCount}/{DataRowCount} entries loaded successfully, {FailedCount} failed",
+                loadedCount, dataRowCount, failedCount);
+            
+            if (loadedCount > 0)
+            {
+                var sampleKeys = _contents.Take(5).Select(c => c.ContentKey).ToList();
+                _logger.LogInformation("📚 Sample content keys: [{SampleKeys}]", string.Join(", ", sampleKeys));
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load daily push content from CSV");
+            _logger.LogError(ex, "💥 Critical error loading daily push content from CSV");
         }
     }
     

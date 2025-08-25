@@ -38,18 +38,38 @@ public class FirebaseService
         _logger = logger;
         _httpClient = httpClient;
         
+        _logger.LogDebug("🚀 Initializing Firebase service...");
+        
         // Load service account from file first, then fallback to configuration
-        _serviceAccount = LoadServiceAccountFromFile(options.CurrentValue.FilePaths) ?? 
-                         LoadServiceAccountFromConfiguration(configuration);
+        _logger.LogDebug("🔄 Attempting to load Firebase credentials (File first, then appsettings.json fallback)");
+        
+        var fileAccount = LoadServiceAccountFromFile(options.CurrentValue.FilePaths);
+        var configAccount = fileAccount == null ? LoadServiceAccountFromConfiguration(configuration) : null;
+        
+        _serviceAccount = fileAccount ?? configAccount;
         _projectId = _serviceAccount?.ProjectId ?? configuration["Firebase:ProjectId"];
         
-        if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
+        // Log the source of credentials
+        if (fileAccount != null)
         {
-            _logger.LogInformation("Firebase FCM API v1 configured successfully for project: {ProjectId}", _projectId);
+            _logger.LogInformation("🎯 Firebase credentials loaded from FILE for project: {ProjectId}", _projectId);
+        }
+        else if (configAccount != null)
+        {
+            _logger.LogInformation("🎯 Firebase credentials loaded from APPSETTINGS for project: {ProjectId}", _projectId);
+        }
+        else if (!string.IsNullOrEmpty(_projectId))
+        {
+            _logger.LogWarning("⚠️ Firebase project ID found in config but no service account - limited functionality");
         }
         else
         {
-            _logger.LogWarning("Firebase credentials not configured - using simulation mode");
+            _logger.LogWarning("❌ Firebase credentials not configured - using SIMULATION MODE for push notifications");
+        }
+        
+        if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
+        {
+            _logger.LogInformation("✅ Firebase FCM API v1 configured successfully for project: {ProjectId}", _projectId);
         }
     }
     
@@ -62,15 +82,29 @@ public class FirebaseService
         {
             var keyPath = GetFullPath(filePaths.FirebaseKeyPath, filePaths.BaseDirectory);
             
+            _logger.LogDebug("🔑 Attempting to load Firebase key from configured path: {KeyPath}", keyPath);
+            
             if (!File.Exists(keyPath))
             {
-                _logger.LogDebug("Firebase key file not found at path: {KeyPath}", keyPath);
+                _logger.LogWarning("❌ Firebase key file not found at path: {KeyPath} - will fallback to appsettings.json", keyPath);
                 return null;
             }
             
-            _logger.LogInformation("Loading Firebase service account from file: {KeyPath}", keyPath);
+            var fileInfo = new FileInfo(keyPath);
+            _logger.LogInformation("📁 Found Firebase key file: {KeyPath} (Size: {FileSize} bytes, Modified: {LastModified})", 
+                keyPath, fileInfo.Length, fileInfo.LastWriteTime);
             
             var jsonContent = File.ReadAllText(keyPath);
+            
+            // Log basic file info without exposing sensitive data
+            var contentLength = jsonContent.Length;
+            var hasPrivateKey = jsonContent.Contains("private_key");
+            var hasProjectId = jsonContent.Contains("project_id");
+            var hasClientEmail = jsonContent.Contains("client_email");
+            
+            _logger.LogDebug("🔍 Firebase key file analysis: Length={ContentLength} chars, HasPrivateKey={HasPrivateKey}, HasProjectId={HasProjectId}, HasClientEmail={HasClientEmail}",
+                contentLength, hasPrivateKey, hasProjectId, hasClientEmail);
+            
             var serviceAccount = JsonSerializer.Deserialize<ServiceAccountInfo>(jsonContent, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
@@ -78,19 +112,31 @@ public class FirebaseService
             
             if (serviceAccount != null)
             {
-                _logger.LogInformation("Successfully loaded Firebase service account from file for project: {ProjectId}", 
+                _logger.LogInformation("✅ Successfully loaded Firebase service account from file for project: {ProjectId}", 
                     serviceAccount.ProjectId);
+                
+                // Log key fields presence (without exposing values)
+                _logger.LogDebug("🔑 Service account validation: ProjectId='{ProjectId}', ClientEmail='{ClientEmail}', HasPrivateKey={HasPrivateKey}",
+                    serviceAccount.ProjectId, 
+                    string.IsNullOrEmpty(serviceAccount.ClientEmail) ? "<EMPTY>" : serviceAccount.ClientEmail,
+                    !string.IsNullOrEmpty(serviceAccount.PrivateKey));
             }
             else
             {
-                _logger.LogError("Failed to parse Firebase service account from file");
+                _logger.LogError("❌ Failed to parse Firebase service account from file - JSON deserialization returned null");
             }
             
             return serviceAccount;
         }
+        catch (JsonException jsonEx)
+        {
+            _logger.LogError(jsonEx, "💥 JSON parsing error loading Firebase service account from file: {KeyPath}", 
+                GetFullPath(filePaths.FirebaseKeyPath, filePaths.BaseDirectory));
+            return null;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to load Firebase service account from file: {KeyPath}", 
+            _logger.LogError(ex, "💥 Critical error loading Firebase service account from file: {KeyPath}", 
                 GetFullPath(filePaths.FirebaseKeyPath, filePaths.BaseDirectory));
             return null;
         }
