@@ -282,31 +282,33 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
                 return;
             }
             
-            // Check if within execution window
-            if (IsWithinExecutionWindow(reminderName, now))
+            // Execute the scheduled task (reliability over timing precision)
+            var targetDate = now.Date;
+            var isWithinWindow = IsWithinExecutionWindow(reminderName, now);
+            
+            if (!isWithinWindow)
             {
-                _logger.LogInformation("Executing scheduled task: {ReminderName} for {TimeZone}", 
+                _logger.LogWarning("Executing {ReminderName} outside ideal window for {TimeZone} - " +
+                    "ensuring delivery reliability over timing precision", 
                     reminderName, _timeZoneId);
-                
-                var targetDate = now.Date;
-                
-                switch (reminderName)
-                {
-                    case MORNING_REMINDER:
-                        await ProcessMorningPushAsync(targetDate);
-                        break;
-                    case AFTERNOON_REMINDER:
-                        await ProcessAfternoonRetryAsync(targetDate);
-                        break;
-                    default:
-                        _logger.LogWarning("Unknown reminder: {ReminderName}", reminderName);
-                        break;
-                }
             }
             else
             {
-                _logger.LogInformation("Outside execution window for {ReminderName}, skipping execution", 
-                    reminderName);
+                _logger.LogInformation("Executing scheduled task: {ReminderName} for {TimeZone}", 
+                    reminderName, _timeZoneId);
+            }
+            
+            switch (reminderName)
+            {
+                case MORNING_REMINDER:
+                    await ProcessMorningPushAsync(targetDate);
+                    break;
+                case AFTERNOON_REMINDER:
+                    await ProcessAfternoonRetryAsync(targetDate);
+                    break;
+                default:
+                    _logger.LogWarning("Unknown reminder: {ReminderName}", reminderName);
+                    break;
             }
             
             // Always reschedule the next reminder (best practice from documentation)
@@ -330,7 +332,8 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     }
     
     /// <summary>
-    /// Check if current time is within the execution window for the reminder
+    /// Check if current time is within the ideal execution window for the reminder
+    /// This is used for monitoring and logging purposes only - execution always proceeds
     /// </summary>
     private bool IsWithinExecutionWindow(string reminderName, DateTime currentUtc)
     {
@@ -353,9 +356,9 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         
         if (!withinWindow)
         {
-            _logger.LogInformation("Outside execution window for {ReminderName}. " +
-                "Current time: {Current}, Target time: {Target}, Difference: {Diff} minutes", 
-                reminderName, currentTimeOfDay, targetTime, minutesDifference);
+            _logger.LogInformation("Timing analysis for {ReminderName}: " +
+                "Current time: {Current}, Target time: {Target}, Difference: {Diff} minutes (outside ideal ±{Tolerance}min window)", 
+                reminderName, currentTimeOfDay, targetTime, minutesDifference, _toleranceWindow.TotalMinutes);
         }
         
         return withinWindow;
