@@ -45,7 +45,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
         
         if (needsRefresh)
         {
-            _logger.LogInformation("📋 Content is empty or stale, triggering auto-refresh from S3 CSV...");
+            _logger.LogInformation("📋 Content is empty or stale, triggering auto-refresh from local CSV...");
             try
             {
                 await RefreshContentsFromSourceAsync();
@@ -244,7 +244,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     {
         try
         {
-            _logger.LogInformation("🔄 Starting content refresh from S3 CSV source...");
+            _logger.LogInformation("🔄 Starting content refresh from local CSV file...");
             
             // Get DailyPushContentService from service provider
             var contentService = ServiceProvider.GetService<DailyPushContentService>();
@@ -274,18 +274,49 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                     var notificationContent = new DailyNotificationContent
                     {
                         Id = csvContent.ContentKey,
-                        TitleEn = csvContent.TitleEn,
-                        ContentEn = csvContent.ContentEn,
-                        TitleZh = csvContent.TitleZh,
-                        ContentZh = csvContent.ContentZh,
-                        TitleEs = csvContent.TitleEs,
-                        ContentEs = csvContent.ContentEs,
-                        TitleZhSc = csvContent.TitleZhSc,
-                        ContentZhSc = csvContent.ContentZhSc,
                         IsActive = true,
-                        CreatedAt = DateTime.UtcNow,
-                        LastUsed = DateTime.MinValue
+                        LocalizedContents = new Dictionary<string, LocalizedContentData>()
                     };
+                    
+                    // Add English content if available
+                    if (!string.IsNullOrEmpty(csvContent.TitleEn) || !string.IsNullOrEmpty(csvContent.ContentEn))
+                    {
+                        notificationContent.LocalizedContents["en"] = new LocalizedContentData
+                        {
+                            Title = csvContent.TitleEn ?? "",
+                            Content = csvContent.ContentEn ?? ""
+                        };
+                    }
+                    
+                    // Add Chinese content if available
+                    if (!string.IsNullOrEmpty(csvContent.TitleZh) || !string.IsNullOrEmpty(csvContent.ContentZh))
+                    {
+                        notificationContent.LocalizedContents["zh"] = new LocalizedContentData
+                        {
+                            Title = csvContent.TitleZh ?? "",
+                            Content = csvContent.ContentZh ?? ""
+                        };
+                    }
+                    
+                    // Add Spanish content if available
+                    if (!string.IsNullOrEmpty(csvContent.TitleEs) || !string.IsNullOrEmpty(csvContent.ContentEs))
+                    {
+                        notificationContent.LocalizedContents["es"] = new LocalizedContentData
+                        {
+                            Title = csvContent.TitleEs ?? "",
+                            Content = csvContent.ContentEs ?? ""
+                        };
+                    }
+                    
+                    // Add Simplified Chinese content if available
+                    if (!string.IsNullOrEmpty(csvContent.TitleZhSc) || !string.IsNullOrEmpty(csvContent.ContentZhSc))
+                    {
+                        notificationContent.LocalizedContents["zh-sc"] = new LocalizedContentData
+                        {
+                            Title = csvContent.TitleZhSc ?? "",
+                            Content = csvContent.ContentZhSc ?? ""
+                        };
+                    }
                     
                     convertedContents.Add(notificationContent);
                 }
@@ -316,12 +347,12 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
             
             await ConfirmEvents();
             
-            _logger.LogInformation("✅ Content refresh completed: {Count} contents imported from S3 CSV source", 
+            _logger.LogInformation("✅ Content refresh completed: {Count} contents imported from local CSV file", 
                 convertedContents.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "💥 Critical error during content refresh from S3 CSV source");
+            _logger.LogError(ex, "💥 Critical error during content refresh from local CSV file");
             
             // Still mark refresh time even if failed
             RaiseEvent(new RefreshContentsEventLog

@@ -35,9 +35,9 @@ public class DailyPushOptions
 public class FilePathsOptions
 {
     /// <summary>
-    /// S3 URL for CSV dictionary file containing push content
+    /// Local file path for CSV dictionary file containing push content
     /// </summary>
-    public string CsvDictionaryUrl { get; set; } = "https://s3.amazonaws.com/your-bucket/dailyPush/dailyPush.csv";
+    public string CsvDictionaryPath { get; set; } = "/app/bright-mission/dailyPush.csv";
     
     /// <summary>
     /// Local file path to Firebase service account key JSON file

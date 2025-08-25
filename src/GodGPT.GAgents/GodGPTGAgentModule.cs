@@ -68,14 +68,12 @@ public class GodGPTGAgentModule : AbpModule
             return new FirebaseService(logger, httpClient, configuration, options);
         });
         
-        // Register DailyPushContentService with HttpClient
+        // Register DailyPushContentService
         context.Services.AddSingleton<DailyPushContentService>(serviceProvider =>
         {
             var logger = serviceProvider.GetRequiredService<ILogger<DailyPushContentService>>();
             var options = serviceProvider.GetRequiredService<IOptionsMonitor<DailyPushOptions>>();
-            var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
-            var httpClient = httpClientFactory.CreateClient();
-            return new DailyPushContentService(logger, options, httpClient);
+            return new DailyPushContentService(logger, options);
         });
     }
 }
