@@ -1,3 +1,7 @@
+using Aevatar.Application.Grains.Agents.ChatManager;
+using Aevatar.Application.Grains.Agents.ChatManager.Chat;
+using Shouldly;
+
 namespace GodGPT.Awakening.Tests;
 
 /// <summary>
@@ -22,20 +26,7 @@ public class AwakeningGAgentTests : AwakeningTestBase
         Assert.Equal(string.Empty, result.AwakeningMessage);
         Assert.Equal(AwakeningStatus.Completed, result.Status);
     }
-
-    [Fact(Skip = "")]
-    public async Task GetLatestNonEmptySessionAsync_WithNoSessions_ShouldReturnNull()
-    {
-        // Arrange
-        var awakeningAgent = await GetAwakeningGAgentAsync();
-
-        // Act
-        var result = await awakeningAgent.GetLatestNonEmptySessionAsync();
-
-        // Assert
-        Assert.Null(result);
-    }
-
+    
     [Fact(Skip = "")]
     public async Task GenerateAwakeningContentAsync_WithValidSessionContent_ShouldReturnResult()
     {
@@ -45,7 +36,7 @@ public class AwakeningGAgentTests : AwakeningTestBase
         var language = VoiceLanguageEnum.English;
 
         // Act
-        var result = await awakeningAgent.GenerateAwakeningContentAsync(sessionContent, language);
+        var result = await awakeningAgent.GenerateAwakeningContentAsync(new List<SessionContentDto>{sessionContent}, language);
 
         // Assert
         Assert.NotNull(result);
@@ -156,5 +147,29 @@ public class AwakeningGAgentTests : AwakeningTestBase
         Assert.NotEqual(Guid.Empty, sessionContent.SessionId);
         Assert.Equal("Test Session", sessionContent.Title);
         Assert.NotNull(sessionContent.ExtractedContent);
+    }
+
+    [Fact]
+    public async Task GenerateAwakeningContentAsyncTest()
+    {
+        var userId = Guid.NewGuid();
+        var chatManagerGAgent = Cluster.GrainFactory.GetGrain<IChatManagerGAgent>(userId);
+        
+        
+        var sessionId1 = await chatManagerGAgent.CreateSessionAsync(string.Empty, string.Empty, new UserProfileDto(), string.Empty);
+        var godChat = Cluster.GrainFactory.GetGrain<IGodChat>(sessionId1);
+        await Task.Delay(5000);
+        await godChat.StreamChatWithSessionAsync(sessionId1, string.Empty, "你好", Guid.NewGuid().ToString(), null, true);
+            
+        
+        var sessionId2 = await chatManagerGAgent.CreateSessionAsync(string.Empty, string.Empty, new UserProfileDto(), "Nova·Chime");
+        var godChat2 = Cluster.GrainFactory.GetGrain<IGodChat>(sessionId2);
+        await Task.Delay(5000);
+        await godChat2.StreamChatWithSessionAsync(sessionId2, string.Empty, "你好", Guid.NewGuid().ToString(), null, true);
+
+        await Task.Delay(10000);
+        var awakeningGAgent = Cluster.GrainFactory.GetGrain<IAwakeningGAgent>(userId);
+        var contentDtos = await awakeningGAgent.GetTodayAwakeningAsync(VoiceLanguageEnum.Chinese);
+        contentDtos.ShouldNotBeNull();
     }
 }

@@ -44,10 +44,11 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
         return base.OnActivateAsync(cancellationToken);
     }
 
-    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(PaymentPlatform paymentPlatform,
-        string transactionId,
-        string userId,
-        PurchaseType purchaseType = PurchaseType.None, string currency = "USD", decimal amount = 0)
+    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId, 
+        string userId
+        )
     {
         if (string.IsNullOrWhiteSpace(transactionId))
         {
@@ -86,21 +87,22 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
             _logger.LogDebug("Reporting payment success event to Google Analytics with transaction ID: {TransactionId}", transactionId);
 
             // Create unique transaction ID by combining user, platform and original transaction ID
-            var eventPayload = CreateGA4PurchasePayload(paymentPlatform, transactionId, userId, purchaseType, currency, amount);
+            var uniqueTransactionId = userId + "^" + paymentPlatform + "^" + transactionId;
+            var eventPayload = CreateGA4PurchasePayload(uniqueTransactionId, userId);
             var url = BuildGA4ApiUrl(currentOptions.ApiEndpoint, currentOptions.MeasurementId, currentOptions.ApiSecret);
             
-            _logger.LogInformation("PaymentAnalyticsGrain reporting purchase event for transaction {TransactionId} to: {Url}", transactionId, url);
+            _logger.LogInformation("PaymentAnalyticsGrain reporting purchase event for transaction {TransactionId} to: {Url}", uniqueTransactionId, url);
             
             var result = await SendEventToGA4Async(url, eventPayload, currentOptions.TimeoutSeconds);
             
             if (result.IsSuccess)
             {
-                _logger.LogInformation("[PaymentAnalytics] Successfully reported purchase event for transaction {TransactionId}", transactionId);
+                _logger.LogInformation("[PaymentAnalytics] Successfully reported purchase event for transaction {TransactionId}", uniqueTransactionId);
             }
             else
             {
                 _logger.LogWarning("[PaymentAnalytics] Failed to report purchase event for transaction {TransactionId}: {ErrorMessage}", 
-                    transactionId, result.ErrorMessage);
+                    uniqueTransactionId, result.ErrorMessage);
             }
             
             return result;
@@ -123,30 +125,27 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
     /// Create Google Analytics 4 payload for purchase event with idempotency support
     /// Uses GA4's built-in transaction_id deduplication mechanism
     /// </summary>
-    private object CreateGA4PurchasePayload(PaymentPlatform paymentPlatform, string transactionId, string userId, PurchaseType purchaseType = PurchaseType.None, string currency = "USD", decimal amount = 0)
+    private object CreateGA4PurchasePayload(string transactionId, string userId, decimal? paymentValue = 0)
     {
-        var uniqueTransactionId = userId + "^" + paymentPlatform + "^" + transactionId;
+        var clientId = userId;
+        
         return new
         {
-            client_id = userId,
-            user_id = userId,
+            client_id = clientId,
             events = new[]
             {
                 new
                 {
-                    name = "purchase",
+                    name = "purchase",  // Using standard purchase event for GA4 auto-deduplication
                     @params = new
                     {
-                        transaction_id = uniqueTransactionId,
-                        currency = currency,
-                        value = amount,
-                        platform = paymentPlatform.ToString(),
-                        purchase_type = purchaseType.ToString().ToLowerInvariant(),
+                        transaction_id = transactionId,
+                        currency = "USD",
+                        value = paymentValue,
                         engagement_time_msec = 1000
                     }
                 }
-            },
-            timestamp_micros = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000
+            }
         };
     }
 
@@ -273,6 +272,143 @@ public class PaymentAnalyticsGrain : Grain, IPaymentAnalyticsGrain
         {
             IsSuccess = false,
             ErrorMessage = "Unknown error in retry logic"
+        };
+    }
+
+    public async Task<PaymentAnalyticsResultDto> ReportPaymentSuccessAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId,
+        string userId,
+        PurchaseType purchaseType,
+        string currency,
+        decimal amount)
+    {
+        _logger.LogInformation(
+            "Reporting {PurchaseType} payment success to Google Analytics: Platform={Platform}, TransactionId={TransactionId}, UserId={UserId}, Amount={Amount} {Currency}",
+            purchaseType, paymentPlatform, transactionId, userId, amount, currency);
+
+        // Delegate to the original method for now - could be enhanced later with additional analytics data
+        var result = await ReportPaymentSuccessAsync(paymentPlatform, transactionId, userId);
+        
+        // Log additional analytics tracking for the specific purchase type
+        if (result.IsSuccess)
+        {
+            _logger.LogInformation(
+                "Successfully reported {PurchaseType} payment analytics: Platform={Platform}, TransactionId={TransactionId}",
+                purchaseType, paymentPlatform, transactionId);
+        }
+        
+        return result;
+    }
+
+    public async Task<PaymentAnalyticsResultDto> ReportRefundEventAsync(
+        PaymentPlatform paymentPlatform,
+        string transactionId, 
+        string userId,
+        string refundReason,
+        string currency,
+        decimal refundAmount)
+    {
+        if (string.IsNullOrWhiteSpace(transactionId))
+        {
+            return new PaymentAnalyticsResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = "Transaction ID is required for refund reporting"
+            };
+        }
+
+        try
+        {
+            var currentOptions = _options.CurrentValue;
+            
+            if (!currentOptions.EnableAnalytics)
+            {
+                _logger.LogDebug("Analytics reporting is disabled in configuration");
+                return new PaymentAnalyticsResultDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Analytics reporting is disabled"
+                };
+            }
+
+            if (string.IsNullOrWhiteSpace(currentOptions.MeasurementId) || 
+                string.IsNullOrWhiteSpace(currentOptions.ApiSecret))
+            {
+                _logger.LogError("Google Analytics configuration is incomplete. MeasurementId and ApiSecret are required");
+                return new PaymentAnalyticsResultDto
+                {
+                    IsSuccess = false,
+                    ErrorMessage = "Google Analytics configuration is incomplete"
+                };
+            }
+
+            _logger.LogInformation(
+                "Reporting refund event to Google Analytics: Platform={Platform}, TransactionId={TransactionId}, UserId={UserId}, RefundReason={RefundReason}, RefundAmount={RefundAmount} {Currency}",
+                paymentPlatform, transactionId, userId, refundReason, refundAmount, currency);
+
+            // Create unique refund transaction ID
+            var refundTransactionId = userId + "^" + paymentPlatform + "^REFUND^" + transactionId;
+            var eventPayload = CreateGA4RefundPayload(refundTransactionId, transactionId, userId, refundReason, currency, refundAmount);
+            var url = BuildGA4ApiUrl(currentOptions.ApiEndpoint, currentOptions.MeasurementId, currentOptions.ApiSecret);
+            
+            _logger.LogDebug("Sending refund event for transaction {TransactionId} to: {Url}", refundTransactionId, url);
+            
+            var result = await SendEventToGA4Async(url, eventPayload, currentOptions.TimeoutSeconds);
+            
+            if (result.IsSuccess)
+            {
+                _logger.LogInformation("[PaymentAnalytics] Successfully reported refund event for transaction {TransactionId}", refundTransactionId);
+            }
+            else
+            {
+                _logger.LogWarning("[PaymentAnalytics] Failed to report refund event for transaction {TransactionId}: {ErrorMessage}", 
+                    refundTransactionId, result.ErrorMessage);
+            }
+            
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reporting refund event for transaction {TransactionId}", transactionId);
+            return new PaymentAnalyticsResultDto
+            {
+                IsSuccess = false,
+                ErrorMessage = ex.Message
+            };
+        }
+    }
+
+    #endregion
+
+    #region Private Methods
+
+    /// <summary>
+    /// Create Google Analytics 4 payload for refund event
+    /// </summary>
+    private object CreateGA4RefundPayload(string refundTransactionId, string originalTransactionId, string userId, string refundReason, string currency, decimal refundAmount)
+    {
+        var clientId = userId;
+        
+        return new
+        {
+            client_id = clientId,
+            events = new[]
+            {
+                new
+                {
+                    name = "refund",  // Using refund event for GA4
+                    @params = new
+                    {
+                        transaction_id = refundTransactionId,
+                        original_transaction_id = originalTransactionId,
+                        currency = currency ?? "USD",
+                        value = refundAmount,
+                        refund_reason = refundReason ?? "unknown",
+                        engagement_time_msec = 1000
+                    }
+                }
+            }
         };
     }
 

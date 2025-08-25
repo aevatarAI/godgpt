@@ -121,6 +121,7 @@ public class LocalizationService : ILocalizationService
             GodGPTLanguage.English => "en",
             GodGPTLanguage.TraditionalChinese => "zh-tw",
             GodGPTLanguage.Spanish => "es",
+            GodGPTLanguage.CN => "zh",
             _ => "en"
         };
     }
@@ -164,7 +165,7 @@ public class LocalizationService : ILocalizationService
                 ["zh-tw.TranscriptUnavailable"] = "轉錄不可用",
                 ["zh-tw.SpeechServiceUnavailable"] = "語音識別服務不可用",
                 ["zh-tw.AudioFormatUnsupported"] = "音頻文件損壞或格式不受支持",
-                ["zh-tw.LanguageNotRecognised"] = "語言無法識別。請在選定的語言中重試。",
+                ["zh-tw.LanguageNotRecognised"] = "抱歉,語言未被識別。請使用所選語言再次嘗試。",
                 ["zh-tw.FailedGetUserInfo"] = "無法獲取用戶資訊。",
                 ["zh-tw.ChatRateLimit"] = "訊息已達上限。請稍後再試。",
                 ["zh-tw.VoiceChatRateLimit"] = "語音訊息已達上限。請稍後再試。",
@@ -173,25 +174,45 @@ public class LocalizationService : ILocalizationService
                 ["es.InvalidSession"] = "Sesión inválida para generar un enlace de compartido.  ",
                 ["es.ConversationDeleted"] = "Lo siento, esta conversación ha sido eliminada por el propietario. ",
                 ["es.InvalidConversation"] = "No se pudo cargar la conversación {SessionId} ",
-                ["es.DailyUpdateLimit"] = "Se ha alcanzado el límite de carga diaria. Actualiza a Premium para continuar.",
+                ["es.DailyUpdateLimit"] = "Límite de carga diaria alcanzado. Actualiza a premium para continuar.",
                 ["es.InvalidVoiceMessage"] = "Mensaje de voz no válido. Por favor, intente de nuevo.",
                 ["es.UnSetVoiceLanguage"] = "Por favor, establezca el idioma de voz.",
                 ["es.SpeechTimeout"] = "Tiempo de espera del servicio de reconocimiento de voz",
                 ["es.TranscriptUnavailable"] = "Transcripción no disponible",
                 ["es.SpeechServiceUnavailable"] = "Servicio de reconocimiento de voz no disponible",
                 ["es.AudioFormatUnsupported"] = "Archivo de audio corrupto o formato no compatible",
-                ["es.LanguageNotRecognised"] = "Idioma no reconocido. Por favor, intenta de nuevo en el idioma seleccionado.",
+                ["es.LanguageNotRecognised"] = "¡Lo siento, el idioma no fue reconocido! Por favor, intenta de nuevo en el idioma seleccionado.",
                 ["es.FailedGetUserInfo"] = "No se pudo obtener la información del usuario.",
                 ["es.ChatRateLimit"] = "Se ha alcanzado el límite de mensajes. Por favor, inténtalo de nuevo más tarde.",
-                ["es.VoiceChatRateLimit"] = "Se ha alcanzado el límite de mensajes de voz. Por favor, inténtalo de nuevo más tarde."
+                ["es.VoiceChatRateLimit"] = "Se ha alcanzado el límite de mensajes de voz. Por favor, inténtalo de nuevo más tarde.",
+                
+                //chinese
+                ["zh.SharesReached"] = "已达到最大{MaxShareCount} 次分享。请删除一些后再继续！",
+                ["zh.InvalidSession"] = "无效的会话，无法生成分享链接。", 
+                ["zh.ConversationDeleted"] = "抱歉，该会话已被所有者删除。",
+                ["zh.InvalidConversation"] = "无法加载会话 {SessionId}",
+                ["zh.DailyUpdateLimit"] = "已达到每日上传限制。升级到高级版以继续。",
+                ["zh.InvalidVoiceMessage"] = "语音信息无效。请重试。",
+                ["zh.UnSetVoiceLanguage"] = "请设置语音语言",
+                ["zh.SpeechTimeout"] = "语音识别服务超时",
+                ["zh.TranscriptUnavailable"] = "无法获取转录内容",
+                ["zh.SpeechServiceUnavailable"] = "语音识别服务不可用",
+                ["zh.AudioFormatUnsupported"] = "音频文件已损坏或格式不受支持",
+                ["zh.LanguageNotRecognised"] = "无法识别语言。请使用所选语言重试。",
+                ["zh.FailedGetUserInfo"] = "获取用户信息失败",
+                ["zh.ChatRateLimit"] = "消息数量已达上限，请稍后再试。",
+                ["zh.VoiceChatRateLimit"] = "语音消息数量已达上限，请稍后再试。"
+
             },
             
             ["validation"] = new Dictionary<string, string>
             {
                 // Add validation messages here if needed
                 ["en.Required"] = "This field is required.",
-                ["zh-tw.Required"] = "此字段为必填项。",
-                ["es.Required"] = "Este campo es requerido."
+                ["zh-tw.Required"] = "此欄位為必填項",
+                ["es.Required"] = "Este campo es requerido.",
+                ["zh.Required"] = "此字段为必填项。"
+
             },
             
             ["messages"] = new Dictionary<string, string>
@@ -199,7 +220,8 @@ public class LocalizationService : ILocalizationService
                 // Add general messages here if needed
                 ["en.Success"] = "Operation completed successfully.",
                 ["zh-tw.Success"] = "操作成功完成。",
-                ["es.Success"] = "Operación completada exitosamente."
+                ["es.Success"] = "Operación completada exitosamente.",
+                ["zh.Success"] = "操作成功完成。"
             }
         };
 
