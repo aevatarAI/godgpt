@@ -3682,7 +3682,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var hasActive = State.PaymentHistory.Any(payment =>
             payment.Platform == PaymentPlatform.AppStore &&
             payment.InvoiceDetails != null && payment.InvoiceDetails.Any() &&
-            payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled));
+            payment.InvoiceDetails.All(item => item.Status == PaymentStatus.Completed));
 
         _logger.LogInformation("[UserBillingGAgent][HasActiveAppleSubscriptionAsync] Has active Apple subscription: {HasActive}", hasActive);
         return hasActive;
@@ -3696,9 +3696,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         foreach (var payment in State.PaymentHistory)
         {
             // Check if payment has active subscription (same logic as HasActiveAppleSubscriptionAsync)
+            // Active subscription means: has invoice details AND all invoices are completed (not cancelled, refunded, or expired)
             var isActiveSubscription = payment.InvoiceDetails != null && 
                                      payment.InvoiceDetails.Any() &&
-                                     payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled);
+                                     payment.InvoiceDetails.All(item => item.Status == PaymentStatus.Completed);
             
             if (!isActiveSubscription) continue;
             
