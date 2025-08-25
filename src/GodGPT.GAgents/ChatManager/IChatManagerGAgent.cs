@@ -4,6 +4,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Share;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
 using Aevatar.GAgents.AI.Options;
+using GodGPT.GAgents.DailyPush;
 using GodGPT.GAgents.SpeechChat;
 using Orleans.Concurrency;
 
@@ -64,4 +65,41 @@ public interface IChatManagerGAgent : IGAgent
     /// <returns>List of matching sessions with content preview</returns>
     [ReadOnly]
     Task<List<SessionInfoDto>> SearchSessionsAsync(string keyword, int maxResults = 1000);
+    
+    // === Daily Push Notification Methods ===
+    
+    /// <summary>
+    /// Register or update device for daily push notifications
+    /// </summary>
+    Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage);
+    
+    /// <summary>
+    /// Mark daily push as read for today
+    /// </summary>
+    Task MarkPushAsReadAsync(string pushToken);
+    
+    /// <summary>
+    /// Process daily push for this user (called by timezone scheduler)
+    /// </summary>
+    Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId);
+    
+    /// <summary>
+    /// Check if user should receive afternoon retry push
+    /// </summary>
+    Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate);
+    
+    /// <summary>
+    /// Check if user has enabled devices in specific timezone (performance optimization)
+    /// </summary>
+    Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId);
+    
+    /// <summary>
+    /// Get device status for query API
+    /// </summary>
+    Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
+    
+    /// <summary>
+    /// Update user timezone index when device timezone changes
+    /// </summary>
+    Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone);
 }
