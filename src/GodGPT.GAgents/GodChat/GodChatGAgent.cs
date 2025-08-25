@@ -827,6 +827,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     {
         var stopwatch = Stopwatch.StartNew();
         var llmsForRegion = GetLLMsForRegion(region);
+        Logger.LogDebug(
+            $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region}, llmsForRegion: {JsonConvert.SerializeObject(llmsForRegion)}");
+
         if (llmsForRegion.IsNullOrEmpty())
         {
             stopwatch.Stop();
@@ -909,6 +912,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private List<string> GetLLMsForRegion(string region)
     {
         var regionToLLMsMap = _llmRegionOptions.CurrentValue.RegionToLLMsMap;
+        Logger.LogDebug($"GetLLMsForRegion - regionToLLMsMap: {JsonConvert.SerializeObject(regionToLLMsMap)}");
+
         return regionToLLMsMap.TryGetValue(region, out var llms) ? llms : new List<string>();
     }
 
