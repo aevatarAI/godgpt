@@ -8,6 +8,7 @@ using Orleans.Providers;
 using GodGPT.GAgents.DailyPush.SEvents;
 using GodGPT.GAgents.DailyPush.Options;
 
+
 namespace GodGPT.GAgents.DailyPush;
 
 /// <summary>
@@ -60,6 +61,20 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
         _timeZoneId = this.GetPrimaryKeyString();
+        
+        // Simple timezone validation - let it throw if invalid
+        try
+        {
+            TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            throw new ArgumentException($"Invalid timezone ID: {_timeZoneId}", ex);
+        }
+        catch (InvalidTimeZoneException ex)
+        {
+            throw new ArgumentException($"Invalid timezone format: {_timeZoneId}", ex);
+        }
         
         if (string.IsNullOrEmpty(State.TimeZoneId))
         {
