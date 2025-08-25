@@ -71,7 +71,7 @@ public interface IChatManagerGAgent : IGAgent
     /// <summary>
     /// Register or update device for daily push notifications
     /// </summary>
-    Task<bool> RegisterOrUpdateDeviceAsync(DeviceRequest request);
+    Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage);
     
     /// <summary>
     /// Mark daily push as read for today

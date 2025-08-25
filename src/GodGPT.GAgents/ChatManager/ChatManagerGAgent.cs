@@ -1447,19 +1447,19 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     // === Daily Push Notification Methods ===
 
-    public async Task<bool> RegisterOrUpdateDeviceAsync(DeviceRequest request)
+    public async Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage)
     {
-        var isNewDevice = !State.UserDevices.ContainsKey(request.DeviceId);
+        var isNewDevice = !State.UserDevices.ContainsKey(deviceId);
         var deviceInfo = isNewDevice ? new GodGPT.GAgents.DailyPush.UserDeviceInfo() : 
             new GodGPT.GAgents.DailyPush.UserDeviceInfo
             {
-                DeviceId = State.UserDevices[request.DeviceId].DeviceId,
-                PushToken = State.UserDevices[request.DeviceId].PushToken,
-                TimeZoneId = State.UserDevices[request.DeviceId].TimeZoneId,
-                PushLanguage = State.UserDevices[request.DeviceId].PushLanguage,
-                PushEnabled = State.UserDevices[request.DeviceId].PushEnabled,
-                RegisteredAt = State.UserDevices[request.DeviceId].RegisteredAt,
-                LastTokenUpdate = State.UserDevices[request.DeviceId].LastTokenUpdate
+                DeviceId = State.UserDevices[deviceId].DeviceId,
+                PushToken = State.UserDevices[deviceId].PushToken,
+                TimeZoneId = State.UserDevices[deviceId].TimeZoneId,
+                PushLanguage = State.UserDevices[deviceId].PushLanguage,
+                PushEnabled = State.UserDevices[deviceId].PushEnabled,
+                RegisteredAt = State.UserDevices[deviceId].RegisteredAt,
+                LastTokenUpdate = State.UserDevices[deviceId].LastTokenUpdate
             };
         
         // Store old values for cleanup and change detection
@@ -1467,18 +1467,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var oldTimeZone = deviceInfo.TimeZoneId;
         
         // Update device information
-        deviceInfo.DeviceId = request.DeviceId;
-        if (!string.IsNullOrEmpty(request.PushToken))
+        deviceInfo.DeviceId = deviceId;
+        if (!string.IsNullOrEmpty(pushToken))
         {
-            deviceInfo.PushToken = request.PushToken;
+            deviceInfo.PushToken = pushToken;
             deviceInfo.LastTokenUpdate = DateTime.UtcNow;
         }
-        if (!string.IsNullOrEmpty(request.TimeZoneId))
-            deviceInfo.TimeZoneId = request.TimeZoneId;
-        if (!string.IsNullOrEmpty(request.PushLanguage))
-            deviceInfo.PushLanguage = request.PushLanguage;
-        if (request.PushEnabled.HasValue)
-            deviceInfo.PushEnabled = request.PushEnabled.Value;
+        if (!string.IsNullOrEmpty(timeZoneId))
+            deviceInfo.TimeZoneId = timeZoneId;
+        if (!string.IsNullOrEmpty(pushLanguage))
+            deviceInfo.PushLanguage = pushLanguage;
+        if (pushEnabled.HasValue)
+            deviceInfo.PushEnabled = pushEnabled.Value;
         
         if (isNewDevice)
         {
@@ -1488,7 +1488,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // Use event-driven state update
         RaiseEvent(new RegisterOrUpdateDeviceEventLog
         {
-            DeviceId = request.DeviceId,
+            DeviceId = deviceId,
             DeviceInfo = deviceInfo,
             IsNewDevice = isNewDevice,
             OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
@@ -1503,7 +1503,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             await UpdateTimezoneIndexAsync(oldTimeZone, newTimeZone);
         }
         
-        Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {request.DeviceId}");
+        Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
         return isNewDevice;
     }
 
