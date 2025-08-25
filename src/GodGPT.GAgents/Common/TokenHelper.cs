@@ -96,4 +96,50 @@ public static class TokenHelper
 
         return selectedMessages;
     }
+
+    /// <summary>
+    /// Truncate message from the beginning if it exceeds token limit
+    /// Uses character composition analysis for high-performance one-shot truncation
+    /// </summary>
+    /// <param name="message">The message to check and potentially truncate</param>
+    /// <param name="reservedTokens">Additional tokens to reserve for other content (default: 0)</param>
+    /// <returns>Truncated message if needed, otherwise original message</returns>
+    public static string TruncateMessageIfExceedsLimit(string message, int reservedTokens = 0)
+    {
+        if (string.IsNullOrEmpty(message))
+            return message;
+        
+        int currentTokens = EstimateTokenCount(message);
+        int maxAllowedTokens = (int)(DEFAULT_GPT4_MAX_TOKENS * (1 - TOKEN_RESERVE_RATIO)) - reservedTokens;
+        
+        // Ensure maxAllowedTokens is positive
+        if (maxAllowedTokens <= 0)
+            return string.Empty;
+        
+        if (currentTokens <= maxAllowedTokens)
+            return message;
+        
+        // Calculate excess tokens that need to be removed
+        int excessTokens = currentTokens - maxAllowedTokens;
+        
+        // Analyze character composition for accurate estimation
+        string cleanedText = Regex.Replace(message, @"\s+", " ").Trim();
+        int englishCount = Regex.Matches(cleanedText, @"[a-zA-Z0-9\s.,!?]").Count;
+        int chineseCount = Regex.Matches(cleanedText, @"[\u4e00-\u9fff]").Count;
+        int specialCount = cleanedText.Length - englishCount - chineseCount;
+        
+        // Calculate average tokens per character based on composition
+        double totalTokensFromChars = 
+            englishCount / ENGLISH_CHARS_PER_TOKEN +
+            chineseCount / CHINESE_CHARS_PER_TOKEN +
+            specialCount / ENGLISH_CHARS_PER_TOKEN * SPECIAL_CHARS_FACTOR;
+            
+        double avgTokensPerChar = totalTokensFromChars / cleanedText.Length;
+        
+        // Estimate characters to remove with safety margin (200% extra to ensure compliance)
+        int charsToRemove = (int)(excessTokens / avgTokensPerChar * 2);
+        charsToRemove = Math.Min(charsToRemove, message.Length - 1); // Ensure we don't remove everything
+        
+        return message.Substring(charsToRemove);
+    }
 } 

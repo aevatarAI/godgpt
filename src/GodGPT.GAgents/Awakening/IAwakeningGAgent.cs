@@ -13,21 +13,24 @@ namespace GodGPT.GAgents.Awakening;
 public interface IAwakeningGAgent : IGAgent
 {
     /// <summary>
-    /// Get the user's latest non-empty session record
-    /// Internally gets current user ID through this.GetPrimaryKey(), then calls corresponding ChatManagerGAgent
+    /// Get the user's latest non-empty session records
+    /// Finds: 1) First session with non-empty messages, 2) First Nova·Chime session with non-empty messages
+    /// Returns both in list format, with Nova·Chime sessions placed at the end
+    /// If first non-empty session's guider is Nova·Chime, returns only one session
     /// </summary>
-    /// <returns>Latest session content and related information</returns>
+    /// <returns>List of latest session content, ordered by priority</returns>
     [ReadOnly]
-    Task<SessionContentDto?> GetLatestNonEmptySessionAsync();
-    
+    Task<List<SessionContentDto>> GetLatestNonEmptySessionAsync();
+
     /// <summary>
     /// Generate awakening level and sentence based on session content and language type
     /// </summary>
-    /// <param name="sessionContent">Session content</param>
+    /// <param name="sessionContents">Session content</param>
     /// <param name="language">Language type</param>
     /// <param name="region">Region parameter for LLM service</param>
     /// <returns>Generated awakening content</returns>
-    Task<AwakeningResultDto> GenerateAwakeningContentAsync(SessionContentDto sessionContent, VoiceLanguageEnum language, string? region = "");
+    Task<AwakeningResultDto> GenerateAwakeningContentAsync(List<SessionContentDto> sessionContents,
+        VoiceLanguageEnum language, string? region = "");
     
     /// <summary>
     /// Get today's awakening level and quote, if not generated then generate asynchronously and return null

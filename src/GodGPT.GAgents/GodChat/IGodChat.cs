@@ -42,7 +42,7 @@ public interface IGodChat : IGAgent
     Task<List<ChatMessage>?> ChatWithHistory(Guid sessionId, string systemLLM, string content, string chatId, 
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
     
-    Task<List<ChatMessage>?> ChatWithUserId(Guid userId, string systemLLM, string content, string chatId, 
+    Task<List<ChatMessage>?> ChatWithoutHistoryAsync(Guid sessionId, string systemLLM, string content, string chatId, 
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null);
 
 

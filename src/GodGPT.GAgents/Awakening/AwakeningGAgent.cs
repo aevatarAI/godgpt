@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Aevatar.Application.Grains.Common;
 using Aevatar.Core.Abstractions;
 using Aevatar.Core;
 using Aevatar.GAgents.AI.Common;
@@ -16,8 +18,6 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using Orleans;
-using System.Text.Json;
-using System.Text.RegularExpressions;
 
 namespace GodGPT.GAgents.Awakening;
 
@@ -27,6 +27,8 @@ namespace GodGPT.GAgents.Awakening;
 [GAgent(nameof(AwakeningGAgent))]
 public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IAwakeningGAgent
 {
+    private const string NovaChimeGuider = "Nova·Chime";
+    
     private readonly IClusterClient _clusterClient;
     private readonly IOptionsMonitor<AwakeningOptions> _options;
     private readonly ILogger<AwakeningGAgent> _logger;
@@ -46,7 +48,7 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
         return Task.FromResult("Personalized Awakening System GAgent");
     }
 
-    public async Task<SessionContentDto?> GetLatestNonEmptySessionAsync()
+    public async Task<List<SessionContentDto>> GetLatestNonEmptySessionAsync()
     {
         try
         {
@@ -59,19 +61,28 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
             
             if (sessionList == null || sessionList.Count == 0)
             {
-                return null;
+                return new List<SessionContentDto>();
             }
             
-            // Traverse from end to find latest non-empty session
+            SessionContentDto? firstNonEmptySession = null;
+            SessionContentDto? novaChimeSession = null;
+            
+            // Single pass: Find both sessions in one traversal with optimizations
             for (int i = sessionList.Count - 1; i >= 0; i--)
             {
                 var session = sessionList[i];
+                
+                // Optimization: Skip sessions with empty titles as they likely have no messages
+                if (string.IsNullOrEmpty(session.Title))
+                {
+                    continue;
+                }
+                
                 var messages = await chatManager.GetSessionMessageListAsync(session.SessionId);
                 
                 if (messages != null && messages.Count > 0)
                 {
-                    // Found non-empty session, build return object
-                    return new SessionContentDto
+                    var sessionContent = new SessionContentDto
                     {
                         SessionId = session.SessionId,
                         Title = session.Title ?? string.Empty,
@@ -79,24 +90,70 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
                         LastActivityTime = session.CreateAt,
                         ExtractedContent = ExtractCoreContent(messages)
                     };
+                    
+                    // Check if this is the first non-empty session we found
+                    if (firstNonEmptySession == null)
+                    {
+                        firstNonEmptySession = sessionContent;
+                    }
+                    
+                    // Check if this is a Nova·Chime session
+                    if (session.Guider == NovaChimeGuider && novaChimeSession == null)
+                    {
+                        novaChimeSession = sessionContent;
+                    }
+                    
+                    // Early exit: If we've found both types, no need to continue
+                    if (firstNonEmptySession != null && novaChimeSession != null)
+                    {
+                        break;
+                    }
                 }
             }
             
-            return null;
+            // Return logic based on findings
+            var result = new List<SessionContentDto>();
+            
+            if (firstNonEmptySession != null && novaChimeSession != null)
+            {
+                // If both found and they're the same session (Nova·Chime is the first non-empty)
+                if (firstNonEmptySession.SessionId == novaChimeSession.SessionId)
+                {
+                    result.Add(firstNonEmptySession);
+                }
+                else
+                {
+                    // Different sessions: add regular first, Nova·Chime second
+                    result.Add(firstNonEmptySession);
+                    result.Add(novaChimeSession);
+                }
+            }
+            else if (firstNonEmptySession != null)
+            {
+                // Only found regular non-empty session
+                result.Add(firstNonEmptySession);
+            }
+            else if (novaChimeSession != null)
+            {
+                // Only found Nova·Chime session
+                result.Add(novaChimeSession);
+            }
+            
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get latest non-empty session for user {UserId}", this.GetPrimaryKey());
-            return null;
+            _logger.LogError(ex, "Failed to get latest non-empty sessions for user {UserId}", this.GetPrimaryKey());
+            return new List<SessionContentDto>();
         }
     }
 
-    public async Task<AwakeningResultDto> GenerateAwakeningContentAsync(SessionContentDto sessionContent,
+    public async Task<AwakeningResultDto> GenerateAwakeningContentAsync(List<SessionContentDto> sessionContents,
         VoiceLanguageEnum language, string? region = "")
     {
         try
         {
-            if (sessionContent == null)
+            if (sessionContents.IsNullOrEmpty())
             {
                 return new AwakeningResultDto
                 {
@@ -105,7 +162,7 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
                 };
             }
 
-            var prompt = BuildPrompt(sessionContent, language);
+            var prompt = BuildPrompt(sessionContents, language);
             var result = await CallLLMWithRetry(prompt, language, region);
             
             if (result.IsSuccess)
@@ -117,7 +174,7 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
                     AwakeningLevel = result.AwakeningLevel,
                     AwakeningMessage = result.AwakeningMessage,
                     Language = language,
-                    SessionId = sessionContent.SessionId.ToString(),
+                    SessionId = sessionContents.First().SessionId.ToString(),
                     IsSuccess = true,
                     AttemptCount = State.GenerationAttempts + 1
                 });
@@ -162,8 +219,8 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
             }
 
             // Get latest session content
-            var sessionContent = await GetLatestNonEmptySessionAsync();
-            if (sessionContent == null)
+            var sessionContentList = await GetLatestNonEmptySessionAsync();
+            if (sessionContentList == null || sessionContentList.Count == 0)
             {
                 // No session content, generate empty result immediately and return completed
                 RaiseEvent(new GenerateAwakeningLogEvent
@@ -188,12 +245,12 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
                 };
             }
 
-            // Has session content, start asynchronous generation
+            // Has session content, start asynchronous generation using the first (priority) session
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    var result = await GenerateAwakeningContentAsync(sessionContent, language, region);
+                    var result = await GenerateAwakeningContentAsync(sessionContentList, language, region);
                     await CompleteGenerationAsync(result.IsSuccess);
                 }
                 catch (Exception ex)
@@ -238,10 +295,10 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
         return summary;
     }
 
-    private string BuildPrompt(SessionContentDto sessionContent, VoiceLanguageEnum language)
+    private string BuildPrompt(List<SessionContentDto> sessionContent, VoiceLanguageEnum language)
     {
         var template = "@"+_options.CurrentValue.PromptTemplate+"Format your response as JSON: {{\"level\": number, \"message\": \"string\"}}";
-        var basePrompt = template.Replace("{USER_CONTEXT}", BuildUserContext(sessionContent));
+        var basePrompt = template.Replace("{USER_CONTEXT}", BuildUserContext(sessionContent, language));
         
         // Check multi-language switch
         if (_options.CurrentValue.EnableLanguageSpecificPrompt)
@@ -333,34 +390,50 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
         return summary;
     }
 
-    private string BuildUserContext(SessionContentDto sessionContent)
+    private string BuildUserContext(List<SessionContentDto> sessionContents, VoiceLanguageEnum language)
     {
-        if (sessionContent.Messages == null || sessionContent.Messages.Count == 0)
+        if (sessionContents.IsNullOrEmpty())
         {
             return "No recent chat messages available.";
         }
 
         var context = new StringBuilder();
-        context.AppendLine($"Session Title: {sessionContent.Title}");
-        context.AppendLine($"Last Activity: {sessionContent.LastActivityTime:yyyy-MM-dd HH:mm}");
-        context.AppendLine("Recent Messages:");
-        
-        // Take the most recent messages, limit to avoid token overflow
-        var recentMessages = sessionContent.Messages
-            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
-            .TakeLast(10) // Take last 10 messages
-            .ToList();
-        
-        foreach (var message in recentMessages)
+
+        foreach (var sessionContent in sessionContents)
         {
-            var role = message.ChatRole == ChatRole.User ? "User" : "Assistant";
-            var content = message.Content.Length > 200 
-                ? message.Content.Substring(0, 200) + "..." 
-                : message.Content;
-            context.AppendLine($"{role}: {content}");
+            foreach (var message in sessionContent.Messages)
+            {
+                var role = message.ChatRole == ChatRole.User ? "User" : "Assistant";
+                context.AppendLine($"{role}: {message.Content}");
+            }
+        }
+
+        // Calculate reserved tokens for fixed content
+        int reservedTokens = CalculateReservedTokens(language);
+        
+        return TokenHelper.TruncateMessageIfExceedsLimit(context.ToString(), reservedTokens);
+    }
+    
+    private int CalculateReservedTokens(VoiceLanguageEnum language)
+    {
+        // Calculate tokens for prompt template and fixed content
+        var templateContent = "@" + _options.CurrentValue.PromptTemplate + "Format your response as JSON: {{\"level\": number, \"message\": \"string\"}}";
+        int templateTokens = TokenHelper.EstimateTokenCount(templateContent);
+        
+        // Calculate tokens for language-specific instructions if enabled
+        int languageTokens = 0;
+        if (_options.CurrentValue.EnableLanguageSpecificPrompt)
+        {
+            var languageInstructions = _options.CurrentValue.LanguageInstructions;
+            if (languageInstructions.TryGetValue(language, out var instruction))
+            {
+                languageTokens = TokenHelper.EstimateTokenCount($"\n\n{instruction}");
+            }
         }
         
-        return context.ToString();
+        // Add some safety margin (50% of calculated tokens)
+        int totalReserved = templateTokens + languageTokens;
+        return (int)(totalReserved * 1.5);
     }
 
     private async Task<AwakeningResultDto> CallLLMWithRetry(string prompt, VoiceLanguageEnum language, string? region)
@@ -388,7 +461,7 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
                 };
                 
                 // Call IGodChat.ChatWithHistory with our prompt
-                var response = await godChat.ChatWithUserId(userId, string.Empty, prompt, chatId, settings, true, region);
+                var response = await godChat.ChatWithoutHistoryAsync(userId, string.Empty, prompt, chatId, settings, true, region);
                 
                 string responseContent;
                 if (response.IsNullOrEmpty())
