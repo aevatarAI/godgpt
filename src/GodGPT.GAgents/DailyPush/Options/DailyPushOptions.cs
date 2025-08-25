@@ -35,17 +35,12 @@ public class DailyPushOptions
 public class FilePathsOptions
 {
     /// <summary>
-    /// Path to CSV dictionary file for push content
+    /// S3 URL for CSV dictionary file containing push content
     /// </summary>
-    public string CsvDictionaryPath { get; set; } = "/app/dailyPush/dailyPush.csv";
+    public string CsvDictionaryUrl { get; set; } = "https://s3.amazonaws.com/your-bucket/dailyPush/dailyPush.csv";
     
     /// <summary>
-    /// Path to Firebase service account key JSON file
+    /// Local file path to Firebase service account key JSON file
     /// </summary>
-    public string FirebaseKeyPath { get; set; } = "/app/firebase/godgpt-test-66b04-firebase-adminsdk-fbsvc-249aa74f77.json";
-    
-    /// <summary>
-    /// Base directory for file paths (if relative paths are used)
-    /// </summary>
-    public string BaseDirectory { get; set; } = "";
+    public string FirebaseKeyPath { get; set; } = "/app/firebase/godgpt-test-firebase-adminsdk.json";
 }

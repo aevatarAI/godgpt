@@ -80,7 +80,7 @@ public class FirebaseService
     {
         try
         {
-            var keyPath = GetFullPath(filePaths.FirebaseKeyPath, filePaths.BaseDirectory);
+            var keyPath = filePaths.FirebaseKeyPath;
             
             _logger.LogDebug("🔑 Attempting to load Firebase key from configured path: {KeyPath}", keyPath);
             
@@ -131,13 +131,13 @@ public class FirebaseService
         catch (JsonException jsonEx)
         {
             _logger.LogError(jsonEx, "💥 JSON parsing error loading Firebase service account from file: {KeyPath}", 
-                GetFullPath(filePaths.FirebaseKeyPath, filePaths.BaseDirectory));
+                filePaths.FirebaseKeyPath);
             return null;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "💥 Critical error loading Firebase service account from file: {KeyPath}", 
-                GetFullPath(filePaths.FirebaseKeyPath, filePaths.BaseDirectory));
+                filePaths.FirebaseKeyPath);
             return null;
         }
     }
@@ -484,23 +484,7 @@ public class FirebaseService
         return results;
     }
     
-    /// <summary>
-    /// Get full file path considering base directory
-    /// </summary>
-    private string GetFullPath(string filePath, string baseDirectory)
-    {
-        if (Path.IsPathRooted(filePath))
-        {
-            return filePath;
-        }
-        
-        if (!string.IsNullOrEmpty(baseDirectory))
-        {
-            return Path.Combine(baseDirectory, filePath);
-        }
-        
-        return filePath;
-    }
+
     
     private async Task<bool> SimulatePushAsync(string pushToken, string title, string content)
     {

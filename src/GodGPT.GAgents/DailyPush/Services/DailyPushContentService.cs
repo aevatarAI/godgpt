@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 using GodGPT.GAgents.DailyPush.Options;
 using Microsoft.Extensions.Logging;
@@ -32,19 +33,22 @@ public class DailyPushContentService
 {
     private readonly ILogger<DailyPushContentService> _logger;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
+    private readonly HttpClient _httpClient;
     private readonly List<DailyPushContent> _contents = new();
     private DateTime _lastLoadTime = DateTime.MinValue;
     private readonly TimeSpan _cacheExpiry = TimeSpan.FromHours(1); // Cache for 1 hour
     
     public DailyPushContentService(
         ILogger<DailyPushContentService> logger,
-        IOptionsMonitor<DailyPushOptions> options)
+        IOptionsMonitor<DailyPushOptions> options,
+        HttpClient httpClient)
     {
         _logger = logger;
         _options = options;
+        _httpClient = httpClient;
         
         _logger.LogDebug("🚀 Initializing DailyPushContentService...");
-        _logger.LogDebug("📂 Configured CSV path: {CsvPath}", options.CurrentValue.FilePaths.CsvDictionaryPath);
+        _logger.LogDebug("🌐 Configured CSV URL: {CsvUrl}", options.CurrentValue.FilePaths.CsvDictionaryUrl);
     }
     
     /// <summary>
@@ -149,28 +153,40 @@ public class DailyPushContentService
     }
     
     /// <summary>
-    /// Load content from CSV file
+    /// Load content from CSV URL (S3)
     /// </summary>
     private async Task LoadContentFromCsvAsync(bool forceReload = false)
     {
         try
         {
             var filePaths = _options.CurrentValue.FilePaths;
-            var csvPath = GetFullPath(filePaths.CsvDictionaryPath, filePaths.BaseDirectory);
+            var csvUrl = filePaths.CsvDictionaryUrl;
             
-            _logger.LogDebug("Attempting to load CSV from configured path: {CsvPath}", csvPath);
+            _logger.LogDebug("🌐 Attempting to download CSV from S3 URL: {CsvUrl}", csvUrl);
             
-            if (!File.Exists(csvPath))
+            if (string.IsNullOrEmpty(csvUrl))
             {
-                _logger.LogError("❌ CSV dictionary file not found at path: {CsvPath}", csvPath);
+                _logger.LogError("❌ CSV dictionary URL is not configured");
                 return;
             }
             
-            var fileInfo = new FileInfo(csvPath);
-            _logger.LogInformation("📁 Found CSV file: {CsvPath} (Size: {FileSize} bytes, Modified: {LastModified})", 
-                csvPath, fileInfo.Length, fileInfo.LastWriteTime);
+            // Download CSV content from S3
+            var response = await _httpClient.GetAsync(csvUrl);
             
-            var lines = await File.ReadAllLinesAsync(csvPath);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("❌ Failed to download CSV from S3. Status: {StatusCode}, URL: {CsvUrl}", 
+                    response.StatusCode, csvUrl);
+                return;
+            }
+            
+            var csvContent = await response.Content.ReadAsStringAsync();
+            var contentLength = csvContent.Length;
+            
+            _logger.LogInformation("📁 Successfully downloaded CSV from S3: {CsvUrl} (Size: {ContentSize} chars, Status: {StatusCode})", 
+                csvUrl, contentLength, response.StatusCode);
+            
+            var lines = csvContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             
             _logger.LogDebug("📄 CSV file contains {TotalLines} lines (including header)", lines.Length);
             
@@ -243,9 +259,17 @@ public class DailyPushContentService
                 _logger.LogInformation("📚 Sample content keys: [{SampleKeys}]", string.Join(", ", sampleKeys));
             }
         }
+        catch (HttpRequestException httpEx)
+        {
+            _logger.LogError(httpEx, "🌐 Network error downloading CSV from S3: {CsvUrl}", filePaths.CsvDictionaryUrl);
+        }
+        catch (TaskCanceledException timeoutEx)
+        {
+            _logger.LogError(timeoutEx, "⏱️ Timeout downloading CSV from S3: {CsvUrl}", filePaths.CsvDictionaryUrl);
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "💥 Critical error loading daily push content from CSV");
+            _logger.LogError(ex, "💥 Critical error loading daily push content from S3");
         }
     }
     
@@ -312,23 +336,7 @@ public class DailyPushContentService
         return columns.ToArray();
     }
     
-    /// <summary>
-    /// Get full file path considering base directory
-    /// </summary>
-    private string GetFullPath(string filePath, string baseDirectory)
-    {
-        if (Path.IsPathRooted(filePath))
-        {
-            return filePath;
-        }
-        
-        if (!string.IsNullOrEmpty(baseDirectory))
-        {
-            return Path.Combine(baseDirectory, filePath);
-        }
-        
-        return filePath;
-    }
+
     
     /// <summary>
     /// Get fallback content when CSV is not available
