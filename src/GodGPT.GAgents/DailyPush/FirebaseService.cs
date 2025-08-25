@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Text.Json;
@@ -11,6 +12,8 @@ using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
+using GodGPT.GAgents.DailyPush.Options;
 
 namespace GodGPT.GAgents.DailyPush;
 
@@ -26,13 +29,18 @@ public class FirebaseService
     private string? _cachedAccessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
     
-    public FirebaseService(ILogger<FirebaseService> logger, HttpClient httpClient, IConfiguration configuration)
+    public FirebaseService(
+        ILogger<FirebaseService> logger, 
+        HttpClient httpClient, 
+        IConfiguration configuration, 
+        IOptionsMonitor<DailyPushOptions> options)
     {
         _logger = logger;
         _httpClient = httpClient;
         
-        // Load service account from configuration (appsettings.json or environment)
-        _serviceAccount = LoadServiceAccountFromConfiguration(configuration);
+        // Load service account from file first, then fallback to configuration
+        _serviceAccount = LoadServiceAccountFromFile(options.CurrentValue.FilePaths) ?? 
+                         LoadServiceAccountFromConfiguration(configuration);
         _projectId = _serviceAccount?.ProjectId ?? configuration["Firebase:ProjectId"];
         
         if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
@@ -42,6 +50,49 @@ public class FirebaseService
         else
         {
             _logger.LogWarning("Firebase credentials not configured - using simulation mode");
+        }
+    }
+    
+    /// <summary>
+    /// Load service account information from Firebase key file
+    /// </summary>
+    private ServiceAccountInfo? LoadServiceAccountFromFile(FilePathsOptions filePaths)
+    {
+        try
+        {
+            var keyPath = GetFullPath(filePaths.FirebaseKeyPath, filePaths.BaseDirectory);
+            
+            if (!File.Exists(keyPath))
+            {
+                _logger.LogDebug("Firebase key file not found at path: {KeyPath}", keyPath);
+                return null;
+            }
+            
+            _logger.LogInformation("Loading Firebase service account from file: {KeyPath}", keyPath);
+            
+            var jsonContent = File.ReadAllText(keyPath);
+            var serviceAccount = JsonSerializer.Deserialize<ServiceAccountInfo>(jsonContent, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            });
+            
+            if (serviceAccount != null)
+            {
+                _logger.LogInformation("Successfully loaded Firebase service account from file for project: {ProjectId}", 
+                    serviceAccount.ProjectId);
+            }
+            else
+            {
+                _logger.LogError("Failed to parse Firebase service account from file");
+            }
+            
+            return serviceAccount;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load Firebase service account from file: {KeyPath}", 
+                GetFullPath(filePaths.FirebaseKeyPath, filePaths.BaseDirectory));
+            return null;
         }
     }
     
@@ -385,6 +436,24 @@ public class FirebaseService
         
         _logger.LogInformation($"Batch push completed: {results.SuccessCount} success, {results.FailureCount} failures");
         return results;
+    }
+    
+    /// <summary>
+    /// Get full file path considering base directory
+    /// </summary>
+    private string GetFullPath(string filePath, string baseDirectory)
+    {
+        if (Path.IsPathRooted(filePath))
+        {
+            return filePath;
+        }
+        
+        if (!string.IsNullOrEmpty(baseDirectory))
+        {
+            return Path.Combine(baseDirectory, filePath);
+        }
+        
+        return filePath;
     }
     
     private async Task<bool> SimulatePushAsync(string pushToken, string title, string content)

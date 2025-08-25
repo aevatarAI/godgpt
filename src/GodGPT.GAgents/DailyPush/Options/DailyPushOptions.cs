@@ -22,4 +22,30 @@ public class DailyPushOptions
     /// All timezone schedulers will use this ID for reminder execution control
     /// </summary>
     public Guid ReminderTargetId { get; set; } = Guid.Empty;
+    
+    /// <summary>
+    /// File paths configuration
+    /// </summary>
+    public FilePathsOptions FilePaths { get; set; } = new();
+}
+
+/// <summary>
+/// File paths configuration for Daily Push system
+/// </summary>
+public class FilePathsOptions
+{
+    /// <summary>
+    /// Path to CSV dictionary file for push content
+    /// </summary>
+    public string CsvDictionaryPath { get; set; } = "/app/dailyPush/dailyPush.csv";
+    
+    /// <summary>
+    /// Path to Firebase service account key JSON file
+    /// </summary>
+    public string FirebaseKeyPath { get; set; } = "/app/firebase/godgpt-test-66b04-firebase-adminsdk-fbsvc-249aa74f77.json";
+    
+    /// <summary>
+    /// Base directory for file paths (if relative paths are used)
+    /// </summary>
+    public string BaseDirectory { get; set; } = "";
 }

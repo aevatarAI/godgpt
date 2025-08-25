@@ -4,6 +4,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.Anonymous.Options;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
@@ -12,6 +13,7 @@ using GodGPT.GAgents.Awakening.Options;
 using GodGPT.GAgents.SpeechChat;
 using GodGPT.GAgents.DailyPush;
 using GodGPT.GAgents.DailyPush.Options;
+using GodGPT.GAgents.DailyPush.Services;
 using Microsoft.Extensions.Configuration;
 
 namespace Aevatar.Application.Grains;
@@ -55,14 +57,18 @@ public class GodGPTGAgentModule : AbpModule
         // Register HttpClient factory first
         context.Services.AddHttpClient();
         
-        // Register FirebaseService with HttpClient and Configuration
+        // Register FirebaseService with HttpClient, Configuration, and Options
         context.Services.AddSingleton<FirebaseService>(serviceProvider =>
         {
             var logger = serviceProvider.GetRequiredService<ILogger<FirebaseService>>();
             var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
             var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+            var options = serviceProvider.GetRequiredService<IOptionsMonitor<DailyPushOptions>>();
             var httpClient = httpClientFactory.CreateClient();
-            return new FirebaseService(logger, httpClient, configuration);
+            return new FirebaseService(logger, httpClient, configuration, options);
         });
+        
+        // Register Daily Push Content Service
+        context.Services.AddSingleton<DailyPushContentService>();
     }
 }
