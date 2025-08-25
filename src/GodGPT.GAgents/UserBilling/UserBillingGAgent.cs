@@ -4862,10 +4862,17 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
             var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
             
-            // Extend the subscription end date
+            // Extend the subscription using consistent cumulative logic
             if (subscription.IsActive)
             {
-                subscription.EndDate = verificationResult.SubscriptionEndDate ?? subscription.EndDate;
+                // For active subscription: upgrade plan if needed and extend by fixed duration
+                if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscription.PlanType) <= 
+                    SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType)productConfig.PlanType))
+                {
+                    subscription.PlanType = (PlanType)productConfig.PlanType;
+                }
+                // Use fixed duration extension for consistency with other methods
+                subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.EndDate);
                 subscription.Status = PaymentStatus.Completed;
                 if (!subscription.SubscriptionIds.Contains(existingPayment.SubscriptionId))
                 {
@@ -4874,12 +4881,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             }
             else
             {
-                // Reactivate if it was inactive
+                // Reactivate if it was inactive - use system time for consistency
                 subscription.IsActive = true;
-                subscription.StartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow;
-                subscription.EndDate = verificationResult.SubscriptionEndDate ?? DateTime.UtcNow.AddDays(30);
-                subscription.Status = PaymentStatus.Completed;
+                subscription.StartDate = DateTime.UtcNow;
                 subscription.PlanType = (PlanType)productConfig.PlanType;
+                subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.StartDate);
+                subscription.Status = PaymentStatus.Completed;
                 if (subscription.SubscriptionIds == null)
                 {
                     subscription.SubscriptionIds = new List<string>();
