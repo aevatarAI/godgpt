@@ -124,6 +124,15 @@ public class DailyPushContentService
     }
     
     /// <summary>
+    /// Get all loaded content entries
+    /// </summary>
+    public async Task<List<DailyPushContent>> GetAllContentsAsync()
+    {
+        await EnsureContentLoadedAsync();
+        return _contents.ToList(); // Return a copy to prevent external modification
+    }
+    
+    /// <summary>
     /// Ensure content is loaded and not expired
     /// </summary>
     private async Task EnsureContentLoadedAsync()

@@ -8,6 +8,8 @@ using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Providers;
 using GodGPT.GAgents.DailyPush.SEvents;
+using GodGPT.GAgents.DailyPush.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace GodGPT.GAgents.DailyPush;
 
@@ -36,6 +38,28 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("DailyContentGAgent activated");
+        
+        // Auto-refresh content if empty or stale (older than 24 hours)
+        var needsRefresh = State.Contents.Count == 0 || 
+                          (DateTime.UtcNow - State.LastRefresh).TotalHours > 24;
+        
+        if (needsRefresh)
+        {
+            _logger.LogInformation("📋 Content is empty or stale, triggering auto-refresh from S3 CSV...");
+            try
+            {
+                await RefreshContentsFromSourceAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "⚠️ Auto-refresh failed during activation, will continue with existing content");
+            }
+        }
+        else
+        {
+            _logger.LogInformation("📚 Content cache is valid: {Count} entries, last refresh: {LastRefresh}", 
+                State.Contents.Count, State.LastRefresh);
+        }
     }
 
     protected override void GAgentTransitionState(DailyContentGAgentState state, StateLogEventBase<DailyPushLogEvent> @event)
@@ -218,19 +242,95 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
 
     public async Task RefreshContentsFromSourceAsync()
     {
-        // TODO: Implement content loading from Excel or external source
-        // This would typically involve:
-        // 1. Reading from Excel file or API
-        // 2. Parsing content and creating DailyNotificationContent objects
-        // 3. Updating State.Contents
-        
-        RaiseEvent(new RefreshContentsEventLog
+        try
         {
-            RefreshTime = DateTime.UtcNow
-        });
-        
-        await ConfirmEvents();
-        _logger.LogInformation("Content refresh completed (placeholder implementation)");
+            _logger.LogInformation("🔄 Starting content refresh from S3 CSV source...");
+            
+            // Get DailyPushContentService from service provider
+            var contentService = ServiceProvider.GetService<DailyPushContentService>();
+            if (contentService == null)
+            {
+                _logger.LogError("❌ DailyPushContentService not available, cannot refresh contents");
+                return;
+            }
+            
+            // Load all available content from CSV
+            var csvContents = await contentService.GetAllContentsAsync();
+            if (csvContents.Count == 0)
+            {
+                _logger.LogWarning("⚠️ No contents loaded from CSV source");
+                return;
+            }
+            
+            _logger.LogInformation("📥 Loaded {Count} contents from CSV, converting to DailyNotificationContent...", csvContents.Count);
+            
+            // Convert CSV content to DailyNotificationContent objects
+            var convertedContents = new List<DailyNotificationContent>();
+            
+            foreach (var csvContent in csvContents)
+            {
+                try
+                {
+                    var notificationContent = new DailyNotificationContent
+                    {
+                        Id = csvContent.ContentKey,
+                        TitleEn = csvContent.TitleEn,
+                        ContentEn = csvContent.ContentEn,
+                        TitleZh = csvContent.TitleZh,
+                        ContentZh = csvContent.ContentZh,
+                        TitleEs = csvContent.TitleEs,
+                        ContentEs = csvContent.ContentEs,
+                        TitleZhSc = csvContent.TitleZhSc,
+                        ContentZhSc = csvContent.ContentZhSc,
+                        IsActive = true,
+                        CreatedAt = DateTime.UtcNow,
+                        LastUsed = DateTime.MinValue
+                    };
+                    
+                    convertedContents.Add(notificationContent);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "⚠️ Failed to convert CSV content {ContentKey}", csvContent.ContentKey);
+                }
+            }
+            
+            if (convertedContents.Count == 0)
+            {
+                _logger.LogError("❌ No valid contents could be converted from CSV");
+                return;
+            }
+            
+            // Import all converted contents
+            RaiseEvent(new ImportContentsEventLog
+            {
+                Contents = convertedContents,
+                ImportTime = DateTime.UtcNow
+            });
+            
+            // Mark refresh completed
+            RaiseEvent(new RefreshContentsEventLog
+            {
+                RefreshTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
+            
+            _logger.LogInformation("✅ Content refresh completed: {Count} contents imported from S3 CSV source", 
+                convertedContents.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "💥 Critical error during content refresh from S3 CSV source");
+            
+            // Still mark refresh time even if failed
+            RaiseEvent(new RefreshContentsEventLog
+            {
+                RefreshTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
+        }
     }
 
     public async Task ImportContentsAsync(List<DailyNotificationContent> contents)
