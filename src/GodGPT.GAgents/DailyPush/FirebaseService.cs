@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 
 namespace GodGPT.GAgents.DailyPush;
 
@@ -20,42 +21,86 @@ public class FirebaseService
 {
     private readonly ILogger<FirebaseService> _logger;
     private readonly HttpClient _httpClient;
+    private readonly ServiceAccountInfo? _serviceAccount;
     private readonly string? _projectId;
-    private readonly string? _serviceAccountJson;
-    private readonly string? _legacyServerKey; // Fallback for legacy support
     private string? _cachedAccessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
     
-    public FirebaseService(ILogger<FirebaseService> logger, HttpClient httpClient)
+    public FirebaseService(ILogger<FirebaseService> logger, HttpClient httpClient, IConfiguration configuration)
     {
         _logger = logger;
         _httpClient = httpClient;
         
-        // Try FCM API v1 first (recommended)
-        _serviceAccountJson = Environment.GetEnvironmentVariable("FIREBASE_SERVICE_ACCOUNT_JSON");
-        _projectId = Environment.GetEnvironmentVariable("FIREBASE_PROJECT_ID");
+        // Load service account from configuration (appsettings.json or environment)
+        _serviceAccount = LoadServiceAccountFromConfiguration(configuration);
+        _projectId = _serviceAccount?.ProjectId ?? configuration["Firebase:ProjectId"];
         
-        // Fallback to legacy server key for backward compatibility
-        _legacyServerKey = Environment.GetEnvironmentVariable("FIREBASE_SERVER_KEY");
-        
-        if (!string.IsNullOrEmpty(_serviceAccountJson) && !string.IsNullOrEmpty(_projectId))
+        if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
         {
-            _logger.LogInformation("Using Firebase FCM API v1 with Service Account");
-        }
-        else if (!string.IsNullOrEmpty(_legacyServerKey))
-        {
-            _logger.LogWarning("Using legacy Firebase FCM API - consider upgrading to FCM API v1");
-            _httpClient.DefaultRequestHeaders.Authorization = 
-                new System.Net.Http.Headers.AuthenticationHeaderValue("key", $"={_legacyServerKey}");
+            _logger.LogInformation("Firebase FCM API v1 configured successfully for project: {ProjectId}", _projectId);
         }
         else
         {
-            _logger.LogWarning("No Firebase credentials configured - using simulation mode");
+            _logger.LogWarning("Firebase credentials not configured - using simulation mode");
+        }
+    }
+    
+    /// <summary>
+    /// Load service account information from configuration
+    /// </summary>
+    private ServiceAccountInfo? LoadServiceAccountFromConfiguration(IConfiguration configuration)
+    {
+        try
+        {
+            // Try to load from Firebase section in appsettings.json
+            var firebaseSection = configuration.GetSection("Firebase");
+            if (firebaseSection.Exists())
+            {
+                var serviceAccount = new ServiceAccountInfo
+                {
+                    Type = firebaseSection["Type"] ?? "service_account",
+                    ProjectId = firebaseSection["ProjectId"] ?? "",
+                    PrivateKeyId = firebaseSection["PrivateKeyId"] ?? "",
+                    PrivateKey = firebaseSection["PrivateKey"] ?? "",
+                    ClientEmail = firebaseSection["ClientEmail"] ?? "",
+                    ClientId = firebaseSection["ClientId"] ?? "",
+                    AuthUri = firebaseSection["AuthUri"] ?? "https://accounts.google.com/o/oauth2/auth",
+                    TokenUri = firebaseSection["TokenUri"] ?? "https://oauth2.googleapis.com/token"
+                };
+                
+                if (!string.IsNullOrEmpty(serviceAccount.ProjectId) && 
+                    !string.IsNullOrEmpty(serviceAccount.PrivateKey) && 
+                    !string.IsNullOrEmpty(serviceAccount.ClientEmail))
+                {
+                    _logger.LogDebug("Firebase service account loaded from appsettings.json");
+                    return serviceAccount;
+                }
+            }
+            
+            // Fallback to environment variable (JSON string)
+            var serviceAccountJson = Environment.GetEnvironmentVariable("FIREBASE_SERVICE_ACCOUNT_JSON");
+            if (!string.IsNullOrEmpty(serviceAccountJson))
+            {
+                var serviceAccount = JsonSerializer.Deserialize<ServiceAccountInfo>(serviceAccountJson);
+                if (serviceAccount != null)
+                {
+                    _logger.LogDebug("Firebase service account loaded from environment variable");
+                    return serviceAccount;
+                }
+            }
+            
+            _logger.LogWarning("Firebase service account not found in configuration");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading Firebase service account from configuration");
+            return null;
         }
     }
 
     /// <summary>
-    /// Send push notification to a device using FCM API v1 or legacy API
+    /// Send push notification to a device using FCM API v1
     /// </summary>
     public async Task<bool> SendPushNotificationAsync(
         string pushToken, 
@@ -71,20 +116,14 @@ public class FirebaseService
                 return false;
             }
             
-            // Use FCM API v1 if available
-            if (!string.IsNullOrEmpty(_serviceAccountJson) && !string.IsNullOrEmpty(_projectId))
+            // Use FCM API v1 if configured
+            if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
             {
                 return await SendPushNotificationV1Async(pushToken, title, content, data);
             }
             
-            // Fallback to legacy API
-            if (!string.IsNullOrEmpty(_legacyServerKey))
-            {
-                return await SendPushNotificationLegacyAsync(pushToken, title, content, data);
-            }
-            
             // No credentials configured - simulation mode
-            _logger.LogWarning("No Firebase credentials configured, using simulation mode");
+            _logger.LogWarning("Firebase credentials not configured, using simulation mode");
             return await SimulatePushAsync(pushToken, title, content);
         }
         catch (Exception ex)
@@ -196,90 +235,7 @@ public class FirebaseService
         }
     }
     
-    /// <summary>
-    /// Send push notification using legacy FCM API (for backward compatibility)
-    /// </summary>
-    private async Task<bool> SendPushNotificationLegacyAsync(
-        string pushToken, 
-        string title, 
-        string content, 
-        Dictionary<string, object>? data = null)
-    {
-        try
-        {
-            var legacyEndpoint = "https://fcm.googleapis.com/fcm/send";
-            
-            // Create legacy FCM payload
-            var payload = new
-            {
-                to = pushToken,
-                notification = new
-                {
-                    title = title,
-                    body = content,
-                    sound = "default",
-                    badge = 1,
-                    click_action = "FLUTTER_NOTIFICATION_CLICK"
-                },
-                data = data ?? new Dictionary<string, object>
-                {
-                    ["type"] = "daily_push",
-                    ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
-                },
-                priority = "high",
-                content_available = true,
-                time_to_live = 86400
-            };
-            
-            var jsonPayload = JsonSerializer.Serialize(payload, new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            });
-            
-            var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
-            
-            using var request = new HttpRequestMessage(HttpMethod.Post, legacyEndpoint);
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("key", $"={_legacyServerKey}");
-            request.Content = httpContent;
-            
-            _logger.LogDebug($"Sending legacy FCM request to {pushToken.Substring(0, Math.Min(10, pushToken.Length))}...");
-            
-            var response = await _httpClient.SendAsync(request);
-            var responseContent = await response.Content.ReadAsStringAsync();
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var fcmResponse = JsonSerializer.Deserialize<FCMResponse>(responseContent, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
-                
-                if (fcmResponse?.Success > 0)
-                {
-                    _logger.LogInformation($"Push notification sent successfully via legacy FCM to {pushToken.Substring(0, Math.Min(10, pushToken.Length))}...");
-                    return true;
-                }
-                else if (fcmResponse?.Failure > 0 && fcmResponse.Results?.Length > 0)
-                {
-                    var error = fcmResponse.Results[0]?.Error;
-                    _logger.LogWarning($"Legacy FCM error: {error} for token {pushToken.Substring(0, Math.Min(10, pushToken.Length))}...");
-                    return false;
-                }
-            }
-            else
-            {
-                _logger.LogError($"Legacy FCM request failed with status {response.StatusCode}: {responseContent}");
-                return false;
-            }
-            
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error sending push notification via legacy FCM API");
-            return false;
-        }
-    }
+
     
     /// <summary>
     /// Get access token for FCM API v1 using service account
@@ -294,17 +250,9 @@ public class FirebaseService
                 return _cachedAccessToken;
             }
             
-            if (string.IsNullOrEmpty(_serviceAccountJson))
+            if (_serviceAccount == null)
             {
-                _logger.LogError("Service account JSON not configured");
-                return null;
-            }
-            
-            // Parse service account JSON
-            var serviceAccount = JsonSerializer.Deserialize<ServiceAccountInfo>(_serviceAccountJson);
-            if (serviceAccount == null)
-            {
-                _logger.LogError("Failed to parse service account JSON");
+                _logger.LogError("Service account not configured");
                 return null;
             }
             
@@ -314,7 +262,7 @@ public class FirebaseService
             
             var claims = new Dictionary<string, object>
             {
-                ["iss"] = serviceAccount.ClientEmail,
+                ["iss"] = _serviceAccount.ClientEmail,
                 ["scope"] = "https://www.googleapis.com/auth/firebase.messaging",
                 ["aud"] = "https://oauth2.googleapis.com/token",
                 ["iat"] = now.ToUnixTimeSeconds(),
@@ -322,7 +270,7 @@ public class FirebaseService
             };
             
             // Parse private key
-            var privateKeyPem = serviceAccount.PrivateKey;
+            var privateKeyPem = _serviceAccount.PrivateKey;
             if (string.IsNullOrEmpty(privateKeyPem))
             {
                 _logger.LogError("Private key not found in service account");
@@ -526,27 +474,7 @@ public class TokenResponse
     public string TokenType { get; set; } = "";
 }
 
-/// <summary>
-/// FCM API response model (Legacy)
-/// </summary>
-public class FCMResponse
-{
-    public long MulticastId { get; set; }
-    public int Success { get; set; }
-    public int Failure { get; set; }
-    public int CanonicalIds { get; set; }
-    public FCMResult[]? Results { get; set; }
-}
 
-/// <summary>
-/// Individual FCM result (Legacy)
-/// </summary>
-public class FCMResult
-{
-    public string? MessageId { get; set; }
-    public string? RegistrationId { get; set; }
-    public string? Error { get; set; }
-}
 
 /// <summary>
 /// Batch push operation result
