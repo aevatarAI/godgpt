@@ -32,4 +32,9 @@ public interface ITimezoneSchedulerGAgent : IGAgent, IGrainWithStringKey
     /// Pause/resume scheduler
     /// </summary>
     Task SetStatusAsync(SchedulerStatus status);
+    
+    /// <summary>
+    /// Set reminder target ID for version control
+    /// </summary>
+    Task SetReminderTargetIdAsync(Guid targetId);
 }

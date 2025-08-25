@@ -21,6 +21,9 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     private readonly IGrainFactory _grainFactory;
     private string _timeZoneId = "";
     
+    // Version control - TODO: move to configuration
+    private static readonly Guid _reminderTargetGuid = new Guid("12345678-1234-1234-1234-a00000000001");
+    
     public TimezoneSchedulerGAgent(ILogger<TimezoneSchedulerGAgent> logger, IGrainFactory grainFactory)
     {
         _logger = logger;
@@ -41,8 +44,8 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             await InitializeAsync(_timeZoneId);
         }
         
-        // Register Orleans reminders for scheduled pushes
-        await RegisterRemindersAsync();
+        // Try to register Orleans reminders if authorized
+        await TryRegisterRemindersAsync();
     }
 
     protected override void GAgentTransitionState(TimezoneSchedulerGAgentState state, StateLogEventBase<DailyPushLogEvent> @event)
@@ -63,8 +66,33 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         State.TimeZoneId = timeZoneId;
         State.Status = SchedulerStatus.Active;
         State.LastUpdated = DateTime.UtcNow;
+        // Initialize with empty ReminderTargetId - requires explicit activation
+        State.ReminderTargetId = Guid.Empty;
+        
+        _timeZoneId = timeZoneId;
         
         _logger.LogInformation("Initialized timezone scheduler for {TimeZone}", timeZoneId);
+    }
+    
+    public async Task SetReminderTargetIdAsync(Guid targetId)
+    {
+        var oldTargetId = State.ReminderTargetId;
+        State.ReminderTargetId = targetId;
+        State.LastUpdated = DateTime.UtcNow;
+        
+        _logger.LogInformation("Updated ReminderTargetId for {TimeZone}: {Old} -> {New}", 
+            _timeZoneId, oldTargetId, targetId);
+        
+        // If this instance is now authorized, register reminders
+        if (State.ReminderTargetId == _reminderTargetGuid)
+        {
+            await TryRegisterRemindersAsync();
+        }
+        else
+        {
+            // Clean up existing reminders if no longer authorized
+            await CleanupRemindersAsync();
+        }
     }
 
     public async Task ProcessMorningPushAsync(DateTime targetDate)
@@ -215,6 +243,32 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     // Orleans Reminder implementation for scheduled pushes
     public async Task ReceiveReminder(string reminderName, TickStatus status)
     {
+        // Version control check - only authorized instances should execute
+        if (State.ReminderTargetId != _reminderTargetGuid)
+        {
+            _logger.LogWarning("Unauthorized instance received reminder {ReminderName} for {TimeZone}. " +
+                "Current: {Current}, Expected: {Expected}. Cleaning up reminder.", 
+                reminderName, _timeZoneId, State.ReminderTargetId, _reminderTargetGuid);
+            
+            // Clean up unauthorized reminder
+            try
+            {
+                var existingReminder = await this.GetReminder(reminderName);
+                if (existingReminder != null)
+                {
+                    await this.UnregisterReminder(existingReminder);
+                    _logger.LogInformation("Cleaned up unauthorized reminder {ReminderName} for {TimeZone}", 
+                        reminderName, _timeZoneId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cleaning up unauthorized reminder {ReminderName} for {TimeZone}", 
+                    reminderName, _timeZoneId);
+            }
+            return;
+        }
+        
         var targetDate = DateTime.UtcNow.Date;
         
         try
@@ -239,6 +293,23 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         }
     }
 
+    private async Task TryRegisterRemindersAsync()
+    {
+        // Version control check - only authorized instances can register reminders
+        if (State.ReminderTargetId != _reminderTargetGuid)
+        {
+            _logger.LogInformation("ReminderTargetId doesn't match for {TimeZone}, not registering reminders. " +
+                "Current: {Current}, Expected: {Expected}", 
+                _timeZoneId, State.ReminderTargetId, _reminderTargetGuid);
+            
+            // Clean up any existing reminders
+            await CleanupRemindersAsync();
+            return;
+        }
+        
+        await RegisterRemindersAsync();
+    }
+    
     private async Task RegisterRemindersAsync()
     {
         var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
@@ -249,7 +320,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         var nextMorning = localNow.Date.Add(DailyPushConstants.MORNING_TIME);
         if (nextMorning <= localNow)
             nextMorning = nextMorning.AddDays(1);
-        
+            
         var nextMorningUtc = TimeZoneInfo.ConvertTimeToUtc(nextMorning, timeZoneInfo);
         
         // Calculate next afternoon retry time (3:00 PM local)
@@ -267,6 +338,30 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         
         _logger.LogInformation("Registered reminders for {TimeZone} - Morning: {Morning}, Afternoon: {Afternoon}", 
             _timeZoneId, nextMorningUtc, nextAfternoonUtc);
+    }
+    
+    private async Task CleanupRemindersAsync()
+    {
+        string[] reminderNames = { "MorningPush", "AfternoonRetry" };
+        
+        foreach (var reminderName in reminderNames)
+        {
+            try
+            {
+                var existingReminder = await this.GetReminder(reminderName);
+                if (existingReminder != null)
+                {
+                    await this.UnregisterReminder(existingReminder);
+                    _logger.LogInformation("Cleaned up reminder {ReminderName} for {TimeZone}", 
+                        reminderName, _timeZoneId);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cleaning up reminder {ReminderName} for {TimeZone}", 
+                    reminderName, _timeZoneId);
+            }
+        }
     }
 
     private async Task<(int processedCount, int failureCount)> ProcessUserBatchAsync(

@@ -47,6 +47,11 @@ public class TimezoneSchedulerGAgentState : StateBase
     /// Last status update timestamp
     /// </summary>
     [Id(7)] public DateTime LastUpdated { get; set; } = DateTime.UtcNow;
+    
+    /// <summary>
+    /// Reminder target ID for version control
+    /// </summary>
+    [Id(8)] public Guid ReminderTargetId { get; set; } = Guid.Empty;
 }
 
 /// <summary>
