@@ -440,7 +440,13 @@ public class FirebaseService
             var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
             
             var header = new JwtHeader(credentials);
-            var payload = new JwtPayload(claims);
+            var payload = new JwtPayload();
+            
+            // Add claims to payload
+            foreach (var claim in claims)
+            {
+                payload[claim.Key] = claim.Value;
+            }
             
             var token = new JwtSecurityToken(header, payload);
             var handler = new JwtSecurityTokenHandler();

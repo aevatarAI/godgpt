@@ -117,7 +117,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             _timeZoneId, oldTargetId, targetId);
         
         // If this instance is now authorized, register reminders
-        if (State.ReminderTargetId == _reminderTargetGuid)
+        if (State.ReminderTargetId == _options.CurrentValue.ReminderTargetId)
         {
             await TryRegisterRemindersAsync();
         }

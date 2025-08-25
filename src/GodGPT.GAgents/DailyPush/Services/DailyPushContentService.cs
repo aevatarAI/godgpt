@@ -266,15 +266,18 @@ public class DailyPushContentService
         }
         catch (FileNotFoundException fileEx)
         {
-            _logger.LogError(fileEx, "📁 CSV file not found: {CsvPath}", filePaths.CsvDictionaryPath);
+            var csvPath = _options.CurrentValue.FilePaths.CsvDictionaryPath;
+            _logger.LogError(fileEx, "📁 CSV file not found: {CsvPath}", csvPath);
         }
         catch (UnauthorizedAccessException accessEx)
         {
-            _logger.LogError(accessEx, "🔒 Access denied reading CSV file: {CsvPath}", filePaths.CsvDictionaryPath);
+            var csvPath = _options.CurrentValue.FilePaths.CsvDictionaryPath;
+            _logger.LogError(accessEx, "🔒 Access denied reading CSV file: {CsvPath}", csvPath);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "💥 Critical error loading daily push content from local file: {CsvPath}", filePaths.CsvDictionaryPath);
+            var csvPath = _options.CurrentValue.FilePaths.CsvDictionaryPath;
+            _logger.LogError(ex, "💥 Critical error loading daily push content from local file: {CsvPath}", csvPath);
         }
     }
     
