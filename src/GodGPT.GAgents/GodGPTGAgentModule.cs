@@ -57,23 +57,9 @@ public class GodGPTGAgentModule : AbpModule
         // Register HttpClient factory first
         context.Services.AddHttpClient();
         
-        // Register FirebaseService with HttpClient, Configuration, and Options
-        context.Services.AddSingleton<FirebaseService>(serviceProvider =>
-        {
-            var logger = serviceProvider.GetRequiredService<ILogger<FirebaseService>>();
-            var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
-            var configuration = serviceProvider.GetRequiredService<IConfiguration>();
-            var options = serviceProvider.GetRequiredService<IOptionsMonitor<DailyPushOptions>>();
-            var httpClient = httpClientFactory.CreateClient();
-            return new FirebaseService(logger, httpClient, configuration, options);
-        });
-        
-        // Register DailyPushContentService
-        context.Services.AddSingleton<DailyPushContentService>(serviceProvider =>
-        {
-            var logger = serviceProvider.GetRequiredService<ILogger<DailyPushContentService>>();
-            var options = serviceProvider.GetRequiredService<IOptionsMonitor<DailyPushOptions>>();
-            return new DailyPushContentService(logger, options);
-        });
+        // Register Firebase and Daily Push services
+        // Note: ILogger<T>, IConfiguration, IOptionsMonitor<T> are automatically registered by ABP/ASP.NET Core
+        context.Services.AddSingleton<FirebaseService>();
+        context.Services.AddSingleton<DailyPushContentService>();
     }
 }
