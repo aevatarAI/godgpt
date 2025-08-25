@@ -48,8 +48,17 @@ public class GodGPTGAgentModule : AbpModule
         
         // Register daily push services
         context.Services.AddSingleton<DailyPushRedisService>();
-        context.Services.AddSingleton<FirebaseService>();
         
+        // Register HttpClient factory first
         context.Services.AddHttpClient();
+        
+        // Register FirebaseService with HttpClient from factory
+        context.Services.AddSingleton<FirebaseService>(serviceProvider =>
+        {
+            var logger = serviceProvider.GetRequiredService<ILogger<FirebaseService>>();
+            var httpClientFactory = serviceProvider.GetRequiredService<IHttpClientFactory>();
+            var httpClient = httpClientFactory.CreateClient();
+            return new FirebaseService(logger, httpClient);
+        });
     }
 }
