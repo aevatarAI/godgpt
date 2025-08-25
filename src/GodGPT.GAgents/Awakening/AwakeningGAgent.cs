@@ -16,7 +16,6 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using Orleans;
-using System.Text.RegularExpressions;
 
 namespace GodGPT.GAgents.Awakening;
 
