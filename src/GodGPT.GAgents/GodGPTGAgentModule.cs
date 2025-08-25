@@ -11,6 +11,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling;
 using GodGPT.GAgents.Awakening.Options;
 using GodGPT.GAgents.SpeechChat;
 using GodGPT.GAgents.DailyPush;
+using GodGPT.GAgents.DailyPush.Options;
 using Microsoft.Extensions.Configuration;
 
 namespace Aevatar.Application.Grains;
@@ -41,6 +42,8 @@ public class GodGPTGAgentModule : AbpModule
         context.Services.AddSingleton<IPostConfigureOptions<GooglePayOptions>, GooglePayOptionsPostProcessor>();
         
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
+        Configure<DailyPushOptions>(configuration.GetSection("DailyPush"));
+        
         // Register speech services
         context.Services.AddSingleton<ISpeechService, SpeechService>();
         context.Services.AddSingleton<IGooglePayService, GooglePayService>();

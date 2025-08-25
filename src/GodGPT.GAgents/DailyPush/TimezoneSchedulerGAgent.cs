@@ -2,9 +2,11 @@ using Aevatar.Core.Abstractions;
 using Aevatar.Core;
 using Aevatar.Application.Grains.Agents.ChatManager;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Orleans;
 using Orleans.Providers;
 using GodGPT.GAgents.DailyPush.SEvents;
+using GodGPT.GAgents.DailyPush.Options;
 
 namespace GodGPT.GAgents.DailyPush;
 
@@ -19,15 +21,17 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
 {
     private readonly ILogger<TimezoneSchedulerGAgent> _logger;
     private readonly IGrainFactory _grainFactory;
+    private readonly IOptionsMonitor<DailyPushOptions> _options;
     private string _timeZoneId = "";
     
-    // Version control - TODO: move to configuration
-    private static readonly Guid _reminderTargetGuid = new Guid("12345678-1234-1234-1234-a00000000001");
-    
-    public TimezoneSchedulerGAgent(ILogger<TimezoneSchedulerGAgent> logger, IGrainFactory grainFactory)
+    public TimezoneSchedulerGAgent(
+        ILogger<TimezoneSchedulerGAgent> logger, 
+        IGrainFactory grainFactory,
+        IOptionsMonitor<DailyPushOptions> options)
     {
         _logger = logger;
         _grainFactory = grainFactory;
+        _options = options;
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -42,6 +46,17 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         if (string.IsNullOrEmpty(State.TimeZoneId))
         {
             await InitializeAsync(_timeZoneId);
+        }
+        
+        // 🚀 Auto-activation: Use configured ReminderTargetId
+        var configuredTargetId = _options.CurrentValue.ReminderTargetId;
+        if (configuredTargetId != Guid.Empty && State.ReminderTargetId != configuredTargetId)
+        {
+            State.ReminderTargetId = configuredTargetId;
+            State.LastUpdated = DateTime.UtcNow;
+            
+            _logger.LogInformation("Auto-activated timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}", 
+                _timeZoneId, configuredTargetId);
         }
         
         // Try to register Orleans reminders if authorized
@@ -243,12 +258,14 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     // Orleans Reminder implementation for scheduled pushes
     public async Task ReceiveReminder(string reminderName, TickStatus status)
     {
+        var configuredTargetId = _options.CurrentValue.ReminderTargetId;
+        
         // Version control check - only authorized instances should execute
-        if (State.ReminderTargetId != _reminderTargetGuid)
+        if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
         {
             _logger.LogWarning("Unauthorized instance received reminder {ReminderName} for {TimeZone}. " +
                 "Current: {Current}, Expected: {Expected}. Cleaning up reminder.", 
-                reminderName, _timeZoneId, State.ReminderTargetId, _reminderTargetGuid);
+                reminderName, _timeZoneId, State.ReminderTargetId, configuredTargetId);
             
             // Clean up unauthorized reminder
             try
@@ -295,12 +312,14 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
 
     private async Task TryRegisterRemindersAsync()
     {
+        var configuredTargetId = _options.CurrentValue.ReminderTargetId;
+        
         // Version control check - only authorized instances can register reminders
-        if (State.ReminderTargetId != _reminderTargetGuid)
+        if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
         {
             _logger.LogInformation("ReminderTargetId doesn't match for {TimeZone}, not registering reminders. " +
                 "Current: {Current}, Expected: {Expected}", 
-                _timeZoneId, State.ReminderTargetId, _reminderTargetGuid);
+                _timeZoneId, State.ReminderTargetId, configuredTargetId);
             
             // Clean up any existing reminders
             await CleanupRemindersAsync();
@@ -312,19 +331,20 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     
     private async Task RegisterRemindersAsync()
     {
+        var options = _options.CurrentValue;
         var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
         var now = DateTime.UtcNow;
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(now, timeZoneInfo);
         
-        // Calculate next morning push time (8:00 AM local)
-        var nextMorning = localNow.Date.Add(DailyPushConstants.MORNING_TIME);
+        // Calculate next morning push time (configured time local)
+        var nextMorning = localNow.Date.Add(options.MorningTime);
         if (nextMorning <= localNow)
             nextMorning = nextMorning.AddDays(1);
             
         var nextMorningUtc = TimeZoneInfo.ConvertTimeToUtc(nextMorning, timeZoneInfo);
         
-        // Calculate next afternoon retry time (3:00 PM local)
-        var nextAfternoon = localNow.Date.Add(DailyPushConstants.AFTERNOON_TIME);
+        // Calculate next afternoon retry time (configured time local)
+        var nextAfternoon = localNow.Date.Add(options.AfternoonRetryTime);
         if (nextAfternoon <= localNow)
             nextAfternoon = nextAfternoon.AddDays(1);
             
