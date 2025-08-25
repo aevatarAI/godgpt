@@ -83,16 +83,8 @@ public static class DailyNotificationContentExtensions
     /// <summary>
     /// Check if content supports specific language
     /// </summary>
-    public static bool SupportsLanguage(this DailyNotificationContent content, GodGPTLanguage language)
+    public static bool SupportsLanguage(this DailyNotificationContent content, string languageCode)
     {
-        var languageCode = language switch
-        {
-            GodGPTLanguage.TraditionalChinese => "zh",
-            GodGPTLanguage.CN => "zh_sc", 
-            GodGPTLanguage.Spanish => "es",
-            GodGPTLanguage.English => "en",
-            _ => "en"
-        };
         return content.LocalizedContents.ContainsKey(languageCode);
     }
     
