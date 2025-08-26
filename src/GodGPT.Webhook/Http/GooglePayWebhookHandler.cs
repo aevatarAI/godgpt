@@ -209,10 +209,10 @@ public class GooglePayWebhookHandler : IWebhookHandler
     /// </summary>
     private PaymentVerificationResultDto CreateRevenueCatVerificationResult(RevenueCatEvent eventData)
     {
-        var purchaseDate = eventData.PurchasedAtMs.HasValue ? 
-            DateTimeOffset.FromUnixTimeMilliseconds(eventData.PurchasedAtMs.Value).DateTime : DateTime.UtcNow;
-        var expirationDate = eventData.ExpirationAtMs.HasValue ?
-            DateTimeOffset.FromUnixTimeMilliseconds(eventData.ExpirationAtMs.Value).DateTime : (DateTime?)null;
+        // Fix: 完全移除对RevenueCat webhook时间字段的依赖，统一使用我们的固定天数计算
+        // RevenueCat的时间字段用于日志记录，但不用于业务逻辑
+        var purchaseDate = DateTime.UtcNow; // 总是使用当前时间
+        DateTime? expirationDate = null;    // 让业务逻辑自己计算到期时间
 
         // Log ProductId format and payment amount for verification  
         _logger.LogInformation("[GooglePayWebhookHandler][CreateRevenueCatVerificationResult] Using ProductId: {ProductId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price} {Currency}, CancelReason: {CancelReason}", 
@@ -240,8 +240,8 @@ public class GooglePayWebhookHandler : IWebhookHandler
             IsValid = true,
             TransactionId = eventData.TransactionId ?? eventData.OriginalTransactionId, // Current transaction ID for invoice details
             ProductId = eventData.ProductId, // This is already in key1:key2 format from RevenueCat
-            SubscriptionStartDate = purchaseDate,
-            SubscriptionEndDate = expirationDate,
+            SubscriptionStartDate = null, // 让业务逻辑自己决定开始时间
+            SubscriptionEndDate = null,   // 让业务逻辑自己决定结束时间
             Platform = PaymentPlatform.GooglePlay,
             PurchaseToken = eventData.OriginalTransactionId ?? eventData.TransactionId, // Keep for backward compatibility
             OriginalTransactionId = eventData.OriginalTransactionId ?? eventData.TransactionId, // RevenueCat's original_transaction_id (stable subscription identifier)
