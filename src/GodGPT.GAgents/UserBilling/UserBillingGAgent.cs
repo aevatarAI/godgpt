@@ -13,7 +13,7 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
-
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Invitation;
@@ -2136,7 +2136,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         PaymentPlatform paymentPlatform, string productId, string currency, decimal amount)
     {
         // Record payment success event to OpenTelemetry
-        // TODO: Restore PaymentTelemetryMetrics.RecordPaymentSuccess when available
+        PaymentTelemetryMetrics.RecordPaymentSuccess(paymentPlatform.ToString(), purchaseType.ToString(), userId.ToString(), productId, _logger);
         _logger.LogInformation("[UserBillingGAgent][ReportGooglePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}",
             paymentPlatform, purchaseType, userId, productId);
         
@@ -2558,7 +2558,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         PaymentPlatform paymentPlatform, string productId, string currency, decimal amount)
     {
         // Record payment success event to OpenTelemetry
-        // TODO: Restore PaymentTelemetryMetrics.RecordPaymentSuccess when available  
+        PaymentTelemetryMetrics.RecordPaymentSuccess(paymentPlatform.ToString(), purchaseType.ToString(), userId.ToString(), productId, _logger);
         _logger.LogInformation("[UserBillingGAgent][ReportApplePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}",
             paymentPlatform, purchaseType, userId, productId);
         
