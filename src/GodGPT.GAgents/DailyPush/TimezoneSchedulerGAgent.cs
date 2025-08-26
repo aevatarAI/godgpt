@@ -146,7 +146,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     /// <summary>
     /// Start test mode with rapid push testing - TODO: Remove before production
     /// </summary>
-    public async Task StartTestModeAsync()
+    public async Task StartTestModeAsync(int intervalSeconds = 600)
     {
         if (State.TestModeActive)
         {
@@ -155,27 +155,33 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             return;
         }
         
-        _logger.LogInformation("Starting test mode for timezone {TimeZone}", _timeZoneId);
+        // Validate interval (minimum 10 seconds, maximum 1 hour)
+        intervalSeconds = Math.Max(10, Math.Min(intervalSeconds, 3600));
+        var testInterval = TimeSpan.FromSeconds(intervalSeconds);
+        
+        _logger.LogInformation("Starting test mode for timezone {TimeZone} with {IntervalSeconds}s interval", 
+            _timeZoneId, intervalSeconds);
         
         // Proactively cleanup any existing test reminders (safety measure)
         await CleanupTestRemindersAsync();
         
-        // Initialize test state
+        // Initialize test state with custom interval
         State.TestModeActive = true;
         State.TestStartTime = DateTime.UtcNow;
         State.TestRoundsCompleted = 0;
+        State.TestCustomInterval = intervalSeconds; // Store custom interval
         State.LastUpdated = DateTime.UtcNow;
         
         await ConfirmEvents();
         
-        // Register first test reminder (immediate execution)
+        // Register first test reminder with custom interval
         await this.RegisterOrUpdateReminder(
             TestModeConstants.TEST_PUSH_REMINDER,
             TimeSpan.FromSeconds(10), // Start in 10 seconds
-            TestModeConstants.PUSH_INTERVAL);
+            testInterval); // Use custom interval
             
-        _logger.LogInformation("Test mode started for {TimeZone}. Max rounds: {MaxRounds}, Interval: {Interval}", 
-            _timeZoneId, TestModeConstants.MAX_TEST_ROUNDS, TestModeConstants.PUSH_INTERVAL);
+        _logger.LogInformation("Test mode started for {TimeZone}. Max rounds: {MaxRounds}, Interval: {Interval}s", 
+            _timeZoneId, TestModeConstants.MAX_TEST_ROUNDS, intervalSeconds);
     }
     
     /// <summary>
@@ -780,11 +786,12 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             return;
         }
         
-        // Schedule next push round
+        // Schedule next push round using custom interval
+        var customInterval = TimeSpan.FromSeconds(State.TestCustomInterval);
         await this.RegisterOrUpdateReminder(
             TestModeConstants.TEST_PUSH_REMINDER,
-            TestModeConstants.PUSH_INTERVAL,
-            TestModeConstants.PUSH_INTERVAL);
+            customInterval,
+            customInterval);
     }
     
     /// <summary>

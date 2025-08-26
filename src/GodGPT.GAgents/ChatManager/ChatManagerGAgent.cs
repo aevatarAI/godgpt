@@ -1549,9 +1549,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
-        if (State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead)
+        
+        // Check if any message has been read for today - if so, skip all pushes
+        var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+        if (hasAnyReadToday)
         {
-            Logger.LogDebug($"Daily push already read for {dateKey}, skipping");
+            Logger.LogDebug($"At least one daily push already read for {dateKey}, skipping all pushes");
             return;
         }
         
@@ -1576,67 +1579,65 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
         
-        // Create push notifications for each device (one push per device with multiple contents)
-        var pushTasks = enabledDevices.Select(async device =>
+        // Create separate push notifications for each content to ensure individual callbacks
+        var pushTasks = enabledDevices.SelectMany(device =>
         {
-            try
+            if (string.IsNullOrEmpty(device.PushToken))
             {
-                if (string.IsNullOrEmpty(device.PushToken))
-                {
-                    Logger.LogWarning($"Device {device.DeviceId} has empty push token, skipping");
-                    return false;
-                }
-                
-                // Send only the first content as main push notification
-                // Additional contents can be included in the data payload
-                var firstContent = contents.FirstOrDefault();
-                if (firstContent == null)
-                {
-                    Logger.LogWarning($"No content available for device {device.DeviceId}");
-                    return false;
-                }
-                
-                var localizedContent = firstContent.GetLocalizedContent(device.PushLanguage);
-                
-                Logger.LogInformation("🌍 Getting localized content: DeviceId={DeviceId}, PushLanguage={PushLanguage}, AvailableLanguages=[{AvailableLanguages}]", 
-                    device.DeviceId, device.PushLanguage, string.Join(", ", firstContent.LocalizedContents.Keys));
-                
-                // Include all content IDs in the data payload for app to handle
-                var messageId = Guid.NewGuid();
-                var pushData = new Dictionary<string, object>
-                {
-                    ["message_id"] = messageId.ToString(),
-                    ["type"] = "daily_push",
-                    ["date"] = dateKey,
-                    ["content_ids"] = string.Join(",", contents.Select(c => c.Id)),
-                    ["device_id"] = device.DeviceId,
-                    ["total_contents"] = contents.Count
-                };
-                
-                var success = await firebaseService.SendPushNotificationAsync(
-                    device.PushToken,
-                    localizedContent.Title,
-                    localizedContent.Content,
-                    pushData);
-                
-                if (success)
-                {
-                    Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, Date={Date}", 
-                        device.DeviceId, messageId, dateKey);
-                    return true;
-                }
-                else
-                {
-                    Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, Date={Date}", 
-                        device.DeviceId, messageId, dateKey);
-                    return false;
-                }
+                Logger.LogWarning($"Device {device.DeviceId} has empty push token, skipping");
+                return new List<Task<bool>>();
             }
-            catch (Exception ex)
+
+            // Send separate push for each content with delay to avoid grouping
+            return contents.Select(async (content, index) =>
             {
-                Logger.LogError(ex, $"Error sending daily push to device {device.DeviceId}");
-                return false;
-            }
+                try
+                {
+                    // No delay needed - interval doesn't matter for callbacks
+                    
+                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
+                    
+                    Logger.LogInformation("🌍 Sending content {Index}/{Total}: DeviceId={DeviceId}, PushLanguage={PushLanguage}, ContentId={ContentId}", 
+                        index + 1, contents.Count, device.DeviceId, device.PushLanguage, content.Id);
+                    
+                    // Create unique data payload for each content
+                    var messageId = Guid.NewGuid();
+                    var pushData = new Dictionary<string, object>
+                    {
+                        ["message_id"] = messageId.ToString(),
+                        ["type"] = "daily_push",
+                        ["date"] = dateKey,
+                        ["content_id"] = content.Id, // Single content ID for this push
+                        ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
+                        ["device_id"] = device.DeviceId,
+                        ["total_contents"] = contents.Count
+                    };
+                    
+                    var success = await firebaseService.SendPushNotificationAsync(
+                        device.PushToken,
+                        localizedContent.Title,
+                        localizedContent.Content,
+                        pushData);
+                    
+                    if (success)
+                    {
+                        Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                        return true;
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, $"Error sending daily push content {index + 1} to device {device.DeviceId}");
+                    return false;
+                }
+            });
         });
         
         // Execute all push tasks concurrently
