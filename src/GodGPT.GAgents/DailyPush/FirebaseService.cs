@@ -250,7 +250,8 @@ public class FirebaseService
             
             var fcmV1Endpoint = $"https://fcm.googleapis.com/v1/projects/{_projectId}/messages:send";
             
-            // Create FCM v1 payload
+            // Create FCM v1 payload with proper click handling
+            var dataPayload = FirebaseServiceExtensions.CreateDataPayload(data);
             var message = new
             {
                 message = new
@@ -261,15 +262,16 @@ public class FirebaseService
                         title = title,
                         body = content
                     },
-                    data = FirebaseServiceExtensions.CreateDataPayload(data),
+                    data = dataPayload,
                     android = new
                     {
                         priority = "high",  // Ensure timely delivery
                         notification = new
                         {
                             sound = "default",
-                            click_action = "FLUTTER_NOTIFICATION_CLICK",  // For Flutter click handling
-                            channel_id = "daily_push_channel"  // Custom notification channel
+                            // Remove click_action to use default click behavior
+                            channel_id = "daily_push_channel",  // Custom notification channel
+                            tag = "daily_push"  // For notification replacement
                         }
                     },
                     apns = new
@@ -282,8 +284,8 @@ public class FirebaseService
                         {
                             aps = new
                             {
-                                sound = "default",
-                                category = "DAILY_PUSH"  // For click callback identification
+                                sound = "default"
+                                // Remove category to use default click behavior
                                 // Note: No content-available or mutable-content to avoid silent push
                             }
                         }

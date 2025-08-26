@@ -150,11 +150,15 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     {
         if (State.TestModeActive)
         {
-            _logger.LogWarning("Test mode already active for timezone {TimeZone}", _timeZoneId);
+            _logger.LogWarning("Test mode already active for timezone {TimeZone}. Current rounds: {Rounds}/{MaxRounds}", 
+                _timeZoneId, State.TestRoundsCompleted, TestModeConstants.MAX_TEST_ROUNDS);
             return;
         }
         
         _logger.LogInformation("Starting test mode for timezone {TimeZone}", _timeZoneId);
+        
+        // Proactively cleanup any existing test reminders (safety measure)
+        await CleanupTestRemindersAsync();
         
         // Initialize test state
         State.TestModeActive = true;
