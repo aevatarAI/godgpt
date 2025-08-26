@@ -3640,11 +3640,15 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         // Single iteration through payment history for optimal performance
         foreach (var payment in State.PaymentHistory)
         {
-            // Check if payment has active subscription (same logic as HasActiveAppleSubscriptionAsync)
-            // Active subscription means: has invoice details AND all invoices are completed (not cancelled, refunded, or expired)
+            // Check if payment has active subscription
+            // Active subscription means: has invoice details AND has at least one completed (not cancelled/refunded) and unexpired invoice
+            var now = DateTime.UtcNow;
             var isActiveSubscription = payment.InvoiceDetails != null && 
                                      payment.InvoiceDetails.Any() &&
-                                     payment.InvoiceDetails.All(item => item.Status == PaymentStatus.Completed);
+                                     payment.InvoiceDetails.Any(item => 
+                                         item.Status == PaymentStatus.Completed && 
+                                         item.SubscriptionEndDate != null && 
+                                         item.SubscriptionEndDate > now);
             
             if (!isActiveSubscription) continue;
             
