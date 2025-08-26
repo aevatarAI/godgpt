@@ -3636,21 +3636,50 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     public async Task<ActiveSubscriptionStatusDto> GetActiveSubscriptionStatusAsync()
     {
         var result = new ActiveSubscriptionStatusDto();
+        var now = DateTime.UtcNow;
+        
+        _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Starting check with {PaymentCount} payments in history, Current time: {Now}", 
+            State.PaymentHistory?.Count ?? 0, now);
         
         // Single iteration through payment history for optimal performance
         foreach (var payment in State.PaymentHistory)
         {
+            _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Checking payment: Platform={Platform}, OrderId={OrderId}, Status={Status}, InvoiceCount={InvoiceCount}", 
+                payment.Platform, payment.OrderId, payment.Status, payment.InvoiceDetails?.Count ?? 0);
+            
             // Check if payment has active subscription
             // Active subscription means: has invoice details AND has at least one completed (not cancelled/refunded) and unexpired invoice
-            var now = DateTime.UtcNow;
-            var isActiveSubscription = payment.InvoiceDetails != null && 
-                                     payment.InvoiceDetails.Any() &&
-                                     payment.InvoiceDetails.Any(item => 
-                                         item.Status == PaymentStatus.Completed && 
-                                         item.SubscriptionEndDate != null && 
-                                         item.SubscriptionEndDate > now);
+            var hasInvoiceDetails = payment.InvoiceDetails != null && payment.InvoiceDetails.Any();
             
-            if (!isActiveSubscription) continue;
+            if (!hasInvoiceDetails)
+            {
+                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no invoice details, skipping", payment.OrderId);
+                continue;
+            }
+            
+            // Check each invoice detail
+            bool hasActiveInvoice = false;
+            foreach (var invoice in payment.InvoiceDetails)
+            {
+                var isCompleted = invoice.Status == PaymentStatus.Completed;
+                var hasEndDate = invoice.SubscriptionEndDate != null;
+                var isUnexpired = invoice.SubscriptionEndDate > now;
+                
+                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Invoice {InvoiceId}: Status={Status} (Completed={IsCompleted}), EndDate={EndDate} (HasEndDate={HasEndDate}, Unexpired={IsUnexpired})", 
+                    invoice.InvoiceId, invoice.Status, isCompleted, invoice.SubscriptionEndDate, hasEndDate, isUnexpired);
+                
+                if (isCompleted && hasEndDate && isUnexpired)
+                {
+                    hasActiveInvoice = true;
+                    break;
+                }
+            }
+            
+            if (!hasActiveInvoice)
+            {
+                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no active invoices, skipping", payment.OrderId);
+                continue;
+            }
             
             // Check platform and set corresponding flags
             switch (payment.Platform)
@@ -3680,6 +3709,21 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         
         _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Apple: {Apple}, Stripe: {Stripe}, GooglePlay: {GooglePlay}, Overall: {Overall}", 
             result.HasActiveAppleSubscription, result.HasActiveStripeSubscription, result.HasActiveGooglePlaySubscription, result.HasActiveSubscription);
+        
+        // Debug: Also check UserQuotaGAgent status for comparison
+        try
+        {
+            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+            var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
+            var ultimateSubscription = await userQuotaAgent.GetSubscriptionAsync(true);
+            
+            _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] UserQuotaGAgent status - Premium: IsActive={PremiumActive}, EndDate={PremiumEnd}, Ultimate: IsActive={UltimateActive}, EndDate={UltimateEnd}", 
+                premiumSubscription.IsActive, premiumSubscription.EndDate, ultimateSubscription.IsActive, ultimateSubscription.EndDate);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Error checking UserQuotaGAgent status");
+        }
             
         return result;
     }
@@ -4772,6 +4816,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 return;
             }
 
+            // Fix: Calculate correct cumulative subscription duration using existing method
+            var (calculatedStartDate, calculatedEndDate) = await CalculateGooglePlaySubscriptionDurationAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate);
+            
+            _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Using cumulative time calculation: Start={Start}, End={End}", calculatedStartDate, calculatedEndDate);
+
             // Create new invoice detail for the renewal
             var renewalInvoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
             {
@@ -4780,8 +4829,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 CreatedAt = DateTime.UtcNow,
                 CompletedAt = DateTime.UtcNow,
                 Status = PaymentStatus.Completed,
-                SubscriptionStartDate = DateTime.UtcNow,
-                SubscriptionEndDate = DateTime.UtcNow.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType)),
+                SubscriptionStartDate = calculatedStartDate,
+                SubscriptionEndDate = calculatedEndDate,
                 PriceId = verificationResult.ProductId,
                 MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                 Amount = productConfig.Amount,
@@ -4798,8 +4847,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // Update the main payment summary with latest info
             existingPayment.CompletedAt = DateTime.UtcNow;
             existingPayment.Status = PaymentStatus.Completed;
-            // Fix: Use cumulative time calculation instead of RevenueCat webhook time  
-            existingPayment.SubscriptionEndDate = existingPayment.SubscriptionEndDate.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType));
+            // Fix: Use the same calculated end date as the invoice detail for consistency
+            existingPayment.SubscriptionEndDate = calculatedEndDate;
 
             // Save the updated payment summary
             RaiseEvent(new UpdatePaymentLogEvent
