@@ -261,11 +261,7 @@ public class FirebaseService
                         title = title,
                         body = content
                     },
-                    data = data?.ToDictionary(x => x.Key, x => x.Value?.ToString() ?? "") ?? new Dictionary<string, string>
-                    {
-                        ["type"] = "daily_push",
-                        ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString()
-                    },
+                    data = FirebaseServiceExtensions.CreateDataPayload(data),
                     android = new
                     {
                         priority = "high",
@@ -592,4 +588,29 @@ public class BatchPushResult
     
     public double SuccessRate => SuccessCount + FailureCount > 0 ? 
         (double)SuccessCount / (SuccessCount + FailureCount) : 0;
+}
+
+public static class FirebaseServiceExtensions
+{
+    /// <summary>
+    /// Creates a data payload ensuring required fields are included
+    /// </summary>
+    public static Dictionary<string, string> CreateDataPayload(Dictionary<string, object>? data)
+    {
+        var result = data?.ToDictionary(x => x.Key, x => x.Value?.ToString() ?? "") ?? new Dictionary<string, string>();
+        
+        // Ensure timestamp is always included
+        if (!result.ContainsKey("timestamp"))
+        {
+            result["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+        }
+        
+        // Ensure type is set for daily push if not specified
+        if (!result.ContainsKey("type"))
+        {
+            result["type"] = "daily_push";
+        }
+        
+        return result;
+    }
 }
