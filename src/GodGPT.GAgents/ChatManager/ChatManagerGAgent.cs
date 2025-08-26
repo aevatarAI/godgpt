@@ -1474,12 +1474,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             deviceInfo.LastTokenUpdate = DateTime.UtcNow;
         }
         if (!string.IsNullOrEmpty(timeZoneId))
-            deviceInfo.TimeZoneId = timeZoneId;
-        else if (string.IsNullOrEmpty(deviceInfo.TimeZoneId))
         {
-            // Ensure device has a valid timezone - default to UTC if not provided
+            deviceInfo.TimeZoneId = timeZoneId;
+        }
+        // Always ensure device has a valid timezone - default to UTC if empty
+        if (string.IsNullOrEmpty(deviceInfo.TimeZoneId))
+        {
             deviceInfo.TimeZoneId = "UTC";
-            Logger.LogWarning("Device {DeviceId} registered without timezone, defaulting to UTC", deviceId);
+            Logger.LogWarning("Device {DeviceId} has empty timezone, defaulting to UTC", deviceId);
         }
         if (!string.IsNullOrEmpty(pushLanguage))
         {
