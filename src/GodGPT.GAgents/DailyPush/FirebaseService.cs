@@ -339,19 +339,30 @@ public class FirebaseService
     /// </summary>
     private async Task<string?> GetAccessTokenAsync()
     {
-        try
+        const int maxRetries = 3;
+        const int retryDelayMs = 1000;
+        
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
-            // Check if cached token is still valid
-            if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+            try
             {
-                return _cachedAccessToken;
-            }
-            
-            if (_serviceAccount == null)
-            {
-                _logger.LogError("Service account not configured");
-                return null;
-            }
+                // Check if cached token is still valid
+                if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+                {
+                    return _cachedAccessToken;
+                }
+                
+                if (_serviceAccount == null)
+                {
+                    _logger.LogError("Service account not configured on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
+                    if (attempt < maxRetries)
+                    {
+                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", retryDelayMs);
+                        await Task.Delay(retryDelayMs);
+                        continue;
+                    }
+                    return null;
+                }
             
             // Create JWT for OAuth 2.0 flow
             var now = DateTimeOffset.UtcNow;
@@ -382,37 +393,70 @@ public class FirebaseService
                 return null;
             }
             
-            // Exchange JWT for access token
-            var tokenRequest = new FormUrlEncodedContent(new[]
-            {
-                new KeyValuePair<string, string>("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                new KeyValuePair<string, string>("assertion", jwt)
-            });
-            
-            var response = await _httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest);
-            var responseContent = await response.Content.ReadAsStringAsync();
-            
-            if (response.IsSuccessStatusCode)
-            {
-                var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
-                if (tokenResponse?.AccessToken != null)
+                // Exchange JWT for access token
+                var tokenRequest = new FormUrlEncodedContent(new[]
                 {
-                    _cachedAccessToken = tokenResponse.AccessToken;
-                    _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 300); // 5 min buffer
-                    
-                    _logger.LogDebug("Successfully obtained access token for FCM API v1");
-                    return _cachedAccessToken;
+                    new KeyValuePair<string, string>("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                    new KeyValuePair<string, string>("assertion", jwt)
+                });
+                
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30s timeout
+                var response = await _httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
+                var responseContent = await response.Content.ReadAsStringAsync();
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
+                    if (tokenResponse?.AccessToken != null)
+                    {
+                        _cachedAccessToken = tokenResponse.AccessToken;
+                        _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 300); // 5 min buffer
+                        
+                        _logger.LogInformation("✅ Successfully obtained access token for FCM API v1 on attempt {Attempt}", attempt);
+                        return _cachedAccessToken;
+                    }
                 }
+                
+                _logger.LogWarning("⚠️ Failed to obtain access token on attempt {Attempt}/{MaxRetries}: {StatusCode} - {ResponseContent}", 
+                    attempt, maxRetries, response.StatusCode, responseContent);
+                    
+                if (attempt < maxRetries)
+                {
+                    var delay = retryDelayMs * attempt; // Exponential backoff
+                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                    await Task.Delay(delay);
+                    continue;
+                }
+                
+                return null;
             }
-            
-            _logger.LogError($"Failed to obtain access token: {response.StatusCode} - {responseContent}");
-            return null;
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("⏰ Access token request timed out on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
+                if (attempt < maxRetries)
+                {
+                    var delay = retryDelayMs * attempt;
+                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                    await Task.Delay(delay);
+                    continue;
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "💥 Error obtaining access token for FCM API v1 on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
+                if (attempt < maxRetries)
+                {
+                    var delay = retryDelayMs * attempt;
+                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                    await Task.Delay(delay);
+                    continue;
+                }
+                return null;
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error obtaining access token for FCM API v1");
-            return null;
-        }
+        
+        return null; // All retries failed
     }
     
     /// <summary>
