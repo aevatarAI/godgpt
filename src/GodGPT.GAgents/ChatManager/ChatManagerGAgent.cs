@@ -1602,8 +1602,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     device.DeviceId, device.PushLanguage, string.Join(", ", firstContent.LocalizedContents.Keys));
                 
                 // Include all content IDs in the data payload for app to handle
+                var messageId = Guid.NewGuid();
                 var pushData = new Dictionary<string, object>
                 {
+                    ["message_id"] = messageId.ToString(),
                     ["type"] = "daily_push",
                     ["date"] = dateKey,
                     ["content_ids"] = string.Join(",", contents.Select(c => c.Id)),
@@ -1619,12 +1621,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 
                 if (success)
                 {
-                    Logger.LogDebug($"Daily push sent successfully to device {device.DeviceId}");
+                    Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, Date={Date}", 
+                        device.DeviceId, messageId, dateKey);
                     return true;
                 }
                 else
                 {
-                    Logger.LogWarning($"Failed to send daily push to device {device.DeviceId}");
+                    Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, Date={Date}", 
+                        device.DeviceId, messageId, dateKey);
                     return false;
                 }
             }
