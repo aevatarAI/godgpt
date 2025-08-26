@@ -4833,12 +4833,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // Update the main payment summary with latest info
             existingPayment.CompletedAt = DateTime.UtcNow;
             existingPayment.Status = PaymentStatus.Completed;
-            // Fix: Use cumulative time calculation instead of RevenueCat webhook time
-            var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
-            if (productConfig != null)
-            {
-                existingPayment.SubscriptionEndDate = existingPayment.SubscriptionEndDate.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType));
-            }
+            // Fix: Use cumulative time calculation instead of RevenueCat webhook time  
+            existingPayment.SubscriptionEndDate = existingPayment.SubscriptionEndDate.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType));
 
             // Save the updated payment summary
             RaiseEvent(new UpdatePaymentLogEvent
