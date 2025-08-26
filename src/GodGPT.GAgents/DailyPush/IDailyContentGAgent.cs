@@ -7,7 +7,7 @@ namespace GodGPT.GAgents.DailyPush;
 /// <summary>
 /// Daily content selection and management GAgent
 /// </summary>
-public interface IDailyContentGAgent : IGAgent, IGrainWithStringKey
+public interface IDailyContentGAgent : IGAgent, IGrainWithGuidKey
 {
     /// <summary>
     /// Get smart-selected contents for specific date (with deduplication)

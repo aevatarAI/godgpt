@@ -41,4 +41,10 @@ public static class DailyPushConstants
         AfternoonRetry = 2,
         TestPush = 9
     }
+    
+    // === GAgent Instance Configuration ===
+    /// <summary>
+    /// Well-known GUID for the singleton DailyContentGAgent instance
+    /// </summary>
+    public static readonly Guid CONTENT_GAGENT_ID = new Guid("12345678-1234-5678-9abc-123456789012");
 }

@@ -225,7 +225,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         try
         {
             // Get daily content selection
-            var contentGAgent = _grainFactory.GetGrain<IDailyContentGAgent>("default");
+            var contentGAgent = _grainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
             var dailyContents = await contentGAgent.GetSmartSelectedContentsAsync(
                 DailyPushConstants.DAILY_CONTENT_COUNT, targetDate);
 
@@ -291,7 +291,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         try
         {
             // Get same content as morning push
-            var contentGAgent = _grainFactory.GetGrain<IDailyContentGAgent>("default");
+            var contentGAgent = _grainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
             var dailyContents = await contentGAgent.GetSmartSelectedContentsAsync(
                 DailyPushConstants.DAILY_CONTENT_COUNT, targetDate);
 
