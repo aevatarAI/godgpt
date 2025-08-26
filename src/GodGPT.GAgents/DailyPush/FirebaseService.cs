@@ -261,29 +261,7 @@ public class FirebaseService
                         title = title,
                         body = content
                     },
-                    data = FirebaseServiceExtensions.CreateDataPayload(data),
-                    android = new
-                    {
-                        priority = "high",
-                        ttl = "86400s",
-                        notification = new
-                        {
-                            sound = "default",
-                            click_action = "FLUTTER_NOTIFICATION_CLICK"
-                        }
-                    },
-                    apns = new
-                    {
-                        payload = new
-                        {
-                            aps = new
-                            {
-                                sound = "default",
-                                badge = 1,
-                                content_available = 1
-                            }
-                        }
-                    }
+                    data = FirebaseServiceExtensions.CreateDataPayload(data)
                 }
             };
             
