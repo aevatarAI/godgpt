@@ -67,6 +67,11 @@ public class TimezoneSchedulerGAgentState : StateBase
     /// Number of test rounds completed
     /// </summary>
     [Id(11)] public int TestRoundsCompleted { get; set; } = 0;
+    
+    /// <summary>
+    /// Custom test interval in seconds (for configurable test mode)
+    /// </summary>
+    [Id(12)] public int TestCustomInterval { get; set; } = 600;
 }
 
 /// <summary>

@@ -41,7 +41,8 @@ public interface ITimezoneSchedulerGAgent : IGAgent, IGrainWithStringKey
     /// <summary>
     /// Start test mode with rapid push testing - TODO: Remove before production
     /// </summary>
-    Task StartTestModeAsync();
+    /// <param name="intervalSeconds">Push interval in seconds (default: 600 seconds = 10 minutes)</param>
+    Task StartTestModeAsync(int intervalSeconds = 600);
     
     /// <summary>
     /// Stop test mode and cleanup test reminders - TODO: Remove before production

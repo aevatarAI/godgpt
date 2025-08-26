@@ -271,7 +271,9 @@ public class FirebaseService
                             sound = "default",
                             // Remove click_action to use default click behavior
                             channel_id = "daily_push_channel",  // Custom notification channel
-                            tag = "daily_push"  // For notification replacement
+                            // Remove tag to prevent notification replacement - each should be separate
+                            notification_count = dataPayload.TryGetValue("content_index", out var contentIndex) ? 
+                                int.Parse(contentIndex.ToString() ?? "1") : 1  // Unique count for each content
                         }
                     },
                     apns = new
