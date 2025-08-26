@@ -1476,7 +1476,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         if (!string.IsNullOrEmpty(timeZoneId))
             deviceInfo.TimeZoneId = timeZoneId;
         if (!string.IsNullOrEmpty(pushLanguage))
+        {
             deviceInfo.PushLanguage = pushLanguage;
+            Logger.LogInformation("💾 Device language updated: DeviceId={DeviceId}, PushLanguage={PushLanguage}", 
+                deviceId, pushLanguage);
+        }
         if (pushEnabled.HasValue)
             deviceInfo.PushEnabled = pushEnabled.Value;
         
@@ -1526,7 +1530,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         else
         {
-            Logger.LogWarning($"Device not found for push token: {pushToken}");
+            Logger.LogWarning("Device not found for provided push token");
         }
     }
 
@@ -1594,6 +1598,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 
                 var localizedContent = firstContent.GetLocalizedContent(device.PushLanguage);
                 
+                Logger.LogInformation("🌍 Getting localized content: DeviceId={DeviceId}, PushLanguage={PushLanguage}, AvailableLanguages=[{AvailableLanguages}]", 
+                    device.DeviceId, device.PushLanguage, string.Join(", ", firstContent.LocalizedContents.Keys));
+                
                 // Include all content IDs in the data payload for app to handle
                 var pushData = new Dictionary<string, object>
                 {
@@ -1607,7 +1614,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 var success = await firebaseService.SendPushNotificationAsync(
                     device.PushToken,
                     localizedContent.Title,
-                    $"{localizedContent.Content} (+{contents.Count - 1} more)",
+                    localizedContent.Content,
                     pushData);
                 
                 if (success)

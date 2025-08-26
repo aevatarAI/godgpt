@@ -302,14 +302,14 @@ public class FirebaseService
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
             request.Content = httpContent;
             
-            _logger.LogDebug($"Sending FCM v1 request to {pushToken.Substring(0, Math.Min(10, pushToken.Length))}...");
+            _logger.LogDebug("Sending FCM v1 push notification request");
             
             var response = await _httpClient.SendAsync(request);
             var responseContent = await response.Content.ReadAsStringAsync();
             
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation($"Push notification sent successfully via FCM v1 to {pushToken.Substring(0, Math.Min(10, pushToken.Length))}...");
+                _logger.LogInformation("Push notification sent successfully via FCM v1");
                 return true;
             }
             else
@@ -502,17 +502,17 @@ public class FirebaseService
         
         if (outcome < 0.92) // 92% success rate
         {
-            _logger.LogInformation($"[SIMULATION] Push sent successfully to {pushToken.Substring(0, Math.Min(10, pushToken.Length))}...: {title}");
+            _logger.LogInformation("[SIMULATION] Push notification sent successfully: {Title}", title);
             return true;
         }
         else if (outcome < 0.95) // 3% invalid token
         {
-            _logger.LogWarning($"[SIMULATION] Invalid token {pushToken.Substring(0, Math.Min(10, pushToken.Length))}...");
+            _logger.LogWarning("[SIMULATION] Invalid push token detected");
             return false;
         }
         else // 5% network/server error
         {
-            _logger.LogWarning($"[SIMULATION] Network error for {pushToken.Substring(0, Math.Min(10, pushToken.Length))}...");
+            _logger.LogWarning("[SIMULATION] Network error during push notification");
             return false;
         }
     }
