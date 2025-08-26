@@ -13,7 +13,7 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Helpers;
-
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Invitation;
@@ -1807,21 +1807,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
         
-        // Fix: Handle Ultimate subscription activation - extend Premium subscription time (same as Apple Pay logic)
-        if (productConfig.IsUltimate && subscription.IsActive)
-        {
-            var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
-            if (premiumSubscription.IsActive)
-            {
-                // Use Apple Pay pattern: extend Premium subscription by Ultimate's plan duration
-                premiumSubscription.StartDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.StartDate);
-                premiumSubscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.EndDate);
-                await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
-                
-                _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Extended Premium subscription by Ultimate plan duration. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
-                    premiumSubscription.StartDate, premiumSubscription.EndDate);
-            }
-        }
+        // Fix: Handle subscription activation - only Ultimate changes affect Premium subscription time 
+        await SyncOtherSubscriptionTimesAsync(userId, userQuotaAgent, (PlanType)productConfig.PlanType, productConfig.IsUltimate, isExtend: true);
         
         // Determine purchase type based on payment history for proper analytics
         var purchaseType = await DetermineGooglePlayPurchaseTypeAsync(userId, verificationResult.PurchaseToken);
@@ -1889,21 +1876,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         subscription.Status = PaymentStatus.Completed;
         await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
         
-        // Fix: Handle Ultimate subscription activation - extend Premium subscription time (same as Apple Pay logic)
-        if (productConfig.IsUltimate && subscription.IsActive)
-        {
-            var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
-            if (premiumSubscription.IsActive)
-            {
-                // Use Apple Pay pattern: extend Premium subscription by Ultimate's plan duration
-                premiumSubscription.StartDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.StartDate);
-                premiumSubscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.EndDate);
-                await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
-                
-                _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Extended Premium subscription by Ultimate plan duration. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
-                    premiumSubscription.StartDate, premiumSubscription.EndDate);
-            }
-        }
+        // Fix: Handle subscription activation - only Ultimate changes affect Premium subscription time 
+        await SyncOtherSubscriptionTimesAsync(userId, userQuotaAgent, (PlanType)productConfig.PlanType, productConfig.IsUltimate, isExtend: true);
         
         // Report payment success with the specified purchase type for accurate analytics
         await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, purchaseType, 
@@ -1994,21 +1968,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
             await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
 
-            // Fix: Handle Ultimate subscription activation - extend Premium subscription time (same as Apple Pay logic)
-            if (productConfig.IsUltimate && subscription.IsActive)
-            {
-                var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
-                if (premiumSubscription.IsActive)
-                {
-                    // Use Apple Pay pattern: extend Premium subscription by Ultimate's plan duration
-                    premiumSubscription.StartDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.StartDate);
-                    premiumSubscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, premiumSubscription.EndDate);
-                    await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
-                    
-                    _logger.LogInformation("[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Extended Premium subscription by Ultimate plan duration. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
-                        premiumSubscription.StartDate, premiumSubscription.EndDate);
-                }
-            }
+            // Fix: Handle subscription activation - only Ultimate changes affect Premium subscription time 
+            await SyncOtherSubscriptionTimesAsync(userId, userQuotaAgent, (PlanType)productConfig.PlanType, productConfig.IsUltimate, true);
 
             // Report payment success for analytics
             await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, PurchaseType.Subscription,
@@ -2136,7 +2097,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         PaymentPlatform paymentPlatform, string productId, string currency, decimal amount)
     {
         // Record payment success event to OpenTelemetry
-        // TODO: Restore PaymentTelemetryMetrics.RecordPaymentSuccess when available
+        PaymentTelemetryMetrics.RecordPaymentSuccess(paymentPlatform.ToString(), purchaseType.ToString(), userId.ToString(), productId, _logger);
         _logger.LogInformation("[UserBillingGAgent][ReportGooglePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}",
             paymentPlatform, purchaseType, userId, productId);
         
@@ -2558,7 +2519,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         PaymentPlatform paymentPlatform, string productId, string currency, decimal amount)
     {
         // Record payment success event to OpenTelemetry
-        // TODO: Restore PaymentTelemetryMetrics.RecordPaymentSuccess when available  
+        PaymentTelemetryMetrics.RecordPaymentSuccess(paymentPlatform.ToString(), purchaseType.ToString(), userId.ToString(), productId, _logger);
         _logger.LogInformation("[UserBillingGAgent][ReportApplePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}",
             paymentPlatform, purchaseType, userId, productId);
         
@@ -4010,8 +3971,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     OrderId = revenueCatTransaction.OriginalTransactionId ?? request.TransactionIdentifier,
                     PaymentState = 1, // Purchased state
                     AutoRenewing = true, // Default for RevenueCat transactions
-                    SubscriptionStartDate = revenueCatTransaction.PurchaseDate != default ? revenueCatTransaction.PurchaseDate : DateTime.UtcNow,
-                    SubscriptionEndDate = revenueCatTransaction.ExpirationDate
+                    SubscriptionStartDate = null, // 让业务逻辑自己决定开始时间
+                    SubscriptionEndDate = null     // 让业务逻辑自己决定结束时间
                 };
                 
                 // Process the successful verification
@@ -4210,8 +4171,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         PurchaseToken = subscription.StoreTransactionId, // Use as purchase token reference
                         ProductId = productIdForConfig, // Handle both base and full format based on configuration
                         Store = subscription.Store ?? "play_store",
-                        PurchaseDate = DateTime.TryParse(subscription.PurchaseDate, out var purchaseDate) ? purchaseDate : DateTime.UtcNow,
-                        ExpirationDate = DateTime.TryParse(subscription.ExpiresDate, out var expirationDate) ? expirationDate : null
+                        PurchaseDate = DateTime.TryParse(subscription.PurchaseDate, out var purchaseDate) ? DateTime.SpecifyKind(purchaseDate, DateTimeKind.Utc) : DateTime.UtcNow,
+                        ExpirationDate = DateTime.TryParse(subscription.ExpiresDate, out var expirationDate) ? DateTime.SpecifyKind(expirationDate, DateTimeKind.Utc) : null
                     };
                     
                     return matchingTransaction;
@@ -4849,9 +4810,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
             
             // Extend the subscription using consistent cumulative logic
-            if (subscription.IsActive)
+            var now = DateTime.UtcNow;
+            
+            if (subscription.IsActive && subscription.EndDate > now)
             {
-                // For active subscription: upgrade plan if needed and extend by fixed duration
+                // For active and not-expired subscription: extend from current EndDate
                 if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscription.PlanType) <= 
                     SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType)productConfig.PlanType))
                 {
@@ -4864,12 +4827,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 {
                     subscription.SubscriptionIds.Add(existingPayment.SubscriptionId);
                 }
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Extended active subscription. New EndDate: {EndDate}", subscription.EndDate);
             }
             else
             {
-                // Reactivate if it was inactive - use system time for consistency
+                // For expired or inactive subscription: restart from current time
                 subscription.IsActive = true;
-                subscription.StartDate = DateTime.UtcNow;
+                subscription.StartDate = await CalculateReactivationStartTimeAsync(userQuotaAgent, productConfig.IsUltimate);
                 subscription.PlanType = (PlanType)productConfig.PlanType;
                 subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.StartDate);
                 subscription.Status = PaymentStatus.Completed;
@@ -4882,9 +4847,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     subscription.SubscriptionIds.Add(existingPayment.SubscriptionId);
                 }
                 await userQuotaAgent.ResetRateLimitsAsync();
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Reactivated expired/inactive subscription. New StartDate: {StartDate}, EndDate: {EndDate}", subscription.StartDate, subscription.EndDate);
             }
 
             await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
+
+            // Fix: Handle renewal - only Ultimate changes affect Premium subscription time 
+            await SyncOtherSubscriptionTimesAsync(userId, userQuotaAgent, (PlanType)productConfig.PlanType, productConfig.IsUltimate, isExtend: true);
 
             // Report analytics with proper renewal type
             await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, PurchaseType.Renewal,
@@ -5093,27 +5063,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
             await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
             
-            // Handle Ultimate subscription adjustment (exactly same as Apple's logic)
-            if (productConfig.IsUltimate)
-            {
-                // Fix: Use fixed-day calculation instead of webhook-based end date for consistency
-                // Calculate the time span using the product's PlanType and fixed days, not RevenueCat webhook data
-                var ultimateDays = GetDaysForPlanType((PlanType)productConfig.PlanType);
-                var diffTimeSpan = TimeSpan.FromDays(ultimateDays);
-                
-                var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
-                if (premiumSubscription.IsActive)
-                {
-                    // Fix: Follow Apple's exact logic - rollback Premium subscription time
-                    // This restores Premium to its state before Ultimate was active
-                    premiumSubscription.StartDate = premiumSubscription.StartDate.Add(-diffTimeSpan);
-                    premiumSubscription.EndDate = premiumSubscription.EndDate.Add(-diffTimeSpan);
-                    await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
-                    
-                    _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Rolled back Premium subscription by {TimeSpan} ({Days} days) due to Ultimate refund, using fixed-day calculation. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
-                        diffTimeSpan, ultimateDays, premiumSubscription.StartDate, premiumSubscription.EndDate);
-                }
-            }
+            // Fix: Handle refund - only Ultimate changes affect Premium subscription time 
+            await SyncOtherSubscriptionTimesAsync(userId, userQuotaAgent, (PlanType)productConfig.PlanType, productConfig.IsUltimate, isExtend: false);
 
             _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Applied refund rollback consistent with Apple Pay. UserId: {UserId}, SubscriptionId: {SubscriptionId}, ProductPlanType: {ProductPlanType}, RolledBackDays: {Days}, NewEndDate: {EndDate}, IsActive: {IsActive}", 
                 userId, paymentSummary.SubscriptionId, productConfig.PlanType, diff, subscription.EndDate, subscription.IsActive);
@@ -5161,6 +5112,63 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             _logger.LogError(ex, "[UserBillingGAgent][UpdateUserQuotaOnExpirationAsync] Error updating user quota for expiration. UserId: {UserId}", userId);
         }
+    }
+
+    /// <summary>
+    /// 简化的订阅时间同步逻辑：终极套餐变化影响高级套餐，高级套餐变化不影响其他订阅
+    /// </summary>
+    private async Task SyncOtherSubscriptionTimesAsync(Guid userId, IUserQuotaGAgent userQuotaAgent, PlanType triggerPlanType, bool triggerIsUltimate, bool isExtend)
+    {
+        var days = GetDaysForPlanType(triggerPlanType);
+        var timeSpan = TimeSpan.FromDays(days);
+        
+        if (triggerIsUltimate)
+        {
+            // 终极套餐变化 → 影响高级套餐
+            var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
+            if (ShouldSyncSubscriptionTime(premiumSubscription))
+            {
+                if (isExtend)
+                {
+                    premiumSubscription.StartDate = premiumSubscription.StartDate.Add(timeSpan);
+                    premiumSubscription.EndDate = premiumSubscription.EndDate.Add(timeSpan);
+                }
+                else
+                {
+                    premiumSubscription.StartDate = premiumSubscription.StartDate.Add(-timeSpan);
+                    premiumSubscription.EndDate = premiumSubscription.EndDate.Add(-timeSpan);
+                }
+                await userQuotaAgent.UpdateSubscriptionAsync(premiumSubscription, false);
+                
+                _logger.LogInformation("[UserBillingGAgent][SyncOtherSubscriptionTimesAsync] {Action} Premium subscription by {Days} days due to Ultimate {TriggerPlan} change. New Premium StartDate: {StartDate}, EndDate: {EndDate}", 
+                    isExtend ? "Extended" : "Reduced", days, triggerPlanType, premiumSubscription.StartDate, premiumSubscription.EndDate);
+            }
+        }
+        // 高级套餐变化 → 不影响其他订阅，无需处理
+    }
+    
+    /// <summary>
+    /// 判断订阅是否需要时间同步：生效且未过期，不管状态是Completed还是Cancelled
+    /// </summary>
+    private bool ShouldSyncSubscriptionTime(SubscriptionInfoDto subscription)
+    {
+        var now = DateTime.UtcNow;
+        return subscription.EndDate > now && // 未过期
+               subscription.SubscriptionIds != null && 
+               subscription.SubscriptionIds.Count > 0; // 有订阅ID（即使是已取消的）
+    }
+    
+    /// <summary>
+    /// 处理重新激活订阅时的正确起始时间：过期续费总是从当前时间开始
+    /// </summary>
+    private async Task<DateTime> CalculateReactivationStartTimeAsync(IUserQuotaGAgent userQuotaAgent, bool isUltimate)
+    {
+        // Fix: 过期续费应该总是从当前时间开始，不需要等待其他订阅过期
+        // 因为用户已经为过期间隙失去了服务，续费应该立即生效
+        var now = DateTime.UtcNow;
+        
+        _logger.LogInformation("[UserBillingGAgent][CalculateReactivationStartTimeAsync] Reactivating expired subscription from current time: {StartTime}", now);
+        return now;
     }
 
     #endregion
