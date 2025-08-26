@@ -76,7 +76,7 @@ public interface IChatManagerGAgent : IGAgent
     /// <summary>
     /// Mark daily push as read for today
     /// </summary>
-    Task MarkPushAsReadAsync(string pushToken);
+    Task MarkPushAsReadAsync(string deviceId);
     
     /// <summary>
     /// Process daily push for this user (called by timezone scheduler)

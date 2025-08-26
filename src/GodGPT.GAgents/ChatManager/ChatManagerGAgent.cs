@@ -1475,6 +1475,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         if (!string.IsNullOrEmpty(timeZoneId))
             deviceInfo.TimeZoneId = timeZoneId;
+        else if (string.IsNullOrEmpty(deviceInfo.TimeZoneId))
+        {
+            // Ensure device has a valid timezone - default to UTC if not provided
+            deviceInfo.TimeZoneId = "UTC";
+            Logger.LogWarning("Device {DeviceId} registered without timezone, defaulting to UTC", deviceId);
+        }
         if (!string.IsNullOrEmpty(pushLanguage))
         {
             deviceInfo.PushLanguage = pushLanguage;
@@ -1511,9 +1517,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return isNewDevice;
     }
 
-    public async Task MarkPushAsReadAsync(string pushToken)
+    public async Task MarkPushAsReadAsync(string deviceId)
     {
-        if (State.TokenToDeviceMap.TryGetValue(pushToken, out var deviceId))
+        // Check if device exists for this user
+        if (State.UserDevices.ContainsKey(deviceId))
         {
             var dateKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
             
@@ -1530,7 +1537,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         else
         {
-            Logger.LogWarning("Device not found for provided push token");
+            Logger.LogWarning($"Device not found for provided deviceId: {deviceId}");
         }
     }
 
