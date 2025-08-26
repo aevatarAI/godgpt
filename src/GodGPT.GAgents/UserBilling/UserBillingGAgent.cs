@@ -1677,24 +1677,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             DateTime subscriptionStartDate = calculatedStartDate;
             DateTime subscriptionEndDate = calculatedEndDate;
             
-            // Use RevenueCat's subscription dates if they're provided and valid
-            if (verificationResult.SubscriptionStartDate.HasValue && verificationResult.SubscriptionEndDate.HasValue)
-            {
-                var revenueCatStart = verificationResult.SubscriptionStartDate.Value;
-                var revenueCatEnd = verificationResult.SubscriptionEndDate.Value;
-                
-                // Only use RevenueCat dates if they make sense (end date is after start date and not too far in the past)
-                if (revenueCatEnd > revenueCatStart && revenueCatStart >= DateTime.UtcNow.AddDays(-30))
-                {
-                    subscriptionStartDate = revenueCatStart;
-                    subscriptionEndDate = revenueCatEnd;
-                    _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePlayPaymentSummaryAsync] Using RevenueCat subscription dates: Start={Start}, End={End}", subscriptionStartDate, subscriptionEndDate);
-                }
-                else
-                {
-                    _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePlayPaymentSummaryAsync] RevenueCat dates seem invalid, using calculated dates: Start={Start}, End={End}", subscriptionStartDate, subscriptionEndDate);
-                }
-            }
+            // Fix: Always use our fixed-day calculation system for consistency, ignore RevenueCat webhook dates  
+            _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePlayPaymentSummaryAsync] Using fixed-day calculation: Start={Start}, End={End}", subscriptionStartDate, subscriptionEndDate);
 
             // Determine the correct PaymentType based on purchase type or fall back to product configuration
             PaymentType paymentType;
@@ -2081,8 +2065,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 Status = PaymentStatus.Completed,
                 CreatedAt = DateTime.UtcNow,
                 CompletedAt = DateTime.UtcNow,
-                SubscriptionStartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow,
-                SubscriptionEndDate = verificationResult.SubscriptionEndDate ?? DateTime.UtcNow.AddDays(30),
+                SubscriptionStartDate = DateTime.UtcNow,
+                SubscriptionEndDate = DateTime.UtcNow.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType)),
                 MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                 Amount = productConfig.Amount,
                 PlanType = (PlanType)productConfig.PlanType,
@@ -2100,9 +2084,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Creating new Google Pay payment for transaction: {TransactionId}", currentTransactionId);
 
-            var subscriptionStartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow;
-            var subscriptionEndDate = verificationResult.SubscriptionEndDate ?? 
-                (productConfig.PlanType == 1 ? subscriptionStartDate.AddMonths(1) : subscriptionStartDate.AddYears(1));
+            // Fix: Use fixed-day calculation instead of RevenueCat webhook dates
+            var subscriptionStartDate = DateTime.UtcNow;
+            var subscriptionEndDate = DateTime.UtcNow.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType));
 
             var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
             {
@@ -4828,11 +4812,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             {
                 InvoiceId = verificationResult.TransactionId,
                 PurchaseToken = verificationResult.OriginalTransactionId,
-                CreatedAt = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
                 CompletedAt = DateTime.UtcNow,
                 Status = PaymentStatus.Completed,
-                SubscriptionStartDate = verificationResult.SubscriptionStartDate ?? DateTime.UtcNow,
-                SubscriptionEndDate = verificationResult.SubscriptionEndDate ?? DateTime.UtcNow.AddDays(30),
+                SubscriptionStartDate = DateTime.UtcNow,
+                SubscriptionEndDate = DateTime.UtcNow.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType)),
                 PriceId = verificationResult.ProductId,
                 MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                 Amount = productConfig.Amount,
@@ -4849,7 +4833,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             // Update the main payment summary with latest info
             existingPayment.CompletedAt = DateTime.UtcNow;
             existingPayment.Status = PaymentStatus.Completed;
-            existingPayment.SubscriptionEndDate = verificationResult.SubscriptionEndDate ?? existingPayment.SubscriptionEndDate;
+            // Fix: Use cumulative time calculation instead of RevenueCat webhook time
+            var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
+            if (productConfig != null)
+            {
+                existingPayment.SubscriptionEndDate = existingPayment.SubscriptionEndDate.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType));
+            }
 
             // Save the updated payment summary
             RaiseEvent(new UpdatePaymentLogEvent
