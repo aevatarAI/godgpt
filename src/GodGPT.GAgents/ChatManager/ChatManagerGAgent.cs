@@ -1530,7 +1530,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         else
         {
-            Logger.LogWarning($"Device not found for push token: {pushToken}");
+            Logger.LogWarning("Device not found for provided push token");
         }
     }
 
