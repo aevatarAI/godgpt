@@ -1605,7 +1605,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 var messageId = Guid.NewGuid();
                 var pushData = new Dictionary<string, object>
                 {
-                    ["message_id"] = messageId.ToString(),
+                    ["messageId"] = messageId.ToString(),
                     ["type"] = "daily_push",
                     ["date"] = dateKey,
                     ["content_ids"] = string.Join(",", contents.Select(c => c.Id)),
