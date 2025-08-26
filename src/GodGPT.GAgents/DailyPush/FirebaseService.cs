@@ -262,6 +262,16 @@ public class FirebaseService
                         body = content
                     },
                     data = FirebaseServiceExtensions.CreateDataPayload(data),
+                    android = new
+                    {
+                        priority = "high",  // Ensure timely delivery
+                        notification = new
+                        {
+                            sound = "default",
+                            click_action = "FLUTTER_NOTIFICATION_CLICK",  // For Flutter click handling
+                            channel_id = "daily_push_channel"  // Custom notification channel
+                        }
+                    },
                     apns = new
                     {
                         headers = new
