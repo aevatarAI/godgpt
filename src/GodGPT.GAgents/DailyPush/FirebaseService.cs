@@ -261,7 +261,23 @@ public class FirebaseService
                         title = title,
                         body = content
                     },
-                    data = FirebaseServiceExtensions.CreateDataPayload(data)
+                    data = FirebaseServiceExtensions.CreateDataPayload(data),
+                    apns = new
+                    {
+                        headers = new
+                        {
+                            apns_push_type = "alert"  // Ensure it's a visible notification
+                        },
+                        payload = new
+                        {
+                            aps = new
+                            {
+                                sound = "default",
+                                category = "DAILY_PUSH"  // For click callback identification
+                                // Note: No content-available or mutable-content to avoid silent push
+                            }
+                        }
+                    }
                 }
             };
             
