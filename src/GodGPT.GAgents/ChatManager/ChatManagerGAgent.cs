@@ -1605,7 +1605,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     var pushData = new Dictionary<string, object>
                     {
                         ["message_id"] = messageId.ToString(),
-                        ["type"] = "daily_push",
+                        ["type"] = (int)GodGPT.GAgents.DailyPush.PushType.DailyPush, // Use enum value 1
                         ["date"] = dateKey,
                         ["content_id"] = content.Id, // Single content ID for this push
                         ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
