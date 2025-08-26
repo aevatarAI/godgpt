@@ -1607,7 +1607,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 var success = await firebaseService.SendPushNotificationAsync(
                     device.PushToken,
                     localizedContent.Title,
-                    $"{localizedContent.Content} (+{contents.Count - 1} more)",
+                    localizedContent.Content,
                     pushData);
                 
                 if (success)
