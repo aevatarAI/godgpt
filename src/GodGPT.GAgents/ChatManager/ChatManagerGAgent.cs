@@ -1605,12 +1605,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 var messageId = Guid.NewGuid();
                 var pushData = new Dictionary<string, object>
                 {
-                    ["messageId"] = messageId.ToString(),
-                    ["type"] = "dailyPush",
+                    ["message_id"] = messageId.ToString(),
+                    ["type"] = "daily_push",
                     ["date"] = dateKey,
-                    ["contentIds"] = string.Join(",", contents.Select(c => c.Id)),
-                    ["deviceId"] = device.DeviceId,
-                    ["totalContents"] = contents.Count
+                    ["content_ids"] = string.Join(",", contents.Select(c => c.Id)),
+                    ["device_id"] = device.DeviceId,
+                    ["total_contents"] = contents.Count
                 };
                 
                 var success = await firebaseService.SendPushNotificationAsync(
