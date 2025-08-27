@@ -60,9 +60,8 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
 
     protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
-        // Clean up any legacy reminders from string-key era (compatibility measure)
-        // This is non-blocking and won't affect normal operation
-        _ = Task.Run(async () => await CleanupLegacyRemindersAsync());
+        // Note: Legacy string-key reminders will fail naturally and be cleaned up by Orleans over time
+        // No manual cleanup needed - this avoids grain context issues
         
         // Get timezone ID from State (if already initialized)
         if (!string.IsNullOrEmpty(State.TimeZoneId))
@@ -934,52 +933,5 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         }
     }
     
-    /// <summary>
-    /// Clean up legacy reminders from string-key era (compatibility measure)
-    /// </summary>
-    private async Task CleanupLegacyRemindersAsync()
-    {
-        try
-        {
-            // Get all reminders for this grain
-            var reminders = await this.GetReminders();
-            var legacyRemindersFound = false;
-            
-            foreach (var reminder in reminders)
-            {
-                try
-                {
-                    // Try to access GetPrimaryKey() - if it fails, this might be a legacy reminder
-                    var _ = this.GetPrimaryKey();
-                    // If we get here, the grain key is valid GUID format
-                }
-                catch (InvalidOperationException)
-                {
-                    // This indicates a legacy string-key reminder
-                    legacyRemindersFound = true;
-                    _logger.LogWarning("Found legacy reminder {ReminderName} from string-key era, attempting cleanup", reminder.ReminderName);
-                    
-                    try
-                    {
-                        await this.UnregisterReminder(reminder);
-                        _logger.LogInformation("Successfully cleaned up legacy reminder {ReminderName}", reminder.ReminderName);
-                    }
-                    catch (Exception cleanupEx)
-                    {
-                        _logger.LogError(cleanupEx, "Failed to cleanup legacy reminder {ReminderName}", reminder.ReminderName);
-                    }
-                }
-            }
-            
-            if (legacyRemindersFound)
-            {
-                _logger.LogInformation("Legacy reminder cleanup completed for timezone GAgent");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during legacy reminder cleanup");
-            // Don't throw - this is a compatibility measure, not critical
-        }
-    }
+
 }
