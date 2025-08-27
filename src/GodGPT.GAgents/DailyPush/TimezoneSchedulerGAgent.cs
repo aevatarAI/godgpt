@@ -80,8 +80,18 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             }
             else
             {
-                _logger.LogWarning("TimezoneSchedulerGAgent activated but no timezone ID in state and no GUID mapping found. Grain will not be functional until InitializeAsync is called.");
-                _timeZoneId = ""; // Ensure it's empty, not null
+                // Compatibility: Try to infer timezone from common GUID patterns
+                var commonTimezone = TryInferTimezoneFromGuid(grainGuid);
+                if (!string.IsNullOrEmpty(commonTimezone))
+                {
+                    _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (inferred from common pattern)", commonTimezone);
+                    await InitializeAsync(commonTimezone);
+                }
+                else
+                {
+                    _logger.LogWarning("TimezoneSchedulerGAgent activated but no timezone ID in state and no GUID mapping found. Grain will not be functional until InitializeAsync is called.");
+                    _timeZoneId = ""; // Ensure it's empty, not null
+                }
             }
         }
         
@@ -267,6 +277,38 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     public async Task<(bool IsActive, DateTime StartTime, int RoundsCompleted, int MaxRounds)> GetTestStatusAsync()
     {
         return (State.TestModeActive, State.TestStartTime, State.TestRoundsCompleted, TestModeConstants.MAX_TEST_ROUNDS);
+    }
+    
+    /// <summary>
+    /// Compatibility method: Try to infer timezone from GUID for common timezones
+    /// This helps with migration from string-key to GUID-key GAgents
+    /// </summary>
+    private string? TryInferTimezoneFromGuid(Guid grainGuid)
+    {
+        // Common timezones that might exist in production
+        var commonTimezones = new[]
+        {
+            "Asia/Shanghai",
+            "America/New_York", 
+            "Europe/London",
+            "Asia/Tokyo",
+            "UTC",
+            "America/Los_Angeles",
+            "Europe/Paris",
+            "Asia/Seoul"
+        };
+        
+        foreach (var timezone in commonTimezones)
+        {
+            var expectedGuid = DailyPushConstants.TimezoneToGuid(timezone);
+            if (expectedGuid == grainGuid)
+            {
+                _logger.LogInformation("Inferred timezone {TimeZone} from GUID {Guid} during migration", timezone, grainGuid);
+                return timezone;
+            }
+        }
+        
+        return null;
     }
 
     public async Task ProcessMorningPushAsync(DateTime targetDate)
