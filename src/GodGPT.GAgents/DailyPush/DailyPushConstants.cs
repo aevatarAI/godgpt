@@ -59,4 +59,23 @@ public static class DailyPushConstants
             return new Guid(hash);
         }
     }
+    
+    /// <summary>
+    /// Register timezone mapping when timezone GAgent is first created
+    /// </summary>
+    public static async Task RegisterTimezoneMapping(string timezoneId, IGrainFactory grainFactory)
+    {
+        var timezoneGuid = TimezoneToGuid(timezoneId);
+        var contentGAgent = grainFactory.GetGrain<IDailyContentGAgent>(CONTENT_GAGENT_ID);
+        await contentGAgent.RegisterTimezoneGuidMappingAsync(timezoneGuid, timezoneId);
+    }
+    
+    /// <summary>
+    /// Get timezone ID from GUID (reverse lookup from DailyContentGAgent)
+    /// </summary>
+    public static async Task<string?> GetTimezoneFromGuidAsync(Guid timezoneGuid, IGrainFactory grainFactory)
+    {
+        var contentGAgent = grainFactory.GetGrain<IDailyContentGAgent>(CONTENT_GAGENT_ID);
+        return await contentGAgent.GetTimezoneFromGuidAsync(timezoneGuid);
+    }
 }

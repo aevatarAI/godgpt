@@ -38,6 +38,16 @@ public interface IDailyContentGAgent : IGAgent, IGrainWithGuidKey
     /// Get content statistics
     /// </summary>
     Task<ContentStatistics> GetStatisticsAsync();
+    
+    /// <summary>
+    /// Register timezone GUID mapping (called when timezone GAgent is first created)
+    /// </summary>
+    Task RegisterTimezoneGuidMappingAsync(Guid timezoneGuid, string timezoneId);
+    
+    /// <summary>
+    /// Get timezone ID from GUID (for reverse lookup)
+    /// </summary>
+    Task<string?> GetTimezoneFromGuidAsync(Guid timezoneGuid);
 }
 
 /// <summary>

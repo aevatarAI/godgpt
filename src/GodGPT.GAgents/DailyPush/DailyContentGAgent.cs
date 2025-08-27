@@ -392,4 +392,19 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
             TotalSelections = State.SelectionCount
         };
     }
+    
+    public async Task RegisterTimezoneGuidMappingAsync(Guid timezoneGuid, string timezoneId)
+    {
+        if (!State.TimezoneGuidMappings.ContainsKey(timezoneGuid))
+        {
+            State.TimezoneGuidMappings[timezoneGuid] = timezoneId;
+            await ConfirmEvents();
+            _logger.LogInformation("Registered timezone GUID mapping: {Guid} -> {TimezoneId}", timezoneGuid, timezoneId);
+        }
+    }
+    
+    public async Task<string?> GetTimezoneFromGuidAsync(Guid timezoneGuid)
+    {
+        return State.TimezoneGuidMappings.TryGetValue(timezoneGuid, out var timezoneId) ? timezoneId : null;
+    }
 }
