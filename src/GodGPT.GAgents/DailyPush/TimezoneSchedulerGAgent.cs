@@ -66,6 +66,12 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
                 state.TestRoundsCompleted = testRoundEvent.CompletedRound;
                 state.LastUpdated = testRoundEvent.CompletionTime;
                 break;
+            case SchedulerStatusLogEvent statusEvent:
+                _logger.LogDebug($"Scheduler status changed from {statusEvent.OldStatus} to {statusEvent.NewStatus}");
+                break;
+            default:
+                _logger.LogDebug($"Unhandled event type: {@event.GetType().Name}");
+                break;
         }
     }
 
@@ -143,19 +149,6 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         
         // Try to register Orleans reminders if authorized
         await TryRegisterRemindersAsync();
-    }
-
-    protected override void GAgentTransitionState(TimezoneSchedulerGAgentState state, StateLogEventBase<DailyPushLogEvent> @event)
-    {
-        switch (@event)
-        {
-            case SchedulerStatusLogEvent statusEvent:
-                _logger.LogDebug($"Scheduler status changed from {statusEvent.OldStatus} to {statusEvent.NewStatus}");
-                break;
-            default:
-                _logger.LogDebug($"Unhandled event type: {@event.GetType().Name}");
-                break;
-        }
     }
 
     public async Task InitializeAsync(string timeZoneId)
@@ -945,16 +938,6 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         {
             _logger.LogError(ex, "Failed to cleanup test reminders for {TimeZone}", _timeZoneId);
         }
-    }
-    
-    public async Task<(bool IsActive, DateTime StartTime, int RoundsCompleted, int MaxRounds)> GetTestStatusAsync()
-    {
-        var isActive = State.TestModeActive;
-        var startTime = State.TestStartTime;
-        var rounds = State.TestRoundsCompleted;
-        var maxRounds = TestModeConstants.MAX_TEST_ROUNDS;
-        
-        return (isActive, startTime, rounds, maxRounds);
     }
     
     /// <summary>
