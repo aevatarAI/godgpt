@@ -88,30 +88,40 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         }
         else
         {
-            // Try to get timezone from GUID mapping
-            var grainGuid = this.GetPrimaryKey();
-            var inferredTimezone = await DailyPushConstants.GetTimezoneFromGuidAsync(grainGuid, _grainFactory);
-            
-            if (!string.IsNullOrEmpty(inferredTimezone))
+            try
             {
-                _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (from GUID mapping)", inferredTimezone);
-                // Auto-initialize with inferred timezone
-                await InitializeAsync(inferredTimezone);
-            }
-            else
-            {
-                // Compatibility: Try to infer timezone from common GUID patterns
-                var commonTimezone = TryInferTimezoneFromGuid(grainGuid);
-                if (!string.IsNullOrEmpty(commonTimezone))
+                // Try to get timezone from GUID mapping
+                var grainGuid = this.GetPrimaryKey();
+                var inferredTimezone = await DailyPushConstants.GetTimezoneFromGuidAsync(grainGuid, _grainFactory);
+                
+                if (!string.IsNullOrEmpty(inferredTimezone))
                 {
-                    _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (inferred from common pattern)", commonTimezone);
-                    await InitializeAsync(commonTimezone);
+                    _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (from GUID mapping)", inferredTimezone);
+                    // Auto-initialize with inferred timezone
+                    await InitializeAsync(inferredTimezone);
                 }
                 else
                 {
-                    _logger.LogWarning("TimezoneSchedulerGAgent activated but no timezone ID in state and no GUID mapping found. Grain will not be functional until InitializeAsync is called.");
-                    _timeZoneId = ""; // Ensure it's empty, not null
+                    // Compatibility: Try to infer timezone from common GUID patterns
+                    var commonTimezone = TryInferTimezoneFromGuid(grainGuid);
+                    if (!string.IsNullOrEmpty(commonTimezone))
+                    {
+                        _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (inferred from common pattern)", commonTimezone);
+                        await InitializeAsync(commonTimezone);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("TimezoneSchedulerGAgent activated but no timezone ID in state and no GUID mapping found. Grain will not be functional until InitializeAsync is called.");
+                        _timeZoneId = ""; // Ensure it's empty, not null
+                    }
                 }
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Unable to extract GUID key"))
+            {
+                // Handle legacy string-key grain instances
+                _logger.LogWarning("Legacy string-key TimezoneSchedulerGAgent detected. This grain instance will be inactive and cleaned up by Orleans over time. Error: {Error}", ex.Message);
+                _timeZoneId = ""; // Set to empty to make grain inactive
+                // Don't rethrow - let the grain activate but remain inactive
             }
         }
         
