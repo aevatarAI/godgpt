@@ -16,11 +16,11 @@ namespace GodGPT.GAgents.DailyPush;
 /// </summary>
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
-[GAgent(nameof(TimezoneSchedulerGAgent))]
-public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, DailyPushLogEvent>, 
-    ITimezoneSchedulerGAgent, IRemindable
+[GAgent(nameof(DailyPushCoordinatorGAgent))]
+public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, DailyPushLogEvent>, 
+    IDailyPushCoordinatorGAgent, IRemindable
 {
-    private readonly ILogger<TimezoneSchedulerGAgent> _logger;
+    private readonly ILogger<DailyPushCoordinatorGAgent> _logger;
     private readonly IGrainFactory _grainFactory;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     private string _timeZoneId = "";
@@ -43,8 +43,8 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     // Tolerance window for time-based execution (±5 minutes)
     private readonly TimeSpan _toleranceWindow = TimeSpan.FromMinutes(5);
     
-    public TimezoneSchedulerGAgent(
-        ILogger<TimezoneSchedulerGAgent> logger, 
+    public DailyPushCoordinatorGAgent(
+        ILogger<DailyPushCoordinatorGAgent> logger, 
         IGrainFactory grainFactory,
         IOptionsMonitor<DailyPushOptions> options)
     {
@@ -58,7 +58,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         return Task.FromResult($"Timezone scheduler for {State.TimeZoneId}");
     }
     
-    protected sealed override void GAgentTransitionState(TimezoneSchedulerGAgentState state, StateLogEventBase<DailyPushLogEvent> @event)
+    protected sealed override void GAgentTransitionState(DailyPushCoordinatorState state, StateLogEventBase<DailyPushLogEvent> @event)
     {
         switch (@event)
         {
@@ -362,7 +362,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             }
 
             // Get users in this timezone
-            var timezoneIndexGAgent = _grainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
+            var timezoneIndexGAgent = _grainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
             
             // Process users in batches
             const int batchSize = 1000;
@@ -435,7 +435,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             }
 
             // Get users in this timezone
-            var timezoneIndexGAgent = _grainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
+            var timezoneIndexGAgent = _grainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
             
             // Process users in batches (only those who haven't read morning push)
             const int batchSize = 1000;
@@ -475,7 +475,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         }
     }
 
-    public async Task<TimezoneSchedulerGAgentState> GetStatusAsync()
+    public async Task<DailyPushCoordinatorState> GetStatusAsync()
     {
         return State;
     }
@@ -969,7 +969,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             var devices = new List<TimezoneDeviceInfo>();
             
             // Get users in this timezone
-            var timezoneIndexGAgent = _grainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
+            var timezoneIndexGAgent = _grainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
             
             // Get all users in batches
             const int batchSize = 1000;

@@ -49,7 +49,7 @@ public static class DailyPushConstants
     public static readonly Guid CONTENT_GAGENT_ID = new Guid("12345678-1234-5678-9abc-123456789012");
     
     /// <summary>
-    /// Convert timezone string to deterministic GUID for TimezoneUserIndexGAgent and TimezoneSchedulerGAgent
+    /// Convert timezone string to deterministic GUID for PushSubscriberIndexGAgent and DailyPushCoordinatorGAgent
     /// </summary>
     public static Guid TimezoneToGuid(string timezoneId)
     {

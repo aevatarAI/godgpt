@@ -6,10 +6,10 @@ using Aevatar.Core.Abstractions;
 namespace GodGPT.GAgents.DailyPush;
 
 /// <summary>
-/// State for timezone user index GAgent
+/// State for push subscriber index GAgent
 /// </summary>
 [GenerateSerializer]
-public class TimezoneUserIndexGAgentState : StateBase
+public class PushSubscriberIndexState : StateBase
 {
     /// <summary>
     /// Timezone ID (e.g., "Asia/Shanghai", "America/New_York")

@@ -1537,7 +1537,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Push disabled - remove from timezone index
             if (!string.IsNullOrEmpty(newTimeZone))
             {
-                var indexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
                 await indexGAgent.InitializeAsync(newTimeZone);
                 await indexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
                 Logger.LogInformation("Removed user {UserId} from timezone index {TimeZone} - push disabled", 
@@ -1550,7 +1550,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         if (shouldUpdateIndex && !string.IsNullOrEmpty(newTimeZone))
         {
             // Add user to timezone index (ensure they're indexed for push delivery)
-            var indexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+            var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
             await indexGAgent.InitializeAsync(newTimeZone);
             await indexGAgent.AddUserToTimezoneAsync(State.UserId);
             Logger.LogInformation("Added user {UserId} to timezone index {TimeZone} - {Reason}", 
@@ -1593,22 +1593,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
     {
-        var enabledDevicesInTimezone = State.UserDevices.Values
-            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId)
-            .ToList();
-            
-        Logger.LogInformation("🔍 HasEnabledDeviceInTimezoneAsync - User {UserId}: Total devices: {TotalDevices}, Enabled in timezone {TimeZone}: {EnabledCount}", 
-            State.UserId, State.UserDevices.Count, timeZoneId, enabledDevicesInTimezone.Count);
-            
-        if (enabledDevicesInTimezone.Count == 0 && State.UserDevices.Count > 0)
-        {
-            var deviceDetails = State.UserDevices.Values.Select(d => 
-                $"DeviceId={d.DeviceId}, PushEnabled={d.PushEnabled}, TimeZoneId={d.TimeZoneId}").ToList();
-            Logger.LogWarning("🚫 No enabled devices in timezone {TimeZone} for user {UserId}. Device details: [{DeviceDetails}]", 
-                timeZoneId, State.UserId, string.Join(", ", deviceDetails));
-        }
-
-        return enabledDevicesInTimezone.Count > 0;
+        return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
     }
 
     public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
@@ -1741,7 +1726,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Remove user from old timezone index
             if (!string.IsNullOrEmpty(oldTimeZone))
             {
-                var oldIndexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(oldTimeZone));
+                var oldIndexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(oldTimeZone));
                 await oldIndexGAgent.InitializeAsync(oldTimeZone);
                 await oldIndexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Removed user {State.UserId} from timezone index: {oldTimeZone}");
@@ -1750,7 +1735,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Add user to new timezone index
             if (!string.IsNullOrEmpty(newTimeZone))
             {
-                var newIndexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                var newIndexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
                 await newIndexGAgent.InitializeAsync(newTimeZone);
                 await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");

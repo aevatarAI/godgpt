@@ -16,12 +16,12 @@ namespace GodGPT.GAgents.DailyPush;
 /// </summary>
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
-[GAgent(nameof(TimezoneUserIndexGAgent))]
-public class TimezoneUserIndexGAgent : GAgentBase<TimezoneUserIndexGAgentState, DailyPushLogEvent>, ITimezoneUserIndexGAgent
+[GAgent(nameof(PushSubscriberIndexGAgent))]
+public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, DailyPushLogEvent>, IPushSubscriberIndexGAgent
 {
-    private readonly ILogger<TimezoneUserIndexGAgent> _logger;
+    private readonly ILogger<PushSubscriberIndexGAgent> _logger;
     
-    public TimezoneUserIndexGAgent(ILogger<TimezoneUserIndexGAgent> logger)
+    public PushSubscriberIndexGAgent(ILogger<PushSubscriberIndexGAgent> logger)
     {
         _logger = logger;
     }
@@ -36,7 +36,7 @@ public class TimezoneUserIndexGAgent : GAgentBase<TimezoneUserIndexGAgentState, 
         _logger.LogInformation("TimezoneUserIndexGAgent activated");
     }
 
-    protected override void GAgentTransitionState(TimezoneUserIndexGAgentState state, StateLogEventBase<DailyPushLogEvent> @event)
+    protected override void GAgentTransitionState(PushSubscriberIndexState state, StateLogEventBase<DailyPushLogEvent> @event)
     {
         switch (@event)
         {

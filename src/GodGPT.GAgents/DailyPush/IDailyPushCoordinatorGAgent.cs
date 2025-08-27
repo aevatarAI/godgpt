@@ -4,9 +4,9 @@ using Aevatar.Core.Abstractions;
 namespace GodGPT.GAgents.DailyPush;
 
 /// <summary>
-/// Timezone-specific push scheduler GAgent
+/// Daily push coordinator GAgent
 /// </summary>
-public interface ITimezoneSchedulerGAgent : IGAgent, IGrainWithGuidKey
+public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
 {
     /// <summary>
     /// Initialize scheduler for specific timezone
@@ -26,7 +26,7 @@ public interface ITimezoneSchedulerGAgent : IGAgent, IGrainWithGuidKey
     /// <summary>
     /// Get scheduler status and statistics
     /// </summary>
-    Task<TimezoneSchedulerGAgentState> GetStatusAsync();
+    Task<DailyPushCoordinatorState> GetStatusAsync();
     
     /// <summary>
     /// Pause/resume scheduler

@@ -3,9 +3,9 @@ using Aevatar.Core.Abstractions;
 namespace GodGPT.GAgents.DailyPush;
 
 /// <summary>
-/// Timezone to user mapping index GAgent for efficient user lookup
+/// Push subscriber mapping index GAgent for efficient user lookup
 /// </summary>
-public interface ITimezoneUserIndexGAgent : IGAgent, IGrainWithGuidKey
+public interface IPushSubscriberIndexGAgent : IGAgent, IGrainWithGuidKey
 {
     /// <summary>
     /// Initialize timezone user index with timezone ID
