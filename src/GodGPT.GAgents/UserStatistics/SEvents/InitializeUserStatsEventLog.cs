@@ -1,6 +1,4 @@
-using Aevatar.Core.Abstractions;
-
-namespace Aevatar.Application.Grains.Agents.UserStatistics.SEvents;
+namespace Aevatar.Application.Grains.UserStatistics.SEvents;
 
 /// <summary>
 /// Event log for initializing user statistics

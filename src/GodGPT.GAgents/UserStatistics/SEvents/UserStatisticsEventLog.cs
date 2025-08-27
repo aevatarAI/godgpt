@@ -1,6 +1,6 @@
 using Aevatar.Core.Abstractions;
 
-namespace Aevatar.Application.Grains.Agents.UserStatistics.SEvents;
+namespace Aevatar.Application.Grains.UserStatistics.SEvents;
 
 /// <summary>
 /// Base event log for User Statistics GAgent

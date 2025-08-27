@@ -1,8 +1,4 @@
-using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.UserStatistics;
-using Aevatar.Application.Grains.UserStatistics.Dtos;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Shouldly;
 using Xunit.Abstractions;
 

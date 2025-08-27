@@ -1,5 +1,3 @@
-using Aevatar.Application.Grains.Agents.UserStatistics.SEvents;
-
 namespace Aevatar.Application.Grains.UserStatistics.SEvents;
 
 

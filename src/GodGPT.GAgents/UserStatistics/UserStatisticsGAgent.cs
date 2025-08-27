@@ -1,4 +1,3 @@
-using Aevatar.Application.Grains.Agents.UserStatistics.SEvents;
 using Aevatar.Application.Grains.UserStatistics.Dtos;
 using Aevatar.Application.Grains.UserStatistics.SEvents;
 using Aevatar.Core;
