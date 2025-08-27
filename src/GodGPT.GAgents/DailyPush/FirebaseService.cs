@@ -314,8 +314,9 @@ public class FirebaseService
             var response = await _httpClient.SendAsync(request);
             var responseContent = await response.Content.ReadAsStringAsync();
             
-            _logger.LogDebug("FCM v1 response - Status: {StatusCode}, Content: {ResponseContent}", 
-                response.StatusCode, responseContent);
+            // Always log FCM response at Information level for debugging purposes
+            _logger.LogInformation("🔥 FCM v1 response - Status: {StatusCode}, Token: {TokenPrefix}..., Content: {ResponseContent}", 
+                response.StatusCode, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, responseContent);
             
             if (response.IsSuccessStatusCode)
             {
@@ -330,13 +331,14 @@ public class FirebaseService
                         var errorCode = errorElement.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : "UNKNOWN";
                         var errorMessage = errorElement.TryGetProperty("message", out var msgElement) ? msgElement.GetString() : "Unknown error";
                         
-                        _logger.LogError("FCM returned error in successful response - Code: {ErrorCode}, Message: {ErrorMessage}", 
-                            errorCode, errorMessage);
+                        _logger.LogError("🚨 FCM returned error in successful response - Code: {ErrorCode}, Message: {ErrorMessage}, Token: {TokenPrefix}..., Title: {Title}", 
+                            errorCode, errorMessage, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                         
                         // Handle specific FCM errors
                         if (errorCode == "UNREGISTERED" || errorCode == "INVALID_ARGUMENT")
                         {
-                            _logger.LogWarning("Push token is invalid and should be removed from database");
+                            _logger.LogWarning("❌ Push token is invalid and should be removed from database - Token: {TokenPrefix}..., ErrorCode: {ErrorCode}", 
+                                pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, errorCode);
                         }
                         
                         return false;
@@ -346,31 +348,35 @@ public class FirebaseService
                     if (root.TryGetProperty("name", out var nameElement))
                     {
                         var messageName = nameElement.GetString();
-                        _logger.LogInformation("Push notification sent successfully via FCM v1 - Message: {MessageName}", messageName);
+                        _logger.LogInformation("✅ Push notification sent successfully via FCM v1 - Message: {MessageName}, Token: {TokenPrefix}..., Title: {Title}", 
+                            messageName, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                         return true;
                     }
                     
                     // Unexpected response format
-                    _logger.LogWarning("FCM returned 200 but unexpected response format: {ResponseContent}", responseContent);
+                    _logger.LogWarning("⚠️ FCM returned 200 but unexpected response format: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}", 
+                        responseContent, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                     return false;
                 }
                 catch (JsonException ex)
                 {
                     _logger.LogError(ex, "Failed to parse FCM response JSON: {ResponseContent}", responseContent);
                     // Assume success if we can't parse the response but got 200
-                    _logger.LogInformation("Push notification sent successfully via FCM v1 (assumed from 200 status)");
+                    _logger.LogInformation("✅ Push notification sent successfully via FCM v1 (assumed from 200 status) - Token: {TokenPrefix}..., Title: {Title}", 
+                        pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                     return true;
                 }
             }
             else
             {
-                _logger.LogError("FCM v1 request failed with status {StatusCode}: {ResponseContent}", 
-                    response.StatusCode, responseContent);
+                _logger.LogError("💥 FCM v1 request failed with status {StatusCode}: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}", 
+                    response.StatusCode, responseContent, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                 
                 // Handle specific FCM v1 errors
                 if (responseContent.Contains("UNREGISTERED") || responseContent.Contains("INVALID_ARGUMENT"))
                 {
-                    _logger.LogWarning("Token is invalid and should be removed from database");
+                    _logger.LogWarning("❌ Token is invalid and should be removed from database - Token: {TokenPrefix}..., Status: {StatusCode}", 
+                        pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, response.StatusCode);
                 }
                 
                 return false;
@@ -378,7 +384,8 @@ public class FirebaseService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error sending push notification via FCM API v1");
+            _logger.LogError(ex, "💥 Error sending push notification via FCM API v1 - Token: {TokenPrefix}..., Title: {Title}", 
+                pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
             return false;
         }
     }
