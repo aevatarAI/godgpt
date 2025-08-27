@@ -32,6 +32,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
         Configure<GoogleAnalyticsOptions>(configuration.GetSection("GoogleAnalytics"));
         Configure<AwakeningOptions>(configuration.GetSection("Awakening"));
+        Configure<UserStatisticsOptions>(configuration.GetSection("UserStatistics"));
 
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
         // Register speech services
