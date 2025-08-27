@@ -60,25 +60,28 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
 
     protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
-        _timeZoneId = this.GetPrimaryKeyString();
-        
-        // Simple timezone validation - let it throw if invalid
-        try
+        // Get timezone ID from State (if already initialized)
+        if (!string.IsNullOrEmpty(State.TimeZoneId))
         {
-            TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
+            _timeZoneId = State.TimeZoneId;
+            
+            // Validate timezone on activation
+            try
+            {
+                TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
+            }
+            catch (TimeZoneNotFoundException ex)
+            {
+                throw new ArgumentException($"Invalid timezone ID in state: {_timeZoneId}", ex);
+            }
+            catch (InvalidTimeZoneException ex)
+            {
+                throw new ArgumentException($"Invalid timezone format in state: {_timeZoneId}", ex);
+            }
         }
-        catch (TimeZoneNotFoundException ex)
+        else
         {
-            throw new ArgumentException($"Invalid timezone ID: {_timeZoneId}", ex);
-        }
-        catch (InvalidTimeZoneException ex)
-        {
-            throw new ArgumentException($"Invalid timezone format: {_timeZoneId}", ex);
-        }
-        
-        if (string.IsNullOrEmpty(State.TimeZoneId))
-        {
-            await InitializeAsync(_timeZoneId);
+            _logger.LogWarning("TimezoneSchedulerGAgent activated but no timezone ID in state. Waiting for InitializeAsync call.");
         }
         
         // 🚀 Auto-activation: Use configured ReminderTargetId
@@ -111,6 +114,20 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
 
     public async Task InitializeAsync(string timeZoneId)
     {
+        // Validate timezone first
+        try
+        {
+            TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            throw new ArgumentException($"Invalid timezone ID: {timeZoneId}", ex);
+        }
+        catch (InvalidTimeZoneException ex)
+        {
+            throw new ArgumentException($"Invalid timezone format: {timeZoneId}", ex);
+        }
+        
         State.TimeZoneId = timeZoneId;
         State.Status = SchedulerStatus.Active;
         State.LastUpdated = DateTime.UtcNow;
@@ -118,6 +135,8 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         State.ReminderTargetId = Guid.Empty;
         
         _timeZoneId = timeZoneId;
+        
+        await ConfirmEvents();
         
         _logger.LogInformation("Initialized timezone scheduler for {TimeZone}", timeZoneId);
     }
@@ -246,7 +265,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             }
 
             // Get users in this timezone
-            var timezoneIndexGAgent = _grainFactory.GetGrain<ITimezoneUserIndexGAgent>(_timeZoneId);
+            var timezoneIndexGAgent = _grainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
             
             // Process users in batches
             const int batchSize = 1000;
@@ -312,7 +331,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             }
 
             // Get users in this timezone
-            var timezoneIndexGAgent = _grainFactory.GetGrain<ITimezoneUserIndexGAgent>(_timeZoneId);
+            var timezoneIndexGAgent = _grainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
             
             // Process users in batches (only those who haven't read morning push)
             const int batchSize = 1000;

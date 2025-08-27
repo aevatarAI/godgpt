@@ -47,4 +47,16 @@ public static class DailyPushConstants
     /// Well-known GUID for the singleton DailyContentGAgent instance
     /// </summary>
     public static readonly Guid CONTENT_GAGENT_ID = new Guid("12345678-1234-5678-9abc-123456789012");
+    
+    /// <summary>
+    /// Convert timezone string to deterministic GUID for TimezoneUserIndexGAgent and TimezoneSchedulerGAgent
+    /// </summary>
+    public static Guid TimezoneToGuid(string timezoneId)
+    {
+        using (var md5 = System.Security.Cryptography.MD5.Create())
+        {
+            var hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes($"Timezone_{timezoneId}"));
+            return new Guid(hash);
+        }
+    }
 }
