@@ -300,16 +300,22 @@ public class FirebaseService
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             });
             
+            _logger.LogDebug("FCM v1 payload: {JsonPayload}", jsonPayload);
+            
             var httpContent = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
             
             using var request = new HttpRequestMessage(HttpMethod.Post, fcmV1Endpoint);
             request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
             request.Content = httpContent;
             
-            _logger.LogDebug("Sending FCM v1 push notification request");
+            _logger.LogDebug("Sending FCM v1 push notification request to token: {TokenPrefix}...", 
+                pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken);
             
             var response = await _httpClient.SendAsync(request);
             var responseContent = await response.Content.ReadAsStringAsync();
+            
+            _logger.LogDebug("FCM v1 response - Status: {StatusCode}, Content: {ResponseContent}", 
+                response.StatusCode, responseContent);
             
             if (response.IsSuccessStatusCode)
             {
