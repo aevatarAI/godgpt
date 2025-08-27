@@ -53,4 +53,9 @@ public interface ITimezoneSchedulerGAgent : IGAgent, IGrainWithGuidKey
     /// Get test mode status - TODO: Remove before production
     /// </summary>
     Task<(bool IsActive, DateTime StartTime, int RoundsCompleted, int MaxRounds)> GetTestStatusAsync();
+    
+    /// <summary>
+    /// Get all devices registered in this timezone with detailed information - TODO: Remove before production
+    /// </summary>
+    Task<List<TimezoneDeviceInfo>> GetDevicesInTimezoneAsync();
 }

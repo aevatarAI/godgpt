@@ -209,3 +209,13 @@ public class SchedulerErrorEventLog : DailyPushLogEvent
     [Id(1)] public string ErrorType { get; set; } = "";
     [Id(2)] public DateTime ErrorTime { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Test round completed event
+/// </summary>
+[GenerateSerializer]
+public class TestRoundCompletedEventLog : DailyPushLogEvent
+{
+    [Id(0)] public int CompletedRound { get; set; }
+    [Id(1)] public DateTime CompletionTime { get; set; } = DateTime.UtcNow;
+}
