@@ -1571,9 +1571,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var enabledDevices = State.UserDevices.Values
             .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId)
             .ToList();
+        
+        Logger.LogInformation("📱 ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+            enabledDevices.Count, timeZoneId, State.UserId);
+            
         if (enabledDevices.Count == 0)
         {
-            Logger.LogDebug("No enabled devices for daily push");
+            Logger.LogWarning("No enabled devices for daily push - User {UserId}, TimeZone {TimeZone}, Total devices: {TotalDevices}", 
+                State.UserId, timeZoneId, State.UserDevices.Count);
             return;
         }
         
@@ -1654,7 +1659,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         successCount = results.Count(r => r);
         failureCount = results.Count(r => !r);
         
-        Logger.LogInformation($"Processed daily push: {successCount} success, {failureCount} failures for {enabledDevices.Count} devices");
+        Logger.LogInformation("🚀 ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
+            State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
     }
 
     public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
