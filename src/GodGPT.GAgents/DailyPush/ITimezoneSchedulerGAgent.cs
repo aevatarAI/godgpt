@@ -6,7 +6,7 @@ namespace GodGPT.GAgents.DailyPush;
 /// <summary>
 /// Timezone-specific push scheduler GAgent
 /// </summary>
-public interface ITimezoneSchedulerGAgent : IGAgent, IGrainWithStringKey
+public interface ITimezoneSchedulerGAgent : IGAgent, IGrainWithGuidKey
 {
     /// <summary>
     /// Initialize scheduler for specific timezone
