@@ -57,6 +57,17 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     {
         return Task.FromResult($"Timezone scheduler for {State.TimeZoneId}");
     }
+    
+    protected sealed override void GAgentTransitionState(TimezoneSchedulerGAgentState state, StateLogEventBase<DailyPushLogEvent> @event)
+    {
+        switch (@event)
+        {
+            case TestRoundCompletedEventLog testRoundEvent:
+                state.TestRoundsCompleted = testRoundEvent.CompletedRound;
+                state.LastUpdated = testRoundEvent.CompletionTime;
+                break;
+        }
+    }
 
     protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
@@ -835,9 +846,12 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
             var targetDate = now.Date;
             await ProcessMorningPushAsync(targetDate);
             
-            // Increment round counter
-            State.TestRoundsCompleted++;
-            State.LastUpdated = DateTime.UtcNow;
+            // Increment round counter using proper event-driven approach
+            RaiseEvent(new TestRoundCompletedEventLog
+            {
+                CompletedRound = State.TestRoundsCompleted + 1,
+                CompletionTime = DateTime.UtcNow
+            });
             await ConfirmEvents();
             
             // Schedule retry reminder
@@ -933,5 +947,140 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         }
     }
     
+    public async Task<(bool IsActive, DateTime StartTime, int RoundsCompleted, int MaxRounds)> GetTestStatusAsync()
+    {
+        var isActive = State.TestModeActive;
+        var startTime = State.TestStartTime;
+        var rounds = State.TestRoundsCompleted;
+        var maxRounds = TestModeConstants.MAX_TEST_ROUNDS;
+        
+        return (isActive, startTime, rounds, maxRounds);
+    }
+    
+    /// <summary>
+    /// Get all devices registered in this timezone with detailed information - TODO: Remove before production
+    /// </summary>
+    public async Task<List<TimezoneDeviceInfo>> GetDevicesInTimezoneAsync()
+    {
+        // Safety check: ensure timezone is initialized
+        if (string.IsNullOrEmpty(_timeZoneId))
+        {
+            _logger.LogError("Cannot get devices: timezone ID is not set. Grain needs to be initialized first.");
+            return new List<TimezoneDeviceInfo>();
+        }
+        
+        _logger.LogInformation("Getting all devices in timezone {TimeZone}", _timeZoneId);
+        
+        try
+        {
+            var devices = new List<TimezoneDeviceInfo>();
+            
+            // Get users in this timezone
+            var timezoneIndexGAgent = _grainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
+            
+            // Get all users in batches
+            const int batchSize = 1000;
+            int skip = 0;
+            List<Guid> userBatch;
+            
+            do
+            {
+                userBatch = await timezoneIndexGAgent.GetActiveUsersInTimezoneAsync(skip, batchSize);
+                
+                if (userBatch.Any())
+                {
+                    // Process each user to get their device information
+                    var userDeviceTasks = userBatch.Select(async userId =>
+                    {
+                        try
+                        {
+                            var chatManagerGAgent = _grainFactory.GetGrain<IChatManagerGAgent>(userId);
+                            
+                            // Get user device information
+                            var hasEnabledDeviceInTimezone = await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId);
+                            var allDevices = await chatManagerGAgent.GetAllUserDevicesAsync();
+                            
+                            // Filter devices for this timezone
+                            var timezoneDevices = allDevices.Where(d => d.TimeZoneId == _timeZoneId).ToList();
+                            
+                            // Create device info for each device
+                            var userDeviceInfos = timezoneDevices.Select(device => new TimezoneDeviceInfo
+                            {
+                                UserId = userId,
+                                DeviceId = device.DeviceId,
+                                PushToken = string.IsNullOrEmpty(device.PushToken) ? "" : $"{device.PushToken.Substring(0, Math.Min(10, device.PushToken.Length))}...", // Truncate for privacy
+                                TimeZoneId = device.TimeZoneId,
+                                PushLanguage = device.PushLanguage,
+                                PushEnabled = device.PushEnabled,
+                                RegisteredAt = device.RegisteredAt,
+                                LastTokenUpdate = device.LastTokenUpdate,
+                                HasEnabledDeviceInTimezone = hasEnabledDeviceInTimezone,
+                                TotalDeviceCount = allDevices.Count,
+                                EnabledDeviceCount = allDevices.Count(d => d.PushEnabled && d.TimeZoneId == _timeZoneId)
+                            }).ToList();
+                            
+                            // If user has no devices in this timezone but is in index, create a placeholder entry
+                            if (!userDeviceInfos.Any())
+                            {
+                                userDeviceInfos.Add(new TimezoneDeviceInfo
+                                {
+                                    UserId = userId,
+                                    DeviceId = "(No devices in this timezone)",
+                                    PushToken = "",
+                                    TimeZoneId = _timeZoneId,
+                                    PushLanguage = "",
+                                    PushEnabled = false,
+                                    RegisteredAt = DateTime.MinValue,
+                                    LastTokenUpdate = DateTime.MinValue,
+                                    HasEnabledDeviceInTimezone = hasEnabledDeviceInTimezone,
+                                    TotalDeviceCount = allDevices.Count,
+                                    EnabledDeviceCount = 0
+                                });
+                            }
+                            
+                            return userDeviceInfos;
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to get device info for user {UserId}", userId);
+                            return new List<TimezoneDeviceInfo>
+                            {
+                                new TimezoneDeviceInfo
+                                {
+                                    UserId = userId,
+                                    DeviceId = "(Error retrieving device info)",
+                                    PushToken = ex.Message,
+                                    TimeZoneId = _timeZoneId,
+                                    PushLanguage = "",
+                                    PushEnabled = false,
+                                    RegisteredAt = DateTime.MinValue,
+                                    LastTokenUpdate = DateTime.MinValue,
+                                    HasEnabledDeviceInTimezone = false,
+                                    TotalDeviceCount = 0,
+                                    EnabledDeviceCount = 0
+                                }
+                            };
+                        }
+                    });
+                    
+                    var batchDevices = await Task.WhenAll(userDeviceTasks);
+                    devices.AddRange(batchDevices.SelectMany(d => d));
+                    
+                    skip += batchSize;
+                }
+                
+            } while (userBatch.Count == batchSize);
+            
+            _logger.LogInformation("Retrieved {DeviceCount} device entries for {UserCount} users in timezone {TimeZone}", 
+                devices.Count, devices.Select(d => d.UserId).Distinct().Count(), _timeZoneId);
+            
+            return devices.OrderBy(d => d.UserId).ThenBy(d => d.DeviceId).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get devices in timezone {TimeZone}", _timeZoneId);
+            return new List<TimezoneDeviceInfo>();
+        }
+    }
 
 }

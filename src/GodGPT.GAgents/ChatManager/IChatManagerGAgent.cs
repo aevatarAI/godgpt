@@ -99,6 +99,11 @@ public interface IChatManagerGAgent : IGAgent
     Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
     
     /// <summary>
+    /// Get all user devices for debugging - TODO: Remove before production
+    /// </summary>
+    Task<List<GodGPT.GAgents.DailyPush.UserDeviceInfo>> GetAllUserDevicesAsync();
+    
+    /// <summary>
     /// Update user timezone index when device timezone changes
     /// </summary>
     Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone);

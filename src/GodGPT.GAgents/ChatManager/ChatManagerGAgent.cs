@@ -1715,6 +1715,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return !isRead && State.UserDevices.Values.Any(d => d.PushEnabled);
     }
 
+    public async Task<List<GodGPT.GAgents.DailyPush.UserDeviceInfo>> GetAllUserDevicesAsync()
+    {
+        return State.UserDevices.Values.ToList();
+    }
+
     public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
     {
         try
