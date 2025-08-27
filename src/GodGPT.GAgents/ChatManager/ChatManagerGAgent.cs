@@ -1674,7 +1674,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Remove user from old timezone index
             if (!string.IsNullOrEmpty(oldTimeZone))
             {
-                var oldIndexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(oldTimeZone);
+                var oldIndexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(oldTimeZone));
+                await oldIndexGAgent.InitializeAsync(oldTimeZone);
                 await oldIndexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Removed user {State.UserId} from timezone index: {oldTimeZone}");
             }
@@ -1682,7 +1683,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Add user to new timezone index
             if (!string.IsNullOrEmpty(newTimeZone))
             {
-                var newIndexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(newTimeZone);
+                var newIndexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                await newIndexGAgent.InitializeAsync(newTimeZone);
                 await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");
             }

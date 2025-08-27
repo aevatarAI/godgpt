@@ -5,8 +5,13 @@ namespace GodGPT.GAgents.DailyPush;
 /// <summary>
 /// Timezone to user mapping index GAgent for efficient user lookup
 /// </summary>
-public interface ITimezoneUserIndexGAgent : IGAgent, IGrainWithStringKey
+public interface ITimezoneUserIndexGAgent : IGAgent, IGrainWithGuidKey
 {
+    /// <summary>
+    /// Initialize timezone user index with timezone ID
+    /// </summary>
+    Task InitializeAsync(string timeZoneId);
+    
     /// <summary>
     /// Add user to timezone index
     /// </summary>
