@@ -1593,8 +1593,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
     {
+        var enabledDevicesInTimezone = State.UserDevices.Values
+            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId)
+            .ToList();
+            
+        Logger.LogInformation("🔍 HasEnabledDeviceInTimezoneAsync - User {UserId}: Total devices: {TotalDevices}, Enabled in timezone {TimeZone}: {EnabledCount}", 
+            State.UserId, State.UserDevices.Count, timeZoneId, enabledDevicesInTimezone.Count);
+            
+        if (enabledDevicesInTimezone.Count == 0 && State.UserDevices.Count > 0)
+        {
+            var deviceDetails = State.UserDevices.Values.Select(d => 
+                $"DeviceId={d.DeviceId}, PushEnabled={d.PushEnabled}, TimeZoneId={d.TimeZoneId}").ToList();
+            Logger.LogWarning("🚫 No enabled devices in timezone {TimeZone} for user {UserId}. Device details: [{DeviceDetails}]", 
+                timeZoneId, State.UserId, string.Join(", ", deviceDetails));
+        }
 
-        return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
+        return enabledDevicesInTimezone.Count > 0;
     }
 
     public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
