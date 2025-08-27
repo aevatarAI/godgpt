@@ -64,24 +64,56 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         if (!string.IsNullOrEmpty(State.TimeZoneId))
         {
             _timeZoneId = State.TimeZoneId;
+            _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (from state)", _timeZoneId);
+        }
+        else
+        {
+            // Try to get timezone from GUID mapping
+            var grainGuid = this.GetPrimaryKey();
+            var inferredTimezone = await DailyPushConstants.GetTimezoneFromGuidAsync(grainGuid, _grainFactory);
             
-            // Validate timezone on activation
+            if (!string.IsNullOrEmpty(inferredTimezone))
+            {
+                _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (from GUID mapping)", inferredTimezone);
+                // Auto-initialize with inferred timezone
+                await InitializeAsync(inferredTimezone);
+            }
+            else
+            {
+                // Compatibility: Try to infer timezone from common GUID patterns
+                var commonTimezone = TryInferTimezoneFromGuid(grainGuid);
+                if (!string.IsNullOrEmpty(commonTimezone))
+                {
+                    _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (inferred from common pattern)", commonTimezone);
+                    await InitializeAsync(commonTimezone);
+                }
+                else
+                {
+                    _logger.LogWarning("TimezoneSchedulerGAgent activated but no timezone ID in state and no GUID mapping found. Grain will not be functional until InitializeAsync is called.");
+                    _timeZoneId = ""; // Ensure it's empty, not null
+                }
+            }
+        }
+        
+        // Validate timezone if we have one
+        if (!string.IsNullOrEmpty(_timeZoneId))
+        {
             try
             {
                 TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
             }
             catch (TimeZoneNotFoundException ex)
             {
-                throw new ArgumentException($"Invalid timezone ID in state: {_timeZoneId}", ex);
+                _logger.LogError(ex, "Invalid timezone ID: {TimeZone}", _timeZoneId);
+                _timeZoneId = ""; // Reset to empty to prevent further errors
+                throw new ArgumentException($"Invalid timezone ID: {_timeZoneId}", ex);
             }
             catch (InvalidTimeZoneException ex)
             {
-                throw new ArgumentException($"Invalid timezone format in state: {_timeZoneId}", ex);
+                _logger.LogError(ex, "Invalid timezone format: {TimeZone}", _timeZoneId);
+                _timeZoneId = ""; // Reset to empty to prevent further errors
+                throw new ArgumentException($"Invalid timezone format: {_timeZoneId}", ex);
             }
-        }
-        else
-        {
-            _logger.LogWarning("TimezoneSchedulerGAgent activated but no timezone ID in state. Waiting for InitializeAsync call.");
         }
         
         // 🚀 Auto-activation: Use configured ReminderTargetId
@@ -115,6 +147,11 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     public async Task InitializeAsync(string timeZoneId)
     {
         // Validate timezone first
+        if (string.IsNullOrEmpty(timeZoneId))
+        {
+            throw new ArgumentException("Timezone ID cannot be null or empty", nameof(timeZoneId));
+        }
+        
         try
         {
             TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
@@ -127,6 +164,9 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         {
             throw new ArgumentException($"Invalid timezone format: {timeZoneId}", ex);
         }
+        
+        // Register timezone mapping for reverse lookup
+        await DailyPushConstants.RegisterTimezoneMapping(timeZoneId, _grainFactory);
         
         State.TimeZoneId = timeZoneId;
         State.Status = SchedulerStatus.Active;
@@ -238,9 +278,48 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     {
         return (State.TestModeActive, State.TestStartTime, State.TestRoundsCompleted, TestModeConstants.MAX_TEST_ROUNDS);
     }
+    
+    /// <summary>
+    /// Compatibility method: Try to infer timezone from GUID for common timezones
+    /// This helps with migration from string-key to GUID-key GAgents
+    /// </summary>
+    private string? TryInferTimezoneFromGuid(Guid grainGuid)
+    {
+        // Common timezones that might exist in production
+        var commonTimezones = new[]
+        {
+            "Asia/Shanghai",
+            "America/New_York", 
+            "Europe/London",
+            "Asia/Tokyo",
+            "UTC",
+            "America/Los_Angeles",
+            "Europe/Paris",
+            "Asia/Seoul"
+        };
+        
+        foreach (var timezone in commonTimezones)
+        {
+            var expectedGuid = DailyPushConstants.TimezoneToGuid(timezone);
+            if (expectedGuid == grainGuid)
+            {
+                _logger.LogInformation("Inferred timezone {TimeZone} from GUID {Guid} during migration", timezone, grainGuid);
+                return timezone;
+            }
+        }
+        
+        return null;
+    }
 
     public async Task ProcessMorningPushAsync(DateTime targetDate)
     {
+        // Safety check: ensure timezone is initialized
+        if (string.IsNullOrEmpty(_timeZoneId))
+        {
+            _logger.LogError("Cannot process morning push: timezone ID is not set. Grain needs to be initialized first.");
+            return;
+        }
+        
         if (State.Status != SchedulerStatus.Active)
         {
             _logger.LogWarning("Skipping morning push for {TimeZone} - scheduler status: {Status}", 
@@ -307,6 +386,13 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
 
     public async Task ProcessAfternoonRetryAsync(DateTime targetDate)
     {
+        // Safety check: ensure timezone is initialized
+        if (string.IsNullOrEmpty(_timeZoneId))
+        {
+            _logger.LogError("Cannot process afternoon retry: timezone ID is not set. Grain needs to be initialized first.");
+            return;
+        }
+        
         if (State.Status != SchedulerStatus.Active)
         {
             _logger.LogWarning("Skipping afternoon retry for {TimeZone} - scheduler status: {Status}", 
@@ -600,6 +686,18 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     /// </summary>
     private TimeSpan CalculateNextExecutionTime(TimeSpan targetTime, DateTime currentUtc)
     {
+        // Safety check: ensure timezone ID is available
+        if (string.IsNullOrEmpty(_timeZoneId))
+        {
+            _logger.LogError("Cannot calculate execution time: timezone ID is not set. Using UTC as fallback.");
+            // Fallback to UTC to prevent crashes
+            var utcNow = currentUtc;
+            var todayTargetUtc = utcNow.Date.Add(targetTime);
+            return todayTargetUtc <= utcNow ? 
+                TimeSpan.FromDays(1) - (utcNow - utcNow.Date) + targetTime : 
+                todayTargetUtc - utcNow;
+        }
+        
         var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(_timeZoneId);
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(currentUtc, timeZoneInfo);
         
