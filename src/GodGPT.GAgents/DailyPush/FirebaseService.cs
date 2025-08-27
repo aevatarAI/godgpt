@@ -313,17 +313,58 @@ public class FirebaseService
             
             if (response.IsSuccessStatusCode)
             {
-                _logger.LogInformation("Push notification sent successfully via FCM v1");
-                return true;
+                // Even with 200 status, FCM might return error details in the response
+                try
+                {
+                    using var jsonDocument = JsonDocument.Parse(responseContent);
+                    var root = jsonDocument.RootElement;
+                    
+                    if (root.TryGetProperty("error", out var errorElement))
+                    {
+                        var errorCode = errorElement.TryGetProperty("code", out var codeElement) ? codeElement.GetString() : "UNKNOWN";
+                        var errorMessage = errorElement.TryGetProperty("message", out var msgElement) ? msgElement.GetString() : "Unknown error";
+                        
+                        _logger.LogError("FCM returned error in successful response - Code: {ErrorCode}, Message: {ErrorMessage}", 
+                            errorCode, errorMessage);
+                        
+                        // Handle specific FCM errors
+                        if (errorCode == "UNREGISTERED" || errorCode == "INVALID_ARGUMENT")
+                        {
+                            _logger.LogWarning("Push token is invalid and should be removed from database");
+                        }
+                        
+                        return false;
+                    }
+                    
+                    // Check if response contains message name (success indicator)
+                    if (root.TryGetProperty("name", out var nameElement))
+                    {
+                        var messageName = nameElement.GetString();
+                        _logger.LogInformation("Push notification sent successfully via FCM v1 - Message: {MessageName}", messageName);
+                        return true;
+                    }
+                    
+                    // Unexpected response format
+                    _logger.LogWarning("FCM returned 200 but unexpected response format: {ResponseContent}", responseContent);
+                    return false;
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogError(ex, "Failed to parse FCM response JSON: {ResponseContent}", responseContent);
+                    // Assume success if we can't parse the response but got 200
+                    _logger.LogInformation("Push notification sent successfully via FCM v1 (assumed from 200 status)");
+                    return true;
+                }
             }
             else
             {
-                _logger.LogError($"FCM v1 request failed with status {response.StatusCode}: {responseContent}");
+                _logger.LogError("FCM v1 request failed with status {StatusCode}: {ResponseContent}", 
+                    response.StatusCode, responseContent);
                 
                 // Handle specific FCM v1 errors
                 if (responseContent.Contains("UNREGISTERED") || responseContent.Contains("INVALID_ARGUMENT"))
                 {
-                    _logger.LogInformation("Token is invalid and should be removed from database");
+                    _logger.LogWarning("Token is invalid and should be removed from database");
                 }
                 
                 return false;

@@ -60,6 +60,10 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
 
     protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
+        // Clean up any legacy reminders from string-key era (compatibility measure)
+        // This is non-blocking and won't affect normal operation
+        _ = Task.Run(async () => await CleanupLegacyRemindersAsync());
+        
         // Get timezone ID from State (if already initialized)
         if (!string.IsNullOrEmpty(State.TimeZoneId))
         {
@@ -207,6 +211,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
     /// </summary>
     public async Task StartTestModeAsync(int intervalSeconds = 600)
     {
+        
         if (State.TestModeActive)
         {
             _logger.LogWarning("Test mode already active for timezone {TimeZone}. Current rounds: {Rounds}/{MaxRounds}", 
@@ -221,7 +226,7 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         _logger.LogInformation("Starting test mode for timezone {TimeZone} with {IntervalSeconds}s interval", 
             _timeZoneId, intervalSeconds);
         
-        // Proactively cleanup any existing test reminders (safety measure)
+        // Additional cleanup for safety
         await CleanupTestRemindersAsync();
         
         // Initialize test state with custom interval
@@ -926,6 +931,55 @@ public class TimezoneSchedulerGAgent : GAgentBase<TimezoneSchedulerGAgentState, 
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to cleanup test reminders for {TimeZone}", _timeZoneId);
+        }
+    }
+    
+    /// <summary>
+    /// Clean up legacy reminders from string-key era (compatibility measure)
+    /// </summary>
+    private async Task CleanupLegacyRemindersAsync()
+    {
+        try
+        {
+            // Get all reminders for this grain
+            var reminders = await this.GetReminders();
+            var legacyRemindersFound = false;
+            
+            foreach (var reminder in reminders)
+            {
+                try
+                {
+                    // Try to access GetPrimaryKey() - if it fails, this might be a legacy reminder
+                    var _ = this.GetPrimaryKey();
+                    // If we get here, the grain key is valid GUID format
+                }
+                catch (InvalidOperationException)
+                {
+                    // This indicates a legacy string-key reminder
+                    legacyRemindersFound = true;
+                    _logger.LogWarning("Found legacy reminder {ReminderName} from string-key era, attempting cleanup", reminder.ReminderName);
+                    
+                    try
+                    {
+                        await this.UnregisterReminder(reminder);
+                        _logger.LogInformation("Successfully cleaned up legacy reminder {ReminderName}", reminder.ReminderName);
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        _logger.LogError(cleanupEx, "Failed to cleanup legacy reminder {ReminderName}", reminder.ReminderName);
+                    }
+                }
+            }
+            
+            if (legacyRemindersFound)
+            {
+                _logger.LogInformation("Legacy reminder cleanup completed for timezone GAgent");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during legacy reminder cleanup");
+            // Don't throw - this is a compatibility measure, not critical
         }
     }
 }

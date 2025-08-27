@@ -1465,6 +1465,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // Store old values for cleanup and change detection
         var oldPushToken = deviceInfo.PushToken;
         var oldTimeZone = deviceInfo.TimeZoneId;
+        var oldPushEnabled = deviceInfo.PushEnabled;
         
         // Update device information
         deviceInfo.DeviceId = deviceId;
@@ -1508,11 +1509,52 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         
         await ConfirmEvents();
         
-        // Synchronize timezone index if timezone changed
+        // Synchronize timezone index when:
+        // 1. Timezone changed
+        // 2. Push enabled status changed from false to true
+        // 3. New device with push enabled
         var newTimeZone = deviceInfo.TimeZoneId;
+        var newPushEnabled = deviceInfo.PushEnabled;
+        
+        var shouldUpdateIndex = false;
+        var reason = "";
+        
         if (!string.IsNullOrEmpty(newTimeZone) && oldTimeZone != newTimeZone)
         {
+            // Timezone changed - update both old and new timezone indexes
             await UpdateTimezoneIndexAsync(oldTimeZone, newTimeZone);
+            shouldUpdateIndex = false; // Already handled above
+            reason = "timezone changed";
+        }
+        else if (newPushEnabled && (!oldPushEnabled || isNewDevice))
+        {
+            // Push enabled for new device or re-enabled for existing device
+            shouldUpdateIndex = true;
+            reason = isNewDevice ? "new device with push enabled" : "push re-enabled";
+        }
+        else if (!newPushEnabled && oldPushEnabled)
+        {
+            // Push disabled - remove from timezone index
+            if (!string.IsNullOrEmpty(newTimeZone))
+            {
+                var indexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                await indexGAgent.InitializeAsync(newTimeZone);
+                await indexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
+                Logger.LogInformation("Removed user {UserId} from timezone index {TimeZone} - push disabled", 
+                    State.UserId, newTimeZone);
+            }
+            shouldUpdateIndex = false;
+            reason = "push disabled";
+        }
+        
+        if (shouldUpdateIndex && !string.IsNullOrEmpty(newTimeZone))
+        {
+            // Add user to timezone index (ensure they're indexed for push delivery)
+            var indexGAgent = GrainFactory.GetGrain<ITimezoneUserIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+            await indexGAgent.InitializeAsync(newTimeZone);
+            await indexGAgent.AddUserToTimezoneAsync(State.UserId);
+            Logger.LogInformation("Added user {UserId} to timezone index {TimeZone} - {Reason}", 
+                State.UserId, newTimeZone, reason);
         }
         
         Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
@@ -1571,9 +1613,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var enabledDevices = State.UserDevices.Values
             .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId)
             .ToList();
+        
+        Logger.LogInformation("📱 ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+            enabledDevices.Count, timeZoneId, State.UserId);
+            
         if (enabledDevices.Count == 0)
         {
-            Logger.LogDebug("No enabled devices for daily push");
+            Logger.LogWarning("No enabled devices for daily push - User {UserId}, TimeZone {TimeZone}, Total devices: {TotalDevices}", 
+                State.UserId, timeZoneId, State.UserDevices.Count);
             return;
         }
         
@@ -1654,7 +1701,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         successCount = results.Count(r => r);
         failureCount = results.Count(r => !r);
         
-        Logger.LogInformation($"Processed daily push: {successCount} success, {failureCount} failures for {enabledDevices.Count} devices");
+        Logger.LogInformation("🚀 ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
+            State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
     }
 
     public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
