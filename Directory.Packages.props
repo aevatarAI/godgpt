@@ -7,6 +7,8 @@
 <!--    <AevatarGAgentVerion>1.4.17</AevatarGAgentVerion>-->
     <AevatarVerion>1.5.2</AevatarVerion>
     <AevatarGAgentVerion>1.5.4</AevatarGAgentVerion>
+    <!-- Suppress package dependency warnings for third-party packages -->
+    <NoWarn>$(NoWarn);NU1603</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <!-- GodGPT -->
@@ -14,6 +16,10 @@
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.12.0" />
     <PackageVersion Include="Microsoft.IdentityModel.Tokens" Version="8.12.0" />
     <PackageVersion Include="Stripe.net" Version="48.1.0" />
+    <PackageVersion Include="Google.Apis.AndroidPublisher.v3" Version="1.68.0.3576" />
+    <PackageVersion Include="Microsoft.AspNetCore.TestHost" Version="9.0.0" />
+    <PackageVersion Include="Moq" Version="4.20.70" />
+    <PackageVersion Include="Moq.Contrib.HttpClient" Version="1.4.0" />
     <!-- AElf packages -->
     <PackageVersion Include="AElf.Client" Version="1.1.0" />
     <PackageVersion Include="AElf.ExceptionHandler.ABP" Version="8.2.8" />
@@ -45,8 +51,12 @@
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="9.0.2" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite.Core" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.32.0" />
-    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.32.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel" Version="1.57.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Core" Version="1.57.0" />
+    <!-- Override to suppress NU1603 warnings from Aevatar.GAgents.SemanticKernel -->
+    <PackageVersion Include="Microsoft.SemanticKernel.Abstractions" Version="1.57.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Connectors.AI.OpenAI" Version="1.57.0" />
+    <PackageVersion Include="Microsoft.SemanticKernel.Functions.OpenAPI" Version="1.57.0" />
     <PackageVersion Include="NJsonSchema" Version="11.1.0" />
     <PackageVersion Include="OpenAI.API" Version="1.0.0" />
     <PackageVersion Include="Orleans.SyncWork" Version="8.1.12" />
@@ -125,6 +135,7 @@
     <PackageVersion Include="Microsoft.Extensions.AI.Abstractions" Version="9.0.1-preview.1.24570.5" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Http.Polly" Version="8.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.0" />
@@ -169,7 +180,6 @@
     <PackageVersion Include="FakeItEasy" Version="8.1.0" />
     <PackageVersion Include="FluentAssertions" Version="6.12.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
-    <PackageVersion Include="Moq" Version="4.20.70" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
     <PackageVersion Include="NSubstitute.Analyzers.CSharp" Version="1.0.17" />
     <PackageVersion Include="Shouldly" Version="4.2.1" />
@@ -205,15 +215,7 @@
     <PackageVersion Include="Neo4j.Driver" Version="5.27.0" />
     <PackageVersion Include="XWorkerAgent" Version="0.0.28" />
     <PackageVersion Include="TelegramWorkerAgent" Version="0.0.8" />
-    <PackageVersion Include="Microsoft.Orleans.Core" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.Orleans.EventSourcing" Version="8.0.0" />
-    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="JsonSchema.Net.Generation" Version="3.3.2" />
-    <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.9.0" />
-    <PackageVersion Include="xunit" Version="2.7.0" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="2.5.7" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.0" />
     <PackageVersion Include="Microsoft.Orleans.Serialization.TestKit" Version="9.0.1" />
     <!--Aevatar Webhook-->
     <PackageVersion Include="Aevatar.WebHook.SDK" Version="1.1.2" />

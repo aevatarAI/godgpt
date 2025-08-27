@@ -6,6 +6,8 @@ using Volo.Abp.AspNetCore.Serilog;
 using Volo.Abp.Autofac;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
+using Aevatar.Application.Grains.Common.Security;
+using Aevatar.Application.Grains.Common.Options;
 
 namespace Aevatar.Application.Grains;
 
@@ -19,7 +21,16 @@ public class GodGPTWebHookTemplateModule : AbpModule
     {
         Configure<AbpAutoMapperOptions>(options => { options.AddMaps<GodGPTWebHookTemplateModule>(); });
         var services = context.Services;
+        
+        // Register webhook handlers
         services.AddSingleton<IWebhookHandler, GodGPTWebhookHandler>();
         services.AddSingleton<IWebhookHandler, AppleStoreWebhookHandler>();
+        services.AddSingleton<IWebhookHandler, GooglePayWebhookHandler>();
+        
+        // Register Google Pay security validator
+        services.AddSingleton<GooglePaySecurityValidator>();
+        
+        // Configure Google Pay options
+        services.Configure<GooglePayOptions>(context.Services.GetConfiguration().GetSection("GooglePay"));
     }
 }

@@ -20,4 +20,4 @@ public enum PurchaseType
     /// Subscription renewal purchase
     /// </summary>
     [Id(2)] Renewal = 2
-} 
+}
