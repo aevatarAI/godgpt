@@ -1666,10 +1666,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 {
                     // No delay needed - interval doesn't matter for callbacks
                     
+                    var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+                    Logger.LogInformation("🔍 Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
+                        device.DeviceId, device.PushLanguage, availableLanguages);
+                    
                     var localizedContent = content.GetLocalizedContent(device.PushLanguage);
                     
-                    Logger.LogInformation("🌍 Sending content {Index}/{Total}: DeviceId={DeviceId}, PushLanguage={PushLanguage}, ContentId={ContentId}", 
-                        index + 1, contents.Count, device.DeviceId, device.PushLanguage, content.Id);
+                    Logger.LogInformation("🌍 Selected content {Index}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
+                        index + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
                     
                     // Create unique data payload for each content
                     var messageId = Guid.NewGuid();
@@ -1769,13 +1773,21 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             foreach (var device in enabledDevices)
             {
                 // Get localized content
-                var localizedContent = content.GetLocalizedContent(device.PushLanguage ?? "en");
+                var deviceLanguage = device.PushLanguage ?? "en";
+                var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+                Logger.LogInformation("🔍 Instant push language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
+                    device.DeviceId, deviceLanguage, availableLanguages);
+                    
+                var localizedContent = content.GetLocalizedContent(deviceLanguage);
                 if (localizedContent == null)
                 {
                     Logger.LogWarning("No localized content found for language {Language}, content {ContentId}, device {DeviceId}", 
-                        device.PushLanguage, content.Id, device.DeviceId);
+                        deviceLanguage, content.Id, device.DeviceId);
                     continue;
                 }
+                
+                Logger.LogInformation("📱 Instant push selected content: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}'", 
+                    device.DeviceId, deviceLanguage, localizedContent.Title);
                 
                 pushMessages.Add(new GodGPT.GAgents.DailyPush.PushMessage
                 {

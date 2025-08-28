@@ -1260,6 +1260,9 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                         }
                         
                         // Add Traditional Chinese content if available
+                        Logger.LogDebug("🔍 CSV Traditional Chinese content check: Key={ContentKey}, TitleZh='{TitleZh}', ContentZh='{ContentZh}'", 
+                            csvContent.ContentKey, csvContent.TitleZh, csvContent.ContentZh);
+                        
                         if (!string.IsNullOrEmpty(csvContent.TitleZh) || !string.IsNullOrEmpty(csvContent.ContentZh))
                         {
                             notificationContent.LocalizedContents["zh-tw"] = new LocalizedContentData
@@ -1267,6 +1270,13 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                                 Title = csvContent.TitleZh ?? "📱 每日靈感",
                                 Content = csvContent.ContentZh ?? "祝你有美好的一天！"
                             };
+                            Logger.LogInformation("✅ Added Traditional Chinese content for key={ContentKey}: Title='{Title}'", 
+                                csvContent.ContentKey, csvContent.TitleZh);
+                        }
+                        else
+                        {
+                            Logger.LogWarning("⚠️ No Traditional Chinese content available for key={ContentKey}, skipping zh-tw", 
+                                csvContent.ContentKey);
                         }
                         
                         // Add Simplified Chinese content if available
