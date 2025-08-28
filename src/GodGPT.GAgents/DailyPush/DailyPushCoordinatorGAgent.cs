@@ -845,9 +845,9 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             _logger.LogInformation("Executing test push round {Round}/{MaxRounds} for {TimeZone}", 
                 State.TestRoundsCompleted + 1, TestModeConstants.MAX_TEST_ROUNDS, _timeZoneId);
             
-            // Execute test push (use current date)
+            // Execute test push (use current date) - use instant push logic to bypass read status check
             var targetDate = now.Date;
-            await ProcessMorningPushAsync(targetDate);
+            await SendInstantPushAsync();
             
             // Increment round counter using proper event-driven approach
             RaiseEvent(new TestRoundCompletedEventLog

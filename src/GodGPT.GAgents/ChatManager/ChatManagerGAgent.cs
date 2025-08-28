@@ -1600,16 +1600,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
     }
 
-    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId, bool isTestMode = false)
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         
         // Check if any message has been read for today - if so, skip all pushes
-        var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+        // Exception: Skip read status check when in test mode
+        var hasAnyReadToday = !isTestMode && State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
         if (hasAnyReadToday)
         {
             Logger.LogDebug($"At least one daily push already read for {dateKey}, skipping all pushes");
             return;
+        }
+        
+        if (isTestMode)
+        {
+            Logger.LogInformation("🧪 Test mode active - bypassing read status check for daily push on {DateKey}", dateKey);
         }
         
         // Only process devices in the specified timezone
