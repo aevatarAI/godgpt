@@ -1118,7 +1118,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                             {
                                 UserId = userId,
                                 DeviceId = device.DeviceId,
-                                PushToken = string.IsNullOrEmpty(device.PushToken) ? "" : $"{device.PushToken.Substring(0, Math.Min(10, device.PushToken.Length))}...", // Truncate for privacy
+                                PushToken = device.PushToken ?? "", // Show full pushToken for testing interface
                                 TimeZoneId = device.TimeZoneId,
                                 PushLanguage = device.PushLanguage,
                                 PushEnabled = device.PushEnabled,
