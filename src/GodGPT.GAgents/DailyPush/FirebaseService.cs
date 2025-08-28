@@ -315,8 +315,8 @@ public class FirebaseService
             var responseContent = await response.Content.ReadAsStringAsync();
             
             // Always log FCM response at Information level for debugging purposes
-            _logger.LogInformation("🔥 FCM v1 response - Status: {StatusCode}, Token: {TokenPrefix}..., Content: {ResponseContent}", 
-                response.StatusCode, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, responseContent);
+            _logger.LogInformation("🔥 FCM v1 response - Status: {StatusCode}, Token: {TokenPrefix}..., Title: '{Title}', Content: {ResponseContent}", 
+                response.StatusCode, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title, responseContent);
             
             if (response.IsSuccessStatusCode)
             {
@@ -621,7 +621,17 @@ public class FirebaseService
             const int batchSize = 10; // FCM recommended batch size
             const int delayMs = 100;  // Reduced delay since we're using proper batching
             
-            _logger.LogInformation("🚀 Sending {Count} messages using FCM API v1 optimized batching", messages.Count);
+            // Log batch push start with device details
+            var tokenPreviews = messages.Take(5).Select(m => 
+                m.Token.Length > 10 ? m.Token.Substring(0, 10) + "..." : m.Token).ToList();
+            var remainingCount = Math.Max(0, messages.Count - 5);
+            var tokenPreviewText = string.Join(", ", tokenPreviews) + 
+                (remainingCount > 0 ? $" (+{remainingCount} more)" : "");
+                
+            _logger.LogInformation("🚀 Starting FCM batch push to {TotalDevices} devices: [{TokenPreviews}]", 
+                messages.Count, tokenPreviewText);
+            _logger.LogInformation("📋 Batch configuration: BatchSize={BatchSize}, DelayMs={DelayMs}, TotalBatches={TotalBatches}", 
+                batchSize, delayMs, (messages.Count + batchSize - 1) / batchSize);
             
             for (int i = 0; i < messages.Count; i += batchSize)
             {
@@ -629,8 +639,13 @@ public class FirebaseService
                 _logger.LogDebug("📦 Processing batch {BatchNumber}/{TotalBatches} with {BatchSize} messages", 
                     (i / batchSize) + 1, (messages.Count + batchSize - 1) / batchSize, batch.Count);
                 
-                var batchTasks = batch.Select(async message =>
+                var batchTasks = batch.Select(async (message, index) =>
                 {
+                    var tokenPrefix = message.Token.Length > 10 ? message.Token.Substring(0, 10) + "..." : message.Token;
+                    
+                    _logger.LogDebug("📱 Processing token {TokenIndex}/{BatchSize}: {TokenPrefix} - Title: '{Title}'", 
+                        index + 1, batch.Count, tokenPrefix, message.Title);
+                    
                     var success = await SendPushNotificationV1Async(
                         message.Token, 
                         message.Title, 
@@ -640,11 +655,15 @@ public class FirebaseService
                     if (success)
                     {
                         results.SuccessCount++;
+                        _logger.LogInformation("✅ Push SUCCESS for token {TokenPrefix} - Title: '{Title}'", 
+                            tokenPrefix, message.Title);
                     }
                     else
                     {
                         results.FailureCount++;
                         results.FailedTokens.Add(message.Token);
+                        _logger.LogWarning("❌ Push FAILED for token {TokenPrefix} - Title: '{Title}' (Check detailed error above)", 
+                            tokenPrefix, message.Title);
                     }
                 }).ToArray();
                 
@@ -657,8 +676,28 @@ public class FirebaseService
                 }
             }
             
-            _logger.LogInformation("✅ FCM batch send completed: {SuccessCount} success, {FailureCount} failures", 
-                results.SuccessCount, results.FailureCount);
+            // Enhanced completion logging with detailed statistics
+            var successRate = results.SuccessCount + results.FailureCount > 0 ? 
+                (double)results.SuccessCount / (results.SuccessCount + results.FailureCount) * 100 : 0;
+                
+            if (results.FailureCount == 0)
+            {
+                _logger.LogInformation("🎉 FCM batch push completed successfully: {SuccessCount}/{TotalCount} devices (100% success rate)", 
+                    results.SuccessCount, results.SuccessCount + results.FailureCount);
+            }
+            else
+            {
+                // Show failed token previews for debugging
+                var failedTokenPreviews = results.FailedTokens.Take(3).Select(token => 
+                    token.Length > 10 ? token.Substring(0, 10) + "..." : token).ToList();
+                var remainingFailures = Math.Max(0, results.FailedTokens.Count - 3);
+                var failedTokenText = string.Join(", ", failedTokenPreviews) + 
+                    (remainingFailures > 0 ? $" (+{remainingFailures} more)" : "");
+                
+                _logger.LogWarning("⚠️ FCM batch push completed with failures: {SuccessCount}/{TotalCount} successful ({SuccessRate:F1}% success rate)", 
+                    results.SuccessCount, results.SuccessCount + results.FailureCount, successRate);
+                _logger.LogWarning("💔 Failed tokens: [{FailedTokens}] - Check detailed errors above", failedTokenText);
+            }
                 
             return results;
         }
