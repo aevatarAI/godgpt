@@ -1805,7 +1805,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         { "total_contents", contents.Count }, // ✅ Add total contents count
                         { "userId", State.UserId.ToString() },
                         { "deviceId", device.DeviceId },
-                        { "timezone", timeZoneId }
+                        { "timezone", timeZoneId },
+                        { "is_instant_push", true } // ✅ Add instant push identification
                     }
                 });
             }

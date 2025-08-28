@@ -234,6 +234,16 @@ public class FirebaseService
             // ✅ Layer 1: Check if already pushed today (UTC date) - Skip for test pushes, retry pushes, and non-first content
             bool isTestPush = title.Contains("🧪") || title.Contains("test") || title.Contains("Test") || title.Contains("TEST");
             
+            // ✅ Also check if this is an instant push via data payload (instant pushes are for testing)
+            if (!isTestPush && data != null && data.TryGetValue("is_instant_push", out var isInstantObj))
+            {
+                if (bool.TryParse(isInstantObj?.ToString(), out var isInstant) && isInstant)
+                {
+                    isTestPush = true;
+                    _logger.LogDebug("🧪 Instant push detected via is_instant_push flag");
+                }
+            }
+            
             // Check if this is a retry push
             bool isRetryPush = false;
             if (data != null && data.TryGetValue("is_retry", out var isRetryObj))
