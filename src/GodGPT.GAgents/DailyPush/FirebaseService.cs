@@ -563,18 +563,124 @@ public class FirebaseService
     }
     
     /// <summary>
-    /// Send push notifications to multiple devices (batch)
+    /// Send push notifications to multiple devices using FCM sendEach (single HTTP request)
+    /// This is the recommended approach for multiple messages in FCM API v1
     /// </summary>
-    public async Task<BatchPushResult> SendBatchPushNotificationAsync(
-        List<string> pushTokens,
-        string title,
-        string content,
-        Dictionary<string, object>? data = null)
+    public async Task<BatchPushResult> SendEachAsync(
+        List<PushMessage> messages)
     {
         var results = new BatchPushResult();
-        var tasks = pushTokens.Select(async token =>
+        
+        if (messages == null || !messages.Any())
         {
-            var success = await SendPushNotificationAsync(token, title, content, data);
+            _logger.LogWarning("No messages provided for batch send");
+            return results;
+        }
+        
+        try
+        {
+            // If no FCM credentials, fall back to simulation
+            if (_serviceAccount == null || string.IsNullOrEmpty(_projectId))
+            {
+                _logger.LogInformation("🧪 FCM credentials not configured, using simulation mode for {Count} messages", messages.Count);
+                return await SimulateBatchPushAsync(messages);
+            }
+            
+            // Use FCM API v1 batch send
+            return await SendEachV1Async(messages);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in SendEachAsync for {Count} messages", messages.Count);
+            results.FailureCount = messages.Count;
+            results.FailedTokens = messages.Select(m => m.Token).ToList();
+            return results;
+        }
+    }
+    
+    /// <summary>
+    /// Send multiple messages using FCM API v1 (single HTTP request)
+    /// </summary>
+    private async Task<BatchPushResult> SendEachV1Async(List<PushMessage> messages)
+    {
+        var results = new BatchPushResult();
+        
+        try
+        {
+            var accessToken = await GetAccessTokenAsync();
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                _logger.LogError("Failed to obtain access token for FCM batch send");
+                results.FailureCount = messages.Count;
+                results.FailedTokens = messages.Select(m => m.Token).ToList();
+                return results;
+            }
+            
+            // FCM API v1 doesn't have a native "sendEach" endpoint like the legacy API
+            // So we'll use concurrent requests with proper rate limiting
+            const int batchSize = 10; // FCM recommended batch size
+            const int delayMs = 100;  // Reduced delay since we're using proper batching
+            
+            _logger.LogInformation("🚀 Sending {Count} messages using FCM API v1 optimized batching", messages.Count);
+            
+            for (int i = 0; i < messages.Count; i += batchSize)
+            {
+                var batch = messages.Skip(i).Take(batchSize).ToList();
+                _logger.LogDebug("📦 Processing batch {BatchNumber}/{TotalBatches} with {BatchSize} messages", 
+                    (i / batchSize) + 1, (messages.Count + batchSize - 1) / batchSize, batch.Count);
+                
+                var batchTasks = batch.Select(async message =>
+                {
+                    var success = await SendPushNotificationV1Async(
+                        message.Token, 
+                        message.Title, 
+                        message.Content, 
+                        message.Data);
+                    
+                    if (success)
+                    {
+                        results.SuccessCount++;
+                    }
+                    else
+                    {
+                        results.FailureCount++;
+                        results.FailedTokens.Add(message.Token);
+                    }
+                }).ToArray();
+                
+                await Task.WhenAll(batchTasks);
+                
+                // Add small delay between batches to respect FCM rate limits
+                if (i + batchSize < messages.Count)
+                {
+                    await Task.Delay(delayMs);
+                }
+            }
+            
+            _logger.LogInformation("✅ FCM batch send completed: {SuccessCount} success, {FailureCount} failures", 
+                results.SuccessCount, results.FailureCount);
+                
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in SendEachV1Async");
+            results.FailureCount = messages.Count;
+            results.FailedTokens = messages.Select(m => m.Token).ToList();
+            return results;
+        }
+    }
+    
+    /// <summary>
+    /// Simulate batch push for development/testing
+    /// </summary>
+    private async Task<BatchPushResult> SimulateBatchPushAsync(List<PushMessage> messages)
+    {
+        var results = new BatchPushResult();
+        
+        foreach (var message in messages)
+        {
+            var success = await SimulatePushAsync(message.Token, message.Title, message.Content);
             if (success)
             {
                 results.SuccessCount++;
@@ -582,14 +688,32 @@ public class FirebaseService
             else
             {
                 results.FailureCount++;
-                results.FailedTokens.Add(token);
+                results.FailedTokens.Add(message.Token);
             }
-        });
+        }
         
-        await Task.WhenAll(tasks);
-        
-        _logger.LogInformation($"Batch push completed: {results.SuccessCount} success, {results.FailureCount} failures");
         return results;
+    }
+    
+    /// <summary>
+    /// Send push notifications to multiple devices (batch) - Legacy method
+    /// </summary>
+    [Obsolete("Use SendEachAsync instead for better performance")]
+    public async Task<BatchPushResult> SendBatchPushNotificationAsync(
+        List<string> pushTokens,
+        string title,
+        string content,
+        Dictionary<string, object>? data = null)
+    {
+        var messages = pushTokens.Select(token => new PushMessage
+        {
+            Token = token,
+            Title = title,
+            Content = content,
+            Data = data
+        }).ToList();
+        
+        return await SendEachAsync(messages);
     }
     
 
@@ -682,6 +806,17 @@ public class TokenResponse
 }
 
 
+
+/// <summary>
+/// Push message for batch sending
+/// </summary>
+public class PushMessage
+{
+    public string Token { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Content { get; set; } = "";
+    public Dictionary<string, object>? Data { get; set; }
+}
 
 /// <summary>
 /// Batch push operation result

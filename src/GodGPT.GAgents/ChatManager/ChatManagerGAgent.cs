@@ -1735,8 +1735,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             return;
         }
         
-        // Create push items with rate limiting to avoid Firebase throttling
-        var pushItems = new List<(string deviceId, string title, string content, Dictionary<string, object> data)>();
+        // Create push messages for FCM SendEach API
+        var pushMessages = new List<GodGPT.GAgents.DailyPush.PushMessage>();
         
         // Each content item should be sent to each device (so 2 contents = 2 messages per device)
         foreach (var content in contents)
@@ -1752,11 +1752,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     continue;
                 }
                 
-                pushItems.Add((
-                    device.DeviceId,
-                    localizedContent.Title,
-                    localizedContent.Content,
-                    new Dictionary<string, object>
+                pushMessages.Add(new GodGPT.GAgents.DailyPush.PushMessage
+                {
+                    Token = device.PushToken,
+                    Title = localizedContent.Title,
+                    Content = localizedContent.Content,
+                    Data = new Dictionary<string, object>
                     {
                         { "type", "instant_push" },
                         { "contentId", content.Id },
@@ -1764,60 +1765,19 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         { "deviceId", device.DeviceId },
                         { "timezone", timeZoneId }
                     }
-                ));
+                });
             }
         }
         
-        Logger.LogInformation("🧪 Prepared {Count} push notifications for instant send", pushItems.Count);
+        Logger.LogInformation("🧪 Prepared {Count} push messages for FCM SendEach batch send", pushMessages.Count);
         
-        // Send notifications with rate limiting (2 concurrent max, 500ms delay between batches)
-        var results = new List<bool>();
-        const int batchSize = 2;
-        const int delayMs = 500;
-        
-        for (int i = 0; i < pushItems.Count; i += batchSize)
-        {
-            var batch = pushItems.Skip(i).Take(batchSize).ToList();
-            Logger.LogDebug("🚀 Sending batch {BatchNumber}/{TotalBatches} with {BatchSize} notifications", 
-                (i / batchSize) + 1, (pushItems.Count + batchSize - 1) / batchSize, batch.Count);
-            
-            var batchTasks = batch.Select(async item =>
-            {
-                try
-                {
-                    var device = enabledDevices.First(d => d.DeviceId == item.deviceId);
-                    Logger.LogDebug("🧪 Sending instant push: {Title} to device {DeviceId} (token: {TokenPrefix}...)", 
-                        item.title, item.deviceId, device.PushToken.Length > 10 ? device.PushToken.Substring(0, 10) : device.PushToken);
-                    
-                    return await firebaseService.SendPushNotificationAsync(
-                        device.PushToken,
-                        item.title,
-                        item.content,
-                        item.data
-                    );
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "Error sending instant push to device {DeviceId}", item.deviceId);
-                    return false;
-                }
-            }).ToArray();
-            
-            var batchResults = await Task.WhenAll(batchTasks);
-            results.AddRange(batchResults);
-            
-            // Add delay between batches to respect Firebase rate limits
-            if (i + batchSize < pushItems.Count)
-            {
-                Logger.LogDebug("⏳ Waiting {DelayMs}ms before next batch to respect Firebase rate limits", delayMs);
-                await Task.Delay(delayMs);
-            }
-        }
-        var successCount = results.Count(r => r);
-        var failureCount = results.Count(r => !r);
+        // Use FCM SendEach API for optimized batch sending
+        var batchResult = await firebaseService.SendEachAsync(pushMessages);
+        var successCount = batchResult.SuccessCount;
+        var failureCount = batchResult.FailureCount;
         
         Logger.LogInformation("🧪 ProcessInstantPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
-            State.UserId, successCount, failureCount, enabledDevices.Count, results.Count);
+            State.UserId, successCount, failureCount, enabledDevices.Count, pushMessages.Count);
     }
 
     public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
