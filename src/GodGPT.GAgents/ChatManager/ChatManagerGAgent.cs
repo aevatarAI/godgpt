@@ -1596,7 +1596,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
     }
 
-    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false)
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false)
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         
@@ -1680,12 +1680,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     var pushData = new Dictionary<string, object>
                     {
                         ["message_id"] = messageId.ToString(),
-                        ["type"] = (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush, // Use enum value 1
+                        ["type"] = isRetryPush ? (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.AfternoonRetry : (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush,
                         ["date"] = dateKey,
                         ["content_id"] = content.Id, // Single content ID for this push
                         ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
                         ["device_id"] = device.DeviceId,
-                        ["total_contents"] = contents.Count
+                        ["total_contents"] = contents.Count,
+                        ["is_retry"] = isRetryPush // ✅ Add retry push identification
                     };
                     
                     var success = await firebaseService.SendPushNotificationAsync(

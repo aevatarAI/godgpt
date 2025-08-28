@@ -915,7 +915,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 if (await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId) &&
                     await chatManagerGAgent.ShouldSendAfternoonRetryAsync(targetDate))
                 {
-                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId);
+                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId, bypassReadStatusCheck: false, isRetryPush: true);
                     Interlocked.Increment(ref retryCount);
                 }
             }

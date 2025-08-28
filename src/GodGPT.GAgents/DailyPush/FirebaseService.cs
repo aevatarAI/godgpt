@@ -231,8 +231,15 @@ public class FirebaseService
                 CleanupOldRecords();
             }
             
-            // ✅ Layer 1: Check if already pushed today (UTC date) - Skip for test pushes and non-first content
+            // ✅ Layer 1: Check if already pushed today (UTC date) - Skip for test pushes, retry pushes, and non-first content
             bool isTestPush = title.Contains("🧪") || title.Contains("test") || title.Contains("Test") || title.Contains("TEST");
+            
+            // Check if this is a retry push
+            bool isRetryPush = false;
+            if (data != null && data.TryGetValue("is_retry", out var isRetryObj))
+            {
+                bool.TryParse(isRetryObj?.ToString(), out isRetryPush);
+            }
             
             // Check if this is the first content in a multi-content push session
             bool isFirstContent = true;
@@ -244,8 +251,8 @@ public class FirebaseService
                 }
             }
             
-            // Only check date deduplication for first content of daily pushes (skip test pushes and subsequent contents)
-            if (!isTestPush && isFirstContent && _lastPushDates.TryGetValue(pushToken, out var lastPushDate) && lastPushDate == today)
+            // Only check date deduplication for first content of regular daily pushes (skip test pushes, retry pushes, and subsequent contents)
+            if (!isTestPush && !isRetryPush && isFirstContent && _lastPushDates.TryGetValue(pushToken, out var lastPushDate) && lastPushDate == today)
             {
                 _logger.LogInformation("📅 PushToken {TokenPrefix} already received daily push on {Date}, skipping duplicate", 
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
@@ -256,6 +263,11 @@ public class FirebaseService
             if (isTestPush)
             {
                 _logger.LogDebug("🧪 Test push detected, skipping daily date check for token {TokenPrefix}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
+            }
+            else if (isRetryPush)
+            {
+                _logger.LogDebug("🔄 Retry push detected, skipping daily date check for token {TokenPrefix}", 
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
             }
             else if (!isFirstContent)
@@ -314,19 +326,24 @@ public class FirebaseService
                 success = await SimulatePushAsync(pushToken, title, content);
             }
             
-            // ✅ Record successful daily push date to prevent same-day duplicates (only for first content of daily pushes)
+            // ✅ Record successful daily push date to prevent same-day duplicates (only for first content of regular daily pushes)
             if (success)
             {
-                if (!isTestPush && isFirstContent)
+                if (!isTestPush && !isRetryPush && isFirstContent)
                 {
                     _lastPushDates.AddOrUpdate(pushToken, today, (key, oldDate) => today);
                     _logger.LogDebug("📱 Daily push session started successfully for token {TokenPrefix} at {PushTime}, date recorded: {Date}", 
                         pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"), today.ToString("yyyy-MM-dd"));
                 }
-                else if (!isTestPush && !isFirstContent)
+                else if (!isTestPush && !isRetryPush && !isFirstContent)
                 {
                     _logger.LogDebug("📋 Daily push content #{ContentIndex} completed successfully for token {TokenPrefix} at {PushTime}, date already recorded", 
                         data?.TryGetValue("content_index", out var idx) == true ? idx : "?",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
+                }
+                else if (isRetryPush)
+                {
+                    _logger.LogDebug("🔄 Retry push completed successfully for token {TokenPrefix} at {PushTime}, date not recorded", 
                         pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
                 }
                 else
