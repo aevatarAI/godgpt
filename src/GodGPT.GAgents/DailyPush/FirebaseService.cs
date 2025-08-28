@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -7,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Security.Cryptography;
 using System.IdentityModel.Tokens.Jwt;
 using Microsoft.IdentityModel.Tokens;
@@ -28,6 +30,11 @@ public class FirebaseService
     private readonly string? _projectId;
     private string? _cachedAccessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
+    
+    // ✅ Global pushToken cooldown tracking to prevent cross-timezone duplicates
+    private static readonly ConcurrentDictionary<string, DateTime> _lastPushTimes = new();
+    private static readonly TimeSpan _pushCooldownPeriod = TimeSpan.FromHours(1); // 1 hour cooldown
+    private static int _cleanupCounter = 0;
     
     public FirebaseService(
         ILogger<FirebaseService> logger, 
@@ -213,20 +220,77 @@ public class FirebaseService
                 return false;
             }
             
-            // Use FCM API v1 if configured
-            if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
+            // ✅ Global cooldown check - prevent cross-timezone duplicate pushes
+            var now = DateTime.UtcNow;
+            
+            // Periodically cleanup old push time records (every 100 calls)
+            if (Interlocked.Increment(ref _cleanupCounter) % 100 == 0)
             {
-                return await SendPushNotificationV1Async(pushToken, title, content, data);
+                CleanupOldPushTimes();
             }
             
-            // No credentials configured - simulation mode
-            _logger.LogWarning("Firebase credentials not configured, using simulation mode");
-            return await SimulatePushAsync(pushToken, title, content);
+            if (_lastPushTimes.TryGetValue(pushToken, out var lastPushTime))
+            {
+                var timeSinceLastPush = now - lastPushTime;
+                if (timeSinceLastPush < _pushCooldownPeriod)
+                {
+                    var remainingCooldown = _pushCooldownPeriod - timeSinceLastPush;
+                    _logger.LogInformation("🕐 PushToken {TokenPrefix} in cooldown, skipping push. Last push: {TimeSince} ago, cooldown remaining: {Remaining}", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                        timeSinceLastPush.ToString(@"hh\:mm\:ss"), 
+                        remainingCooldown.ToString(@"hh\:mm\:ss"));
+                    return false;
+                }
+            }
+            
+            // Use FCM API v1 if configured
+            bool success;
+            if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
+            {
+                success = await SendPushNotificationV1Async(pushToken, title, content, data);
+            }
+            else
+            {
+                // No credentials configured - simulation mode
+                _logger.LogWarning("Firebase credentials not configured, using simulation mode");
+                success = await SimulatePushAsync(pushToken, title, content);
+            }
+            
+            // ✅ Record successful push time for global cooldown tracking
+            if (success)
+            {
+                _lastPushTimes.AddOrUpdate(pushToken, now, (key, oldValue) => now);
+                _logger.LogDebug("📱 Recorded push time for token {TokenPrefix} at {PushTime}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
+            }
+            
+            return success;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, $"Unexpected error sending push notification to {pushToken}");
             return false;
+        }
+    }
+    
+    /// <summary>
+    /// Clean up old push time records to prevent memory leaks
+    /// </summary>
+    private static void CleanupOldPushTimes()
+    {
+        var cutoffTime = DateTime.UtcNow.Subtract(_pushCooldownPeriod);
+        var keysToRemove = _lastPushTimes.Where(kvp => kvp.Value < cutoffTime).Select(kvp => kvp.Key).ToList();
+        
+        foreach (var key in keysToRemove)
+        {
+            _lastPushTimes.TryRemove(key, out _);
+        }
+        
+        // Log cleanup stats if any items were removed
+        if (keysToRemove.Count > 0)
+        {
+            // Note: Can't use _logger here as this is a static method
+            Console.WriteLine($"🧹 Cleaned up {keysToRemove.Count} old pushToken records from cooldown cache");
         }
     }
     
@@ -576,6 +640,24 @@ public class FirebaseService
             _logger.LogWarning("No messages provided for batch send");
             return results;
         }
+        
+        // ✅ Global pushToken deduplication - prevent cross-timezone duplicates
+        var originalCount = messages.Count;
+        var deduplicatedMessages = messages
+            .Where(m => !string.IsNullOrEmpty(m.Token))
+            .GroupBy(m => m.Token)
+            .Select(g => g.First()) // Keep first message for each pushToken
+            .ToList();
+            
+        var duplicateCount = originalCount - deduplicatedMessages.Count;
+        if (duplicateCount > 0)
+        {
+            _logger.LogInformation("🌍 Global pushToken deduplication: {OriginalCount} → {DeduplicatedCount} messages (removed {DuplicateCount} cross-timezone duplicates)", 
+                originalCount, deduplicatedMessages.Count, duplicateCount);
+        }
+        
+        // Use deduplicated messages for actual sending
+        messages = deduplicatedMessages;
         
         try
         {
