@@ -1342,7 +1342,9 @@ public async Task<InstantPushResult> SendInstantPushAsync()
             testContent = CreateFallbackTestContent();
         }
         
-        // Process each user
+        // ✅ Collect all devices from all users first for timezone-level pushToken deduplication
+        var allUserDevices = new List<(Guid UserId, UserDeviceInfo Device)>();
+        
         foreach (var userId in activeUsers)
         {
             try
@@ -1356,18 +1358,53 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                     continue;
                 }
                 
-                // Get user devices for counting
+                // Get user devices and add to collection
                 var userDevices = await chatManager.GetAllUserDevicesAsync();
                 var enabledDevicesInTimezone = userDevices.Where(d => d.PushEnabled && d.TimeZoneId == _timeZoneId).ToList();
-                totalDevices += enabledDevicesInTimezone.Count;
                 
-                // Send instant push to this user (two messages) - bypasses read status check
+                foreach (var device in enabledDevicesInTimezone)
+                {
+                    allUserDevices.Add((userId, device));
+                }
+                
+                totalDevices += enabledDevicesInTimezone.Count;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Failed to get devices for user {UserId}", userId);
+            }
+        }
+        
+        // ✅ Deduplicate by pushToken across all users in this timezone (keep device with latest LastTokenUpdate)
+        var deduplicatedDevices = allUserDevices
+            .GroupBy(ud => ud.Device.PushToken)
+            .Select(g => g.OrderByDescending(ud => ud.Device.LastTokenUpdate).First())
+            .ToList();
+            
+        var duplicateCount = allUserDevices.Count - deduplicatedDevices.Count;
+        if (duplicateCount > 0)
+        {
+            _logger.LogInformation("🔍 InstantPush timezone deduplication: Removed {DuplicateCount} duplicate pushTokens in timezone {TimeZone}", 
+                duplicateCount, _timeZoneId);
+        }
+        
+        _logger.LogInformation("🧪 InstantPush: Processing {DeviceCount} unique devices (deduplicated from {TotalDevices}) in timezone {TimeZone}", 
+            deduplicatedDevices.Count, totalDevices, _timeZoneId);
+        
+        // ✅ Process instant push for each unique device owner
+        foreach (var (userId, device) in deduplicatedDevices)
+        {
+            try
+            {
+                var chatManager = _grainFactory.GetGrain<IChatManagerGAgent>(userId);
+                
+                // Send instant push to this user - will be further deduplicated at user level
                 await chatManager.ProcessInstantPushAsync(testContent, _timeZoneId);
                 
-                // Count as success for each device (2 notifications per device)
-                successfulPushes += enabledDevicesInTimezone.Count * 2;
+                // Count as success for this device (2 notifications per device)
+                successfulPushes += 2;
                 
-                _logger.LogDebug("✅ Sent instant push to user {UserId} with {DeviceCount} devices", userId, enabledDevicesInTimezone.Count);
+                _logger.LogDebug("✅ Sent instant push to user {UserId} for device {DeviceId}", userId, device.DeviceId);
             }
             catch (Exception ex)
             {
