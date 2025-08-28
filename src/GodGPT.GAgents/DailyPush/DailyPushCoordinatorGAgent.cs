@@ -35,9 +35,9 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         public const string TEST_PUSH_REMINDER = "TEST_PUSH_REMINDER";
         public const string TEST_RETRY_REMINDER = "TEST_RETRY_REMINDER";
         
-        public static readonly TimeSpan PUSH_INTERVAL = TimeSpan.FromMinutes(10);    // 每10分钟推送
-        public static readonly TimeSpan RETRY_DELAY = TimeSpan.FromMinutes(5);       // 5分钟重试
-        public const int MAX_TEST_ROUNDS = 6;                                        // 最多6轮测试
+        public static readonly TimeSpan PUSH_INTERVAL = TimeSpan.FromMinutes(10);    // Push every 10 minutes
+        public static readonly TimeSpan RETRY_DELAY = TimeSpan.FromMinutes(5);       // 5 minutes retry delay
+        public const int MAX_TEST_ROUNDS = 6;                                        // Maximum 6 test rounds
     }
     
     // Tolerance window for time-based execution (±5 minutes)
@@ -1157,8 +1157,8 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                         {
                             notificationContent.LocalizedContents["zh-CN"] = new LocalizedContentData
                             {
-                                Title = csvContent.TitleZhSc ?? "📱 每日灵感",
-                                Content = csvContent.ContentZhSc ?? "祝你有美好的一天！"
+                                Title = csvContent.TitleZhSc ?? "📱 Daily Inspiration",
+                                Content = csvContent.ContentZhSc ?? "Have a wonderful day!"
                             };
                         }
                         
@@ -1214,7 +1214,7 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                 var enabledDevicesInTimezone = userDevices.Where(d => d.PushEnabled && d.TimeZoneId == _timeZoneId).ToList();
                 totalDevices += enabledDevicesInTimezone.Count;
                 
-                // Send instant push to this user (两条消息) - bypasses read status check
+                // Send instant push to this user (two messages) - bypasses read status check
                 await chatManager.ProcessInstantPushAsync(testContent, _timeZoneId);
                 
                 // Count as success for each device (2 notifications per device)
@@ -1238,7 +1238,7 @@ public async Task<InstantPushResult> SendInstantPushAsync()
             FailedPushes = failedPushes,
             NotificationsPerDevice = 2,
             Timestamp = DateTime.Now,
-            Message = $"即时推送完成: {successfulPushes}条成功, {failedPushes}条失败"
+            Message = $"Instant push completed: {successfulPushes} successful, {failedPushes} failed"
         };
         
         _logger.LogInformation("🎉 Instant push completed for timezone {TimeZone}: {TotalUsers} users, {TotalDevices} devices, {SuccessfulPushes} successful, {FailedPushes} failed", 
@@ -1272,8 +1272,8 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                 {
                     ["zh-CN"] = new LocalizedContentData
                     {
-                        Title = "🧪 即时推送测试 #1",
-                        Content = $"这是一条即时推送测试消息，发送时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                        Title = "🧪 Instant Push Test #1",
+                        Content = $"This is an instant push test message, sent at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
                     },
                     ["en"] = new LocalizedContentData
                     {
@@ -1290,8 +1290,8 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                 {
                     ["zh-CN"] = new LocalizedContentData
                     {
-                        Title = "🧪 即时推送测试 #2",
-                        Content = $"这是第二条相同的即时推送测试消息，发送时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                        Title = "🧪 Instant Push Test #2",
+                        Content = $"This is the second identical instant push test message, sent at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
                     },
                     ["en"] = new LocalizedContentData
                     {
