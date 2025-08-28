@@ -1142,12 +1142,12 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                             };
                         }
                         
-                        // Add Chinese content if available
+                        // Add Traditional Chinese content if available
                         if (!string.IsNullOrEmpty(csvContent.TitleZh) || !string.IsNullOrEmpty(csvContent.ContentZh))
                         {
-                            notificationContent.LocalizedContents["zh"] = new LocalizedContentData
+                            notificationContent.LocalizedContents["zh-tw"] = new LocalizedContentData
                             {
-                                Title = csvContent.TitleZh ?? "📱 每日灵感",
+                                Title = csvContent.TitleZh ?? "📱 每日靈感",
                                 Content = csvContent.ContentZh ?? "祝你有美好的一天！"
                             };
                         }
@@ -1155,10 +1155,10 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                         // Add Simplified Chinese content if available
                         if (!string.IsNullOrEmpty(csvContent.TitleZhSc) || !string.IsNullOrEmpty(csvContent.ContentZhSc))
                         {
-                            notificationContent.LocalizedContents["zh-CN"] = new LocalizedContentData
+                            notificationContent.LocalizedContents["zh-cn"] = new LocalizedContentData
                             {
-                                Title = csvContent.TitleZhSc ?? "📱 Daily Inspiration",
-                                Content = csvContent.ContentZhSc ?? "Have a wonderful day!"
+                                Title = csvContent.TitleZhSc ?? "📱 每日灵感",
+                                Content = csvContent.ContentZhSc ?? "祝你有美好的一天！"
                             };
                         }
                         
@@ -1270,10 +1270,20 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                 Id = "instant_test_1",
                 LocalizedContents = new Dictionary<string, LocalizedContentData>
                 {
-                    ["zh-CN"] = new LocalizedContentData
+                    ["zh-cn"] = new LocalizedContentData
                     {
-                        Title = "🧪 Instant Push Test #1",
-                        Content = $"This is an instant push test message, sent at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                        Title = "🧪 即时推送测试 #1",
+                        Content = $"这是即时推送测试消息，发送时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                    },
+                    ["zh-tw"] = new LocalizedContentData
+                    {
+                        Title = "🧪 即時推送測試 #1",
+                        Content = $"這是即時推送測試消息，發送時間：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                    },
+                    ["es"] = new LocalizedContentData
+                    {
+                        Title = "🧪 Prueba de Push Instantáneo #1",
+                        Content = $"Este es un mensaje de prueba de push instantáneo, enviado en: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
                     },
                     ["en"] = new LocalizedContentData
                     {
@@ -1288,15 +1298,25 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                 Id = "instant_test_2",
                 LocalizedContents = new Dictionary<string, LocalizedContentData>
                 {
-                    ["zh-CN"] = new LocalizedContentData
+                    ["zh-cn"] = new LocalizedContentData
                     {
-                        Title = "🧪 Instant Push Test #2",
-                        Content = $"This is the second identical instant push test message, sent at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                        Title = "🧪 即时推送测试 #2",
+                        Content = $"这是第二条即时推送测试消息，发送时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                    },
+                    ["zh-tw"] = new LocalizedContentData
+                    {
+                        Title = "🧪 即時推送測試 #2", 
+                        Content = $"這是第二條即時推送測試消息，發送時間：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                    },
+                    ["es"] = new LocalizedContentData
+                    {
+                        Title = "🧪 Prueba de Push Instantáneo #2",
+                        Content = $"Este es el segundo mensaje de prueba de push instantáneo, enviado en: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
                     },
                     ["en"] = new LocalizedContentData
                     {
                         Title = "🧪 Instant Push Test #2",
-                        Content = $"This is the second identical instant push test message, sent at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                        Content = $"This is the second instant push test message, sent at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
                     }
                 },
                 IsActive = true
