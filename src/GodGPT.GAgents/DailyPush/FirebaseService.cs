@@ -236,34 +236,15 @@ public class FirebaseService
             
             // Check if this is the first content in a multi-content push session
             bool isFirstContent = true;
-            string debugInfo = "no data";
-            
-            if (data != null)
+            if (data != null && data.TryGetValue("content_index", out var contentIndexObj))
             {
-                debugInfo = $"data keys: [{string.Join(", ", data.Keys)}]";
-                if (data.TryGetValue("content_index", out var contentIndexObj))
+                if (int.TryParse(contentIndexObj?.ToString(), out var contentIndex))
                 {
-                    debugInfo += $", content_index: {contentIndexObj}";
-                    if (int.TryParse(contentIndexObj?.ToString(), out var contentIndex))
-                    {
-                        isFirstContent = contentIndex == 1;
-                        debugInfo += $", parsed: {contentIndex}, isFirst: {isFirstContent}";
-                    }
-                    else
-                    {
-                        debugInfo += ", parse failed";
-                    }
-                }
-                else
-                {
-                    debugInfo += ", content_index key not found";
+                    isFirstContent = contentIndex == 1;
                 }
             }
             
-            _logger.LogDebug("🔍 Content index analysis for {TokenPrefix}: {DebugInfo}", 
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", debugInfo);
-            
-            // Only check date deduplication for test pushes and first content of daily pushes
+            // Only check date deduplication for first content of daily pushes (skip test pushes and subsequent contents)
             if (!isTestPush && isFirstContent && _lastPushDates.TryGetValue(pushToken, out var lastPushDate) && lastPushDate == today)
             {
                 _logger.LogInformation("📅 PushToken {TokenPrefix} already received daily push on {Date}, skipping duplicate", 

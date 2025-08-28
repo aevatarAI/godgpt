@@ -1768,8 +1768,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var pushMessages = new List<GodGPT.GAgents.DailyPush.PushMessage>();
         
         // Each content item should be sent to each device (so 2 contents = 2 messages per device)
-        foreach (var content in contents)
+        for (int contentIndex = 0; contentIndex < contents.Count; contentIndex++)
         {
+            var content = contents[contentIndex];
+            
             foreach (var device in enabledDevices)
             {
                 // Get localized content
@@ -1798,6 +1800,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     {
                         { "type", (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush }, // Use enum value 1
                         { "contentId", content.Id },
+                        { "content_index", contentIndex + 1 }, // ✅ Add content index for multi-content deduplication
+                        { "total_contents", contents.Count }, // ✅ Add total contents count
                         { "userId", State.UserId.ToString() },
                         { "deviceId", device.DeviceId },
                         { "timezone", timeZoneId }
