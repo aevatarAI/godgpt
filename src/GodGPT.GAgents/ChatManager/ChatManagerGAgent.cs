@@ -1664,7 +1664,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     var pushData = new Dictionary<string, object>
                     {
                         ["message_id"] = messageId.ToString(),
-                        ["type"] = (int)GodGPT.GAgents.DailyPush.PushType.DailyPush, // Use enum value 1
+                        ["type"] = (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush, // Use enum value 1
                         ["date"] = dateKey,
                         ["content_id"] = content.Id, // Single content ID for this push
                         ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
@@ -1759,7 +1759,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     Content = localizedContent.Content,
                     Data = new Dictionary<string, object>
                     {
-                        { "type", "instant_push" },
+                        { "type", (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush }, // Use enum value 1
                         { "contentId", content.Id },
                         { "userId", State.UserId.ToString() },
                         { "deviceId", device.DeviceId },

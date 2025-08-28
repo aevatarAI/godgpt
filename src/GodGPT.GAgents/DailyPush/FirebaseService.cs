@@ -849,7 +849,7 @@ public static class FirebaseServiceExtensions
         // Ensure type is set for daily push if not specified
         if (!result.ContainsKey("type"))
         {
-            result["type"] = ((int)PushType.DailyPush).ToString(); // Default to enum value 1
+            result["type"] = ((int)DailyPushConstants.PushType.DailyPush).ToString(); // Default to enum value 1
         }
         
         return result;
