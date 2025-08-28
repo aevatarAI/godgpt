@@ -62,7 +62,7 @@ public static class DailyNotificationContentExtensions
         {
             // Log successful language match with title preview
             var titlePreview = localized.Title.Length > 20 ? localized.Title.Substring(0, 20) + "..." : localized.Title;
-            System.Diagnostics.Debug.WriteLine($"🎯 Language MATCH: requested='{languageCode}', found, title='{titlePreview}', available=[{availableLanguages}]");
+            // Note: Can't use ILogger here as this is extension method - will be logged from calling context
             return localized;
         }
         
@@ -70,7 +70,7 @@ public static class DailyNotificationContentExtensions
         if (content.LocalizedContents.TryGetValue("en", out var englishContent))
         {
             var titlePreview = englishContent.Title.Length > 20 ? englishContent.Title.Substring(0, 20) + "..." : englishContent.Title;
-            System.Diagnostics.Debug.WriteLine($"⚠️ Language FALLBACK to EN: requested='{languageCode}', using EN, title='{titlePreview}', available=[{availableLanguages}]");
+            // Note: Can't use ILogger here as this is extension method - will be logged from calling context
             return englishContent;
         }
         
@@ -80,7 +80,7 @@ public static class DailyNotificationContentExtensions
             var firstContent = content.LocalizedContents.Values.First();
             var firstLanguage = content.LocalizedContents.Keys.First();
             var titlePreview = firstContent.Title.Length > 20 ? firstContent.Title.Substring(0, 20) + "..." : firstContent.Title;
-            System.Diagnostics.Debug.WriteLine($"🚨 Language FALLBACK to FIRST: requested='{languageCode}', using '{firstLanguage}', title='{titlePreview}', available=[{availableLanguages}]");
+            // Note: Can't use ILogger here as this is extension method - will be logged from calling context
             return firstContent;
         }
         
