@@ -36,6 +36,7 @@ public class DailyPushContentService
     private readonly List<DailyPushContent> _contents = new();
     private DateTime _lastLoadTime = DateTime.MinValue;
     private readonly TimeSpan _cacheExpiry = TimeSpan.FromHours(1); // Cache for 1 hour
+    private readonly SemaphoreSlim _loadSemaphore = new SemaphoreSlim(1, 1); // Prevent concurrent loading
     
     public DailyPushContentService(
         ILogger<DailyPushContentService> logger,
@@ -142,17 +143,38 @@ public class DailyPushContentService
         
         if (needsReload)
         {
-            if (_contents.Count == 0)
+            // Use semaphore to prevent concurrent loading
+            await _loadSemaphore.WaitAsync();
+            try
             {
-                _logger.LogDebug("📋 Content cache is empty, loading CSV for first time");
+                // Double-check pattern: another thread might have loaded while we were waiting
+                now = DateTime.UtcNow;
+                cacheAge = now - _lastLoadTime;
+                var stillNeedsReload = _contents.Count == 0 || cacheAge > _cacheExpiry;
+                
+                if (stillNeedsReload)
+                {
+                    if (_contents.Count == 0)
+                    {
+                        _logger.LogDebug("📋 Content cache is empty, loading CSV for first time");
+                    }
+                    else
+                    {
+                        _logger.LogDebug("🕐 Content cache expired (Age: {CacheAge}, Expiry: {CacheExpiry}), reloading CSV", 
+                            cacheAge, _cacheExpiry);
+                    }
+                    
+                    await LoadContentFromCsvAsync();
+                }
+                else
+                {
+                    _logger.LogDebug("✅ Content was loaded by another thread while waiting");
+                }
             }
-            else
+            finally
             {
-                _logger.LogDebug("🕐 Content cache expired (Age: {CacheAge}, Expiry: {CacheExpiry}), reloading CSV", 
-                    cacheAge, _cacheExpiry);
+                _loadSemaphore.Release();
             }
-            
-            await LoadContentFromCsvAsync();
         }
         else
         {
@@ -210,18 +232,8 @@ public class DailyPushContentService
                 _logger.LogDebug("📋 CSV header: {Header}", lines[0]);
             }
             
-            // Clear existing content if force reload or first load
-            if (forceReload || _contents.Count == 0)
-            {
-                var previousCount = _contents.Count;
-                _contents.Clear();
-                if (previousCount > 0)
-                {
-                    _logger.LogInformation("🔄 Cleared {PreviousCount} existing content entries for reload", previousCount);
-                }
-            }
-            
-            // Skip header row and process data
+            // Load content into temporary list to avoid intermediate empty state
+            var newContents = new List<DailyPushContent>();
             var loadedCount = 0;
             var failedCount = 0;
             var dataRowCount = lines.Length - 1; // Exclude header
@@ -233,7 +245,7 @@ public class DailyPushContentService
                     var content = ParseCsvLine(lines[i]);
                     if (content != null && !string.IsNullOrEmpty(content.ContentKey))
                     {
-                        _contents.Add(content);
+                        newContents.Add(content);
                         loadedCount++;
                         
                         // Log first few entries for debugging
@@ -254,6 +266,17 @@ public class DailyPushContentService
                     _logger.LogWarning(ex, "❌ Failed to parse CSV line {LineNumber}: {Line}", i + 1, lines[i]);
                     failedCount++;
                 }
+            }
+            
+            // Atomically replace content to avoid race conditions
+            var previousCount = _contents.Count;
+            _contents.Clear();
+            _contents.AddRange(newContents);
+            
+            if (previousCount > 0 && previousCount != loadedCount)
+            {
+                _logger.LogInformation("🔄 Replaced {PreviousCount} existing content entries with {NewCount} entries", 
+                    previousCount, loadedCount);
             }
             
             _lastLoadTime = DateTime.UtcNow;
