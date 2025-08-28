@@ -231,13 +231,21 @@ public class FirebaseService
                 CleanupOldRecords();
             }
             
-            // ✅ Layer 1: Check if already pushed today (UTC date)
-            if (_lastPushDates.TryGetValue(pushToken, out var lastPushDate) && lastPushDate == today)
+            // ✅ Layer 1: Check if already pushed today (UTC date) - Skip for test pushes
+            bool isTestPush = title.Contains("🧪") || title.Contains("test") || title.Contains("Test") || title.Contains("TEST");
+            
+            if (!isTestPush && _lastPushDates.TryGetValue(pushToken, out var lastPushDate) && lastPushDate == today)
             {
                 _logger.LogInformation("📅 PushToken {TokenPrefix} already received daily push on {Date}, skipping duplicate", 
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
                     today.ToString("yyyy-MM-dd"));
                 return false;
+            }
+            
+            if (isTestPush)
+            {
+                _logger.LogDebug("🧪 Test push detected, skipping daily date check for token {TokenPrefix}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
             }
             
             // ✅ Layer 2: Short-term cooldown check (prevent rapid fire)
@@ -281,12 +289,20 @@ public class FirebaseService
                 success = await SimulatePushAsync(pushToken, title, content);
             }
             
-            // ✅ Record successful daily push date to prevent same-day duplicates
+            // ✅ Record successful daily push date to prevent same-day duplicates (skip for test pushes)
             if (success)
             {
-                _lastPushDates.AddOrUpdate(pushToken, today, (key, oldDate) => today);
-                _logger.LogDebug("📱 Push completed successfully for token {TokenPrefix} at {PushTime}, date recorded: {Date}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"), today.ToString("yyyy-MM-dd"));
+                if (!isTestPush)
+                {
+                    _lastPushDates.AddOrUpdate(pushToken, today, (key, oldDate) => today);
+                    _logger.LogDebug("📱 Daily push completed successfully for token {TokenPrefix} at {PushTime}, date recorded: {Date}", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"), today.ToString("yyyy-MM-dd"));
+                }
+                else
+                {
+                    _logger.LogDebug("🧪 Test push completed successfully for token {TokenPrefix} at {PushTime}, date not recorded", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
+                }
             }
             else
             {
@@ -778,7 +794,8 @@ public class FirebaseService
                     _logger.LogDebug("📱 Processing token {TokenIndex}/{BatchSize}: {TokenPrefix} - Title: '{Title}'", 
                         index + 1, batch.Count, tokenPrefix, message.Title);
                     
-                    var success = await SendPushNotificationV1Async(
+                    // ✅ Use SendPushNotificationAsync to apply global date-based deduplication
+                    var success = await SendPushNotificationAsync(
                         message.Token, 
                         message.Title, 
                         message.Content, 
