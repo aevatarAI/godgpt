@@ -31,9 +31,10 @@ public class FirebaseService
     private string? _cachedAccessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
     
-    // ✅ Global pushToken cooldown tracking to prevent cross-timezone duplicates
+    // ✅ Global pushToken daily push tracking to prevent same-day duplicates across timezones
+    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
+    private static readonly TimeSpan _shortTermCooldown = TimeSpan.FromMinutes(10); // Prevent rapid duplicates
     private static readonly ConcurrentDictionary<string, DateTime> _lastPushTimes = new();
-    private static readonly TimeSpan _pushCooldownPeriod = TimeSpan.FromHours(1); // 1 hour cooldown
     private static int _cleanupCounter = 0;
     
     public FirebaseService(
@@ -220,40 +221,50 @@ public class FirebaseService
                 return false;
             }
             
-            // ✅ Global cooldown check - prevent cross-timezone duplicate pushes
+            // ✅ Dual-layer deduplication: short-term + same-day prevention
             var now = DateTime.UtcNow;
+            var today = DateOnly.FromDateTime(now);
             
-            // Periodically cleanup old push time records (every 100 calls)
+            // Periodically cleanup old records (every 100 calls)
             if (Interlocked.Increment(ref _cleanupCounter) % 100 == 0)
             {
-                CleanupOldPushTimes();
+                CleanupOldRecords();
             }
             
-            // ✅ Atomic cooldown check and reservation to prevent race conditions
-            var canSend = _lastPushTimes.AddOrUpdate(
+            // ✅ Layer 1: Check if already pushed today (UTC date)
+            if (_lastPushDates.TryGetValue(pushToken, out var lastPushDate) && lastPushDate == today)
+            {
+                _logger.LogInformation("📅 PushToken {TokenPrefix} already received daily push on {Date}, skipping duplicate", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                    today.ToString("yyyy-MM-dd"));
+                return false;
+            }
+            
+            // ✅ Layer 2: Short-term cooldown check (prevent rapid fire)
+            var canSendTime = _lastPushTimes.AddOrUpdate(
                 pushToken,
                 now, // If key doesn't exist, add with current time
                 (key, existingTime) =>
                 {
                     var timeSinceLastPush = now - existingTime;
-                    if (timeSinceLastPush < _pushCooldownPeriod)
+                    if (timeSinceLastPush < _shortTermCooldown)
                     {
-                        // Still in cooldown - return existing time (no update)
+                        // Still in short-term cooldown - return existing time (no update)
                         return existingTime;
                     }
-                    // Cooldown expired - update to current time
+                    // Short-term cooldown expired - update to current time
                     return now;
                 });
             
-            // Check if we actually got permission to send (time was updated to now)
-            if (canSend != now)
+            // Check short-term cooldown
+            if (canSendTime != now)
             {
-                var timeSinceLastPush = now - canSend;
-                var remainingCooldown = _pushCooldownPeriod - timeSinceLastPush;
-                _logger.LogInformation("🕐 PushToken {TokenPrefix} in cooldown, skipping push. Last push: {TimeSince} ago, cooldown remaining: {Remaining}", 
+                var timeSinceLastPush = now - canSendTime;
+                var remainingCooldown = _shortTermCooldown - timeSinceLastPush;
+                _logger.LogInformation("⏱️ PushToken {TokenPrefix} in short-term cooldown, skipping push. Last push: {TimeSince} ago, cooldown remaining: {Remaining}", 
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
-                    timeSinceLastPush.ToString(@"hh\:mm\:ss"), 
-                    remainingCooldown.ToString(@"hh\:mm\:ss"));
+                    timeSinceLastPush.ToString(@"mm\:ss"), 
+                    remainingCooldown.ToString(@"mm\:ss"));
                 return false;
             }
             
@@ -270,9 +281,18 @@ public class FirebaseService
                 success = await SimulatePushAsync(pushToken, title, content);
             }
             
-            // ✅ Push time already recorded atomically above for cooldown tracking
-            _logger.LogDebug("📱 Push completed for token {TokenPrefix} at {PushTime}, success: {Success}", 
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"), success);
+            // ✅ Record successful daily push date to prevent same-day duplicates
+            if (success)
+            {
+                _lastPushDates.AddOrUpdate(pushToken, today, (key, oldDate) => today);
+                _logger.LogDebug("📱 Push completed successfully for token {TokenPrefix} at {PushTime}, date recorded: {Date}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"), today.ToString("yyyy-MM-dd"));
+            }
+            else
+            {
+                _logger.LogDebug("❌ Push failed for token {TokenPrefix} at {PushTime}, date not recorded", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
+            }
             
             return success;
         }
@@ -284,23 +304,43 @@ public class FirebaseService
     }
     
     /// <summary>
-    /// Clean up old push time records to prevent memory leaks
+    /// Clean up old push records to prevent memory leaks
+    /// Called periodically (every 100 requests)
     /// </summary>
-    private static void CleanupOldPushTimes()
+    private static void CleanupOldRecords()
     {
-        var cutoffTime = DateTime.UtcNow.Subtract(_pushCooldownPeriod);
-        var keysToRemove = _lastPushTimes.Where(kvp => kvp.Value < cutoffTime).Select(kvp => kvp.Key).ToList();
+        var now = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(now);
         
-        foreach (var key in keysToRemove)
+        // Clean up old date records (older than 3 days)
+        var dateCutoff = today.AddDays(-3);
+        var dateKeysToRemove = _lastPushDates
+            .Where(kvp => kvp.Value < dateCutoff)
+            .Select(kvp => kvp.Key)
+            .ToList();
+        
+        foreach (var key in dateKeysToRemove)
+        {
+            _lastPushDates.TryRemove(key, out _);
+        }
+        
+        // Clean up old time records (older than short-term cooldown)
+        var timeCutoff = now.Subtract(_shortTermCooldown);
+        var timeKeysToRemove = _lastPushTimes
+            .Where(kvp => kvp.Value < timeCutoff)
+            .Select(kvp => kvp.Key)
+            .ToList();
+        
+        foreach (var key in timeKeysToRemove)
         {
             _lastPushTimes.TryRemove(key, out _);
         }
         
-        // Log cleanup stats if any items were removed
-        if (keysToRemove.Count > 0)
+        var totalCleaned = dateKeysToRemove.Count + timeKeysToRemove.Count;
+        if (totalCleaned > 0)
         {
             // Note: Can't use _logger here as this is a static method
-            Console.WriteLine($"🧹 Cleaned up {keysToRemove.Count} old pushToken records from cooldown cache");
+            Console.WriteLine($"🧹 Cleaned up {dateKeysToRemove.Count} old date records and {timeKeysToRemove.Count} old time records from push tracking cache");
         }
     }
     
