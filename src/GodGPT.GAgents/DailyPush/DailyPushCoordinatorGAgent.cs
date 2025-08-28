@@ -1076,7 +1076,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     }
 }
 
-public async Task<object> SendInstantPushAsync()
+public async Task<InstantPushResult> SendInstantPushAsync()
 {
     try
     {
@@ -1085,10 +1085,11 @@ public async Task<object> SendInstantPushAsync()
         if (string.IsNullOrEmpty(_timeZoneId))
         {
             _logger.LogWarning("Timezone not initialized for instant push");
-            return new { 
-                error = "Timezone not initialized", 
-                timezone = _timeZoneId,
-                timestamp = DateTime.Now 
+            return new InstantPushResult
+            { 
+                Error = "Timezone not initialized", 
+                Timezone = _timeZoneId,
+                Timestamp = DateTime.Now 
             };
         }
 
@@ -1228,16 +1229,16 @@ public async Task<object> SendInstantPushAsync()
             }
         }
         
-        var result = new
+        var result = new InstantPushResult
         {
-            timezone = _timeZoneId,
-            totalUsers = activeUsers.Count,
-            totalDevices = totalDevices,
-            successfulPushes = successfulPushes,
-            failedPushes = failedPushes,
-            notificationsPerDevice = 2,
-            timestamp = DateTime.Now,
-            message = $"即时推送完成: {successfulPushes}条成功, {failedPushes}条失败"
+            Timezone = _timeZoneId,
+            TotalUsers = activeUsers.Count,
+            TotalDevices = totalDevices,
+            SuccessfulPushes = successfulPushes,
+            FailedPushes = failedPushes,
+            NotificationsPerDevice = 2,
+            Timestamp = DateTime.Now,
+            Message = $"即时推送完成: {successfulPushes}条成功, {failedPushes}条失败"
         };
         
         _logger.LogInformation("🎉 Instant push completed for timezone {TimeZone}: {TotalUsers} users, {TotalDevices} devices, {SuccessfulPushes} successful, {FailedPushes} failed", 
@@ -1248,10 +1249,11 @@ public async Task<object> SendInstantPushAsync()
     catch (Exception ex)
     {
         _logger.LogError(ex, "💥 Error during instant push for timezone {TimeZone}", _timeZoneId);
-        return new { 
-            timezone = _timeZoneId, 
-            error = ex.Message, 
-            timestamp = DateTime.Now 
+        return new InstantPushResult
+        { 
+            Timezone = _timeZoneId, 
+            Error = ex.Message, 
+            Timestamp = DateTime.Now 
         };
     }
 }
