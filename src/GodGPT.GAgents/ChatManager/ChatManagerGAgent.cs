@@ -1735,60 +1735,89 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             return;
         }
         
-        // Create tasks for concurrent push sending
-        var pushTasks = new List<Task<bool>>();
+        // Create push items with rate limiting to avoid Firebase throttling
+        var pushItems = new List<(string deviceId, string title, string content, Dictionary<string, object> data)>();
         
         // Each content item should be sent to each device (so 2 contents = 2 messages per device)
-        contents.ForEach(content =>
+        foreach (var content in contents)
         {
-            enabledDevices.ForEach(device =>
+            foreach (var device in enabledDevices)
             {
-                pushTasks.Add(Task.Run(async () =>
+                // Get localized content
+                var localizedContent = content.GetLocalizedContent(device.PushLanguage ?? "en");
+                if (localizedContent == null)
                 {
-                    try
+                    Logger.LogWarning("No localized content found for language {Language}, content {ContentId}, device {DeviceId}", 
+                        device.PushLanguage, content.Id, device.DeviceId);
+                    continue;
+                }
+                
+                pushItems.Add((
+                    device.DeviceId,
+                    localizedContent.Title,
+                    localizedContent.Content,
+                    new Dictionary<string, object>
                     {
-                        // Get localized content
-                        var localizedContent = content.GetLocalizedContent(device.PushLanguage ?? "en");
-                        if (localizedContent == null)
-                        {
-                            Logger.LogWarning("No localized content found for language {Language}, content {ContentId}, device {DeviceId}", 
-                                device.PushLanguage, content.Id, device.DeviceId);
-                            return false;
-                        }
-                        
-                        Logger.LogDebug("🧪 Sending instant push: {Title} to device {DeviceId} (language: {Language})", 
-                            localizedContent.Title, device.DeviceId, device.PushLanguage);
-                        
-                        return await firebaseService.SendPushNotificationAsync(
-                            device.PushToken,
-                            localizedContent.Title,
-                            localizedContent.Content,
-                            new Dictionary<string, object>
-                            {
-                                { "type", "instant_push" },
-                                { "contentId", content.Id },
-                                { "userId", State.UserId.ToString() },
-                                { "deviceId", device.DeviceId },
-                                { "timezone", timeZoneId }
-                            }
-                        );
+                        { "type", "instant_push" },
+                        { "contentId", content.Id },
+                        { "userId", State.UserId.ToString() },
+                        { "deviceId", device.DeviceId },
+                        { "timezone", timeZoneId }
                     }
-                    catch (Exception ex)
-                    {
-                        Logger.LogError(ex, "Error sending instant push to device {DeviceId}", device.DeviceId);
-                        return false;
-                    }
-                }));
-            });
-        });
+                ));
+            }
+        }
         
-        // Execute all push tasks concurrently
-        var results = await Task.WhenAll(pushTasks);
+        Logger.LogInformation("🧪 Prepared {Count} push notifications for instant send", pushItems.Count);
+        
+        // Send notifications with rate limiting (2 concurrent max, 500ms delay between batches)
+        var results = new List<bool>();
+        const int batchSize = 2;
+        const int delayMs = 500;
+        
+        for (int i = 0; i < pushItems.Count; i += batchSize)
+        {
+            var batch = pushItems.Skip(i).Take(batchSize).ToList();
+            Logger.LogDebug("🚀 Sending batch {BatchNumber}/{TotalBatches} with {BatchSize} notifications", 
+                (i / batchSize) + 1, (pushItems.Count + batchSize - 1) / batchSize, batch.Count);
+            
+            var batchTasks = batch.Select(async item =>
+            {
+                try
+                {
+                    var device = enabledDevices.First(d => d.DeviceId == item.deviceId);
+                    Logger.LogDebug("🧪 Sending instant push: {Title} to device {DeviceId} (token: {TokenPrefix}...)", 
+                        item.title, item.deviceId, device.PushToken.Length > 10 ? device.PushToken.Substring(0, 10) : device.PushToken);
+                    
+                    return await firebaseService.SendPushNotificationAsync(
+                        device.PushToken,
+                        item.title,
+                        item.content,
+                        item.data
+                    );
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error sending instant push to device {DeviceId}", item.deviceId);
+                    return false;
+                }
+            }).ToArray();
+            
+            var batchResults = await Task.WhenAll(batchTasks);
+            results.AddRange(batchResults);
+            
+            // Add delay between batches to respect Firebase rate limits
+            if (i + batchSize < pushItems.Count)
+            {
+                Logger.LogDebug("⏳ Waiting {DelayMs}ms before next batch to respect Firebase rate limits", delayMs);
+                await Task.Delay(delayMs);
+            }
+        }
         var successCount = results.Count(r => r);
         var failureCount = results.Count(r => !r);
         
         Logger.LogInformation("🧪 ProcessInstantPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
-            State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
+            State.UserId, successCount, failureCount, enabledDevices.Count, results.Count);
     }
 
     public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
