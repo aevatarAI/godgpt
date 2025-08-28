@@ -81,7 +81,7 @@ public interface IChatManagerGAgent : IGAgent
     /// <summary>
     /// Process daily push for this user (called by timezone scheduler)
     /// </summary>
-    Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool isTestMode = false);
+    Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false);
     
     /// <summary>
     /// Check if user should receive afternoon retry push

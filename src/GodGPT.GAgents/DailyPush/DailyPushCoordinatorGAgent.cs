@@ -780,6 +780,123 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         return (processedCount, failureCount);
     }
 
+    /// <summary>
+    /// Process morning push for test mode (bypasses read status check)
+    /// </summary>
+    private async Task ProcessTestMorningPushAsync(DateTime targetDate)
+    {
+        // Safety check: ensure timezone is initialized
+        if (string.IsNullOrEmpty(_timeZoneId))
+        {
+            _logger.LogError("Cannot process test morning push: timezone ID is not set. Grain needs to be initialized first.");
+            return;
+        }
+        
+        if (State.Status != SchedulerStatus.Active)
+        {
+            _logger.LogWarning("Skipping test morning push for {TimeZone} - scheduler status: {Status}", 
+                _timeZoneId, State.Status);
+            return;
+        }
+
+        _logger.LogInformation("🧪 Processing test morning push for timezone {TimeZone} on {Date}", 
+            _timeZoneId, targetDate);
+
+        try
+        {
+            // Get daily content selection
+            var contentGAgent = _grainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
+            var dailyContents = await contentGAgent.GetSmartSelectedContentsAsync(
+                DailyPushConstants.DAILY_CONTENT_COUNT, targetDate);
+
+            if (!dailyContents.Any())
+            {
+                _logger.LogWarning("No daily content available for test push on {Date}", targetDate);
+                return;
+            }
+
+            // Get users in this timezone
+            var timezoneIndexGAgent = _grainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
+            
+            // Process users in batches (test mode bypasses read status check)
+            const int batchSize = 1000;
+            int skip = 0;
+            int processedUsers = 0;
+            int failureCount = 0;
+            List<Guid> userBatch;
+
+            do
+            {
+                userBatch = await timezoneIndexGAgent.GetActiveUsersInTimezoneAsync(skip, batchSize);
+                
+                if (userBatch.Any())
+                {
+                    var batchResult = await ProcessTestUserBatchAsync(userBatch, dailyContents, targetDate);
+                    processedUsers += batchResult.processedCount;
+                    failureCount += batchResult.failureCount;
+                    skip += batchSize;
+                }
+                
+            } while (userBatch.Count == batchSize);
+
+            // Update state
+            State.LastMorningPush = targetDate;
+            State.LastMorningUserCount = processedUsers;
+            State.LastExecutionFailures = failureCount;
+            State.LastUpdated = DateTime.UtcNow;
+
+            _logger.LogInformation("🧪 Completed test morning push for {TimeZone}: {Users} users, {Failures} failures", 
+                _timeZoneId, processedUsers, failureCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process test morning push for {TimeZone}", _timeZoneId);
+            State.Status = SchedulerStatus.Error;
+            State.LastUpdated = DateTime.UtcNow;
+        }
+    }
+
+    /// <summary>
+    /// Process test user batch with bypass read status check
+    /// </summary>
+    private async Task<(int processedCount, int failureCount)> ProcessTestUserBatchAsync(
+        List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate)
+    {
+        var processedCount = 0;
+        var failureCount = 0;
+        
+        // Process with limited concurrency to avoid overloading
+        var semaphore = new SemaphoreSlim(50);
+        var tasks = userIds.Select(async userId =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                var chatManagerGAgent = _grainFactory.GetGrain<IChatManagerGAgent>(userId);
+                
+                // Check if user has enabled devices in this timezone
+                if (await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId))
+                {
+                    // For test mode main push, bypass read status check
+                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId, bypassReadStatusCheck: true);
+                    Interlocked.Increment(ref processedCount);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to process test daily push for user {UserId}", userId);
+                Interlocked.Increment(ref failureCount);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+        
+        await Task.WhenAll(tasks);
+        return (processedCount, failureCount);
+    }
+
     private async Task<(int retryCount, int failureCount)> ProcessAfternoonRetryBatchAsync(
         List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate)
     {
@@ -845,9 +962,9 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             _logger.LogInformation("Executing test push round {Round}/{MaxRounds} for {TimeZone}", 
                 State.TestRoundsCompleted + 1, TestModeConstants.MAX_TEST_ROUNDS, _timeZoneId);
             
-            // Execute test push (use current date) - use instant push logic to bypass read status check
+            // Execute test push (use current date) - main push should bypass read status check
             var targetDate = now.Date;
-            await SendInstantPushAsync();
+            await ProcessTestMorningPushAsync(targetDate);
             
             // Increment round counter using proper event-driven approach
             RaiseEvent(new TestRoundCompletedEventLog
