@@ -64,4 +64,9 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     /// Each device will receive two identical notifications
     /// </summary>
     Task<InstantPushResult> SendInstantPushAsync();
+    
+    /// <summary>
+    /// Clear read status for all users in this timezone - TODO: Remove before production
+    /// </summary>
+    Task<ClearReadStatusResult> ClearReadStatusForTimezoneAsync();
 }

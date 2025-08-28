@@ -1803,6 +1803,27 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return State.UserDevices.Values.ToList();
     }
 
+    /// <summary>
+    /// Clear all read status for this user - TODO: Remove before production
+    /// </summary>
+    public async Task ClearReadStatusAsync()
+    {
+        var clearedCount = State.DailyPushReadStatus.Count;
+        State.DailyPushReadStatus.Clear();
+        
+        // Use event-driven state update for consistency
+        RaiseEvent(new MarkDailyPushReadEventLog
+        {
+            DateKey = $"CLEARED_{DateTime.UtcNow:yyyy-MM-dd_HH-mm-ss}",
+            ReadTime = DateTime.UtcNow
+        });
+        
+        await ConfirmEvents();
+        
+        Logger.LogInformation("🧪 Cleared all read status for user {UserId}: {ClearedCount} entries removed", 
+            State.UserId, clearedCount);
+    }
+
     public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
     {
         try

@@ -112,4 +112,9 @@ public interface IChatManagerGAgent : IGAgent
     /// Update user timezone index when device timezone changes
     /// </summary>
     Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone);
+    
+    /// <summary>
+    /// Clear all read status for this user - TODO: Remove before production
+    /// </summary>
+    Task ClearReadStatusAsync();
 }
