@@ -229,18 +229,32 @@ public class FirebaseService
                 CleanupOldPushTimes();
             }
             
-            if (_lastPushTimes.TryGetValue(pushToken, out var lastPushTime))
-            {
-                var timeSinceLastPush = now - lastPushTime;
-                if (timeSinceLastPush < _pushCooldownPeriod)
+            // ✅ Atomic cooldown check and reservation to prevent race conditions
+            var canSend = _lastPushTimes.AddOrUpdate(
+                pushToken,
+                now, // If key doesn't exist, add with current time
+                (key, existingTime) =>
                 {
-                    var remainingCooldown = _pushCooldownPeriod - timeSinceLastPush;
-                    _logger.LogInformation("🕐 PushToken {TokenPrefix} in cooldown, skipping push. Last push: {TimeSince} ago, cooldown remaining: {Remaining}", 
-                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
-                        timeSinceLastPush.ToString(@"hh\:mm\:ss"), 
-                        remainingCooldown.ToString(@"hh\:mm\:ss"));
-                    return false;
-                }
+                    var timeSinceLastPush = now - existingTime;
+                    if (timeSinceLastPush < _pushCooldownPeriod)
+                    {
+                        // Still in cooldown - return existing time (no update)
+                        return existingTime;
+                    }
+                    // Cooldown expired - update to current time
+                    return now;
+                });
+            
+            // Check if we actually got permission to send (time was updated to now)
+            if (canSend != now)
+            {
+                var timeSinceLastPush = now - canSend;
+                var remainingCooldown = _pushCooldownPeriod - timeSinceLastPush;
+                _logger.LogInformation("🕐 PushToken {TokenPrefix} in cooldown, skipping push. Last push: {TimeSince} ago, cooldown remaining: {Remaining}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                    timeSinceLastPush.ToString(@"hh\:mm\:ss"), 
+                    remainingCooldown.ToString(@"hh\:mm\:ss"));
+                return false;
             }
             
             // Use FCM API v1 if configured
@@ -256,13 +270,9 @@ public class FirebaseService
                 success = await SimulatePushAsync(pushToken, title, content);
             }
             
-            // ✅ Record successful push time for global cooldown tracking
-            if (success)
-            {
-                _lastPushTimes.AddOrUpdate(pushToken, now, (key, oldValue) => now);
-                _logger.LogDebug("📱 Recorded push time for token {TokenPrefix} at {PushTime}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
-            }
+            // ✅ Push time already recorded atomically above for cooldown tracking
+            _logger.LogDebug("📱 Push completed for token {TokenPrefix} at {PushTime}, success: {Success}", 
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"), success);
             
             return success;
         }
