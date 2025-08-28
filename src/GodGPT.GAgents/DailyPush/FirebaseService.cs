@@ -234,36 +234,13 @@ public class FirebaseService
             // ✅ Layer 1: Check if already pushed today (UTC date) - Skip for test pushes, retry pushes, and non-first content
             bool isTestPush = title.Contains("🧪") || title.Contains("test") || title.Contains("Test") || title.Contains("TEST");
             
-            // ✅ Debug: Log data dictionary contents for instant push debugging
-            if (data != null)
-            {
-                var dataKeys = string.Join(", ", data.Keys);
-                _logger.LogInformation("🔍 Push data keys: [{DataKeys}] for token {TokenPrefix}", 
-                    dataKeys, pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-                
-                if (data.TryGetValue("is_instant_push", out var debugInstantObj))
-                {
-                    _logger.LogInformation("🔍 Found is_instant_push in data: {Value} (type: {Type})", 
-                        debugInstantObj, debugInstantObj?.GetType().Name ?? "null");
-                }
-            }
-            else
-            {
-                _logger.LogInformation("🔍 Push data is null for token {TokenPrefix}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-            }
-            
             // ✅ Also check if this is an instant push via data payload (instant pushes are for testing)
             if (!isTestPush && data != null && data.TryGetValue("is_instant_push", out var isInstantObj))
             {
                 if (bool.TryParse(isInstantObj?.ToString(), out var isInstant) && isInstant)
                 {
                     isTestPush = true;
-                    _logger.LogInformation("🧪 Instant push detected via is_instant_push flag for token {TokenPrefix}");
-                }
-                else
-                {
-                    _logger.LogInformation("🔍 is_instant_push found but value is: {Value}", isInstantObj);
+                    _logger.LogDebug("🧪 Instant push detected via is_instant_push flag");
                 }
             }
             
@@ -293,13 +270,9 @@ public class FirebaseService
                 return false;
             }
             
-            // ✅ Final confirmation of test push status
-            _logger.LogInformation("🔍 Final test push status: isTestPush={IsTestPush}, title='{Title}' for token {TokenPrefix}", 
-                isTestPush, title, pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-                
             if (isTestPush)
             {
-                _logger.LogInformation("🧪 Test push confirmed - skipping daily date check for token {TokenPrefix}", 
+                _logger.LogDebug("🧪 Test push detected, skipping daily date check for token {TokenPrefix}", 
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
             }
             else if (isRetryPush)
