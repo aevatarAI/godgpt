@@ -35,6 +35,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<GoogleAnalyticsOptions>(configuration.GetSection("GoogleAnalytics"));
         Configure<AwakeningOptions>(configuration.GetSection("Awakening"));
         Configure<GooglePayOptions>(configuration.GetSection("GooglePay"));
+        Configure<UserStatisticsOptions>(configuration.GetSection("UserStatistics"));
         
         // Register GooglePayOptions post processor for flat configuration support
         context.Services.AddSingleton<IPostConfigureOptions<GooglePayOptions>, GooglePayOptionsPostProcessor>();
