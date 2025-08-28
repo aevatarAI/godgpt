@@ -248,32 +248,40 @@ public class FirebaseService
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
             }
             
-            // ✅ Layer 2: Short-term cooldown check (prevent rapid fire)
-            var canSendTime = _lastPushTimes.AddOrUpdate(
-                pushToken,
-                now, // If key doesn't exist, add with current time
-                (key, existingTime) =>
-                {
-                    var timeSinceLastPush = now - existingTime;
-                    if (timeSinceLastPush < _shortTermCooldown)
-                    {
-                        // Still in short-term cooldown - return existing time (no update)
-                        return existingTime;
-                    }
-                    // Short-term cooldown expired - update to current time
-                    return now;
-                });
-            
-            // Check short-term cooldown
-            if (canSendTime != now)
+            // ✅ Layer 2: Short-term cooldown check (prevent rapid fire) - Skip for test pushes
+            if (!isTestPush)
             {
-                var timeSinceLastPush = now - canSendTime;
-                var remainingCooldown = _shortTermCooldown - timeSinceLastPush;
-                _logger.LogInformation("⏱️ PushToken {TokenPrefix} in short-term cooldown, skipping push. Last push: {TimeSince} ago, cooldown remaining: {Remaining}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
-                    timeSinceLastPush.ToString(@"mm\:ss"), 
-                    remainingCooldown.ToString(@"mm\:ss"));
-                return false;
+                var canSendTime = _lastPushTimes.AddOrUpdate(
+                    pushToken,
+                    now, // If key doesn't exist, add with current time
+                    (key, existingTime) =>
+                    {
+                        var timeSinceLastPush = now - existingTime;
+                        if (timeSinceLastPush < _shortTermCooldown)
+                        {
+                            // Still in short-term cooldown - return existing time (no update)
+                            return existingTime;
+                        }
+                        // Short-term cooldown expired - update to current time
+                        return now;
+                    });
+                
+                // Check short-term cooldown for daily pushes only
+                if (canSendTime != now)
+                {
+                    var timeSinceLastPush = now - canSendTime;
+                    var remainingCooldown = _shortTermCooldown - timeSinceLastPush;
+                    _logger.LogInformation("⏱️ PushToken {TokenPrefix} in short-term cooldown, skipping daily push. Last push: {TimeSince} ago, cooldown remaining: {Remaining}", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                        timeSinceLastPush.ToString(@"mm\:ss"), 
+                        remainingCooldown.ToString(@"mm\:ss"));
+                    return false;
+                }
+            }
+            else
+            {
+                _logger.LogDebug("🧪 Test push - skipping short-term cooldown check for token {TokenPrefix}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
             }
             
             // Use FCM API v1 if configured
