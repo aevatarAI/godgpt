@@ -1743,44 +1743,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             foreach (var device in enabledDevices)
             {
-                // Get localized content with detailed logging
-                var requestedLanguage = device.PushLanguage ?? "en";
-                var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
-                Logger.LogInformation("🔍 DEBUG: Requesting content for DeviceId={DeviceId}, PushLanguage={PushLanguage}, RequestedLanguage={RequestedLanguage}, AvailableLanguages=[{AvailableLanguages}]", 
-                    device.DeviceId, device.PushLanguage, requestedLanguage, availableLanguages);
-                
-                // Check language fallback logic
-                if (!content.LocalizedContents.ContainsKey(requestedLanguage))
-                {
-                    if (content.LocalizedContents.ContainsKey("en"))
-                    {
-                        Logger.LogWarning("⚠️ LANGUAGE FALLBACK to EN: requested='{RequestedLanguage}', using 'en', available=[{AvailableLanguages}]", 
-                            requestedLanguage, availableLanguages);
-                    }
-                    else if (content.LocalizedContents.Count > 0)
-                    {
-                        var firstLanguage = content.LocalizedContents.Keys.First();
-                        Logger.LogWarning("🚨 LANGUAGE FALLBACK to FIRST: requested='{RequestedLanguage}', using '{FirstLanguage}', available=[{AvailableLanguages}]", 
-                            requestedLanguage, firstLanguage, availableLanguages);
-                    }
-                }
-                else
-                {
-                    Logger.LogInformation("🎯 LANGUAGE MATCH: requested='{RequestedLanguage}', found exact match", requestedLanguage);
-                }
-                
-                var localizedContent = content.GetLocalizedContent(requestedLanguage);
+                // Get localized content
+                var localizedContent = content.GetLocalizedContent(device.PushLanguage ?? "en");
                 if (localizedContent == null)
                 {
                     Logger.LogWarning("No localized content found for language {Language}, content {ContentId}, device {DeviceId}", 
                         device.PushLanguage, content.Id, device.DeviceId);
                     continue;
                 }
-                
-                // Log what we actually got
-                var titlePreview = localizedContent.Title.Length > 15 ? localizedContent.Title.Substring(0, 15) + "..." : localizedContent.Title;
-                Logger.LogInformation("📝 DEBUG: Selected content - DeviceId={DeviceId}, Title='{Title}', ContentId={ContentId}", 
-                    device.DeviceId, titlePreview, content.Id);
                 
                 pushMessages.Add(new GodGPT.GAgents.DailyPush.PushMessage
                 {
