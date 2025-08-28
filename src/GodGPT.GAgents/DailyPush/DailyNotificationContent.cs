@@ -55,21 +55,33 @@ public static class DailyNotificationContentExtensions
     /// </summary>
     public static LocalizedContentData GetLocalizedContent(this DailyNotificationContent content, string languageCode)
     {
+        // Debug logging for language selection
+        var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+        
         if (content.LocalizedContents.TryGetValue(languageCode, out var localized))
         {
+            // Log successful language match with title preview
+            var titlePreview = localized.Title.Length > 20 ? localized.Title.Substring(0, 20) + "..." : localized.Title;
+            System.Diagnostics.Debug.WriteLine($"🎯 Language MATCH: requested='{languageCode}', found, title='{titlePreview}', available=[{availableLanguages}]");
             return localized;
         }
         
         // Fallback to English
         if (content.LocalizedContents.TryGetValue("en", out var englishContent))
         {
+            var titlePreview = englishContent.Title.Length > 20 ? englishContent.Title.Substring(0, 20) + "..." : englishContent.Title;
+            System.Diagnostics.Debug.WriteLine($"⚠️ Language FALLBACK to EN: requested='{languageCode}', using EN, title='{titlePreview}', available=[{availableLanguages}]");
             return englishContent;
         }
         
         // Fallback to first available language
         if (content.LocalizedContents.Count > 0)
         {
-            return content.LocalizedContents.Values.First();
+            var firstContent = content.LocalizedContents.Values.First();
+            var firstLanguage = content.LocalizedContents.Keys.First();
+            var titlePreview = firstContent.Title.Length > 20 ? firstContent.Title.Substring(0, 20) + "..." : firstContent.Title;
+            System.Diagnostics.Debug.WriteLine($"🚨 Language FALLBACK to FIRST: requested='{languageCode}', using '{firstLanguage}', title='{titlePreview}', available=[{availableLanguages}]");
+            return firstContent;
         }
         
         // Last resort - empty content
