@@ -236,13 +236,32 @@ public class FirebaseService
             
             // Check if this is the first content in a multi-content push session
             bool isFirstContent = true;
-            if (data != null && data.TryGetValue("content_index", out var contentIndexObj))
+            string debugInfo = "no data";
+            
+            if (data != null)
             {
-                if (int.TryParse(contentIndexObj?.ToString(), out var contentIndex))
+                debugInfo = $"data keys: [{string.Join(", ", data.Keys)}]";
+                if (data.TryGetValue("content_index", out var contentIndexObj))
                 {
-                    isFirstContent = contentIndex == 1;
+                    debugInfo += $", content_index: {contentIndexObj}";
+                    if (int.TryParse(contentIndexObj?.ToString(), out var contentIndex))
+                    {
+                        isFirstContent = contentIndex == 1;
+                        debugInfo += $", parsed: {contentIndex}, isFirst: {isFirstContent}";
+                    }
+                    else
+                    {
+                        debugInfo += ", parse failed";
+                    }
+                }
+                else
+                {
+                    debugInfo += ", content_index key not found";
                 }
             }
+            
+            _logger.LogDebug("🔍 Content index analysis for {TokenPrefix}: {DebugInfo}", 
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", debugInfo);
             
             // Only check date deduplication for test pushes and first content of daily pushes
             if (!isTestPush && isFirstContent && _lastPushDates.TryGetValue(pushToken, out var lastPushDate) && lastPushDate == today)
