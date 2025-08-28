@@ -33,7 +33,7 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
 
     protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("TimezoneUserIndexGAgent activated");
+        _logger.LogInformation("PushSubscriberIndexGAgent activated");
     }
 
     protected override void GAgentTransitionState(PushSubscriberIndexState state, StateLogEventBase<DailyPushLogEvent> @event)

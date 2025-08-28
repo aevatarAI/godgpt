@@ -84,7 +84,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         if (!string.IsNullOrEmpty(State.TimeZoneId))
         {
             _timeZoneId = State.TimeZoneId;
-            _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (from state)", _timeZoneId);
+            _logger.LogInformation("DailyPushCoordinatorGAgent activated for timezone: {TimeZone} (from state)", _timeZoneId);
         }
         else
         {
@@ -96,7 +96,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 
                 if (!string.IsNullOrEmpty(inferredTimezone))
                 {
-                    _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (from GUID mapping)", inferredTimezone);
+                    _logger.LogInformation("DailyPushCoordinatorGAgent activated for timezone: {TimeZone} (from GUID mapping)", inferredTimezone);
                     // Auto-initialize with inferred timezone
                     await InitializeAsync(inferredTimezone);
                 }
@@ -106,12 +106,12 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                     var commonTimezone = TryInferTimezoneFromGuid(grainGuid);
                     if (!string.IsNullOrEmpty(commonTimezone))
                     {
-                        _logger.LogInformation("TimezoneSchedulerGAgent activated for timezone: {TimeZone} (inferred from common pattern)", commonTimezone);
+                        _logger.LogInformation("DailyPushCoordinatorGAgent activated for timezone: {TimeZone} (inferred from common pattern)", commonTimezone);
                         await InitializeAsync(commonTimezone);
                     }
                     else
                     {
-                        _logger.LogWarning("TimezoneSchedulerGAgent activated but no timezone ID in state and no GUID mapping found. Grain will not be functional until InitializeAsync is called.");
+                        _logger.LogWarning("DailyPushCoordinatorGAgent activated but no timezone ID in state and no GUID mapping found. Grain will not be functional until InitializeAsync is called.");
                         _timeZoneId = ""; // Ensure it's empty, not null
                     }
                 }
@@ -119,7 +119,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             catch (InvalidOperationException ex) when (ex.Message.Contains("Unable to extract GUID key"))
             {
                 // Handle legacy string-key grain instances
-                _logger.LogWarning("Legacy string-key TimezoneSchedulerGAgent detected. This grain instance will be inactive and cleaned up by Orleans over time. Error: {Error}", ex.Message);
+                _logger.LogWarning("Legacy string-key DailyPushCoordinatorGAgent detected. This grain instance will be inactive and cleaned up by Orleans over time. Error: {Error}", ex.Message);
                 _timeZoneId = ""; // Set to empty to make grain inactive
                 // Don't rethrow - let the grain activate but remain inactive
             }
