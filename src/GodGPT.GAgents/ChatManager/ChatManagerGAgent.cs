@@ -1616,10 +1616,23 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Logger.LogInformation("🧪 Bypassing read status check for daily push on {DateKey}", dateKey);
         }
         
-        // Only process devices in the specified timezone
-        var enabledDevices = State.UserDevices.Values
-            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId)
+        // Only process devices in the specified timezone with pushToken deduplication
+        var enabledDevicesRaw = State.UserDevices.Values
+            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
             .ToList();
+            
+        // ✅ Deduplicate by pushToken, keep the device with latest LastTokenUpdate
+        var enabledDevices = enabledDevicesRaw
+            .GroupBy(d => d.PushToken)
+            .Select(g => g.OrderByDescending(d => d.LastTokenUpdate).First())
+            .ToList();
+            
+        var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
+        if (duplicateCount > 0)
+        {
+            Logger.LogInformation("🔍 ProcessDailyPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
+                duplicateCount, State.UserId);
+        }
         
         Logger.LogInformation("📱 ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
             enabledDevices.Count, timeZoneId, State.UserId);
@@ -1645,13 +1658,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // Create separate push notifications for each content to ensure individual callbacks
         var pushTasks = enabledDevices.SelectMany(device =>
         {
-            if (string.IsNullOrEmpty(device.PushToken))
-            {
-                Logger.LogWarning($"Device {device.DeviceId} has empty push token, skipping");
-                return new List<Task<bool>>();
-            }
-
             // Send separate push for each content with delay to avoid grouping
+            // Note: Empty pushTokens are already filtered out in device selection
             return contents.Select(async (content, index) =>
             {
                 try
@@ -1716,10 +1724,23 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         // Skip read status check for instant push - this is for testing purposes
         
-        // Only process devices in the specified timezone
-        var enabledDevices = State.UserDevices.Values
-            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId)
+        // Only process devices in the specified timezone with pushToken deduplication
+        var enabledDevicesRaw = State.UserDevices.Values
+            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
             .ToList();
+            
+        // ✅ Deduplicate by pushToken, keep the device with latest LastTokenUpdate
+        var enabledDevices = enabledDevicesRaw
+            .GroupBy(d => d.PushToken)
+            .Select(g => g.OrderByDescending(d => d.LastTokenUpdate).First())
+            .ToList();
+            
+        var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
+        if (duplicateCount > 0)
+        {
+            Logger.LogInformation("🔍 ProcessInstantPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
+                duplicateCount, State.UserId);
+        }
         
         Logger.LogInformation("🧪 ProcessInstantPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
             enabledDevices.Count, timeZoneId, State.UserId);
