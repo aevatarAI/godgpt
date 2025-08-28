@@ -1289,6 +1289,26 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                             };
                         }
                         
+                        // Add Spanish content if available
+                        Logger.LogDebug("🔍 CSV Spanish content check: Key={ContentKey}, TitleEs='{TitleEs}', ContentEs='{ContentEs}'", 
+                            csvContent.ContentKey, csvContent.TitleEs, csvContent.ContentEs);
+                        
+                        if (!string.IsNullOrEmpty(csvContent.TitleEs) || !string.IsNullOrEmpty(csvContent.ContentEs))
+                        {
+                            notificationContent.LocalizedContents["es"] = new LocalizedContentData
+                            {
+                                Title = csvContent.TitleEs ?? "📱 Inspiración Diaria",
+                                Content = csvContent.ContentEs ?? "¡Que tengas un día maravilloso!"
+                            };
+                            Logger.LogInformation("✅ Added Spanish content for key={ContentKey}: Title='{Title}'", 
+                                csvContent.ContentKey, csvContent.TitleEs);
+                        }
+                        else
+                        {
+                            Logger.LogWarning("⚠️ No Spanish content available for key={ContentKey}, skipping es", 
+                                csvContent.ContentKey);
+                        }
+                        
                         // Ensure at least English content exists
                         if (notificationContent.LocalizedContents.Count == 0)
                         {
