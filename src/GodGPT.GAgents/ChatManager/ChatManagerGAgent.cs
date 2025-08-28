@@ -1449,10 +1449,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage)
     {
-        // *** MIGRATION CLEANUP: Force reindex of all existing devices ***
-        // This ensures all devices are properly indexed in the new PushSubscriberIndexGAgent
-        await CleanupAndReindexAllDevicesAsync();
-        
         var isNewDevice = !State.UserDevices.ContainsKey(deviceId);
         var deviceInfo = isNewDevice ? new GodGPT.GAgents.DailyPush.UserDeviceInfo() : 
             new GodGPT.GAgents.DailyPush.UserDeviceInfo
