@@ -35,7 +35,7 @@ public class DailyPushContentService
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     private readonly List<DailyPushContent> _contents = new();
     private DateTime _lastLoadTime = DateTime.MinValue;
-    private readonly TimeSpan _cacheExpiry = TimeSpan.FromHours(1); // Cache for 1 hour
+    private readonly TimeSpan _cacheExpiry = TimeSpan.FromHours(24); // Cache for 24 hours - CSV content rarely changes
     private readonly SemaphoreSlim _loadSemaphore = new SemaphoreSlim(1, 1); // Prevent concurrent loading
     
     public DailyPushContentService(
