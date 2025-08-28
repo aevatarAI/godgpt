@@ -32,8 +32,8 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     // Test mode constants - TODO: Remove before production
     private static class TestModeConstants
     {
-        public const string TEST_PUSH_REMINDER = "TEST_PUSH_REMINDER";
-        public const string TEST_RETRY_REMINDER = "TEST_RETRY_REMINDER";
+        public const string TEST_PUSH_REMINDER = "QA_TEST_PUSH_V2";
+        public const string TEST_RETRY_REMINDER = "QA_TEST_RETRY_V2";
         
         public static readonly TimeSpan PUSH_INTERVAL = TimeSpan.FromMinutes(10);    // Push every 10 minutes
         public static readonly TimeSpan RETRY_DELAY = TimeSpan.FromMinutes(5);       // 5 minutes retry delay
