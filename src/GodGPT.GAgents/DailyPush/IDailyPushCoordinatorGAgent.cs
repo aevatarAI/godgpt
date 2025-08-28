@@ -58,4 +58,10 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     /// Get all devices registered in this timezone with detailed information - TODO: Remove before production
     /// </summary>
     Task<List<TimezoneDeviceInfo>> GetDevicesInTimezoneAsync();
+    
+    /// <summary>
+    /// Send instant push notification to all devices in this timezone
+    /// Each device will receive two identical notifications
+    /// </summary>
+    Task<object> SendInstantPushAsync();
 }

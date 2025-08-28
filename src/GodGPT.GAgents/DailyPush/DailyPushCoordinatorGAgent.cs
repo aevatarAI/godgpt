@@ -1067,13 +1067,238 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             _logger.LogInformation("Retrieved {DeviceCount} device entries for {UserCount} users in timezone {TimeZone}", 
                 devices.Count, devices.Select(d => d.UserId).Distinct().Count(), _timeZoneId);
             
-            return devices.OrderBy(d => d.UserId).ThenBy(d => d.DeviceId).ToList();
+                    return devices.OrderBy(d => d.UserId).ThenBy(d => d.DeviceId).ToList();
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Failed to get devices in timezone {TimeZone}", _timeZoneId);
+        return new List<TimezoneDeviceInfo>();
+    }
+}
+
+public async Task<object> SendInstantPushAsync()
+{
+    try
+    {
+        _logger.LogInformation("🚀 Starting instant push for timezone {TimeZone}", _timeZoneId);
+        
+        if (string.IsNullOrEmpty(_timeZoneId))
+        {
+            _logger.LogWarning("Timezone not initialized for instant push");
+            return new { 
+                error = "Timezone not initialized", 
+                timezone = _timeZoneId,
+                timestamp = DateTime.Now 
+            };
+        }
+
+        // Get timezone user index to find users
+        var timezoneIndexGAgent = _grainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
+        var activeUsers = await timezoneIndexGAgent.GetActiveUsersInTimezoneAsync(0, 1000);
+        
+        _logger.LogInformation("📱 Found {UserCount} active users in timezone {TimeZone}", activeUsers.Count, _timeZoneId);
+        
+        int totalDevices = 0;
+        int successfulPushes = 0;
+        int failedPushes = 0;
+        
+        // Try to get content from CSV file first, fall back to test content if needed
+        List<DailyNotificationContent> testContent;
+        
+        try
+        {
+            // Get content service to load from CSV
+            var contentService = ServiceProvider.GetService(typeof(Services.DailyPushContentService)) as Services.DailyPushContentService;
+            if (contentService != null)
+            {
+                _logger.LogInformation("📋 Loading push content from CSV file...");
+                var csvContents = await contentService.GetAllContentsAsync();
+                
+                if (csvContents?.Count >= 2)
+                {
+                    // Select 2 random contents from CSV
+                    var random = new Random();
+                    var selectedContents = csvContents.OrderBy(x => random.Next()).Take(2).ToList();
+                    
+                    testContent = new List<DailyNotificationContent>();
+                    
+                    foreach (var csvContent in selectedContents)
+                    {
+                        var notificationContent = new DailyNotificationContent
+                        {
+                            Id = $"csv_{csvContent.ContentKey}_{DateTime.Now.Ticks}",
+                            IsActive = true,
+                            LocalizedContents = new Dictionary<string, LocalizedContentData>()
+                        };
+                        
+                        // Add English content if available
+                        if (!string.IsNullOrEmpty(csvContent.TitleEn) || !string.IsNullOrEmpty(csvContent.ContentEn))
+                        {
+                            notificationContent.LocalizedContents["en"] = new LocalizedContentData
+                            {
+                                Title = csvContent.TitleEn ?? "📱 Daily Inspiration",
+                                Content = csvContent.ContentEn ?? "Have a wonderful day!"
+                            };
+                        }
+                        
+                        // Add Chinese content if available
+                        if (!string.IsNullOrEmpty(csvContent.TitleZh) || !string.IsNullOrEmpty(csvContent.ContentZh))
+                        {
+                            notificationContent.LocalizedContents["zh"] = new LocalizedContentData
+                            {
+                                Title = csvContent.TitleZh ?? "📱 每日灵感",
+                                Content = csvContent.ContentZh ?? "祝你有美好的一天！"
+                            };
+                        }
+                        
+                        // Add Simplified Chinese content if available
+                        if (!string.IsNullOrEmpty(csvContent.TitleZhSc) || !string.IsNullOrEmpty(csvContent.ContentZhSc))
+                        {
+                            notificationContent.LocalizedContents["zh-CN"] = new LocalizedContentData
+                            {
+                                Title = csvContent.TitleZhSc ?? "📱 每日灵感",
+                                Content = csvContent.ContentZhSc ?? "祝你有美好的一天！"
+                            };
+                        }
+                        
+                        // Ensure at least English content exists
+                        if (notificationContent.LocalizedContents.Count == 0)
+                        {
+                            notificationContent.LocalizedContents["en"] = new LocalizedContentData
+                            {
+                                Title = "📱 Daily Inspiration",
+                                Content = "Have a wonderful day!"
+                            };
+                        }
+                        
+                        testContent.Add(notificationContent);
+                    }
+                    
+                    _logger.LogInformation("✅ Successfully loaded {Count} contents from CSV for instant push", testContent.Count);
+                }
+                else
+                {
+                    _logger.LogWarning("⚠️ Not enough content in CSV file ({Count} available, need 2), using fallback test content", csvContents?.Count ?? 0);
+                    testContent = CreateFallbackTestContent();
+                }
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ DailyPushContentService not available, using fallback test content");
+                testContent = CreateFallbackTestContent();
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get devices in timezone {TimeZone}", _timeZoneId);
-            return new List<TimezoneDeviceInfo>();
+            _logger.LogError(ex, "❌ Failed to load content from CSV, using fallback test content");
+            testContent = CreateFallbackTestContent();
         }
+        
+        // Process each user
+        foreach (var userId in activeUsers)
+        {
+            try
+            {
+                var chatManager = _grainFactory.GetGrain<IChatManagerGAgent>(userId);
+                var hasEnabledDevice = await chatManager.HasEnabledDeviceInTimezoneAsync(_timeZoneId);
+                
+                if (!hasEnabledDevice)
+                {
+                    _logger.LogDebug("User {UserId} has no enabled devices in timezone {TimeZone}", userId, _timeZoneId);
+                    continue;
+                }
+                
+                // Get user devices for counting
+                var userDevices = await chatManager.GetAllUserDevicesAsync();
+                var enabledDevicesInTimezone = userDevices.Where(d => d.PushEnabled && d.TimeZoneId == _timeZoneId).ToList();
+                totalDevices += enabledDevicesInTimezone.Count;
+                
+                // Send instant push to this user (两条相同消息)
+                await chatManager.ProcessDailyPushAsync(DateTime.Now, testContent, _timeZoneId);
+                
+                // Count as success for each device (2 notifications per device)
+                successfulPushes += enabledDevicesInTimezone.Count * 2;
+                
+                _logger.LogDebug("✅ Sent instant push to user {UserId} with {DeviceCount} devices", userId, enabledDevicesInTimezone.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Failed to send instant push to user {UserId}", userId);
+                failedPushes += 2; // Failed to send 2 notifications
+            }
+        }
+        
+        var result = new
+        {
+            timezone = _timeZoneId,
+            totalUsers = activeUsers.Count,
+            totalDevices = totalDevices,
+            successfulPushes = successfulPushes,
+            failedPushes = failedPushes,
+            notificationsPerDevice = 2,
+            timestamp = DateTime.Now,
+            message = $"即时推送完成: {successfulPushes}条成功, {failedPushes}条失败"
+        };
+        
+        _logger.LogInformation("🎉 Instant push completed for timezone {TimeZone}: {TotalUsers} users, {TotalDevices} devices, {SuccessfulPushes} successful, {FailedPushes} failed", 
+            _timeZoneId, activeUsers.Count, totalDevices, successfulPushes, failedPushes);
+        
+        return result;
     }
-
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "💥 Error during instant push for timezone {TimeZone}", _timeZoneId);
+        return new { 
+            timezone = _timeZoneId, 
+            error = ex.Message, 
+            timestamp = DateTime.Now 
+        };
+    }
+}
+    
+    /// <summary>
+    /// Create fallback test content when CSV is unavailable
+    /// </summary>
+    private List<DailyNotificationContent> CreateFallbackTestContent()
+    {
+        return new List<DailyNotificationContent>
+        {
+            new DailyNotificationContent
+            {
+                Id = "instant_test_1",
+                LocalizedContents = new Dictionary<string, LocalizedContentData>
+                {
+                    ["zh-CN"] = new LocalizedContentData
+                    {
+                        Title = "🧪 即时推送测试 #1",
+                        Content = $"这是一条即时推送测试消息，发送时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                    },
+                    ["en"] = new LocalizedContentData
+                    {
+                        Title = "🧪 Instant Push Test #1",
+                        Content = $"This is an instant push test message, sent at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                    }
+                },
+                IsActive = true
+            },
+            new DailyNotificationContent
+            {
+                Id = "instant_test_2",
+                LocalizedContents = new Dictionary<string, LocalizedContentData>
+                {
+                    ["zh-CN"] = new LocalizedContentData
+                    {
+                        Title = "🧪 即时推送测试 #2",
+                        Content = $"这是第二条相同的即时推送测试消息，发送时间：{DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                    },
+                    ["en"] = new LocalizedContentData
+                    {
+                        Title = "🧪 Instant Push Test #2",
+                        Content = $"This is the second identical instant push test message, sent at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}"
+                    }
+                },
+                IsActive = true
+            }
+        };
+    }
 }
