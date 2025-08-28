@@ -1449,6 +1449,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage)
     {
+        // *** MIGRATION CLEANUP: Force reindex of all existing devices ***
+        // This ensures all devices are properly indexed in the new PushSubscriberIndexGAgent
+        await CleanupAndReindexAllDevicesAsync();
+        
         var isNewDevice = !State.UserDevices.ContainsKey(deviceId);
         var deviceInfo = isNewDevice ? new GodGPT.GAgents.DailyPush.UserDeviceInfo() : 
             new GodGPT.GAgents.DailyPush.UserDeviceInfo
@@ -1746,6 +1750,65 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         catch (Exception ex)
         {
             Logger.LogError(ex, $"Failed to update timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
+        }
+    }
+    
+    /// <summary>
+    /// MIGRATION HELPER: Cleanup and reindex all devices to new PushSubscriberIndexGAgent
+    /// This method ensures all existing devices are properly indexed in the new timezone agents
+    /// TODO: Remove this after migration is complete
+    /// </summary>
+    private async Task CleanupAndReindexAllDevicesAsync()
+    {
+        try
+        {
+            if (State.UserDevices == null || State.UserDevices.Count == 0)
+                return;
+                
+            Logger.LogInformation("🔄 MIGRATION: Starting cleanup and reindex for user {UserId} with {DeviceCount} devices", 
+                State.UserId, State.UserDevices.Count);
+            
+            // Group devices by timezone for efficient processing
+            var devicesByTimezone = State.UserDevices.Values
+                .Where(d => d.PushEnabled && !string.IsNullOrEmpty(d.TimeZoneId))
+                .GroupBy(d => d.TimeZoneId)
+                .ToList();
+            
+            foreach (var timezoneGroup in devicesByTimezone)
+            {
+                var timezone = timezoneGroup.Key;
+                var devicesInTimezone = timezoneGroup.ToList();
+                
+                Logger.LogInformation("🔄 MIGRATION: Processing timezone {TimeZone} with {DeviceCount} enabled devices", 
+                    timezone, devicesInTimezone.Count);
+                
+                // Get new PushSubscriberIndexGAgent for this timezone
+                var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(timezone));
+                await indexGAgent.InitializeAsync(timezone);
+                
+                // Check if user is already in the index
+                var existingUsers = await indexGAgent.GetActiveUsersInTimezoneAsync(0, 1000);
+                var isUserAlreadyIndexed = existingUsers.Contains(State.UserId);
+                
+                if (!isUserAlreadyIndexed)
+                {
+                    // Add user to new timezone index
+                    await indexGAgent.AddUserToTimezoneAsync(State.UserId);
+                    Logger.LogInformation("✅ MIGRATION: Added user {UserId} to new timezone index {TimeZone}", 
+                        State.UserId, timezone);
+                }
+                else
+                {
+                    Logger.LogDebug("✅ MIGRATION: User {UserId} already indexed in timezone {TimeZone}", 
+                        State.UserId, timezone);
+                }
+            }
+            
+            Logger.LogInformation("🎉 MIGRATION: Completed cleanup and reindex for user {UserId}", State.UserId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "❌ MIGRATION: Failed to cleanup and reindex devices for user {UserId}", State.UserId);
         }
     }
 
