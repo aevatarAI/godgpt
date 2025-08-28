@@ -1708,6 +1708,89 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
     }
 
+    public async Task ProcessInstantPushAsync(List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
+    {
+        // Skip read status check for instant push - this is for testing purposes
+        
+        // Only process devices in the specified timezone
+        var enabledDevices = State.UserDevices.Values
+            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId)
+            .ToList();
+        
+        Logger.LogInformation("🧪 ProcessInstantPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+            enabledDevices.Count, timeZoneId, State.UserId);
+            
+        if (enabledDevices.Count == 0)
+        {
+            Logger.LogWarning("No enabled devices for instant push - User {UserId}, TimeZone {TimeZone}, Total devices: {TotalDevices}", 
+                State.UserId, timeZoneId, State.UserDevices.Count);
+            return;
+        }
+        
+        // Send push notifications via Firebase FCM
+        var firebaseService = ServiceProvider.GetService(typeof(GodGPT.GAgents.DailyPush.FirebaseService)) as GodGPT.GAgents.DailyPush.FirebaseService;
+        if (firebaseService == null)
+        {
+            Logger.LogError("FirebaseService not available for instant push");
+            return;
+        }
+        
+        // Create tasks for concurrent push sending
+        var pushTasks = new List<Task<bool>>();
+        
+        // Each content item should be sent to each device (so 2 contents = 2 messages per device)
+        contents.ForEach(content =>
+        {
+            enabledDevices.ForEach(device =>
+            {
+                pushTasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        // Get localized content
+                        var localizedContent = content.GetLocalizedContent(device.PushLanguage ?? "en");
+                        if (localizedContent == null)
+                        {
+                            Logger.LogWarning("No localized content found for language {Language}, content {ContentId}, device {DeviceId}", 
+                                device.PushLanguage, content.Id, device.DeviceId);
+                            return false;
+                        }
+                        
+                        Logger.LogDebug("🧪 Sending instant push: {Title} to device {DeviceId} (language: {Language})", 
+                            localizedContent.Title, device.DeviceId, device.PushLanguage);
+                        
+                        return await firebaseService.SendPushNotificationAsync(
+                            device.PushToken,
+                            localizedContent.Title,
+                            localizedContent.Content,
+                            new Dictionary<string, object>
+                            {
+                                { "type", "instant_push" },
+                                { "contentId", content.Id },
+                                { "userId", State.UserId.ToString() },
+                                { "deviceId", device.DeviceId },
+                                { "timezone", timeZoneId }
+                            }
+                        );
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogError(ex, "Error sending instant push to device {DeviceId}", device.DeviceId);
+                        return false;
+                    }
+                }));
+            });
+        });
+        
+        // Execute all push tasks concurrently
+        var results = await Task.WhenAll(pushTasks);
+        var successCount = results.Count(r => r);
+        var failureCount = results.Count(r => !r);
+        
+        Logger.LogInformation("🧪 ProcessInstantPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
+            State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
+    }
+
     public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
     {
 

@@ -1214,8 +1214,8 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                 var enabledDevicesInTimezone = userDevices.Where(d => d.PushEnabled && d.TimeZoneId == _timeZoneId).ToList();
                 totalDevices += enabledDevicesInTimezone.Count;
                 
-                // Send instant push to this user (两条相同消息)
-                await chatManager.ProcessDailyPushAsync(DateTime.Now, testContent, _timeZoneId);
+                // Send instant push to this user (两条消息) - bypasses read status check
+                await chatManager.ProcessInstantPushAsync(testContent, _timeZoneId);
                 
                 // Count as success for each device (2 notifications per device)
                 successfulPushes += enabledDevicesInTimezone.Count * 2;

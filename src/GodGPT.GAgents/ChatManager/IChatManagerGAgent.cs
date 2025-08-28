@@ -94,6 +94,11 @@ public interface IChatManagerGAgent : IGAgent
     Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId);
     
     /// <summary>
+    /// Process instant push for this user (for testing purposes, bypasses read status check)
+    /// </summary>
+    Task ProcessInstantPushAsync(List<DailyNotificationContent> contents, string timeZoneId);
+    
+    /// <summary>
     /// Get device status for query API
     /// </summary>
     Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
