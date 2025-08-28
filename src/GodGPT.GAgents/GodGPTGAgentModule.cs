@@ -1,8 +1,10 @@
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.Anonymous.Options;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
@@ -32,11 +34,17 @@ public class GodGPTGAgentModule : AbpModule
         Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"));
         Configure<GoogleAnalyticsOptions>(configuration.GetSection("GoogleAnalytics"));
         Configure<AwakeningOptions>(configuration.GetSection("Awakening"));
+        Configure<GooglePayOptions>(configuration.GetSection("GooglePay"));
         Configure<UserStatisticsOptions>(configuration.GetSection("UserStatistics"));
-
+        
+        // Register GooglePayOptions post processor for flat configuration support
+        context.Services.AddSingleton<IPostConfigureOptions<GooglePayOptions>, GooglePayOptionsPostProcessor>();
+        
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
         // Register speech services
         context.Services.AddSingleton<ISpeechService, SpeechService>();
+        context.Services.AddSingleton<IGooglePayService, GooglePayService>();
+        context.Services.AddSingleton<ILocalizationService, LocalizationService>();
         context.Services.AddHttpClient();
     }
 }
