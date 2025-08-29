@@ -1879,6 +1879,21 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 await newIndexGAgent.InitializeAsync(newTimeZone);
                 await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");
+                
+                // ✅ CRITICAL: Activate DailyPushCoordinatorGAgent to ensure daily reminders are registered
+                // This ensures 8AM/3PM push notifications will work for this timezone
+                var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                try
+                {
+                    // Explicitly initialize to ensure reminders are registered for daily pushes
+                    await coordinatorGAgent.InitializeAsync(newTimeZone);
+                    Logger.LogInformation("Initialized DailyPushCoordinatorGAgent for timezone {TimeZone} to enable daily push reminders", newTimeZone);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Failed to initialize DailyPushCoordinatorGAgent for timezone {TimeZone}, but timezone index update succeeded", newTimeZone);
+                    // Don't throw - the timezone index update is the critical part
+                }
             }
             
             Logger.LogInformation($"Updated timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
