@@ -155,16 +155,27 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                     availableContents.Count, count);
             }
         
-        // Randomly select
+        // 🎯 Deterministic selection based on date - ensures global consistency
+        // Use target date as seed to guarantee same content selection across all timezones
+        var dateSeed = targetDate.ToString("yyyyMMdd").GetHashCode();
+        var deterministicRandom = new Random(dateSeed);
+        
         var selectedContents = new List<DailyNotificationContent>();
         var actualCount = Math.Min(count, availableContents.Count);
         
+        _logger.LogInformation("🌍 Global content selection for {Date}: Using deterministic seed {Seed} to ensure timezone consistency", 
+            targetDate.ToString("yyyy-MM-dd"), dateSeed);
+        
         for (int i = 0; i < actualCount; i++)
         {
-            var randomIndex = _random.Next(availableContents.Count);
+            var randomIndex = deterministicRandom.Next(availableContents.Count);
             var selected = availableContents[randomIndex];
             selectedContents.Add(selected);
             availableContents.RemoveAt(randomIndex);
+            
+            _logger.LogDebug("📝 Selected content {Index}/{Total}: ID={ContentId}, Title='{Title}'", 
+                i + 1, actualCount, selected.Id, 
+                selected.LocalizedContents.TryGetValue("en", out var enContent) ? enContent.Title : "N/A");
         }
         
         // Raise selection event

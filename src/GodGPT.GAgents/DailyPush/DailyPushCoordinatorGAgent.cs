@@ -1443,9 +1443,10 @@ public async Task<InstantPushResult> SendInstantPushAsync()
                 
                 if (csvContents?.Count >= 2)
                 {
-                    // Select 2 random contents from CSV
-                    var random = new Random();
-                    var selectedContents = csvContents.OrderBy(x => random.Next()).Take(2).ToList();
+                    // 🎯 Deterministic selection from CSV - ensures global consistency
+                    var dateSeed = DateTime.UtcNow.Date.ToString("yyyyMMdd").GetHashCode();
+                    var deterministicRandom = new Random(dateSeed);
+                    var selectedContents = csvContents.OrderBy(x => deterministicRandom.Next()).Take(2).ToList();
                     
                     testContent = new List<DailyNotificationContent>();
                     
