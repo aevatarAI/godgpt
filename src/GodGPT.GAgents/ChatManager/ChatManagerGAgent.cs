@@ -1894,7 +1894,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
                         // Explicitly initialize to ensure reminders are registered for daily pushes
                         await coordinatorGAgent.InitializeAsync(newTimeZone);
-                        Logger.LogInformation("Initialized DailyPushCoordinatorGAgent for timezone {TimeZone} to enable daily push reminders", newTimeZone);
+                        
+                        // 🚀 CRITICAL: Force immediate activation by calling GetStatusAsync to ensure grain stays active
+                        var status = await coordinatorGAgent.GetStatusAsync();
+                        Logger.LogInformation("Initialized DailyPushCoordinatorGAgent for timezone {TimeZone} to enable daily push reminders. Status: {Status}, ReminderTargetId: {TargetId}", 
+                            newTimeZone, status.Status, status.ReminderTargetId);
                     }
                     catch (TimeZoneNotFoundException ex)
                     {
