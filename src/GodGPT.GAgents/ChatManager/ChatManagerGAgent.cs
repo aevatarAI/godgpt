@@ -1682,7 +1682,15 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 try
                 {
-                    // No delay needed - interval doesn't matter for callbacks
+                    // 🎯 Add staggered delay for multi-content pushes to avoid FCM conflicts
+                    // First content (index=0): no delay, subsequent contents: progressive delay
+                    if (index > 0)
+                    {
+                        var delayMs = index * 500; // 500ms per content (1st=0ms, 2nd=500ms, 3rd=1000ms...)
+                        Logger.LogInformation("⏱️ Applying push delay: DeviceId={DeviceId}, ContentIndex={ContentIndex}/{TotalContents}, DelayMs={DelayMs}", 
+                            device.DeviceId, index + 1, contents.Count, delayMs);
+                        await Task.Delay(delayMs);
+                    }
                     
                     var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
                     Logger.LogInformation("🔍 Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
