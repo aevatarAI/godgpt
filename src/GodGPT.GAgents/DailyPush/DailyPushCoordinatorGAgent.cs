@@ -188,14 +188,27 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         State.TimeZoneId = timeZoneId;
         State.Status = SchedulerStatus.Active;
         State.LastUpdated = DateTime.UtcNow;
-        // Initialize with empty ReminderTargetId - requires explicit activation
-        State.ReminderTargetId = Guid.Empty;
+        
+        // ✅ Force sync ReminderTargetId from configuration during initialization
+        var configuredTargetId = _options.CurrentValue.ReminderTargetId;
+        if (configuredTargetId != Guid.Empty)
+        {
+            State.ReminderTargetId = configuredTargetId;
+            _logger.LogInformation("Force-synced ReminderTargetId during initialization for {TimeZone}: {TargetId}", 
+                timeZoneId, configuredTargetId);
+        }
+        else
+        {
+            State.ReminderTargetId = Guid.Empty;
+            _logger.LogWarning("ReminderTargetId is Guid.Empty in configuration for {TimeZone}", timeZoneId);
+        }
         
         _timeZoneId = timeZoneId;
         
         await ConfirmEvents();
         
-        _logger.LogInformation("Initialized timezone scheduler for {TimeZone}", timeZoneId);
+        _logger.LogInformation("Initialized timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}", 
+            timeZoneId, State.ReminderTargetId);
     }
     
     public async Task SetReminderTargetIdAsync(Guid targetId)
