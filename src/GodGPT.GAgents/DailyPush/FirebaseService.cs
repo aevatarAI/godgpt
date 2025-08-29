@@ -49,7 +49,7 @@ public class FirebaseService
         // Load service account from file first, then fallback to configuration
         _logger.LogDebug("🔄 Attempting to load Firebase credentials (File first, then appsettings.json fallback)");
         
-        var fileAccount = LoadServiceAccountFromFile(options.CurrentValue.FilePaths);
+        var fileAccount = LoadServiceAccountFromFileAsync(options.CurrentValue.FilePaths).GetAwaiter().GetResult();
         var configAccount = fileAccount == null ? LoadServiceAccountFromConfiguration(configuration) : null;
         
         _serviceAccount = fileAccount ?? configAccount;
@@ -80,9 +80,45 @@ public class FirebaseService
     }
     
     /// <summary>
+    /// Read file with retry mechanism for container environment compatibility
+    /// </summary>
+    private async Task<string> ReadFileWithRetryAsync(string filePath, int maxRetries = 3, int delayMs = 1000)
+    {
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                _logger.LogDebug("📖 Reading file attempt {Attempt}/{MaxRetries}: {FilePath}", attempt, maxRetries, filePath);
+                
+                // Use async file reading to avoid blocking
+                var content = await File.ReadAllTextAsync(filePath);
+                
+                if (attempt > 1)
+                {
+                    _logger.LogInformation("✅ File read successful on attempt {Attempt}: {FilePath}", attempt, filePath);
+                }
+                
+                return content;
+            }
+            catch (Exception ex) when (attempt < maxRetries && (ex is FileNotFoundException || ex is IOException || ex is UnauthorizedAccessException))
+            {
+                _logger.LogWarning("⚠️ File read failed on attempt {Attempt}/{MaxRetries}: {Error}. Retrying in {DelayMs}ms...", 
+                    attempt, maxRetries, ex.Message, delayMs);
+                
+                await Task.Delay(delayMs);
+                delayMs *= 2; // Exponential backoff
+            }
+        }
+        
+        // Final attempt without catch - let the exception bubble up
+        _logger.LogError("💥 Final file read attempt for {FilePath}", filePath);
+        return await File.ReadAllTextAsync(filePath);
+    }
+
+    /// <summary>
     /// Load service account information from Firebase key file
     /// </summary>
-    private ServiceAccountInfo? LoadServiceAccountFromFile(FilePathsOptions filePaths)
+    private async Task<ServiceAccountInfo?> LoadServiceAccountFromFileAsync(FilePathsOptions filePaths)
     {
         try
         {
@@ -100,7 +136,7 @@ public class FirebaseService
             _logger.LogInformation("📁 Found Firebase key file: {KeyPath} (Size: {FileSize} bytes, Modified: {LastModified})", 
                 keyPath, fileInfo.Length, fileInfo.LastWriteTime);
             
-            var jsonContent = File.ReadAllText(keyPath);
+            var jsonContent = await ReadFileWithRetryAsync(keyPath);
             
             // Log basic file info without exposing sensitive data
             var contentLength = jsonContent.Length;
