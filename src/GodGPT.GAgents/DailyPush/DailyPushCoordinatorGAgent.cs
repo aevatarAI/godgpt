@@ -69,6 +69,11 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             case SchedulerStatusLogEvent statusEvent:
                 _logger.LogDebug($"Scheduler status changed from {statusEvent.OldStatus} to {statusEvent.NewStatus}");
                 break;
+            case SetReminderTargetIdEventLog reminderEvent:
+                state.ReminderTargetId = reminderEvent.NewTargetId;
+                state.LastUpdated = reminderEvent.ChangeTime;
+                _logger.LogDebug($"ReminderTargetId changed from {reminderEvent.OldTargetId} to {reminderEvent.NewTargetId}");
+                break;
             default:
                 _logger.LogDebug($"Unhandled event type: {@event.GetType().Name}");
                 break;
@@ -150,8 +155,15 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
         if (configuredTargetId != Guid.Empty && State.ReminderTargetId != configuredTargetId)
         {
-            State.ReminderTargetId = configuredTargetId;
-            State.LastUpdated = DateTime.UtcNow;
+            // ✅ Use event sourcing to properly persist state changes
+            RaiseEvent(new SetReminderTargetIdEventLog
+            {
+                OldTargetId = State.ReminderTargetId,
+                NewTargetId = configuredTargetId,
+                ChangeTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
             
             _logger.LogInformation("Auto-activated timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}", 
                 _timeZoneId, configuredTargetId);
@@ -189,17 +201,26 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         State.Status = SchedulerStatus.Active;
         State.LastUpdated = DateTime.UtcNow;
         
-        // ✅ Force sync ReminderTargetId from configuration during initialization
+        // ✅ Force sync ReminderTargetId from configuration during initialization using event sourcing
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
         if (configuredTargetId != Guid.Empty)
         {
-            State.ReminderTargetId = configuredTargetId;
-            _logger.LogInformation("Force-synced ReminderTargetId during initialization for {TimeZone}: {TargetId}", 
-                timeZoneId, configuredTargetId);
+            // Only raise event if ReminderTargetId actually changed
+            if (State.ReminderTargetId != configuredTargetId)
+            {
+                RaiseEvent(new SetReminderTargetIdEventLog
+                {
+                    OldTargetId = State.ReminderTargetId,
+                    NewTargetId = configuredTargetId,
+                    ChangeTime = DateTime.UtcNow
+                });
+                
+                _logger.LogInformation("Force-synced ReminderTargetId during initialization for {TimeZone}: {OldId} -> {NewId}", 
+                    timeZoneId, State.ReminderTargetId, configuredTargetId);
+            }
         }
         else
         {
-            State.ReminderTargetId = Guid.Empty;
             _logger.LogWarning("ReminderTargetId is Guid.Empty in configuration for {TimeZone}", timeZoneId);
         }
         
@@ -214,8 +235,16 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     public async Task SetReminderTargetIdAsync(Guid targetId)
     {
         var oldTargetId = State.ReminderTargetId;
-        State.ReminderTargetId = targetId;
-        State.LastUpdated = DateTime.UtcNow;
+        
+        // ✅ Use event sourcing to properly persist state changes
+        RaiseEvent(new SetReminderTargetIdEventLog
+        {
+            OldTargetId = oldTargetId,
+            NewTargetId = targetId,
+            ChangeTime = DateTime.UtcNow
+        });
+        
+        await ConfirmEvents();
         
         _logger.LogInformation("Updated ReminderTargetId for {TimeZone}: {Old} -> {New}", 
             _timeZoneId, oldTargetId, targetId);

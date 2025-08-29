@@ -163,6 +163,17 @@ public class SetSchedulerStatusEventLog : DailyPushLogEvent
     [Id(2)] public DateTime ChangeTime { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>
+/// Set reminder target ID event  
+/// </summary>
+[GenerateSerializer]
+public class SetReminderTargetIdEventLog : DailyPushLogEvent
+{
+    [Id(0)] public Guid OldTargetId { get; set; }
+    [Id(1)] public Guid NewTargetId { get; set; }
+    [Id(2)] public DateTime ChangeTime { get; set; } = DateTime.UtcNow;
+}
+
 // === Chat Manager Daily Push Events ===
 
 /// <summary>
