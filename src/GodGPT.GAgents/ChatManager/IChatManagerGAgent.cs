@@ -117,4 +117,9 @@ public interface IChatManagerGAgent : IGAgent
     /// Clear all read status for this user - TODO: Remove before production
     /// </summary>
     Task ClearReadStatusAsync();
+    
+    /// <summary>
+    /// Get daily push read status for this user - TODO: Remove before production
+    /// </summary>
+    Task<Dictionary<string, bool>> GetDailyPushReadStatusAsync();
 }

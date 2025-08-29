@@ -1269,6 +1269,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             case MarkDailyPushReadEventLog markReadEvent:
                 state.DailyPushReadStatus[markReadEvent.DateKey] = true;
                 break;
+            case ClearDailyPushReadStatusEventLog clearReadStatusEvent:
+                state.DailyPushReadStatus.Clear();
+                break;
         }   
     }
 
@@ -1860,19 +1863,27 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     public async Task ClearReadStatusAsync()
     {
         var clearedCount = State.DailyPushReadStatus.Count;
-        State.DailyPushReadStatus.Clear();
         
-        // Use event-driven state update for consistency
-        RaiseEvent(new MarkDailyPushReadEventLog
+        // ✅ Use proper Event Sourcing - no direct State modification
+        RaiseEvent(new ClearDailyPushReadStatusEventLog
         {
-            DateKey = $"CLEARED_{DateTime.UtcNow:yyyy-MM-dd_HH-mm-ss}",
-            ReadTime = DateTime.UtcNow
+            ClearTime = DateTime.UtcNow,
+            ClearedCount = clearedCount
         });
         
         await ConfirmEvents();
         
         Logger.LogInformation("🧪 Cleared all read status for user {UserId}: {ClearedCount} entries removed", 
             State.UserId, clearedCount);
+    }
+
+    /// <summary>
+    /// Get daily push read status for this user - TODO: Remove before production
+    /// </summary>
+    public async Task<Dictionary<string, bool>> GetDailyPushReadStatusAsync()
+    {
+        // Return a copy of the read status to avoid external modification
+        return new Dictionary<string, bool>(State.DailyPushReadStatus);
     }
 
     public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)

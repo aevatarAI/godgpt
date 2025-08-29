@@ -138,3 +138,13 @@ public class MarkDailyPushReadEventLog : ChatManageEventLog
     [Id(0)] public string DateKey { get; set; } = "";
     [Id(1)] public DateTime ReadTime { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Event to clear all daily push read status - TODO: Remove before production
+/// </summary>
+[GenerateSerializer]
+public class ClearDailyPushReadStatusEventLog : ChatManageEventLog
+{
+    [Id(0)] public DateTime ClearTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public int ClearedCount { get; set; }
+}
