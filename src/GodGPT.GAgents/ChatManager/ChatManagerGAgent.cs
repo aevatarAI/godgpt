@@ -303,7 +303,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         Logger.LogDebug($"[ChatGAgentManager][RequestGetUserProfileEvent] start");
 
-        //var userProfileDto = await GetLastSessionUserProfileAsync();
         var userProfileDto = await GetUserProfileAsync();
 
         await PublishAsync(new ResponseGetUserProfile()
@@ -331,10 +330,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         Logger.LogDebug($"[ChatManagerGAgent][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
         
         sw.Reset();
-        //var sysMessage = await configuration.GetPrompt();
-        //put user data into the user prompt
-        //sysMessage = await AppendUserInfoToSystemPromptAsync(configuration, sysMessage, userProfile);
-
+        
         // Add role-specific prompt if guider is provided
         var sysMessage = string.Empty;
         if (!string.IsNullOrEmpty(guider))
@@ -734,9 +730,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         catch (Exception ex)
         {
-            // Log but don't throw - return empty string for graceful degradation
-            // Note: Cannot use Logger in static method, but error is rare and non-critical
-            // Logger.LogWarning(ex, "[ChatGAgentManager][ExtractChatContent] Error extracting content");
+            // Return empty string for graceful degradation
         }
 
         return string.Empty;
@@ -1610,7 +1604,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
             if (hasAnyReadToday)
             {
-                // Get device info for debugging
+                // Get device info for logging
                 var devicesInTimezone = State.UserDevices.Values
                     .Where(d => d.TimeZoneId == timeZoneId)
                     .Select(d => new { 
@@ -1676,8 +1670,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // Create separate push notifications for each content to ensure individual callbacks
         var pushTasks = enabledDevices.SelectMany(device =>
         {
-            // Send separate push for each content with delay to avoid grouping
-            // Note: Empty pushTokens are already filtered out in device selection
+            // Send separate push for each content with staggered delay
             return contents.Select(async (content, index) =>
             {
                 try
@@ -1755,7 +1748,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task ProcessInstantPushAsync(List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
     {
-        // Skip read status check for instant push - this is for testing purposes
+        // Skip read status check for instant push
         
         // Only process devices in the specified timezone with pushToken deduplication
         var enabledDevicesRaw = State.UserDevices.Values
