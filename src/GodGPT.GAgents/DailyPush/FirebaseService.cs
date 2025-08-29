@@ -351,8 +351,7 @@ public class FirebaseService
     /// </summary>
     private static void CleanupOldRecords()
     {
-        var now = DateTime.UtcNow;
-        var today = DateOnly.FromDateTime(now);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
         
         // Clean up old date records (older than 3 days)
         var dateCutoff = today.AddDays(-3);
