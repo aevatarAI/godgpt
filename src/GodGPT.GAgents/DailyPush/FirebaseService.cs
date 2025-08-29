@@ -822,8 +822,7 @@ public class FirebaseService
                 return results;
             }
             
-            // FCM API v1 doesn't have a native "sendEach" endpoint like the legacy API
-            // So we'll use concurrent requests with proper rate limiting
+            // Use concurrent requests with proper rate limiting
             const int batchSize = 10; // FCM recommended batch size
             const int delayMs = 100;  // Reduced delay since we're using proper batching
             
@@ -941,26 +940,7 @@ public class FirebaseService
         return results;
     }
     
-    /// <summary>
-    /// Send push notifications to multiple devices (batch) - Legacy method
-    /// </summary>
-    [Obsolete("Use SendEachAsync instead for better performance")]
-    public async Task<BatchPushResult> SendBatchPushNotificationAsync(
-        List<string> pushTokens,
-        string title,
-        string content,
-        Dictionary<string, object>? data = null)
-    {
-        var messages = pushTokens.Select(token => new PushMessage
-        {
-            Token = token,
-            Title = title,
-            Content = content,
-            Data = data
-        }).ToList();
-        
-        return await SendEachAsync(messages);
-    }
+
     
 
     
