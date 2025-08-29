@@ -1655,9 +1655,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
         
-        // ✅ Generate session ID for this push batch to prevent short-term cooldown between contents
-        var sessionId = Guid.NewGuid().ToString();
-        
         // Create separate push notifications for each content to ensure individual callbacks
         var pushTasks = enabledDevices.SelectMany(device =>
         {
@@ -1689,8 +1686,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
                         ["device_id"] = device.DeviceId,
                         ["total_contents"] = contents.Count,
-                        ["is_retry"] = isRetryPush, // ✅ Add retry push identification
-                        ["session_id"] = sessionId // ✅ Add session ID to prevent cooldown between contents in same push
+                        ["is_retry"] = isRetryPush // ✅ Add retry push identification
                     };
                     
                     var success = await firebaseService.SendPushNotificationAsync(
@@ -1769,9 +1765,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             return;
         }
         
-        // ✅ Generate session ID for this instant push batch to prevent short-term cooldown between contents
-        var sessionId = Guid.NewGuid().ToString();
-        
         // Create push messages for FCM SendEach API
         var pushMessages = new List<GodGPT.GAgents.DailyPush.PushMessage>();
         
@@ -1813,8 +1806,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         { "userId", State.UserId.ToString() },
                         { "deviceId", device.DeviceId },
                         { "timezone", timeZoneId },
-                        { "is_instant_push", true }, // ✅ Add instant push identification
-                        { "session_id", sessionId } // ✅ Add session ID to prevent cooldown between contents in same push
+                        { "is_instant_push", true } // ✅ Add instant push identification
                     }
                 });
             }

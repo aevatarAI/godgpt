@@ -33,10 +33,6 @@ public class FirebaseService
     
     // ✅ Global pushToken daily push tracking to prevent same-day duplicates across timezones
     private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
-    private static readonly TimeSpan _shortTermCooldown = TimeSpan.FromMinutes(10); // Prevent rapid duplicates
-    private static readonly ConcurrentDictionary<string, DateTime> _lastPushTimes = new();
-    // ✅ Track active push sessions to allow multi-content pushes within same session
-    private static readonly ConcurrentDictionary<string, HashSet<string>> _activePushSessions = new();
     private static int _cleanupCounter = 0;
     
     public FirebaseService(
@@ -291,69 +287,7 @@ public class FirebaseService
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
             }
             
-            // ✅ Layer 2: Short-term cooldown check (prevent rapid fire) - Skip for test pushes and same session
-            if (!isTestPush)
-            {
-                // ✅ Check if this is part of an active multi-content push session
-                var sessionId = data?.TryGetValue("session_id", out var sessionIdObj) == true ? sessionIdObj?.ToString() : null;
-                var isInActiveSession = false;
-                
-                if (!string.IsNullOrEmpty(sessionId))
-                {
-                    // Track this pushToken in the session
-                    var sessionKey = $"{sessionId}:{pushToken}";
-                    isInActiveSession = _activePushSessions.AddOrUpdate(
-                        sessionKey,
-                        new HashSet<string> { pushToken },
-                        (key, existingSet) => 
-                        {
-                            existingSet.Add(pushToken);
-                            return existingSet;
-                        }).Contains(pushToken);
-                        
-                    if (isInActiveSession)
-                    {
-                        _logger.LogDebug("📱 Multi-content push session detected (SessionId: {SessionId}), skipping short-term cooldown for token {TokenPrefix}", 
-                            sessionId.Substring(0, Math.Min(8, sessionId.Length)) + "...",
-                            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-                    }
-                }
-                
-                if (!isInActiveSession)
-                {
-                    var canSendTime = _lastPushTimes.AddOrUpdate(
-                        pushToken,
-                        now, // If key doesn't exist, add with current time
-                        (key, existingTime) =>
-                        {
-                            var timeSinceLastPush = now - existingTime;
-                            if (timeSinceLastPush < _shortTermCooldown)
-                            {
-                                // Still in short-term cooldown - return existing time (no update)
-                                return existingTime;
-                            }
-                            // Short-term cooldown expired - update to current time
-                            return now;
-                        });
-                    
-                    // Check short-term cooldown for daily pushes only
-                    if (canSendTime != now)
-                    {
-                        var timeSinceLastPush = now - canSendTime;
-                        var remainingCooldown = _shortTermCooldown - timeSinceLastPush;
-                        _logger.LogInformation("⏱️ PushToken {TokenPrefix} in short-term cooldown, skipping daily push. Last push: {TimeSince} ago, cooldown remaining: {Remaining}", 
-                            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
-                            timeSinceLastPush.ToString(@"mm\:ss"), 
-                            remainingCooldown.ToString(@"mm\:ss"));
-                        return false;
-                    }
-                }
-            }
-            else
-            {
-                _logger.LogDebug("🧪 Test push - skipping short-term cooldown check for token {TokenPrefix}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-            }
+
             
             // Use FCM API v1 if configured
             bool success;
@@ -400,27 +334,7 @@ public class FirebaseService
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
             }
             
-            // ✅ Clean up session after push completes (for last content in session)
-            var sessionId = data?.TryGetValue("session_id", out var sessionIdObj) == true ? sessionIdObj?.ToString() : null;
-            if (!string.IsNullOrEmpty(sessionId) && success)
-            {
-                var contentIndex = data?.TryGetValue("content_index", out var contentIndexObj) == true && 
-                                 int.TryParse(contentIndexObj?.ToString(), out var idx) ? idx : 1;
-                var totalContents = data?.TryGetValue("total_contents", out var totalContentsObj) == true && 
-                                  int.TryParse(totalContentsObj?.ToString(), out var total) ? total : 1;
-                                  
-                // Clean up session when last content is sent
-                if (contentIndex >= totalContents)
-                {
-                    var sessionKey = $"{sessionId}:{pushToken}";
-                    if (_activePushSessions.TryRemove(sessionKey, out _))
-                    {
-                        _logger.LogDebug("🧹 Cleaned up push session {SessionId} for token {TokenPrefix}", 
-                            sessionId.Substring(0, Math.Min(8, sessionId.Length)) + "...",
-                            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-                    }
-                }
-            }
+
             
             return success;
         }
@@ -452,23 +366,10 @@ public class FirebaseService
             _lastPushDates.TryRemove(key, out _);
         }
         
-        // Clean up old time records (older than short-term cooldown)
-        var timeCutoff = now.Subtract(_shortTermCooldown);
-        var timeKeysToRemove = _lastPushTimes
-            .Where(kvp => kvp.Value < timeCutoff)
-            .Select(kvp => kvp.Key)
-            .ToList();
-        
-        foreach (var key in timeKeysToRemove)
-        {
-            _lastPushTimes.TryRemove(key, out _);
-        }
-        
-        var totalCleaned = dateKeysToRemove.Count + timeKeysToRemove.Count;
-        if (totalCleaned > 0)
+        if (dateKeysToRemove.Count > 0)
         {
             // Note: Can't use _logger here as this is a static method
-            Console.WriteLine($"🧹 Cleaned up {dateKeysToRemove.Count} old date records and {timeKeysToRemove.Count} old time records from push tracking cache");
+            Console.WriteLine($"🧹 Cleaned up {dateKeysToRemove.Count} old date records from push tracking cache");
         }
     }
     
