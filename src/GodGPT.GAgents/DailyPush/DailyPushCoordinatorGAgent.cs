@@ -256,6 +256,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         
         _timeZoneId = timeZoneId;
         
+        // ✅ Confirm all events at end of initialization chain
         await ConfirmEvents();
         
         _logger.LogInformation("Initialized timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}", 
@@ -330,13 +331,14 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             CompletionTime = DateTime.UtcNow
         });
         
-        await ConfirmEvents();
-        
         // Register first test reminder with custom interval
         await this.RegisterOrUpdateReminder(
             TestModeConstants.TEST_PUSH_REMINDER,
             TimeSpan.FromSeconds(10), // Start in 10 seconds
             testInterval); // Use custom interval
+            
+        // ✅ Confirm all events at end of call chain
+        await ConfirmEvents();
             
         _logger.LogInformation("Test mode started for {TimeZone}. Max rounds: {MaxRounds}, Interval: {Interval}s", 
             _timeZoneId, TestModeConstants.MAX_TEST_ROUNDS, intervalSeconds);
