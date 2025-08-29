@@ -172,8 +172,15 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 _timeZoneId, configuredTargetId);
         }
         
-        // Try to register Orleans reminders if authorized
-        await TryRegisterRemindersAsync();
+        // Try to register Orleans reminders if authorized and timezone is set
+        if (!string.IsNullOrEmpty(_timeZoneId))
+        {
+            await TryRegisterRemindersAsync();
+        }
+        else
+        {
+            _logger.LogInformation("Skipping reminder registration - timezone not initialized yet for grain {GrainId}", this.GetPrimaryKey());
+        }
     }
 
     public async Task InitializeAsync(string timeZoneId)
@@ -235,6 +242,9 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         
         // ✅ Confirm all events at end of initialization chain
         await ConfirmEvents();
+        
+        // ✅ Now that timezone is properly initialized, register reminders
+        await TryRegisterRemindersAsync();
         
         _logger.LogInformation("Initialized timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}", 
             timeZoneId, State.ReminderTargetId);
