@@ -64,10 +64,4 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     /// Each device will receive two identical notifications
     /// </summary>
     Task<InstantPushResult> SendInstantPushAsync();
-    
-    /// <summary>
-    /// Diagnose and attempt to fix orphaned grain issues
-    /// Returns diagnostic information and whether a fix was attempted
-    /// </summary>
-    Task<(bool IsOrphaned, string DiagnosticInfo, bool FixAttempted)> DiagnoseAndFixOrphanedGrainAsync();
 }
