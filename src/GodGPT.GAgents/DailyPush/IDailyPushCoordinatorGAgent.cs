@@ -69,4 +69,9 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     /// Each device will receive two identical notifications
     /// </summary>
     Task<InstantPushResult> SendInstantPushAsync();
+    
+    /// <summary>
+    /// Emergency cleanup for orphaned grains - removes all reminders and resets state
+    /// </summary>
+    Task CleanupOrphanedGrainAsync();
 }

@@ -1712,4 +1712,69 @@ public async Task<InstantPushResult> SendInstantPushAsync()
             }
         };
     }
+    
+    /// <summary>
+    /// Emergency cleanup for orphaned grains - removes all reminders and resets state
+    /// This method helps recover from batch auto-activation of grains with empty timezone IDs
+    /// </summary>
+    public async Task CleanupOrphanedGrainAsync()
+    {
+        _logger.LogWarning("🧹 Starting emergency cleanup for potentially orphaned grain. Current timezone: '{TimeZone}', GrainId: {GrainId}", 
+            _timeZoneId ?? "null", this.GetPrimaryKey());
+        
+        var cleanupCount = 0;
+        
+        try
+        {
+            // 1. Clean up ALL possible reminders
+            var allReminderNames = new[]
+            {
+                MORNING_REMINDER,
+                AFTERNOON_REMINDER,
+                TestModeConstants.TEST_PUSH_REMINDER,
+                TestModeConstants.TEST_RETRY_REMINDER
+            };
+            
+            foreach (var reminderName in allReminderNames)
+            {
+                try
+                {
+                    var existingReminder = await this.GetReminder(reminderName);
+                    if (existingReminder != null)
+                    {
+                        await this.UnregisterReminder(existingReminder);
+                        cleanupCount++;
+                        _logger.LogInformation("🗑️ Cleaned up reminder: {ReminderName}", reminderName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Reminder {ReminderName} not found or already cleaned", reminderName);
+                }
+            }
+            
+            // 2. Reset internal state
+            _timeZoneId = "";
+            
+            // 3. Reset grain state using event sourcing
+            if (State.Status != SchedulerStatus.Inactive || !string.IsNullOrEmpty(State.TimeZoneId))
+            {
+                RaiseEvent(new InitializeCoordinatorEventLog
+                {
+                    TimeZoneId = "",
+                    Status = SchedulerStatus.Inactive,
+                    InitTime = DateTime.UtcNow
+                });
+                await ConfirmEvents();
+            }
+            
+            _logger.LogWarning("✅ Emergency cleanup completed for grain {GrainId}. Removed {ReminderCount} reminders. Grain is now inactive and ready for proper initialization.", 
+                this.GetPrimaryKey(), cleanupCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Emergency cleanup failed for grain {GrainId}", this.GetPrimaryKey());
+            throw;
+        }
+    }
 }
