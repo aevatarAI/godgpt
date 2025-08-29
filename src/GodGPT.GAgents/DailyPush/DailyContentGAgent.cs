@@ -39,6 +39,9 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     {
         _logger.LogInformation("DailyContentGAgent activated");
         
+        // ✅ Pre-register common timezone mappings to prevent orphaned grains
+        await EnsureCommonTimezoneMappingsAsync();
+        
         // Auto-refresh content if empty or stale (older than 24 hours)
         var needsRefresh = State.Contents.Count == 0 || 
                           (DateTime.UtcNow - State.LastRefresh).TotalHours > 24;
@@ -406,5 +409,47 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     public async Task<string?> GetTimezoneFromGuidAsync(Guid timezoneGuid)
     {
         return State.TimezoneGuidMappings.TryGetValue(timezoneGuid, out var timezoneId) ? timezoneId : null;
+    }
+    
+    /// <summary>
+    /// Pre-register common timezone mappings to prevent orphaned DailyPushCoordinatorGAgent grains
+    /// This solves the chicken-egg problem where auto-activated grains can't find their timezone
+    /// </summary>
+    private async Task EnsureCommonTimezoneMappingsAsync()
+    {
+        var commonTimezones = new[]
+        {
+            "UTC",
+            "Asia/Shanghai", 
+            "Asia/Tokyo",
+            "Europe/London",
+            "Europe/Rome", 
+            "Europe/Paris",
+            "America/New_York",
+            "America/Los_Angeles",
+            "Australia/Sydney"
+        };
+        
+        var registeredCount = 0;
+        foreach (var timezone in commonTimezones)
+        {
+            var timezoneGuid = DailyPushConstants.TimezoneToGuid(timezone);
+            if (!State.TimezoneGuidMappings.ContainsKey(timezoneGuid))
+            {
+                State.TimezoneGuidMappings[timezoneGuid] = timezone;
+                registeredCount++;
+                _logger.LogDebug("Pre-registered timezone mapping: {Guid} -> {TimezoneId}", timezoneGuid, timezone);
+            }
+        }
+        
+        if (registeredCount > 0)
+        {
+            await ConfirmEvents();
+            _logger.LogInformation("✅ Pre-registered {Count} common timezone mappings to prevent orphaned grains", registeredCount);
+        }
+        else
+        {
+            _logger.LogDebug("🔄 All common timezone mappings already exist ({Count} total mappings)", State.TimezoneGuidMappings.Count);
+        }
     }
 }

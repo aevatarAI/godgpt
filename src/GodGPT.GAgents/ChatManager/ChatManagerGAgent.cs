@@ -1883,17 +1883,32 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 
                 // ✅ CRITICAL: Activate DailyPushCoordinatorGAgent to ensure daily reminders are registered
                 // This ensures 8AM/3PM push notifications will work for this timezone
-                var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
-                try
+                // 🛡️ SAFETY: Validate timezone before creating Grain to prevent orphaned Grains
+                if (!string.IsNullOrWhiteSpace(newTimeZone))
                 {
-                    // Explicitly initialize to ensure reminders are registered for daily pushes
-                    await coordinatorGAgent.InitializeAsync(newTimeZone);
-                    Logger.LogInformation("Initialized DailyPushCoordinatorGAgent for timezone {TimeZone} to enable daily push reminders", newTimeZone);
+                    try
+                    {
+                        // Validate timezone format before creating Grain
+                        TimeZoneInfo.FindSystemTimeZoneById(newTimeZone);
+                        
+                        var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                        // Explicitly initialize to ensure reminders are registered for daily pushes
+                        await coordinatorGAgent.InitializeAsync(newTimeZone);
+                        Logger.LogInformation("Initialized DailyPushCoordinatorGAgent for timezone {TimeZone} to enable daily push reminders", newTimeZone);
+                    }
+                    catch (TimeZoneNotFoundException ex)
+                    {
+                        Logger.LogError(ex, "Invalid timezone ID '{TimeZone}' - skipping DailyPushCoordinatorGAgent initialization to prevent orphaned Grain", newTimeZone);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning(ex, "Failed to initialize DailyPushCoordinatorGAgent for timezone {TimeZone}, but timezone index update succeeded", newTimeZone);
+                        // Don't throw - the timezone index update is the critical part
+                    }
                 }
-                catch (Exception ex)
+                else
                 {
-                    Logger.LogWarning(ex, "Failed to initialize DailyPushCoordinatorGAgent for timezone {TimeZone}, but timezone index update succeeded", newTimeZone);
-                    // Don't throw - the timezone index update is the critical part
+                    Logger.LogWarning("Empty or invalid timezone ID '{TimeZone}' - skipping DailyPushCoordinatorGAgent initialization to prevent orphaned Grain", newTimeZone ?? "null");
                 }
             }
             

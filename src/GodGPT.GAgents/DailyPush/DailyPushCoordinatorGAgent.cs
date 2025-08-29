@@ -286,6 +286,42 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     }
     
     /// <summary>
+    /// Force initialize this grain with specific timezone (admin/debugging use)
+    /// Used to fix orphaned grains that were auto-activated without proper timezone mapping
+    /// </summary>
+    public async Task ForceInitializeAsync(string timeZoneId)
+    {
+        _logger.LogWarning("🔧 Force initializing DailyPushCoordinatorGAgent with timezone: {TimeZone} (previous timezone: '{PreviousTimeZone}')", 
+            timeZoneId, _timeZoneId);
+        
+        // Validate timezone first to prevent creating more orphaned grains
+        if (string.IsNullOrWhiteSpace(timeZoneId))
+        {
+            throw new ArgumentException("Timezone ID cannot be null, empty, or whitespace", nameof(timeZoneId));
+        }
+        
+        try
+        {
+            TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            throw new ArgumentException($"Invalid timezone ID: {timeZoneId}", nameof(timeZoneId), ex);
+        }
+        
+        // Clear any previous state
+        _timeZoneId = "";
+        
+        // Cleanup any existing reminders first
+        await CleanupRemindersAsync();
+        
+        // Re-initialize with correct timezone
+        await InitializeAsync(timeZoneId);
+        
+        _logger.LogInformation("✅ Force initialization completed for timezone: {TimeZone}", timeZoneId);
+    }
+    
+    /// <summary>
     /// Start test mode with rapid push testing - TODO: Remove before production
     /// </summary>
     public async Task StartTestModeAsync(int intervalSeconds = 600)

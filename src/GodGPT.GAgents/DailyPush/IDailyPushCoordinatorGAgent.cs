@@ -39,6 +39,11 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     Task SetReminderTargetIdAsync(Guid targetId);
     
     /// <summary>
+    /// Force initialize this grain with specific timezone (admin/debugging use)
+    /// </summary>
+    Task ForceInitializeAsync(string timeZoneId);
+    
+    /// <summary>
     /// Start test mode with rapid push testing - TODO: Remove before production
     /// </summary>
     /// <param name="intervalSeconds">Push interval in seconds (default: 600 seconds = 10 minutes)</param>
