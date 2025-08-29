@@ -1757,12 +1757,12 @@ public async Task<InstantPushResult> SendInstantPushAsync()
             _timeZoneId = "";
             
             // 3. Reset grain state using event sourcing
-            if (State.Status != SchedulerStatus.Inactive || !string.IsNullOrEmpty(State.TimeZoneId))
+            if (State.Status != SchedulerStatus.Paused || !string.IsNullOrEmpty(State.TimeZoneId))
             {
                 RaiseEvent(new InitializeCoordinatorEventLog
                 {
                     TimeZoneId = "",
-                    Status = SchedulerStatus.Inactive,
+                    Status = SchedulerStatus.Paused,
                     InitTime = DateTime.UtcNow
                 });
                 await ConfirmEvents();

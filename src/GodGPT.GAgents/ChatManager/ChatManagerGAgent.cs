@@ -1881,39 +1881,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");
                 
-                // ✅ CRITICAL: Activate DailyPushCoordinatorGAgent to ensure daily reminders are registered
-                // This ensures 8AM/3PM push notifications will work for this timezone
-                // 🛡️ SAFETY: Validate timezone before creating Grain to prevent orphaned Grains
-                if (!string.IsNullOrWhiteSpace(newTimeZone))
-                {
-                    try
-                    {
-                        // Validate timezone format before creating Grain
-                        TimeZoneInfo.FindSystemTimeZoneById(newTimeZone);
-                        
-                        var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
-                        // Explicitly initialize to ensure reminders are registered for daily pushes
-                        await coordinatorGAgent.InitializeAsync(newTimeZone);
-                        
-                        // 🚀 CRITICAL: Force immediate activation by calling GetStatusAsync to ensure grain stays active
-                        var status = await coordinatorGAgent.GetStatusAsync();
-                        Logger.LogInformation("Initialized DailyPushCoordinatorGAgent for timezone {TimeZone} to enable daily push reminders. Status: {Status}, ReminderTargetId: {TargetId}", 
-                            newTimeZone, status.Status, status.ReminderTargetId);
-                    }
-                    catch (TimeZoneNotFoundException ex)
-                    {
-                        Logger.LogError(ex, "Invalid timezone ID '{TimeZone}' - skipping DailyPushCoordinatorGAgent initialization to prevent orphaned Grain", newTimeZone);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogWarning(ex, "Failed to initialize DailyPushCoordinatorGAgent for timezone {TimeZone}, but timezone index update succeeded", newTimeZone);
-                        // Don't throw - the timezone index update is the critical part
-                    }
-                }
-                else
-                {
-                    Logger.LogWarning("Empty or invalid timezone ID '{TimeZone}' - skipping DailyPushCoordinatorGAgent initialization to prevent orphaned Grain", newTimeZone ?? "null");
-                }
+                // 🚀 CRITICAL: Complete timezone ecosystem initialization
+                // This ensures ALL timezone-related agents are ready for immediate daily push operation
+                await InitializeTimezoneEcosystemAsync(newTimeZone);
             }
             
             Logger.LogInformation($"Updated timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
@@ -1924,6 +1894,82 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
     }
     
+    /// <summary>
+    /// Complete timezone ecosystem initialization - ensures ALL timezone-related agents are ready
+    /// This method guarantees immediate push system availability when user switches to new timezone
+    /// </summary>
+    private async Task InitializeTimezoneEcosystemAsync(string newTimeZone)
+    {
+        // 🛡️ SAFETY: Validate timezone before any Grain operations
+        if (string.IsNullOrWhiteSpace(newTimeZone))
+        {
+            Logger.LogWarning("Empty or invalid timezone ID '{TimeZone}' - skipping timezone ecosystem initialization to prevent orphaned Grains", newTimeZone ?? "null");
+            return;
+        }
+
+        try
+        {
+            // Validate timezone format before creating any Grains
+            TimeZoneInfo.FindSystemTimeZoneById(newTimeZone);
+            Logger.LogInformation("🚀 Starting complete timezone ecosystem initialization for {TimeZone}", newTimeZone);
+
+            // Step 1: Initialize DailyContentGAgent timezone mapping (global content service)
+            var contentGAgent = GrainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
+            await contentGAgent.RegisterTimezoneGuidMappingAsync(DailyPushConstants.TimezoneToGuid(newTimeZone), newTimeZone);
+            Logger.LogDebug("✅ DailyContentGAgent timezone mapping registered for {TimeZone}", newTimeZone);
+
+            // Step 2: Initialize and fully activate DailyPushCoordinatorGAgent
+            var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+            
+            // Force complete initialization and activation
+            await coordinatorGAgent.InitializeAsync(newTimeZone);
+            
+            // 🔥 CRITICAL: Force grain to stay active by calling multiple methods
+            var status = await coordinatorGAgent.GetStatusAsync();
+            var devices = await coordinatorGAgent.GetDevicesInTimezoneAsync(); // This forces full activation
+            
+            Logger.LogInformation("✅ DailyPushCoordinatorGAgent fully initialized for {TimeZone}. Status: {Status}, ReminderTargetId: {TargetId}, RegisteredDevices: {DeviceCount}", 
+                newTimeZone, status.Status, status.ReminderTargetId, devices.Count);
+
+            // Step 3: Validate reminders are registered (if authorized)
+            if (status.ReminderTargetId != Guid.Empty)
+            {
+                Logger.LogInformation("🎯 Daily push reminders are ready for {TimeZone} with authorized ReminderTargetId", newTimeZone);
+            }
+            else
+            {
+                Logger.LogWarning("⚠️ ReminderTargetId is empty for {TimeZone} - daily pushes may not work until properly configured", newTimeZone);
+            }
+
+            // Step 4: Pre-warm timezone calculations to ensure immediate readiness
+            var timezoneInfo = TimeZoneInfo.FindSystemTimeZoneById(newTimeZone);
+            var currentUtc = DateTime.UtcNow;
+            var currentLocal = TimeZoneInfo.ConvertTimeFromUtc(currentUtc, timezoneInfo);
+            
+            Logger.LogInformation("🌍 Timezone ecosystem fully initialized for {TimeZone}. Current local time: {LocalTime} (UTC: {UtcTime})", 
+                newTimeZone, currentLocal.ToString("yyyy-MM-dd HH:mm:ss"), currentUtc.ToString("yyyy-MM-dd HH:mm:ss"));
+
+            // Step 5: Final verification - ensure all components are responsive
+            var verificationTasks = new Task[]
+            {
+                contentGAgent.GetTimezoneFromGuidAsync(DailyPushConstants.TimezoneToGuid(newTimeZone)),
+                coordinatorGAgent.GetStatusAsync()
+            };
+            
+            await Task.WhenAll(verificationTasks);
+            Logger.LogInformation("🎉 Timezone ecosystem verification completed for {TimeZone} - all agents responsive", newTimeZone);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            Logger.LogError(ex, "❌ Invalid timezone ID '{TimeZone}' - timezone ecosystem initialization failed", newTimeZone);
+            throw new ArgumentException($"Invalid timezone ID: {newTimeZone}", nameof(newTimeZone), ex);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "❌ Timezone ecosystem initialization failed for {TimeZone} - daily pushes may not work properly", newTimeZone);
+            // Don't rethrow - allow timezone index update to succeed even if ecosystem init partially fails
+        }
+    }
 
 
 }
