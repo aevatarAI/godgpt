@@ -1607,7 +1607,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
             if (hasAnyReadToday)
             {
-                Logger.LogDebug($"At least one daily push already read for {dateKey}, skipping all pushes");
+                // Get device info for debugging
+                var devicesInTimezone = State.UserDevices.Values
+                    .Where(d => d.TimeZoneId == timeZoneId)
+                    .Select(d => new { 
+                        DeviceId = d.DeviceId, 
+                        PushToken = !string.IsNullOrEmpty(d.PushToken) ? d.PushToken.Substring(0, Math.Min(8, d.PushToken.Length)) + "..." : "EMPTY",
+                        PushEnabled = d.PushEnabled 
+                    })
+                    .ToList();
+                
+                var deviceInfo = devicesInTimezone.Any() 
+                    ? string.Join(", ", devicesInTimezone.Select(d => $"DeviceId:{d.DeviceId}|Token:{d.PushToken}|Enabled:{d.PushEnabled}"))
+                    : "No devices in timezone";
+                
+                Logger.LogInformation("📖 At least one daily push already read for {DateKey}, skipping all pushes - UserId: {UserId}, TimeZone: {TimeZone}, Devices: [{DeviceInfo}]", 
+                    dateKey, State.UserId, timeZoneId, deviceInfo);
                 return;
             }
         }
