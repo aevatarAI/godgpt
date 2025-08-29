@@ -1686,6 +1686,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
                         ["device_id"] = device.DeviceId,
                         ["total_contents"] = contents.Count,
+                        ["timezone"] = timeZoneId, // ✅ Add timezone for timezone-based deduplication
                         ["is_retry"] = isRetryPush // ✅ Add retry push identification
                     };
                     

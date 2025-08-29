@@ -261,11 +261,16 @@ public class FirebaseService
                 }
             }
             
+            // ✅ Timezone-based deduplication: each timezone can have daily pushes independently
+            var timeZoneId = data?.TryGetValue("timezone", out var timezoneObj) == true ? timezoneObj?.ToString() : "UTC";
+            var dedupeKey = $"{pushToken}:{timeZoneId}"; // Combine pushToken with timezone for deduplication
+            
             // Only check date deduplication for first content of regular daily pushes (skip test pushes, retry pushes, and subsequent contents)
-            if (!isTestPush && !isRetryPush && isFirstContent && _lastPushDates.TryGetValue(pushToken, out var lastPushDate) && lastPushDate == today)
+            if (!isTestPush && !isRetryPush && isFirstContent && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
             {
-                _logger.LogInformation("📅 PushToken {TokenPrefix} already received daily push on {Date}, skipping duplicate", 
+                _logger.LogInformation("📅 PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, skipping duplicate", 
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                    timeZoneId,
                     today.ToString("yyyy-MM-dd"));
                 return false;
             }
@@ -307,9 +312,9 @@ public class FirebaseService
             {
                 if (!isTestPush && !isRetryPush && isFirstContent)
                 {
-                    _lastPushDates.AddOrUpdate(pushToken, today, (key, oldDate) => today);
-                    _logger.LogDebug("📱 Daily push session started successfully for token {TokenPrefix} at {PushTime}, date recorded: {Date}", 
-                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"), today.ToString("yyyy-MM-dd"));
+                    _lastPushDates.AddOrUpdate(dedupeKey, today, (key, oldDate) => today);
+                    _logger.LogDebug("📱 Daily push session started successfully for token {TokenPrefix} in timezone {TimeZone} at {PushTime}, date recorded: {Date}", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, now.ToString("HH:mm:ss"), today.ToString("yyyy-MM-dd"));
                 }
                 else if (!isTestPush && !isRetryPush && !isFirstContent)
                 {
