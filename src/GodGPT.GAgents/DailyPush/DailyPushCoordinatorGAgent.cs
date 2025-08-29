@@ -134,7 +134,10 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             }
             else
             {
-                _logger.LogWarning("DailyPushCoordinatorGAgent activated but no timezone ID in state and no GUID mapping found. Grain will not be functional until InitializeAsync is called.");
+                _logger.LogWarning("DailyPushCoordinatorGAgent activated but no timezone ID in state and no GUID mapping found. " +
+                    "Grain ID: {GrainId}, this grain appears to be orphaned and will not be functional until InitializeAsync is called. " +
+                    "This may indicate a missing timezone registration or incomplete initialization.", 
+                    grainGuid);
                 _timeZoneId = ""; // Ensure it's empty, not null
             }
         }
@@ -185,7 +188,13 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         }
         else
         {
-            _logger.LogInformation("Skipping reminder registration - timezone not initialized yet for grain {GrainId}", this.GetPrimaryKey());
+            _logger.LogInformation("Skipping reminder registration - timezone not initialized yet for grain {GrainId}. " +
+                "To diagnose: check if this grain was properly initialized via InitializeAsync(), " +
+                "or if timezone GUID mapping exists in DailyContentGAgent.", 
+                this.GetPrimaryKey());
+            
+            // Provide additional diagnostic information
+            await LogOrphanedGrainDiagnosticsAsync();
         }
     }
 
@@ -796,6 +805,124 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             {
                 _logger.LogError(ex, "❌ Failed to update reminders after configuration change for {TimeZone}", _timeZoneId);
             }
+        }
+    }
+    
+    /// <summary>
+    /// Log diagnostic information for orphaned grains
+    /// </summary>
+    private async Task LogOrphanedGrainDiagnosticsAsync()
+    {
+        try
+        {
+            var grainId = this.GetPrimaryKey();
+            _logger.LogInformation("🔍 Diagnosing orphaned grain {GrainId}", grainId);
+            
+            // Check current state
+            _logger.LogInformation("Current State - TimeZoneId: '{TimeZoneId}', Status: {Status}, ReminderTargetId: {ReminderTargetId}", 
+                State.TimeZoneId ?? "NULL", State.Status, State.ReminderTargetId);
+            
+            // Try to get all registered timezone mappings from DailyContentGAgent
+            var contentGAgent = _grainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
+            
+            // Check if this specific GUID has a mapping
+            var mappedTimezone = await contentGAgent.GetTimezoneFromGuidAsync(grainId);
+            if (!string.IsNullOrEmpty(mappedTimezone))
+            {
+                _logger.LogWarning("🚨 Found timezone mapping for grain {GrainId} -> {TimeZone}, but grain state is empty! " +
+                    "This suggests incomplete initialization. Consider calling InitializeAsync('{TimeZone}').", 
+                    grainId, mappedTimezone, mappedTimezone);
+            }
+            else
+            {
+                _logger.LogInformation("No timezone mapping found for grain {GrainId} in DailyContentGAgent. " +
+                    "This grain may have been created directly without proper initialization.", grainId);
+            }
+            
+            // Suggest resolution steps
+            _logger.LogInformation("💡 To resolve orphaned grain {GrainId}:\n" +
+                "1. If you know the intended timezone, call InitializeAsync(timeZoneId)\n" +
+                "2. Check if the grain was created via proper ChatManagerGAgent.UpdateTimezoneIndexAsync flow\n" +
+                "3. Verify timezone registration in DailyPushConstants.RegisterTimezoneMapping\n" +
+                "4. Check for incomplete grain initialization in application logs",
+                grainId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to diagnose orphaned grain {GrainId}", this.GetPrimaryKey());
+        }
+    }
+    
+    /// <summary>
+    /// Diagnose and attempt to fix orphaned grain issues
+    /// </summary>
+    public async Task<(bool IsOrphaned, string DiagnosticInfo, bool FixAttempted)> DiagnoseAndFixOrphanedGrainAsync()
+    {
+        var grainId = this.GetPrimaryKey();
+        var diagnosticInfo = new List<string>();
+        var isOrphaned = false;
+        var fixAttempted = false;
+        
+        try
+        {
+            diagnosticInfo.Add($"🔍 Diagnosing grain {grainId}");
+            
+            // Check if grain is orphaned (no timezone ID)
+            if (string.IsNullOrEmpty(State.TimeZoneId))
+            {
+                isOrphaned = true;
+                diagnosticInfo.Add("❌ Grain is orphaned - no TimeZoneId in state");
+                
+                // Try to find timezone mapping
+                var contentGAgent = _grainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
+                var mappedTimezone = await contentGAgent.GetTimezoneFromGuidAsync(grainId);
+                
+                if (!string.IsNullOrEmpty(mappedTimezone))
+                {
+                    diagnosticInfo.Add($"✅ Found timezone mapping: {grainId} -> {mappedTimezone}");
+                    diagnosticInfo.Add($"🔧 Attempting to initialize grain with timezone: {mappedTimezone}");
+                    
+                    try
+                    {
+                        await InitializeAsync(mappedTimezone);
+                        fixAttempted = true;
+                        diagnosticInfo.Add($"✅ Successfully initialized grain with timezone: {mappedTimezone}");
+                        isOrphaned = false; // No longer orphaned after fix
+                    }
+                    catch (Exception initEx)
+                    {
+                        diagnosticInfo.Add($"❌ Failed to initialize grain: {initEx.Message}");
+                    }
+                }
+                else
+                {
+                    diagnosticInfo.Add("❌ No timezone mapping found in DailyContentGAgent");
+                    diagnosticInfo.Add("💡 This grain may have been created directly without proper initialization");
+                    diagnosticInfo.Add("💡 Possible solutions:");
+                    diagnosticInfo.Add("  1. Call InitializeAsync(timeZoneId) with the correct timezone");
+                    diagnosticInfo.Add("  2. Check ChatManagerGAgent.UpdateTimezoneIndexAsync flow");
+                    diagnosticInfo.Add("  3. Verify DailyPushConstants.RegisterTimezoneMapping calls");
+                }
+            }
+            else
+            {
+                diagnosticInfo.Add($"✅ Grain is properly initialized with timezone: {State.TimeZoneId}");
+                diagnosticInfo.Add($"Status: {State.Status}, ReminderTargetId: {State.ReminderTargetId}");
+                
+                // Additional health checks
+                var configuredTargetId = _options.CurrentValue.ReminderTargetId;
+                if (State.ReminderTargetId != configuredTargetId)
+                {
+                    diagnosticInfo.Add($"⚠️ ReminderTargetId mismatch - State: {State.ReminderTargetId}, Config: {configuredTargetId}");
+                }
+            }
+            
+            return (isOrphaned, string.Join("\n", diagnosticInfo), fixAttempted);
+        }
+        catch (Exception ex)
+        {
+            diagnosticInfo.Add($"❌ Diagnostic failed: {ex.Message}");
+            return (true, string.Join("\n", diagnosticInfo), false);
         }
     }
     
