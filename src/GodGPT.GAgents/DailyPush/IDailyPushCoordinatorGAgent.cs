@@ -16,12 +16,12 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     /// <summary>
     /// Process morning push for this timezone (8:00 AM local time)
     /// </summary>
-    Task ProcessMorningPushAsync(DateTime targetDate);
+    Task ProcessMorningPushAsync(DateTime targetDate, bool isManualTrigger = false);
     
     /// <summary>
     /// Process afternoon retry push for this timezone (3:00 PM local time)
     /// </summary>
-    Task ProcessAfternoonRetryAsync(DateTime targetDate);
+    Task ProcessAfternoonRetryAsync(DateTime targetDate, bool isManualTrigger = false);
     
     /// <summary>
     /// Get scheduler status and statistics

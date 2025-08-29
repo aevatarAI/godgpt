@@ -1599,7 +1599,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
     }
 
-    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false)
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         
@@ -1705,7 +1705,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         ["device_id"] = device.DeviceId,
                         ["total_contents"] = contents.Count,
                         ["timezone"] = timeZoneId, // ✅ Add timezone for timezone-based deduplication
-                        ["is_retry"] = isRetryPush // ✅ Add retry push identification
+                        ["is_retry"] = isRetryPush, // ✅ Add retry push identification
+                        ["is_test_push"] = isTestPush // ✅ Add test push identification for manual triggers
                     };
                     
                     var success = await firebaseService.SendPushNotificationAsync(

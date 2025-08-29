@@ -244,6 +244,16 @@ public class FirebaseService
                 }
             }
             
+            // ✅ Also check if this is a manual trigger test push via data payload
+            if (!isTestPush && data != null && data.TryGetValue("is_test_push", out var isTestObj))
+            {
+                if (bool.TryParse(isTestObj?.ToString(), out var isTest) && isTest)
+                {
+                    isTestPush = true;
+                    _logger.LogDebug("🧪 Manual trigger test push detected via is_test_push flag");
+                }
+            }
+            
             // Check if this is a retry push
             bool isRetryPush = false;
             if (data != null && data.TryGetValue("is_retry", out var isRetryObj))

@@ -421,7 +421,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     
 
 
-    public async Task ProcessMorningPushAsync(DateTime targetDate)
+    public async Task ProcessMorningPushAsync(DateTime targetDate, bool isManualTrigger = false)
     {
         // Safety check: ensure timezone is initialized
         if (string.IsNullOrEmpty(_timeZoneId))
@@ -469,7 +469,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 
                 if (userBatch.Any())
                 {
-                    var batchResult = await ProcessUserBatchAsync(userBatch, dailyContents, targetDate);
+                    var batchResult = await ProcessUserBatchAsync(userBatch, dailyContents, targetDate, isManualTrigger);
                     processedUsers += batchResult.processedCount;
                     failureCount += batchResult.failureCount;
                     skip += batchSize;
@@ -507,7 +507,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         }
     }
 
-    public async Task ProcessAfternoonRetryAsync(DateTime targetDate)
+    public async Task ProcessAfternoonRetryAsync(DateTime targetDate, bool isManualTrigger = false)
     {
         // Safety check: ensure timezone is initialized
         if (string.IsNullOrEmpty(_timeZoneId))
@@ -555,7 +555,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 
                 if (userBatch.Any())
                 {
-                    var batchResult = await ProcessAfternoonRetryBatchAsync(userBatch, dailyContents, targetDate);
+                    var batchResult = await ProcessAfternoonRetryBatchAsync(userBatch, dailyContents, targetDate, isManualTrigger);
                     retryUsers += batchResult.retryCount;
                     failureCount += batchResult.failureCount;
                     skip += batchSize;
@@ -949,7 +949,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     }
 
     private async Task<(int processedCount, int failureCount)> ProcessUserBatchAsync(
-        List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate)
+        List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate, bool isManualTrigger = false)
     {
         var processedCount = 0;
         var failureCount = 0;
@@ -966,7 +966,9 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 // Check if user has enabled devices in this timezone
                 if (await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId))
                 {
-                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId);
+                    // For manual triggers, treat as test push to bypass deduplication
+                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId, 
+                        bypassReadStatusCheck: isManualTrigger, isTestPush: isManualTrigger);
                     Interlocked.Increment(ref processedCount);
                 }
             }
@@ -1103,7 +1105,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     }
 
     private async Task<(int retryCount, int failureCount)> ProcessAfternoonRetryBatchAsync(
-        List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate)
+        List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate, bool isManualTrigger = false)
     {
         var retryCount = 0;
         var failureCount = 0;
@@ -1118,9 +1120,11 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 
                 // Check if user needs afternoon retry and has enabled devices
                 if (await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId) &&
-                    await chatManagerGAgent.ShouldSendAfternoonRetryAsync(targetDate))
+                    (isManualTrigger || await chatManagerGAgent.ShouldSendAfternoonRetryAsync(targetDate)))
                 {
-                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId, bypassReadStatusCheck: false, isRetryPush: true);
+                    // For manual triggers, treat as test push to bypass deduplication
+                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId, 
+                        bypassReadStatusCheck: isManualTrigger, isRetryPush: !isManualTrigger, isTestPush: isManualTrigger);
                     Interlocked.Increment(ref retryCount);
                 }
             }
