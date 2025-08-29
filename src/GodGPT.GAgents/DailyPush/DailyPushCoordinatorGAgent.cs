@@ -67,12 +67,38 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 state.LastUpdated = testRoundEvent.CompletionTime;
                 break;
             case SchedulerStatusLogEvent statusEvent:
+                state.Status = statusEvent.NewStatus;
+                state.LastUpdated = statusEvent.ChangeTime;
                 _logger.LogDebug($"Scheduler status changed from {statusEvent.OldStatus} to {statusEvent.NewStatus}");
                 break;
             case SetReminderTargetIdEventLog reminderEvent:
                 state.ReminderTargetId = reminderEvent.NewTargetId;
                 state.LastUpdated = reminderEvent.ChangeTime;
                 _logger.LogDebug($"ReminderTargetId changed from {reminderEvent.OldTargetId} to {reminderEvent.NewTargetId}");
+                break;
+            case InitializeCoordinatorEventLog initEvent:
+                state.TimeZoneId = initEvent.TimeZoneId;
+                state.Status = initEvent.Status;
+                state.LastUpdated = initEvent.InitTime;
+                _logger.LogDebug($"Coordinator initialized for timezone {initEvent.TimeZoneId}");
+                break;
+            case MorningPushCompletedEventLog morningEvent:
+                state.LastMorningPush = morningEvent.PushDate;
+                state.LastMorningUserCount = morningEvent.UserCount;
+                state.LastExecutionFailures = morningEvent.FailureCount;
+                state.LastUpdated = morningEvent.CompletionTime;
+                break;
+            case AfternoonRetryCompletedEventLog retryEvent:
+                state.LastAfternoonRetry = retryEvent.RetryDate;
+                state.LastAfternoonRetryCount = retryEvent.RetryUserCount;
+                state.LastExecutionFailures += retryEvent.FailureCount;
+                state.LastUpdated = retryEvent.CompletionTime;
+                break;
+            case TestModeStateEventLog testModeEvent:
+                state.TestModeActive = testModeEvent.IsActive;
+                state.TestStartTime = testModeEvent.StartTime;
+                state.TestCustomInterval = testModeEvent.CustomInterval;
+                state.LastUpdated = testModeEvent.ChangeTime;
                 break;
             default:
                 _logger.LogDebug($"Unhandled event type: {@event.GetType().Name}");
@@ -197,9 +223,13 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         // Register timezone mapping for reverse lookup
         await DailyPushConstants.RegisterTimezoneMapping(timeZoneId, _grainFactory);
         
-        State.TimeZoneId = timeZoneId;
-        State.Status = SchedulerStatus.Active;
-        State.LastUpdated = DateTime.UtcNow;
+        // ✅ Use event sourcing for state initialization
+        RaiseEvent(new InitializeCoordinatorEventLog
+        {
+            TimeZoneId = timeZoneId,
+            Status = SchedulerStatus.Active,
+            InitTime = DateTime.UtcNow
+        });
         
         // ✅ Force sync ReminderTargetId from configuration during initialization using event sourcing
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
@@ -284,12 +314,21 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         // Additional cleanup for safety
         await CleanupTestRemindersAsync();
         
-        // Initialize test state with custom interval
-        State.TestModeActive = true;
-        State.TestStartTime = DateTime.UtcNow;
-        State.TestRoundsCompleted = 0;
-        State.TestCustomInterval = intervalSeconds; // Store custom interval
-        State.LastUpdated = DateTime.UtcNow;
+        // ✅ Use event sourcing for test state initialization
+        RaiseEvent(new TestModeStateEventLog
+        {
+            IsActive = true,
+            StartTime = DateTime.UtcNow,
+            CustomInterval = intervalSeconds,
+            ChangeTime = DateTime.UtcNow
+        });
+        
+        // Reset test rounds counter using existing event
+        RaiseEvent(new TestRoundCompletedEventLog
+        {
+            CompletedRound = 0,
+            CompletionTime = DateTime.UtcNow
+        });
         
         await ConfirmEvents();
         
@@ -320,11 +359,21 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         // Cleanup test reminders
         await CleanupTestRemindersAsync();
         
-        // Reset test state
-        State.TestModeActive = false;
-        State.TestStartTime = DateTime.MinValue;
-        State.TestRoundsCompleted = 0;
-        State.LastUpdated = DateTime.UtcNow;
+        // ✅ Use event sourcing for test state reset
+        RaiseEvent(new TestModeStateEventLog
+        {
+            IsActive = false,
+            StartTime = DateTime.MinValue,
+            CustomInterval = 0,
+            ChangeTime = DateTime.UtcNow
+        });
+        
+        // Reset test rounds counter
+        RaiseEvent(new TestRoundCompletedEventLog
+        {
+            CompletedRound = 0,
+            CompletionTime = DateTime.UtcNow
+        });
         
         await ConfirmEvents();
         
@@ -427,11 +476,16 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 
             } while (userBatch.Count == batchSize);
 
-            // Update state
-            State.LastMorningPush = targetDate;
-            State.LastMorningUserCount = processedUsers;
-            State.LastExecutionFailures = failureCount;
-            State.LastUpdated = DateTime.UtcNow;
+            // ✅ Use event sourcing for morning push completion
+            RaiseEvent(new MorningPushCompletedEventLog
+            {
+                PushDate = targetDate,
+                UserCount = processedUsers,
+                FailureCount = failureCount,
+                CompletionTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
 
             _logger.LogInformation("Completed morning push for {TimeZone}: {Users} users, {Failures} failures", 
                 _timeZoneId, processedUsers, failureCount);
@@ -439,8 +493,16 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to process morning push for {TimeZone}", _timeZoneId);
-            State.Status = SchedulerStatus.Error;
-            State.LastUpdated = DateTime.UtcNow;
+            
+            // ✅ Use event sourcing for error status
+            RaiseEvent(new SchedulerStatusLogEvent
+            {
+                OldStatus = State.Status,
+                NewStatus = SchedulerStatus.Error,
+                ChangeTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
         }
     }
 
@@ -500,11 +562,16 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 
             } while (userBatch.Count == batchSize);
 
-            // Update state
-            State.LastAfternoonRetry = targetDate;
-            State.LastAfternoonRetryCount = retryUsers;
-            State.LastExecutionFailures += failureCount;
-            State.LastUpdated = DateTime.UtcNow;
+            // ✅ Use event sourcing for afternoon retry completion
+            RaiseEvent(new AfternoonRetryCompletedEventLog
+            {
+                RetryDate = targetDate,
+                RetryUserCount = retryUsers,
+                FailureCount = failureCount,
+                CompletionTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
 
             _logger.LogInformation("Completed afternoon retry for {TimeZone}: {RetryUsers} users needed retry, {Failures} failures", 
                 _timeZoneId, retryUsers, failureCount);
@@ -512,8 +579,16 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to process afternoon retry for {TimeZone}", _timeZoneId);
-            State.Status = SchedulerStatus.Error;
-            State.LastUpdated = DateTime.UtcNow;
+            
+            // ✅ Use event sourcing for error status
+            RaiseEvent(new SchedulerStatusLogEvent
+            {
+                OldStatus = State.Status,
+                NewStatus = SchedulerStatus.Error,
+                ChangeTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
         }
     }
 
@@ -524,8 +599,15 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
 
     public async Task SetStatusAsync(SchedulerStatus status)
     {
-        State.Status = status;
-        State.LastUpdated = DateTime.UtcNow;
+        // ✅ Use event sourcing for status updates
+        RaiseEvent(new SchedulerStatusLogEvent
+        {
+            OldStatus = State.Status,
+            NewStatus = status,
+            ChangeTime = DateTime.UtcNow
+        });
+        
+        await ConfirmEvents();
         
         _logger.LogInformation("Updated scheduler status for {TimeZone}: {Status}", _timeZoneId, status);
     }

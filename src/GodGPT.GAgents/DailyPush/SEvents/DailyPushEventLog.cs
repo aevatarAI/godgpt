@@ -174,6 +174,53 @@ public class SetReminderTargetIdEventLog : DailyPushLogEvent
     [Id(2)] public DateTime ChangeTime { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>
+/// Initialize coordinator event
+/// </summary>
+[GenerateSerializer]
+public class InitializeCoordinatorEventLog : DailyPushLogEvent
+{
+    [Id(0)] public string TimeZoneId { get; set; } = "";
+    [Id(1)] public SchedulerStatus Status { get; set; }
+    [Id(2)] public DateTime InitTime { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Morning push completed event
+/// </summary>
+[GenerateSerializer]
+public class MorningPushCompletedEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime PushDate { get; set; }
+    [Id(1)] public int UserCount { get; set; }
+    [Id(2)] public int FailureCount { get; set; }
+    [Id(3)] public DateTime CompletionTime { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Afternoon retry completed event
+/// </summary>
+[GenerateSerializer]
+public class AfternoonRetryCompletedEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime RetryDate { get; set; }
+    [Id(1)] public int RetryUserCount { get; set; }
+    [Id(2)] public int FailureCount { get; set; }
+    [Id(3)] public DateTime CompletionTime { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>  
+/// Test mode state change event
+/// </summary>
+[GenerateSerializer]
+public class TestModeStateEventLog : DailyPushLogEvent
+{
+    [Id(0)] public bool IsActive { get; set; }
+    [Id(1)] public DateTime StartTime { get; set; }
+    [Id(2)] public int CustomInterval { get; set; }
+    [Id(3)] public DateTime ChangeTime { get; set; } = DateTime.UtcNow;
+}
+
 // === Chat Manager Daily Push Events ===
 
 /// <summary>
