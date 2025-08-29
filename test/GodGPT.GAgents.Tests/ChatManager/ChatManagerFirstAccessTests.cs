@@ -34,9 +34,9 @@ public class ChatManagerFirstAccessTests : AevatarGodGPTTestsBase
 
             // Assert
             userProfile.ShouldNotBeNull();
+            // TODO: Restore when IsFirstConversation API is available in deploy branch
             // userProfile.IsFirstConversation.ShouldNotBeNull("IsFirstConversation should be set for new users");
             // userProfile.IsFirstConversation.Value.ShouldBeTrue("New user should be marked as first access");
-            //
             // _testOutputHelper.WriteLine($"New user IsFirstConversation: {userProfile.IsFirstConversation}");
             _testOutputHelper.WriteLine($"New user ID: {userProfile.Id}");
         }
@@ -71,7 +71,7 @@ public class ChatManagerFirstAccessTests : AevatarGodGPTTestsBase
             userProfile.ShouldNotBeNull();
             // userProfile.IsFirstConversation.ShouldNotBeNull("IsFirstConversation should be set for existing users");
             // userProfile.IsFirstConversation.Value.ShouldBeFalse("User with existing activity should be marked as not first access");
-            //
+
             // _testOutputHelper.WriteLine($"Existing user IsFirstConversation: {userProfile.IsFirstConversation}");
         }
         catch (Exception ex)

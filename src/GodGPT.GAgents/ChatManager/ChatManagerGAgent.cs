@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using GodGPT.GAgents.DailyPush;
+using GodGPT.GAgents.DailyPush.SEvents;
 using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
@@ -1250,6 +1252,23 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 }
                 state.MaxShareCount = initializeNewUserStatusLogEvent.MaxShareCount;
                 break;
+            case RegisterOrUpdateDeviceEventLog registerDeviceEvent:
+                // Remove old token mapping if token changed
+                if (!string.IsNullOrEmpty(registerDeviceEvent.OldPushToken))
+                {
+                    state.TokenToDeviceMap.Remove(registerDeviceEvent.OldPushToken);
+                }
+                
+                // Update device info and token mapping
+                state.UserDevices[registerDeviceEvent.DeviceId] = registerDeviceEvent.DeviceInfo;
+                if (!string.IsNullOrEmpty(registerDeviceEvent.DeviceInfo.PushToken))
+                {
+                    state.TokenToDeviceMap[registerDeviceEvent.DeviceInfo.PushToken] = registerDeviceEvent.DeviceId;
+                }
+                break;
+            case MarkDailyPushReadEventLog markReadEvent:
+                state.DailyPushReadStatus[markReadEvent.DateKey] = true;
+                break;
         }   
     }
 
@@ -1425,4 +1444,466 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Don't throw - this is a best-effort sync operation
         }
     }
+
+    // === Daily Push Notification Methods ===
+
+    public async Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage)
+    {
+        var isNewDevice = !State.UserDevices.ContainsKey(deviceId);
+        var deviceInfo = isNewDevice ? new GodGPT.GAgents.DailyPush.UserDeviceInfo() : 
+            new GodGPT.GAgents.DailyPush.UserDeviceInfo
+            {
+                DeviceId = State.UserDevices[deviceId].DeviceId,
+                PushToken = State.UserDevices[deviceId].PushToken,
+                TimeZoneId = State.UserDevices[deviceId].TimeZoneId,
+                PushLanguage = State.UserDevices[deviceId].PushLanguage,
+                PushEnabled = State.UserDevices[deviceId].PushEnabled,
+                RegisteredAt = State.UserDevices[deviceId].RegisteredAt,
+                LastTokenUpdate = State.UserDevices[deviceId].LastTokenUpdate
+            };
+        
+        // Store old values for cleanup and change detection
+        var oldPushToken = deviceInfo.PushToken;
+        var oldTimeZone = deviceInfo.TimeZoneId;
+        var oldPushEnabled = deviceInfo.PushEnabled;
+        
+        // Update device information
+        deviceInfo.DeviceId = deviceId;
+        if (!string.IsNullOrEmpty(pushToken))
+        {
+            deviceInfo.PushToken = pushToken;
+            deviceInfo.LastTokenUpdate = DateTime.UtcNow;
+        }
+        if (!string.IsNullOrEmpty(timeZoneId))
+        {
+            deviceInfo.TimeZoneId = timeZoneId;
+        }
+        // Always ensure device has a valid timezone - default to UTC if empty
+        if (string.IsNullOrEmpty(deviceInfo.TimeZoneId))
+        {
+            deviceInfo.TimeZoneId = "UTC";
+            Logger.LogWarning("Device {DeviceId} has empty timezone, defaulting to UTC", deviceId);
+        }
+        if (!string.IsNullOrEmpty(pushLanguage))
+        {
+            deviceInfo.PushLanguage = pushLanguage;
+            Logger.LogInformation("💾 Device language updated: DeviceId={DeviceId}, PushLanguage={PushLanguage}", 
+                deviceId, pushLanguage);
+        }
+        if (pushEnabled.HasValue)
+            deviceInfo.PushEnabled = pushEnabled.Value;
+        
+        if (isNewDevice)
+        {
+            deviceInfo.RegisteredAt = DateTime.UtcNow;
+        }
+        
+        // Use event-driven state update
+        RaiseEvent(new RegisterOrUpdateDeviceEventLog
+        {
+            DeviceId = deviceId,
+            DeviceInfo = deviceInfo,
+            IsNewDevice = isNewDevice,
+            OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
+        });
+        
+        await ConfirmEvents();
+        
+        // Synchronize timezone index when:
+        // 1. Timezone changed
+        // 2. Push enabled status changed from false to true
+        // 3. New device with push enabled
+        var newTimeZone = deviceInfo.TimeZoneId;
+        var newPushEnabled = deviceInfo.PushEnabled;
+        
+        var shouldUpdateIndex = false;
+        var reason = "";
+        
+        if (!string.IsNullOrEmpty(newTimeZone) && oldTimeZone != newTimeZone)
+        {
+            // Timezone changed - update both old and new timezone indexes
+            await UpdateTimezoneIndexAsync(oldTimeZone, newTimeZone);
+            shouldUpdateIndex = false; // Already handled above
+            reason = "timezone changed";
+        }
+        else if (newPushEnabled && (!oldPushEnabled || isNewDevice))
+        {
+            // Push enabled for new device or re-enabled for existing device
+            shouldUpdateIndex = true;
+            reason = isNewDevice ? "new device with push enabled" : "push re-enabled";
+        }
+        else if (!newPushEnabled && oldPushEnabled)
+        {
+            // Push disabled - remove from timezone index
+            if (!string.IsNullOrEmpty(newTimeZone))
+            {
+                var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                await indexGAgent.InitializeAsync(newTimeZone);
+                await indexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
+                Logger.LogInformation("Removed user {UserId} from timezone index {TimeZone} - push disabled", 
+                    State.UserId, newTimeZone);
+            }
+            shouldUpdateIndex = false;
+            reason = "push disabled";
+        }
+        
+        if (shouldUpdateIndex && !string.IsNullOrEmpty(newTimeZone))
+        {
+            // Add user to timezone index (ensure they're indexed for push delivery)
+            var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+            await indexGAgent.InitializeAsync(newTimeZone);
+            await indexGAgent.AddUserToTimezoneAsync(State.UserId);
+            Logger.LogInformation("Added user {UserId} to timezone index {TimeZone} - {Reason}", 
+                State.UserId, newTimeZone, reason);
+        }
+        
+        Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
+        return isNewDevice;
+    }
+
+    public async Task MarkPushAsReadAsync(string deviceId)
+    {
+        // Check if device exists for this user
+        if (State.UserDevices.ContainsKey(deviceId))
+        {
+            var dateKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            
+            // Use event-driven state update
+            RaiseEvent(new MarkDailyPushReadEventLog
+            {
+                DateKey = dateKey,
+                ReadTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
+            
+            Logger.LogInformation($"Marked daily push as read for device: {deviceId} on {dateKey}");
+        }
+        else
+        {
+            Logger.LogWarning($"Device not found for provided deviceId: {deviceId}");
+        }
+    }
+
+    public async Task<GodGPT.GAgents.DailyPush.UserDeviceInfo?> GetDeviceStatusAsync(string deviceId)
+    {
+
+        return State.UserDevices.TryGetValue(deviceId, out var device) ? device : null;
+    }
+
+    public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
+    {
+        return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
+    }
+
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false)
+    {
+        var dateKey = targetDate.ToString("yyyy-MM-dd");
+        
+        // Check if any message has been read for today - if so, skip all pushes
+        // Exception: bypass this check when explicitly requested (e.g., test mode main push)
+        if (!bypassReadStatusCheck)
+        {
+            var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+            if (hasAnyReadToday)
+            {
+                Logger.LogDebug($"At least one daily push already read for {dateKey}, skipping all pushes");
+                return;
+            }
+        }
+        else
+        {
+            Logger.LogInformation("🧪 Bypassing read status check for daily push on {DateKey}", dateKey);
+        }
+        
+        // Only process devices in the specified timezone with pushToken deduplication
+        var enabledDevicesRaw = State.UserDevices.Values
+            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
+            .ToList();
+            
+        // ✅ Deduplicate by pushToken, keep the device with latest LastTokenUpdate
+        var enabledDevices = enabledDevicesRaw
+            .GroupBy(d => d.PushToken)
+            .Select(g => g.OrderByDescending(d => d.LastTokenUpdate).First())
+            .ToList();
+            
+        var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
+        if (duplicateCount > 0)
+        {
+            Logger.LogInformation("🔍 ProcessDailyPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
+                duplicateCount, State.UserId);
+        }
+        
+        Logger.LogInformation("📱 ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+            enabledDevices.Count, timeZoneId, State.UserId);
+            
+        if (enabledDevices.Count == 0)
+        {
+            Logger.LogWarning("No enabled devices for daily push - User {UserId}, TimeZone {TimeZone}, Total devices: {TotalDevices}", 
+                State.UserId, timeZoneId, State.UserDevices.Count);
+            return;
+        }
+        
+        // Send push notifications via Firebase FCM
+        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+        if (firebaseService == null)
+        {
+            Logger.LogError("FirebaseService not available for push notifications");
+            return;
+        }
+        
+        var successCount = 0;
+        var failureCount = 0;
+        
+        // Create separate push notifications for each content to ensure individual callbacks
+        var pushTasks = enabledDevices.SelectMany(device =>
+        {
+            // Send separate push for each content with delay to avoid grouping
+            // Note: Empty pushTokens are already filtered out in device selection
+            return contents.Select(async (content, index) =>
+            {
+                try
+                {
+                    // No delay needed - interval doesn't matter for callbacks
+                    
+                    var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+                    Logger.LogInformation("🔍 Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
+                        device.DeviceId, device.PushLanguage, availableLanguages);
+                    
+                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
+                    
+                    Logger.LogInformation("🌍 Selected content {Index}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
+                        index + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
+                    
+                    // Create unique data payload for each content
+                    var messageId = Guid.NewGuid();
+                    var pushData = new Dictionary<string, object>
+                    {
+                        ["message_id"] = messageId.ToString(),
+                        ["type"] = isRetryPush ? (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.AfternoonRetry : (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush,
+                        ["date"] = dateKey,
+                        ["content_id"] = content.Id, // Single content ID for this push
+                        ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
+                        ["device_id"] = device.DeviceId,
+                        ["total_contents"] = contents.Count,
+                        ["is_retry"] = isRetryPush // ✅ Add retry push identification
+                    };
+                    
+                    var success = await firebaseService.SendPushNotificationAsync(
+                        device.PushToken,
+                        localizedContent.Title,
+                        localizedContent.Content,
+                        pushData);
+                    
+                    if (success)
+                    {
+                        Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                        return true;
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, $"Error sending daily push content {index + 1} to device {device.DeviceId}");
+                    return false;
+                }
+            });
+        });
+        
+        // Execute all push tasks concurrently
+        var results = await Task.WhenAll(pushTasks);
+        successCount = results.Count(r => r);
+        failureCount = results.Count(r => !r);
+        
+        Logger.LogInformation("🚀 ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
+            State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
+    }
+
+    public async Task ProcessInstantPushAsync(List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
+    {
+        // Skip read status check for instant push - this is for testing purposes
+        
+        // Only process devices in the specified timezone with pushToken deduplication
+        var enabledDevicesRaw = State.UserDevices.Values
+            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
+            .ToList();
+            
+        // ✅ Deduplicate by pushToken, keep the device with latest LastTokenUpdate
+        var enabledDevices = enabledDevicesRaw
+            .GroupBy(d => d.PushToken)
+            .Select(g => g.OrderByDescending(d => d.LastTokenUpdate).First())
+            .ToList();
+            
+        var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
+        if (duplicateCount > 0)
+        {
+            Logger.LogInformation("🔍 ProcessInstantPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
+                duplicateCount, State.UserId);
+        }
+        
+        Logger.LogInformation("🧪 ProcessInstantPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+            enabledDevices.Count, timeZoneId, State.UserId);
+            
+        if (enabledDevices.Count == 0)
+        {
+            Logger.LogWarning("No enabled devices for instant push - User {UserId}, TimeZone {TimeZone}, Total devices: {TotalDevices}", 
+                State.UserId, timeZoneId, State.UserDevices.Count);
+            return;
+        }
+        
+        // Send push notifications via Firebase FCM
+        var firebaseService = ServiceProvider.GetService(typeof(GodGPT.GAgents.DailyPush.FirebaseService)) as GodGPT.GAgents.DailyPush.FirebaseService;
+        if (firebaseService == null)
+        {
+            Logger.LogError("FirebaseService not available for instant push");
+            return;
+        }
+        
+        // Create push messages for FCM SendEach API
+        var pushMessages = new List<GodGPT.GAgents.DailyPush.PushMessage>();
+        
+        // Each content item should be sent to each device (so 2 contents = 2 messages per device)
+        for (int contentIndex = 0; contentIndex < contents.Count; contentIndex++)
+        {
+            var content = contents[contentIndex];
+            
+            foreach (var device in enabledDevices)
+            {
+                // Get localized content
+                var deviceLanguage = device.PushLanguage ?? "en";
+                var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+                Logger.LogInformation("🔍 Instant push language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
+                    device.DeviceId, deviceLanguage, availableLanguages);
+                    
+                var localizedContent = content.GetLocalizedContent(deviceLanguage);
+                if (localizedContent == null)
+                {
+                    Logger.LogWarning("No localized content found for language {Language}, content {ContentId}, device {DeviceId}", 
+                        deviceLanguage, content.Id, device.DeviceId);
+                    continue;
+                }
+                
+                Logger.LogInformation("📱 Instant push selected content: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}'", 
+                    device.DeviceId, deviceLanguage, localizedContent.Title);
+                
+                pushMessages.Add(new GodGPT.GAgents.DailyPush.PushMessage
+                {
+                    Token = device.PushToken,
+                    Title = localizedContent.Title,
+                    Content = localizedContent.Content,
+                    Data = new Dictionary<string, object>
+                    {
+                        { "type", (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush }, // Use enum value 1
+                        { "contentId", content.Id },
+                        { "content_index", contentIndex + 1 }, // ✅ Add content index for multi-content deduplication
+                        { "total_contents", contents.Count }, // ✅ Add total contents count
+                        { "userId", State.UserId.ToString() },
+                        { "deviceId", device.DeviceId },
+                        { "timezone", timeZoneId },
+                        { "is_instant_push", true } // ✅ Add instant push identification
+                    }
+                });
+            }
+        }
+        
+        Logger.LogInformation("🧪 Prepared {Count} push messages for FCM SendEach batch send", pushMessages.Count);
+        
+        // Use FCM SendEach API for optimized batch sending
+        var batchResult = await firebaseService.SendEachAsync(pushMessages);
+        var successCount = batchResult.SuccessCount;
+        var failureCount = batchResult.FailureCount;
+        
+        Logger.LogInformation("🧪 ProcessInstantPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
+            State.UserId, successCount, failureCount, enabledDevices.Count, pushMessages.Count);
+    }
+
+    public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
+    {
+
+        
+        var dateKey = targetDate.ToString("yyyy-MM-dd");
+        var isRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var readStatus) && readStatus;
+        
+        return !isRead && State.UserDevices.Values.Any(d => d.PushEnabled);
+    }
+
+    public async Task<List<GodGPT.GAgents.DailyPush.UserDeviceInfo>> GetAllUserDevicesAsync()
+    {
+        return State.UserDevices.Values.ToList();
+    }
+
+    /// <summary>
+    /// Clear all read status for this user - TODO: Remove before production
+    /// </summary>
+    public async Task ClearReadStatusAsync()
+    {
+        var clearedCount = State.DailyPushReadStatus.Count;
+        State.DailyPushReadStatus.Clear();
+        
+        // Use event-driven state update for consistency
+        RaiseEvent(new MarkDailyPushReadEventLog
+        {
+            DateKey = $"CLEARED_{DateTime.UtcNow:yyyy-MM-dd_HH-mm-ss}",
+            ReadTime = DateTime.UtcNow
+        });
+        
+        await ConfirmEvents();
+        
+        Logger.LogInformation("🧪 Cleared all read status for user {UserId}: {ClearedCount} entries removed", 
+            State.UserId, clearedCount);
+    }
+
+    public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
+    {
+        try
+        {
+            // Remove user from old timezone index
+            if (!string.IsNullOrEmpty(oldTimeZone))
+            {
+                var oldIndexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(oldTimeZone));
+                await oldIndexGAgent.InitializeAsync(oldTimeZone);
+                await oldIndexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
+                Logger.LogDebug($"Removed user {State.UserId} from timezone index: {oldTimeZone}");
+            }
+            
+            // Add user to new timezone index
+            if (!string.IsNullOrEmpty(newTimeZone))
+            {
+                var newIndexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                await newIndexGAgent.InitializeAsync(newTimeZone);
+                await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
+                Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");
+                
+                // ✅ CRITICAL: Activate DailyPushCoordinatorGAgent to ensure daily reminders are registered
+                // This ensures 8AM/3PM push notifications will work for this timezone
+                var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                try
+                {
+                    // Explicitly initialize to ensure reminders are registered for daily pushes
+                    await coordinatorGAgent.InitializeAsync(newTimeZone);
+                    Logger.LogInformation("Initialized DailyPushCoordinatorGAgent for timezone {TimeZone} to enable daily push reminders", newTimeZone);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "Failed to initialize DailyPushCoordinatorGAgent for timezone {TimeZone}, but timezone index update succeeded", newTimeZone);
+                    // Don't throw - the timezone index update is the critical part
+                }
+            }
+            
+            Logger.LogInformation($"Updated timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to update timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
+        }
+    }
+    
+
+
 }

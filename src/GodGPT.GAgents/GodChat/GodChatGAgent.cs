@@ -40,10 +40,15 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 {
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
+    private const string CNDefaultRegion = "CN";
     private const string ProxyGPTModelName = "HyperEcho";
     private const string ChatModelName = "GodGPT";
     private const string ConsoleModelName = "GodGPTConsole";
-    
+    private const string CNConsoleRegion = "CNCONSOLE";
+    private const string ConsoleRegion = "CONSOLE";
+    private const string CNConsoleModelName = "CNConsole";
+    private const string BytePlusDeepSeekV3ModelName = "BytePlusDeepSeekV3";
+
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
     private readonly ILocalizationService _localizationService;
@@ -76,11 +81,19 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogDebug($"[GodChatGAgent][PerformConfigAsync] LLMConfigs is null or empty.");
             return;
         }
+        var isCN = GodGPTLanguageHelper.CheckClientIsCNFromContext();
+        var defaultRegion = DefaultRegion;
+        if (isCN)
+        {
+            defaultRegion = CNDefaultRegion;
+        }
+        Logger.LogDebug(
+            $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()},isCN:{isCN}, region:{defaultRegion}");
 
-        var proxyIds = await InitializeRegionProxiesAsync(DefaultRegion, configuration.Instructions);
+        var proxyIds = await InitializeRegionProxiesAsync(defaultRegion, configuration.Instructions);
         
         Dictionary<string, List<Guid>> regionProxies = new();
-        regionProxies[DefaultRegion] = proxyIds;
+        regionProxies[defaultRegion] = proxyIds;
         
         // Optimize: Use combined event to reduce RaiseEvent calls from 3 to 1
         var maxHistoryCount = configuration.MaxHistoryCount;
@@ -96,7 +109,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         RaiseEvent(new PerformConfigCombinedEventLog
         {
-            Region = DefaultRegion,
+            Region = defaultRegion,
             ProxyIds = proxyIds,
             PromptTemplate = configuration.Instructions,
             MaxHistoryCount = maxHistoryCount
@@ -195,7 +208,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         List<string>? images = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start.");
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start. region:{region}");
 
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
@@ -739,14 +752,20 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private async Task<IAIAgentStatusProxy?> GetProxyByRegionAsync(string? region)
     {
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug(
-            $"[GodChatGAgent][GetProxyByRegionAsync] session {this.GetPrimaryKey().ToString()}, Region: {region}");
+        var isCN = GodGPTLanguageHelper.CheckClientIsCNFromContext();
         if (string.IsNullOrWhiteSpace(region))
         {
-            totalStopwatch.Stop();
-            Logger.LogDebug($"[GodChatGAgent][GetProxyByRegionAsync] Recursive call to DefaultRegion - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
-            return await GetProxyByRegionAsync(DefaultRegion);
+            region = isCN ? CNDefaultRegion : DefaultRegion;
         }
+        else
+        {
+            if (region.Equals(ConsoleRegion) && isCN)
+            {
+                region = CNConsoleRegion;
+            }
+        }
+        Logger.LogDebug(
+            $"[GodChatGAgent][GetProxyByRegionAsync] session {this.GetPrimaryKey().ToString()},isCN:{isCN}, Region: {region}");
 
         if (State.RegionProxies == null || !State.RegionProxies.TryGetValue(region, out var proxyIds) ||
             proxyIds.IsNullOrEmpty())
@@ -788,7 +807,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
         Logger.LogDebug(
             $"[GodChatGAgent][GetProxyByRegionAsync] session {this.GetPrimaryKey().ToString()}, No proxies initialized for region {region}");
-        if (region == DefaultRegion)
+        if (region == DefaultRegion || region == CNDefaultRegion)
         {
             totalStopwatch.Stop();
             Logger.LogDebug($"[GodChatGAgent][GetProxyByRegionAsync] TOTAL_Time (no proxies) - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
@@ -797,6 +816,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
         totalStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][GetProxyByRegionAsync] Recursive call to DefaultRegion - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {this.GetPrimaryKey()}");
+        if (isCN)
+        {
+            return await GetProxyByRegionAsync(CNDefaultRegion);
+        }
         return await GetProxyByRegionAsync(DefaultRegion);
     }
 
@@ -804,6 +827,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     {
         var stopwatch = Stopwatch.StartNew();
         var llmsForRegion = GetLLMsForRegion(region);
+        Logger.LogDebug(
+            $"[GodChatGAgent][InitializeRegionProxiesAsync] session {this.GetPrimaryKey().ToString()}, initialized proxy for region {region}, llmsForRegion: {JsonConvert.SerializeObject(llmsForRegion)}");
+
         if (llmsForRegion.IsNullOrEmpty())
         {
             stopwatch.Stop();
@@ -820,7 +846,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         {
             var systemPrompt = rolePrompts.IsNullOrWhiteSpace() ? State.PromptTemplate : rolePrompts;
 
-            if (llm == ProxyGPTModelName || llm == ChatModelName || llm == ConsoleModelName)
+            if (llm == ProxyGPTModelName || llm == ChatModelName || llm == ConsoleModelName || llm == CNConsoleModelName || llm == BytePlusDeepSeekV3ModelName)
             {
                 systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
             }
@@ -886,6 +912,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private List<string> GetLLMsForRegion(string region)
     {
         var regionToLLMsMap = _llmRegionOptions.CurrentValue.RegionToLLMsMap;
+        Logger.LogDebug($"GetLLMsForRegion - regionToLLMsMap: {JsonConvert.SerializeObject(regionToLLMsMap)}");
+
         return regionToLLMsMap.TryGetValue(region, out var llms) ? llms : new List<string>();
     }
 
@@ -1169,13 +1197,15 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
             await ConfirmEvents();
 
-            var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
-            var inviterId = await chatManagerGAgent.GetInviterAsync();
-
-            if (inviterId != null && inviterId != Guid.Empty)
+            if (State.ChatManagerGuid != Guid.Empty)
             {
-                var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
-                await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
+                var inviterId = await chatManagerGAgent.GetInviterAsync();
+                if (inviterId != null && inviterId != Guid.Empty)
+                {
+                    var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
+                    await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                }
             }
 
             // Store suggestions and clean content for later use in partialMessage

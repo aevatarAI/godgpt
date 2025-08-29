@@ -295,7 +295,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             }
             
             // Check if user is subscribed (subscribers have no daily limit)
-            if (!await IsSubscribedAsync(true) && !await IsSubscribedAsync(false) && dailyInfo.Count > 1)
+            if (!await IsSubscribedAsync(true) && !await IsSubscribedAsync(false) && dailyInfo.Count > 100)
             {
                 _logger.LogDebug(
                     "[UserQuotaGAgent][ExecuteActionAsync] userId={chatManagerGuid} sessionId={SessionId} Daily image conversation limit exceeded for non-subscriber. Count={Count}",
@@ -353,7 +353,7 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         }
 
         // Check if daily limit exceeded (non-subscribers can only use once per day)
-        if (dailyInfo.Count >= 1)
+        if (dailyInfo.Count >= 100)
         {
             var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
             _logger.LogDebug(
