@@ -100,6 +100,12 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 state.TestCustomInterval = testModeEvent.CustomInterval;
                 state.LastUpdated = testModeEvent.ChangeTime;
                 break;
+            case ConfigurationChangeEventLog configEvent:
+                state.LastKnownMorningTime = configEvent.NewMorningTime;
+                state.LastKnownAfternoonTime = configEvent.NewAfternoonTime;
+                state.LastUpdated = configEvent.ChangeTime;
+                _logger.LogDebug($"Configuration updated - Morning: {configEvent.OldMorningTime} → {configEvent.NewMorningTime}, Afternoon: {configEvent.OldAfternoonTime} → {configEvent.NewAfternoonTime}");
+                break;
             default:
                 _logger.LogDebug($"Unhandled event type: {@event.GetType().Name}");
                 break;
@@ -632,6 +638,9 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                     break;
             }
             
+            // ✅ Check for configuration changes and auto-update if needed
+            await CheckAndUpdateConfigurationAsync(now);
+            
             // Always reschedule the next reminder (best practice from documentation)
             await RescheduleReminderAsync(reminderName, now);
         }
@@ -711,6 +720,83 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         
         _logger.LogInformation("Rescheduled {ReminderName}, next execution at: {NextTime}", 
             reminderName, currentUtc.Add(nextDueTime));
+    }
+    
+    /// <summary>
+    /// Check if configuration has changed and auto-update reminders if needed
+    /// </summary>
+    private async Task CheckAndUpdateConfigurationAsync(DateTime currentUtc)
+    {
+        var options = _options.CurrentValue;
+        bool configChanged = false;
+        var oldMorningTime = State.LastKnownMorningTime;
+        var oldAfternoonTime = State.LastKnownAfternoonTime;
+        
+        // Store last known configuration for comparison
+        if (!State.LastKnownMorningTime.HasValue || !State.LastKnownAfternoonTime.HasValue)
+        {
+            // First time - initialize with current config using event sourcing
+            RaiseEvent(new ConfigurationChangeEventLog
+            {
+                OldMorningTime = null,
+                NewMorningTime = options.MorningTime,
+                OldAfternoonTime = null,
+                NewAfternoonTime = options.AfternoonRetryTime,
+                ChangeTime = currentUtc
+            });
+            
+            await ConfirmEvents();
+            
+            _logger.LogInformation("Initialized configuration tracking for {TimeZone} - Morning: {Morning}, Afternoon: {Afternoon}", 
+                _timeZoneId, options.MorningTime, options.AfternoonRetryTime);
+            return;
+        }
+        
+        // Check for morning time changes
+        if (State.LastKnownMorningTime != options.MorningTime)
+        {
+            _logger.LogInformation("📅 Configuration change detected for {TimeZone} - Morning time: {Old} → {New}", 
+                _timeZoneId, State.LastKnownMorningTime, options.MorningTime);
+            configChanged = true;
+        }
+        
+        // Check for afternoon time changes
+        if (State.LastKnownAfternoonTime != options.AfternoonRetryTime)
+        {
+            _logger.LogInformation("📅 Configuration change detected for {TimeZone} - Afternoon time: {Old} → {New}", 
+                _timeZoneId, State.LastKnownAfternoonTime, options.AfternoonRetryTime);
+            configChanged = true;
+        }
+        
+        // If configuration changed, update state and re-register all reminders immediately
+        if (configChanged)
+        {
+            // ✅ Use event sourcing to update configuration tracking
+            RaiseEvent(new ConfigurationChangeEventLog
+            {
+                OldMorningTime = oldMorningTime,
+                NewMorningTime = options.MorningTime,
+                OldAfternoonTime = oldAfternoonTime,
+                NewAfternoonTime = options.AfternoonRetryTime,
+                ChangeTime = currentUtc
+            });
+            
+            await ConfirmEvents();
+            
+            _logger.LogInformation("🔄 Auto-updating reminders due to configuration change for {TimeZone}", _timeZoneId);
+            
+            try
+            {
+                // Re-register all reminders with new configuration
+                await RegisterRemindersAsync();
+                
+                _logger.LogInformation("✅ Successfully updated reminders for {TimeZone} with new configuration", _timeZoneId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Failed to update reminders after configuration change for {TimeZone}", _timeZoneId);
+            }
+        }
     }
     
     /// <summary>

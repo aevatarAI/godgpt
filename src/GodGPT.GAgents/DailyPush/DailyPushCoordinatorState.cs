@@ -72,6 +72,16 @@ public class DailyPushCoordinatorState : StateBase
     /// Custom test interval in seconds (for configurable test mode)
     /// </summary>
     [Id(12)] public int TestCustomInterval { get; set; } = 600;
+    
+    /// <summary>
+    /// Last known morning time from configuration (for change detection)
+    /// </summary>
+    [Id(13)] public TimeSpan? LastKnownMorningTime { get; set; }
+    
+    /// <summary>
+    /// Last known afternoon time from configuration (for change detection)
+    /// </summary>
+    [Id(14)] public TimeSpan? LastKnownAfternoonTime { get; set; }
 }
 
 /// <summary>

@@ -221,6 +221,19 @@ public class TestModeStateEventLog : DailyPushLogEvent
     [Id(3)] public DateTime ChangeTime { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>
+/// Configuration change tracking event
+/// </summary>
+[GenerateSerializer]
+public class ConfigurationChangeEventLog : DailyPushLogEvent
+{
+    [Id(0)] public TimeSpan? OldMorningTime { get; set; }
+    [Id(1)] public TimeSpan? NewMorningTime { get; set; }
+    [Id(2)] public TimeSpan? OldAfternoonTime { get; set; }
+    [Id(3)] public TimeSpan? NewAfternoonTime { get; set; }
+    [Id(4)] public DateTime ChangeTime { get; set; } = DateTime.UtcNow;
+}
+
 // === Chat Manager Daily Push Events ===
 
 /// <summary>
