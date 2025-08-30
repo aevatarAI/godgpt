@@ -1923,10 +1923,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             
             // 🔥 CRITICAL: Force grain to stay active by calling multiple methods
             var status = await coordinatorGAgent.GetStatusAsync();
-            var devices = await coordinatorGAgent.GetDevicesInTimezoneAsync(); // This forces full activation
             
-            Logger.LogInformation("✅ DailyPushCoordinatorGAgent fully initialized for {TimeZone}. Status: {Status}, ReminderTargetId: {TargetId}, RegisteredDevices: {DeviceCount}", 
-                newTimeZone, status.Status, status.ReminderTargetId, devices.Count);
+            Logger.LogInformation("✅ DailyPushCoordinatorGAgent fully initialized for {TimeZone}. Status: {Status}, ReminderTargetId: {TargetId}", 
+                newTimeZone, status.Status, status.ReminderTargetId);
 
             // Step 3: Validate reminders are registered (if authorized)
             if (status.ReminderTargetId != Guid.Empty)
@@ -1958,12 +1957,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         catch (TimeZoneNotFoundException ex)
         {
-            Logger.LogError(ex, "❌ Invalid timezone ID '{TimeZone}' - timezone ecosystem initialization failed", newTimeZone);
+            Logger.LogError(ex, "Invalid timezone ID '{TimeZone}' - timezone ecosystem initialization failed", newTimeZone);
             throw new ArgumentException($"Invalid timezone ID: {newTimeZone}", nameof(newTimeZone), ex);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "❌ Timezone ecosystem initialization failed for {TimeZone} - daily pushes may not work properly", newTimeZone);
+            Logger.LogError(ex, "Timezone ecosystem initialization failed for {TimeZone} - daily pushes may not work properly", newTimeZone);
             // Don't rethrow - allow timezone index update to succeed even if ecosystem init partially fails
         }
     }

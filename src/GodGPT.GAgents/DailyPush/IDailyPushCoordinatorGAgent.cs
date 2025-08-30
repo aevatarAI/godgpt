@@ -43,25 +43,4 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     /// </summary>
     Task ForceInitializeAsync(string timeZoneId);
     
-
-    
-
-    
-
-    
-    /// <summary>
-    /// Get all devices registered in this timezone with detailed information - TODO: Remove before production
-    /// </summary>
-    Task<List<TimezoneDeviceInfo>> GetDevicesInTimezoneAsync();
-    
-    /// <summary>
-    /// Send instant push notification to all devices in this timezone
-    /// Each device will receive two identical notifications
-    /// </summary>
-    Task<InstantPushResult> SendInstantPushAsync();
-    
-    /// <summary>
-    /// Emergency cleanup for orphaned grains - removes all reminders and resets state
-    /// </summary>
-    Task CleanupOrphanedGrainAsync();
 }
