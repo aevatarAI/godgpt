@@ -52,9 +52,6 @@ public class GodGPTGAgentModule : AbpModule
         context.Services.AddSingleton<IGooglePayService, GooglePayService>();
         context.Services.AddSingleton<ILocalizationService, LocalizationService>();
         
-        // Register daily push services
-        context.Services.AddSingleton<DailyPushRedisService>();
-        
         // Register HttpClient factory first
         context.Services.AddHttpClient();
         

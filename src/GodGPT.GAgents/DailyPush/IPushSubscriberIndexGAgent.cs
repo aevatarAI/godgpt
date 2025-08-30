@@ -11,32 +11,32 @@ public interface IPushSubscriberIndexGAgent : IGAgent, IGrainWithGuidKey
     /// Initialize timezone user index with timezone ID
     /// </summary>
     Task InitializeAsync(string timeZoneId);
-    
+
     /// <summary>
     /// Add user to timezone index
     /// </summary>
     Task AddUserToTimezoneAsync(Guid userId);
-    
+
     /// <summary>
     /// Remove user from timezone index
     /// </summary>
     Task RemoveUserFromTimezoneAsync(Guid userId);
-    
+
     /// <summary>
     /// Get paginated list of active users in this timezone
     /// </summary>
     Task<List<Guid>> GetActiveUsersInTimezoneAsync(int skip, int take);
-    
+
     /// <summary>
     /// Get total user count in this timezone
     /// </summary>
     Task<int> GetActiveUserCountAsync();
-    
+
     /// <summary>
     /// Check if user has active devices in this timezone
     /// </summary>
     Task<bool> HasActiveDeviceInTimezoneAsync(Guid userId);
-    
+
     /// <summary>
     /// Batch update user timezone assignments (for performance)
     /// </summary>

@@ -94,32 +94,7 @@ public interface IChatManagerGAgent : IGAgent
     Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId);
     
     /// <summary>
-    /// Process instant push for this user (for testing purposes, bypasses read status check)
-    /// </summary>
-    Task ProcessInstantPushAsync(List<DailyNotificationContent> contents, string timeZoneId);
-    
-    /// <summary>
     /// Get device status for query API
     /// </summary>
     Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
-    
-    /// <summary>
-    /// Get all user devices for debugging - TODO: Remove before production
-    /// </summary>
-    Task<List<GodGPT.GAgents.DailyPush.UserDeviceInfo>> GetAllUserDevicesAsync();
-    
-    /// <summary>
-    /// Update user timezone index when device timezone changes
-    /// </summary>
-    Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone);
-    
-    /// <summary>
-    /// Clear all read status for this user - TODO: Remove before production
-    /// </summary>
-    Task ClearReadStatusAsync();
-    
-    /// <summary>
-    /// Get daily push read status for this user - TODO: Remove before production
-    /// </summary>
-    Task<Dictionary<string, bool>> GetDailyPushReadStatusAsync();
 }

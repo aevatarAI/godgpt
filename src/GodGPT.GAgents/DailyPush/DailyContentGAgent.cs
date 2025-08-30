@@ -1,15 +1,10 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
-using Microsoft.Extensions.Logging;
-using Orleans;
-using Orleans.Providers;
-using GodGPT.GAgents.DailyPush.SEvents;
 using GodGPT.GAgents.DailyPush.Services;
+using GodGPT.GAgents.DailyPush.SEvents;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Orleans.Providers;
 
 namespace GodGPT.GAgents.DailyPush;
 
@@ -23,7 +18,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
 {
     private readonly ILogger<DailyContentGAgent> _logger;
     private readonly Random _random;
-    
+
     public DailyContentGAgent(ILogger<DailyContentGAgent> logger)
     {
         _logger = logger;
@@ -38,17 +33,17 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("DailyContentGAgent activated");
-        
+
         // ✅ Pre-register common timezone mappings to prevent orphaned grains
         await EnsureCommonTimezoneMappingsAsync();
-        
+
         // Auto-refresh content if empty or stale (older than 24 hours)
-        var needsRefresh = State.Contents.Count == 0 || 
-                          (DateTime.UtcNow - State.LastRefresh).TotalHours > 24;
-        
+        var needsRefresh = State.Contents.Count == 0 ||
+                           (DateTime.UtcNow - State.LastRefresh).TotalHours > 24;
+
         if (needsRefresh)
         {
-            _logger.LogInformation("📋 Content is empty or stale, triggering auto-refresh from local CSV...");
+            _logger.LogInformation("Content is empty or stale, triggering auto-refresh from local CSV...");
             try
             {
                 await RefreshContentsFromSourceAsync();
@@ -60,12 +55,13 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
         }
         else
         {
-            _logger.LogInformation("📚 Content cache is valid: {Count} entries, last refresh: {LastRefresh}", 
+            _logger.LogInformation("📚 Content cache is valid: {Count} entries, last refresh: {LastRefresh}",
                 State.Contents.Count, State.LastRefresh);
         }
     }
 
-    protected override void GAgentTransitionState(DailyContentGAgentState state, StateLogEventBase<DailyPushLogEvent> @event)
+    protected override void GAgentTransitionState(DailyContentGAgentState state,
+        StateLogEventBase<DailyPushLogEvent> @event)
     {
         switch (@event)
         {
@@ -73,20 +69,21 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 state.Contents[addEvent.Content.Id] = addEvent.Content;
                 state.LastRefresh = DateTime.UtcNow;
                 break;
-                
+
             case UpdateContentEventLog updateEvent:
                 if (state.Contents.ContainsKey(updateEvent.ContentId))
                 {
                     state.Contents[updateEvent.ContentId] = updateEvent.Content;
                     state.LastRefresh = DateTime.UtcNow;
                 }
+
                 break;
-                
+
             case RemoveContentEventLog removeEvent:
                 state.Contents.Remove(removeEvent.ContentId);
                 state.LastRefresh = DateTime.UtcNow;
                 break;
-                
+
             case ContentSelectionEventLog selectionEvent:
                 state.LastSelection = selectionEvent.SelectionDate;
                 state.SelectionCount++;
@@ -95,20 +92,22 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 {
                     state.MarkContentAsUsed(selectionEvent.SelectionDate, contentId);
                 }
+
                 break;
-                
+
             case ImportContentsEventLog importEvent:
                 foreach (var content in importEvent.Contents)
                 {
                     state.Contents[content.Id] = content;
                 }
+
                 state.LastRefresh = importEvent.ImportTime;
                 break;
-                
+
             case RefreshContentsEventLog refreshEvent:
                 state.LastRefresh = refreshEvent.RefreshTime;
                 break;
-                
+
             default:
                 _logger.LogDebug($"Unhandled event type: {@event.GetType().Name}");
                 break;
@@ -125,67 +124,69 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 _logger.LogWarning("No active contents available for selection on {Date}", targetDate);
                 return new List<DailyNotificationContent>();
             }
-            
-            _logger.LogDebug("Found {Count} active contents for selection on {Date}", 
+
+            _logger.LogDebug("Found {Count} active contents for selection on {Date}",
                 activeContents.Count, targetDate);
-        
-        // Get used content from history
-        var usedContentIds = new HashSet<string>();
-        for (int i = 0; i < DailyPushConstants.CONTENT_HISTORY_DAYS; i++)
-        {
-            var checkDate = targetDate.AddDays(-i);
-            var dailyUsed = State.GetUsedContentIds(checkDate);
-            foreach (var id in dailyUsed)
+
+            // Get used content from history
+            var usedContentIds = new HashSet<string>();
+            for (int i = 0; i < DailyPushConstants.CONTENT_HISTORY_DAYS; i++)
             {
-                usedContentIds.Add(id);
+                var checkDate = targetDate.AddDays(-i);
+                var dailyUsed = State.GetUsedContentIds(checkDate);
+                foreach (var id in dailyUsed)
+                {
+                    usedContentIds.Add(id);
+                }
             }
-        }
-        
+
             // Filter out recently used contents
             var availableContents = activeContents.Where(c => !usedContentIds.Contains(c.Id)).ToList();
             if (availableContents.Count < count)
             {
-                _logger.LogWarning("Not enough unused contents ({Available} < {Required}), falling back to all active contents", 
+                _logger.LogWarning(
+                    "Not enough unused contents ({Available} < {Required}), falling back to all active contents",
                     availableContents.Count, count);
                 availableContents = activeContents; // Fallback to all
             }
             else
             {
-                _logger.LogDebug("Found {Available} unused contents for selection (required: {Required})", 
+                _logger.LogDebug("Found {Available} unused contents for selection (required: {Required})",
                     availableContents.Count, count);
             }
-        
-        // 🎯 Deterministic selection based on date - ensures global consistency
-        // Use target date as seed to guarantee same content selection across all timezones
-        var dateSeed = targetDate.ToString("yyyyMMdd").GetHashCode();
-        var deterministicRandom = new Random(dateSeed);
-        
-        var selectedContents = new List<DailyNotificationContent>();
-        var actualCount = Math.Min(count, availableContents.Count);
-        
-        _logger.LogInformation("🌍 Global content selection for {Date}: Using deterministic seed {Seed} to ensure timezone consistency", 
-            targetDate.ToString("yyyy-MM-dd"), dateSeed);
-        
-        for (int i = 0; i < actualCount; i++)
-        {
-            var randomIndex = deterministicRandom.Next(availableContents.Count);
-            var selected = availableContents[randomIndex];
-            selectedContents.Add(selected);
-            availableContents.RemoveAt(randomIndex);
-            
-            _logger.LogDebug("📝 Selected content {Index}/{Total}: ID={ContentId}, Title='{Title}'", 
-                i + 1, actualCount, selected.Id, 
-                selected.LocalizedContents.TryGetValue("en", out var enContent) ? enContent.Title : "N/A");
-        }
-        
-        // Raise selection event
-        RaiseEvent(new ContentSelectionEventLog
-        {
-            SelectionDate = targetDate,
-            SelectedContentIds = selectedContents.Select(c => c.Id).ToList(),
-            Count = selectedContents.Count
-        });
-        
+
+            // 🎯 Deterministic selection based on date - ensures global consistency
+            // Use target date as seed to guarantee same content selection across all timezones
+            var dateSeed = targetDate.ToString("yyyyMMdd").GetHashCode();
+            var deterministicRandom = new Random(dateSeed);
+
+            var selectedContents = new List<DailyNotificationContent>();
+            var actualCount = Math.Min(count, availableContents.Count);
+
+            _logger.LogInformation(
+                "🌍 Global content selection for {Date}: Using deterministic seed {Seed} to ensure timezone consistency",
+                targetDate.ToString("yyyy-MM-dd"), dateSeed);
+
+            for (int i = 0; i < actualCount; i++)
+            {
+                var randomIndex = deterministicRandom.Next(availableContents.Count);
+                var selected = availableContents[randomIndex];
+                selectedContents.Add(selected);
+                availableContents.RemoveAt(randomIndex);
+
+                _logger.LogDebug("📝 Selected content {Index}/{Total}: ID={ContentId}, Title='{Title}'",
+                    i + 1, actualCount, selected.Id,
+                    selected.LocalizedContents.TryGetValue("en", out var enContent) ? enContent.Title : "N/A");
+            }
+
+            // Raise selection event
+            RaiseEvent(new ContentSelectionEventLog
+            {
+                SelectionDate = targetDate,
+                SelectedContentIds = selectedContents.Select(c => c.Id).ToList(),
+                Count = selectedContents.Count
+            });
+
             await ConfirmEvents();
             _logger.LogInformation($"Selected {selectedContents.Count} contents for date {targetDate:yyyy-MM-dd}");
             return selectedContents;
@@ -203,7 +204,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
         {
             Content = content
         });
-        
+
         await ConfirmEvents();
         _logger.LogInformation($"Added content: {content.Id}");
     }
@@ -217,7 +218,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 ContentId = contentId,
                 Content = content
             });
-            
+
             await ConfirmEvents();
             _logger.LogInformation($"Updated content: {contentId}");
         }
@@ -241,11 +242,12 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
             {
                 ContentId = contentId
             });
-            
+
             await ConfirmEvents();
             _logger.LogInformation($"Removed content: {contentId}");
             return true;
         }
+
         return false;
     }
 
@@ -259,7 +261,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
         try
         {
             _logger.LogInformation("🔄 Starting content refresh from local CSV file...");
-            
+
             // Get DailyPushContentService from service provider
             var contentService = ServiceProvider.GetService<DailyPushContentService>();
             if (contentService == null)
@@ -267,7 +269,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 _logger.LogError("❌ DailyPushContentService not available, cannot refresh contents");
                 return;
             }
-            
+
             // Load all available content from CSV
             var csvContents = await contentService.GetAllContentsAsync();
             if (csvContents.Count == 0)
@@ -275,12 +277,13 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 _logger.LogWarning("⚠️ No contents loaded from CSV source");
                 return;
             }
-            
-            _logger.LogInformation("📥 Loaded {Count} contents from CSV, converting to DailyNotificationContent...", csvContents.Count);
-            
+
+            _logger.LogInformation("📥 Loaded {Count} contents from CSV, converting to DailyNotificationContent...",
+                csvContents.Count);
+
             // Convert CSV content to DailyNotificationContent objects
             var convertedContents = new List<DailyNotificationContent>();
-            
+
             foreach (var csvContent in csvContents)
             {
                 try
@@ -291,7 +294,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                         IsActive = true,
                         LocalizedContents = new Dictionary<string, LocalizedContentData>()
                     };
-                    
+
                     // Add English content if available
                     if (!string.IsNullOrEmpty(csvContent.TitleEn) || !string.IsNullOrEmpty(csvContent.ContentEn))
                     {
@@ -301,7 +304,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                             Content = csvContent.ContentEn ?? ""
                         };
                     }
-                    
+
                     // Add Chinese content if available
                     if (!string.IsNullOrEmpty(csvContent.TitleZh) || !string.IsNullOrEmpty(csvContent.ContentZh))
                     {
@@ -311,7 +314,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                             Content = csvContent.ContentZh ?? ""
                         };
                     }
-                    
+
                     // Add Spanish content if available
                     if (!string.IsNullOrEmpty(csvContent.TitleEs) || !string.IsNullOrEmpty(csvContent.ContentEs))
                     {
@@ -321,7 +324,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                             Content = csvContent.ContentEs ?? ""
                         };
                     }
-                    
+
                     // Add Simplified Chinese content if available
                     if (!string.IsNullOrEmpty(csvContent.TitleZhSc) || !string.IsNullOrEmpty(csvContent.ContentZhSc))
                     {
@@ -331,7 +334,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                             Content = csvContent.ContentZhSc ?? ""
                         };
                     }
-                    
+
                     convertedContents.Add(notificationContent);
                 }
                 catch (Exception ex)
@@ -339,41 +342,41 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                     _logger.LogWarning(ex, "⚠️ Failed to convert CSV content {ContentKey}", csvContent.ContentKey);
                 }
             }
-            
+
             if (convertedContents.Count == 0)
             {
                 _logger.LogError("❌ No valid contents could be converted from CSV");
                 return;
             }
-            
+
             // Import all converted contents
             RaiseEvent(new ImportContentsEventLog
             {
                 Contents = convertedContents,
                 ImportTime = DateTime.UtcNow
             });
-            
+
             // Mark refresh completed
             RaiseEvent(new RefreshContentsEventLog
             {
                 RefreshTime = DateTime.UtcNow
             });
-            
+
             await ConfirmEvents();
-            
-            _logger.LogInformation("✅ Content refresh completed: {Count} contents imported from local CSV file", 
+
+            _logger.LogInformation("✅ Content refresh completed: {Count} contents imported from local CSV file",
                 convertedContents.Count);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "💥 Critical error during content refresh from local CSV file");
-            
+
             // Still mark refresh time even if failed
             RaiseEvent(new RefreshContentsEventLog
             {
                 RefreshTime = DateTime.UtcNow
             });
-            
+
             await ConfirmEvents();
         }
     }
@@ -385,7 +388,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
             Contents = contents,
             ImportTime = DateTime.UtcNow
         });
-        
+
         await ConfirmEvents();
         _logger.LogInformation($"Imported {contents.Count} contents");
     }
@@ -393,7 +396,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     public async Task<ContentStatistics> GetStatisticsAsync()
     {
         var activeContents = State.Contents.Values.Where(c => c.IsActive).ToList();
-        
+
         return new ContentStatistics
         {
             TotalContents = State.Contents.Count,
@@ -406,22 +409,23 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
             TotalSelections = State.SelectionCount
         };
     }
-    
+
     public async Task RegisterTimezoneGuidMappingAsync(Guid timezoneGuid, string timezoneId)
     {
         if (!State.TimezoneGuidMappings.ContainsKey(timezoneGuid))
         {
             State.TimezoneGuidMappings[timezoneGuid] = timezoneId;
             await ConfirmEvents();
-            _logger.LogInformation("Registered timezone GUID mapping: {Guid} -> {TimezoneId}", timezoneGuid, timezoneId);
+            _logger.LogInformation("Registered timezone GUID mapping: {Guid} -> {TimezoneId}", timezoneGuid,
+                timezoneId);
         }
     }
-    
+
     public async Task<string?> GetTimezoneFromGuidAsync(Guid timezoneGuid)
     {
         return State.TimezoneGuidMappings.TryGetValue(timezoneGuid, out var timezoneId) ? timezoneId : null;
     }
-    
+
     /// <summary>
     /// Pre-register common timezone mappings to prevent orphaned DailyPushCoordinatorGAgent grains
     /// This solves the chicken-egg problem where auto-activated grains can't find their timezone
@@ -431,16 +435,16 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
         var commonTimezones = new[]
         {
             "UTC",
-            "Asia/Shanghai", 
+            "Asia/Shanghai",
             "Asia/Tokyo",
             "Europe/London",
-            "Europe/Rome", 
+            "Europe/Rome",
             "Europe/Paris",
             "America/New_York",
             "America/Los_Angeles",
             "Australia/Sydney"
         };
-        
+
         var registeredCount = 0;
         foreach (var timezone in commonTimezones)
         {
@@ -452,15 +456,17 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 _logger.LogDebug("Pre-registered timezone mapping: {Guid} -> {TimezoneId}", timezoneGuid, timezone);
             }
         }
-        
+
         if (registeredCount > 0)
         {
             await ConfirmEvents();
-            _logger.LogInformation("✅ Pre-registered {Count} common timezone mappings to prevent orphaned grains", registeredCount);
+            _logger.LogInformation("✅ Pre-registered {Count} common timezone mappings to prevent orphaned grains",
+                registeredCount);
         }
         else
         {
-            _logger.LogDebug("🔄 All common timezone mappings already exist ({Count} total mappings)", State.TimezoneGuidMappings.Count);
+            _logger.LogDebug("🔄 All common timezone mappings already exist ({Count} total mappings)",
+                State.TimezoneGuidMappings.Count);
         }
     }
 }

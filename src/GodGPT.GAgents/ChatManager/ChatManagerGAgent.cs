@@ -1,21 +1,19 @@
 using System.Diagnostics;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
-using GodGPT.GAgents.DailyPush;
-using GodGPT.GAgents.DailyPush.SEvents;
-using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
-using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
+using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
 using Aevatar.Application.Grains.Agents.Invitation;
+using Aevatar.Application.Grains.ChatManager.Dtos;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.UserQuota;
-using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
@@ -23,7 +21,9 @@ using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
+using GodGPT.GAgents.DailyPush;
 using GodGPT.GAgents.SpeechChat;
+using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -33,7 +33,7 @@ using Volo.Abp;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
-[Json.Schema.Generation.Description("manage chat agent")]
+[Description("manage chat agent")]
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(ChatGAgentManager))]
@@ -1416,8 +1416,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     public async Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage)
     {
         var isNewDevice = !State.UserDevices.ContainsKey(deviceId);
-        var deviceInfo = isNewDevice ? new GodGPT.GAgents.DailyPush.UserDeviceInfo() : 
-            new GodGPT.GAgents.DailyPush.UserDeviceInfo
+        var deviceInfo = isNewDevice ? new UserDeviceInfo() : 
+            new UserDeviceInfo
             {
                 DeviceId = State.UserDevices[deviceId].DeviceId,
                 PushToken = State.UserDevices[deviceId].PushToken,
@@ -1551,10 +1551,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
     }
 
-    public async Task<GodGPT.GAgents.DailyPush.UserDeviceInfo?> GetDeviceStatusAsync(string deviceId)
+    public async Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId)
     {
 
-        return State.UserDevices.TryGetValue(deviceId, out var device) ? device : null;
+        return State.UserDevices.TryGetValue(deviceId, out var device) ? device : new UserDeviceInfo{ PushEnabled = true };
     }
 
     public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
@@ -1562,7 +1562,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
     }
 
-    public async Task ProcessDailyPushAsync(DateTime targetDate, List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         
@@ -1587,14 +1587,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     ? string.Join(", ", devicesInTimezone.Select(d => $"DeviceId:{d.DeviceId}|Token:{d.PushToken}|Enabled:{d.PushEnabled}"))
                     : "No devices in timezone";
                 
-                Logger.LogInformation("📖 At least one daily push already read for {DateKey}, skipping all pushes - UserId: {UserId}, TimeZone: {TimeZone}, Devices: [{DeviceInfo}]", 
+                Logger.LogInformation("At least one daily push already read for {DateKey}, skipping all pushes - UserId: {UserId}, TimeZone: {TimeZone}, Devices: [{DeviceInfo}]", 
                     dateKey, State.UserId, timeZoneId, deviceInfo);
                 return;
             }
         }
         else
         {
-            Logger.LogInformation("🧪 Bypassing read status check for daily push on {DateKey}", dateKey);
+            Logger.LogInformation("Bypassing read status check for daily push on {DateKey}", dateKey);
         }
         
         // Only process devices in the specified timezone with pushToken deduplication
@@ -1602,7 +1602,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
             .ToList();
             
-        // ✅ Deduplicate by pushToken, keep the device with latest LastTokenUpdate
+        // Deduplicate by pushToken, keep the device with latest LastTokenUpdate
         var enabledDevices = enabledDevicesRaw
             .GroupBy(d => d.PushToken)
             .Select(g => g.OrderByDescending(d => d.LastTokenUpdate).First())
@@ -1611,11 +1611,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
         if (duplicateCount > 0)
         {
-            Logger.LogInformation("🔍 ProcessDailyPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
+            Logger.LogInformation("ProcessDailyPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
                 duplicateCount, State.UserId);
         }
         
-        Logger.LogInformation("📱 ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+        Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
             enabledDevices.Count, timeZoneId, State.UserId);
             
         if (enabledDevices.Count == 0)
@@ -1649,18 +1649,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     if (index > 0)
                     {
                         var delayMs = index * 500; // 500ms per content (1st=0ms, 2nd=500ms, 3rd=1000ms...)
-                        Logger.LogInformation("⏱️ Applying push delay: DeviceId={DeviceId}, ContentIndex={ContentIndex}/{TotalContents}, DelayMs={DelayMs}", 
+                        Logger.LogInformation("Applying push delay: DeviceId={DeviceId}, ContentIndex={ContentIndex}/{TotalContents}, DelayMs={DelayMs}", 
                             device.DeviceId, index + 1, contents.Count, delayMs);
                         await Task.Delay(delayMs);
                     }
                     
                     var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
-                    Logger.LogInformation("🔍 Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
+                    Logger.LogInformation("Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
                         device.DeviceId, device.PushLanguage, availableLanguages);
                     
                     var localizedContent = content.GetLocalizedContent(device.PushLanguage);
                     
-                    Logger.LogInformation("🌍 Selected content {Index}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
+                    Logger.LogInformation("Selected content {Index}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
                         index + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
                     
                     // Create unique data payload for each content
@@ -1668,15 +1668,15 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     var pushData = new Dictionary<string, object>
                     {
                         ["message_id"] = messageId.ToString(),
-                        ["type"] = isRetryPush ? (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.AfternoonRetry : (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush,
+                        ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
                         ["date"] = dateKey,
                         ["content_id"] = content.Id, // Single content ID for this push
                         ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
                         ["device_id"] = device.DeviceId,
                         ["total_contents"] = contents.Count,
-                        ["timezone"] = timeZoneId, // ✅ Add timezone for timezone-based deduplication
-                        ["is_retry"] = isRetryPush, // ✅ Add retry push identification
-                        ["is_test_push"] = isTestPush // ✅ Add test push identification for manual triggers
+                        ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
+                        ["is_retry"] = isRetryPush, // Add retry push identification
+                        ["is_test_push"] = isTestPush // Add test push identification for manual triggers
                     };
                     
                     var success = await firebaseService.SendPushNotificationAsync(
@@ -1711,106 +1711,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         successCount = results.Count(r => r);
         failureCount = results.Count(r => !r);
         
-        Logger.LogInformation("🚀 ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
+        Logger.LogInformation("ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
             State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
-    }
-
-    public async Task ProcessInstantPushAsync(List<GodGPT.GAgents.DailyPush.DailyNotificationContent> contents, string timeZoneId)
-    {
-        // Skip read status check for instant push
-        
-        // Only process devices in the specified timezone with pushToken deduplication
-        var enabledDevicesRaw = State.UserDevices.Values
-            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
-            .ToList();
-            
-        // ✅ Deduplicate by pushToken, keep the device with latest LastTokenUpdate
-        var enabledDevices = enabledDevicesRaw
-            .GroupBy(d => d.PushToken)
-            .Select(g => g.OrderByDescending(d => d.LastTokenUpdate).First())
-            .ToList();
-            
-        var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
-        if (duplicateCount > 0)
-        {
-            Logger.LogInformation("🔍 ProcessInstantPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
-                duplicateCount, State.UserId);
-        }
-        
-        Logger.LogInformation("🧪 ProcessInstantPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
-            enabledDevices.Count, timeZoneId, State.UserId);
-            
-        if (enabledDevices.Count == 0)
-        {
-            Logger.LogWarning("No enabled devices for instant push - User {UserId}, TimeZone {TimeZone}, Total devices: {TotalDevices}", 
-                State.UserId, timeZoneId, State.UserDevices.Count);
-            return;
-        }
-        
-        // Send push notifications via Firebase FCM
-        var firebaseService = ServiceProvider.GetService(typeof(GodGPT.GAgents.DailyPush.FirebaseService)) as GodGPT.GAgents.DailyPush.FirebaseService;
-        if (firebaseService == null)
-        {
-            Logger.LogError("FirebaseService not available for instant push");
-            return;
-        }
-        
-        // Create push messages for FCM SendEach API
-        var pushMessages = new List<GodGPT.GAgents.DailyPush.PushMessage>();
-        
-        // Each content item should be sent to each device (so 2 contents = 2 messages per device)
-        for (int contentIndex = 0; contentIndex < contents.Count; contentIndex++)
-        {
-            var content = contents[contentIndex];
-            
-            foreach (var device in enabledDevices)
-            {
-                // Get localized content
-                var deviceLanguage = device.PushLanguage ?? "en";
-                var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
-                Logger.LogInformation("🔍 Instant push language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
-                    device.DeviceId, deviceLanguage, availableLanguages);
-                    
-                var localizedContent = content.GetLocalizedContent(deviceLanguage);
-                if (localizedContent == null)
-                {
-                    Logger.LogWarning("No localized content found for language {Language}, content {ContentId}, device {DeviceId}", 
-                        deviceLanguage, content.Id, device.DeviceId);
-                    continue;
-                }
-                
-                Logger.LogInformation("📱 Instant push selected content: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}'", 
-                    device.DeviceId, deviceLanguage, localizedContent.Title);
-                
-                pushMessages.Add(new GodGPT.GAgents.DailyPush.PushMessage
-                {
-                    Token = device.PushToken,
-                    Title = localizedContent.Title,
-                    Content = localizedContent.Content,
-                    Data = new Dictionary<string, object>
-                    {
-                        { "type", (int)GodGPT.GAgents.DailyPush.DailyPushConstants.PushType.DailyPush }, // Use enum value 1
-                        { "contentId", content.Id },
-                        { "content_index", contentIndex + 1 }, // ✅ Add content index for multi-content deduplication
-                        { "total_contents", contents.Count }, // ✅ Add total contents count
-                        { "userId", State.UserId.ToString() },
-                        { "deviceId", device.DeviceId },
-                        { "timezone", timeZoneId },
-                        { "is_instant_push", true } // ✅ Add instant push identification
-                    }
-                });
-            }
-        }
-        
-        Logger.LogInformation("🧪 Prepared {Count} push messages for FCM SendEach batch send", pushMessages.Count);
-        
-        // Use FCM SendEach API for optimized batch sending
-        var batchResult = await firebaseService.SendEachAsync(pushMessages);
-        var successCount = batchResult.SuccessCount;
-        var failureCount = batchResult.FailureCount;
-        
-        Logger.LogInformation("🧪 ProcessInstantPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
-            State.UserId, successCount, failureCount, enabledDevices.Count, pushMessages.Count);
     }
 
     public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
@@ -1823,38 +1725,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return !isRead && State.UserDevices.Values.Any(d => d.PushEnabled);
     }
 
-    public async Task<List<GodGPT.GAgents.DailyPush.UserDeviceInfo>> GetAllUserDevicesAsync()
+    public async Task<List<UserDeviceInfo>> GetAllUserDevicesAsync()
     {
         return State.UserDevices.Values.ToList();
-    }
-
-    /// <summary>
-    /// Clear all read status for this user - TODO: Remove before production
-    /// </summary>
-    public async Task ClearReadStatusAsync()
-    {
-        var clearedCount = State.DailyPushReadStatus.Count;
-        
-        // ✅ Use proper Event Sourcing - no direct State modification
-        RaiseEvent(new ClearDailyPushReadStatusEventLog
-        {
-            ClearTime = DateTime.UtcNow,
-            ClearedCount = clearedCount
-        });
-        
-        await ConfirmEvents();
-        
-        Logger.LogInformation("🧪 Cleared all read status for user {UserId}: {ClearedCount} entries removed", 
-            State.UserId, clearedCount);
-    }
-
-    /// <summary>
-    /// Get daily push read status for this user - TODO: Remove before production
-    /// </summary>
-    public async Task<Dictionary<string, bool>> GetDailyPushReadStatusAsync()
-    {
-        // Return a copy of the read status to avoid external modification
-        return new Dictionary<string, bool>(State.DailyPushReadStatus);
     }
 
     public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
@@ -1878,7 +1751,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");
                 
-                // 🚀 CRITICAL: Complete timezone ecosystem initialization
+                // CRITICAL: Complete timezone ecosystem initialization
                 // This ensures ALL timezone-related agents are ready for immediate daily push operation
                 await InitializeTimezoneEcosystemAsync(newTimeZone);
             }
@@ -1908,12 +1781,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             // Validate timezone format before creating any Grains
             TimeZoneInfo.FindSystemTimeZoneById(newTimeZone);
-            Logger.LogInformation("🚀 Starting complete timezone ecosystem initialization for {TimeZone}", newTimeZone);
+            Logger.LogInformation("Starting complete timezone ecosystem initialization for {TimeZone}", newTimeZone);
 
             // Step 1: Initialize DailyContentGAgent timezone mapping (global content service)
             var contentGAgent = GrainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
             await contentGAgent.RegisterTimezoneGuidMappingAsync(DailyPushConstants.TimezoneToGuid(newTimeZone), newTimeZone);
-            Logger.LogDebug("✅ DailyContentGAgent timezone mapping registered for {TimeZone}", newTimeZone);
+            Logger.LogDebug("DailyContentGAgent timezone mapping registered for {TimeZone}", newTimeZone);
 
             // Step 2: Initialize and fully activate DailyPushCoordinatorGAgent
             var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
@@ -1924,17 +1797,17 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // 🔥 CRITICAL: Force grain to stay active by calling multiple methods
             var status = await coordinatorGAgent.GetStatusAsync();
             
-            Logger.LogInformation("✅ DailyPushCoordinatorGAgent fully initialized for {TimeZone}. Status: {Status}, ReminderTargetId: {TargetId}", 
+            Logger.LogInformation("DailyPushCoordinatorGAgent fully initialized for {TimeZone}. Status: {Status}, ReminderTargetId: {TargetId}", 
                 newTimeZone, status.Status, status.ReminderTargetId);
 
             // Step 3: Validate reminders are registered (if authorized)
             if (status.ReminderTargetId != Guid.Empty)
             {
-                Logger.LogInformation("🎯 Daily push reminders are ready for {TimeZone} with authorized ReminderTargetId", newTimeZone);
+                Logger.LogInformation("Daily push reminders are ready for {TimeZone} with authorized ReminderTargetId", newTimeZone);
             }
             else
             {
-                Logger.LogWarning("⚠️ ReminderTargetId is empty for {TimeZone} - daily pushes may not work until properly configured", newTimeZone);
+                Logger.LogWarning("ReminderTargetId is empty for {TimeZone} - daily pushes may not work until properly configured", newTimeZone);
             }
 
             // Step 4: Pre-warm timezone calculations to ensure immediate readiness
@@ -1942,7 +1815,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var currentUtc = DateTime.UtcNow;
             var currentLocal = TimeZoneInfo.ConvertTimeFromUtc(currentUtc, timezoneInfo);
             
-            Logger.LogInformation("🌍 Timezone ecosystem fully initialized for {TimeZone}. Current local time: {LocalTime} (UTC: {UtcTime})", 
+            Logger.LogInformation("Timezone ecosystem fully initialized for {TimeZone}. Current local time: {LocalTime} (UTC: {UtcTime})", 
                 newTimeZone, currentLocal.ToString("yyyy-MM-dd HH:mm:ss"), currentUtc.ToString("yyyy-MM-dd HH:mm:ss"));
 
             // Step 5: Final verification - ensure all components are responsive
@@ -1953,7 +1826,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             };
             
             await Task.WhenAll(verificationTasks);
-            Logger.LogInformation("🎉 Timezone ecosystem verification completed for {TimeZone} - all agents responsive", newTimeZone);
+            Logger.LogInformation("Timezone ecosystem verification completed for {TimeZone} - all agents responsive", newTimeZone);
         }
         catch (TimeZoneNotFoundException ex)
         {
@@ -1966,6 +1839,4 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Don't rethrow - allow timezone index update to succeed even if ecosystem init partially fails
         }
     }
-
-
 }

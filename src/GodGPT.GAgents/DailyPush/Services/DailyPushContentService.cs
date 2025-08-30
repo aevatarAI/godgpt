@@ -45,7 +45,7 @@ public class DailyPushContentService
         _logger = logger;
         _options = options;
         
-        _logger.LogDebug("🚀 Initializing DailyPushContentService...");
+        _logger.LogDebug("Initializing DailyPushContentService...");
         _logger.LogDebug("📁 Configured CSV Path: {CsvPath}", options.CurrentValue.FilePaths.CsvDictionaryPath);
     }
     
@@ -156,11 +156,11 @@ public class DailyPushContentService
                 {
                     if (_contents.Count == 0)
                     {
-                        _logger.LogDebug("📋 Content cache is empty, loading CSV for first time");
+                        _logger.LogDebug("Content cache is empty, loading CSV for first time");
                     }
                     else
                     {
-                        _logger.LogDebug("🕐 Content cache expired (Age: {CacheAge}, Expiry: {CacheExpiry}), reloading CSV", 
+                        _logger.LogDebug("Content cache expired (Age: {CacheAge}, Expiry: {CacheExpiry}), reloading CSV", 
                             cacheAge, _cacheExpiry);
                     }
                     
@@ -229,7 +229,7 @@ public class DailyPushContentService
             // Log header for debugging
             if (lines.Length > 0)
             {
-                _logger.LogDebug("📋 CSV header: {Header}", lines[0]);
+                _logger.LogDebug("CSV header: {Header}", lines[0]);
             }
             
             // Load content into temporary list to avoid intermediate empty state

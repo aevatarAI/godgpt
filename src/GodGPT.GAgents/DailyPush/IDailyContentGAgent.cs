@@ -1,5 +1,5 @@
 using Aevatar.Core.Abstractions;
-using Orleans;
+
 // DailyPush types are in same namespace
 
 namespace GodGPT.GAgents.DailyPush;
@@ -13,37 +13,37 @@ public interface IDailyContentGAgent : IGAgent, IGrainWithGuidKey
     /// Get smart-selected contents for specific date (with deduplication)
     /// </summary>
     Task<List<DailyNotificationContent>> GetSmartSelectedContentsAsync(int count, DateTime targetDate);
-    
+
     /// <summary>
     /// Add new content to the pool
     /// </summary>
     Task AddContentAsync(DailyNotificationContent content);
-    
+
     /// <summary>
     /// Update existing content
     /// </summary>
     Task UpdateContentAsync(string contentId, DailyNotificationContent content);
-    
+
     /// <summary>
     /// Get all available contents
     /// </summary>
     Task<List<DailyNotificationContent>> GetAllContentsAsync();
-    
+
     /// <summary>
     /// Import contents from Excel data
     /// </summary>
     Task ImportContentsAsync(List<DailyNotificationContent> contents);
-    
+
     /// <summary>
     /// Get content statistics
     /// </summary>
     Task<ContentStatistics> GetStatisticsAsync();
-    
+
     /// <summary>
     /// Register timezone GUID mapping (called when timezone GAgent is first created)
     /// </summary>
     Task RegisterTimezoneGuidMappingAsync(Guid timezoneGuid, string timezoneId);
-    
+
     /// <summary>
     /// Get timezone ID from GUID (for reverse lookup)
     /// </summary>
