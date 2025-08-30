@@ -1232,9 +1232,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             case MarkDailyPushReadEventLog markReadEvent:
                 state.DailyPushReadStatus[markReadEvent.DateKey] = true;
                 break;
-            case ClearDailyPushReadStatusEventLog clearReadStatusEvent:
-                state.DailyPushReadStatus.Clear();
-                break;
+
         }   
     }
 

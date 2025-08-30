@@ -138,7 +138,23 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
         return State.TimeZoneId;
     }
 
+    public async Task RefreshUserIndexAsync()
+    {
+        // TODO: This would typically involve:
+        // 1. Querying all ChatManagerGAgents to find users with devices in this timezone
+        // 2. Updating the ActiveUsers set based on current device states
+        // 3. Removing users who no longer have enabled devices in this timezone
 
+        // For now, just update timestamp
+        RaiseEvent(new InitializeTimezoneIndexEventLog
+        {
+            TimeZoneId = State.TimeZoneId,
+            InitTime = DateTime.UtcNow
+        });
+
+        await ConfirmEvents();
+        _logger.LogInformation($"Refreshed user index for timezone {State.TimeZoneId} (placeholder implementation)");
+    }
 
     public async Task<bool> HasActiveDeviceInTimezoneAsync(Guid userId)
     {
