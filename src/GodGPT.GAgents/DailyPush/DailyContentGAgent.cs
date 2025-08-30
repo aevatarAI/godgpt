@@ -308,7 +308,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                     // Add Traditional Chinese content if available
                     if (!string.IsNullOrEmpty(csvContent.TitleZh) || !string.IsNullOrEmpty(csvContent.ContentZh))
                     {
-                        notificationContent.LocalizedContents["zh-TW"] = new LocalizedContentData
+                        notificationContent.LocalizedContents["zh-tw"] = new LocalizedContentData
                         {
                             Title = csvContent.TitleZh ?? "",
                             Content = csvContent.ContentZh ?? ""
