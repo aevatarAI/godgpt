@@ -305,10 +305,10 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                         };
                     }
 
-                    // Add Chinese content if available
+                    // Add Traditional Chinese content if available
                     if (!string.IsNullOrEmpty(csvContent.TitleZh) || !string.IsNullOrEmpty(csvContent.ContentZh))
                     {
-                        notificationContent.LocalizedContents["zh"] = new LocalizedContentData
+                        notificationContent.LocalizedContents["zh-TW"] = new LocalizedContentData
                         {
                             Title = csvContent.TitleZh ?? "",
                             Content = csvContent.ContentZh ?? ""
@@ -328,7 +328,7 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                     // Add Simplified Chinese content if available
                     if (!string.IsNullOrEmpty(csvContent.TitleZhSc) || !string.IsNullOrEmpty(csvContent.ContentZhSc))
                     {
-                        notificationContent.LocalizedContents["zh-sc"] = new LocalizedContentData
+                        notificationContent.LocalizedContents["zh"] = new LocalizedContentData
                         {
                             Title = csvContent.TitleZhSc ?? "",
                             Content = csvContent.ContentZhSc ?? ""
