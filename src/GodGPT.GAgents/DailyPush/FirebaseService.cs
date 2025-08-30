@@ -44,10 +44,10 @@ public class FirebaseService
         _logger = logger;
         _httpClient = httpClient;
         
-        _logger.LogDebug("🚀 Initializing Firebase service...");
+        _logger.LogInformation("Initializing Firebase service...");
         
         // Load service account from file first, then fallback to configuration
-        _logger.LogDebug("🔄 Attempting to load Firebase credentials (File first, then appsettings.json fallback)");
+        _logger.LogInformation("Loading Firebase credentials");
         
         var fileAccount = LoadServiceAccountFromFile(options.CurrentValue.FilePaths);
         var configAccount = fileAccount == null ? LoadServiceAccountFromConfiguration(configuration) : null;
@@ -70,12 +70,12 @@ public class FirebaseService
         }
         else
         {
-            _logger.LogWarning("❌ Firebase credentials not configured - using SIMULATION MODE for push notifications");
+            _logger.LogWarning("Firebase credentials not configured - using simulation mode");
         }
         
         if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
         {
-            _logger.LogInformation("✅ Firebase FCM API v1 configured successfully for project: {ProjectId}", _projectId);
+            _logger.LogInformation("Firebase FCM API v1 configured for project: {ProjectId}", _projectId);
         }
     }
     
@@ -92,7 +92,7 @@ public class FirebaseService
             
             if (!File.Exists(keyPath))
             {
-                _logger.LogWarning("❌ Firebase key file not found at path: {KeyPath} - will fallback to appsettings.json", keyPath);
+                _logger.LogWarning("Firebase key file not found at path: {KeyPath}, using appsettings.json", keyPath);
                 return null;
             }
             
@@ -108,7 +108,7 @@ public class FirebaseService
             var hasProjectId = jsonContent.Contains("project_id");
             var hasClientEmail = jsonContent.Contains("client_email");
             
-            _logger.LogDebug("🔍 Firebase key file analysis: Length={ContentLength} chars, HasPrivateKey={HasPrivateKey}, HasProjectId={HasProjectId}, HasClientEmail={HasClientEmail}",
+            _logger.LogDebug("Firebase key file loaded: Length={ContentLength} chars, HasPrivateKey={HasPrivateKey}, HasProjectId={HasProjectId}, HasClientEmail={HasClientEmail}",
                 contentLength, hasPrivateKey, hasProjectId, hasClientEmail);
             
             var serviceAccount = JsonSerializer.Deserialize<ServiceAccountInfo>(jsonContent, new JsonSerializerOptions
@@ -231,18 +231,7 @@ public class FirebaseService
             
 
             
-            // ✅ Layer 1: Check if already pushed today (UTC date) - Skip for test pushes, retry pushes, and non-first content
-            bool isTestPush = title.Contains("🧪") || title.Contains("test") || title.Contains("Test") || title.Contains("TEST");
-            
-            // ✅ Also check if this is an instant push via data payload (instant pushes are for testing)
-            if (!isTestPush && data != null && data.TryGetValue("is_instant_push", out var isInstantObj))
-            {
-                if (bool.TryParse(isInstantObj?.ToString(), out var isInstant) && isInstant)
-                {
-                    isTestPush = true;
-                    _logger.LogDebug("🧪 Instant push detected via is_instant_push flag");
-                }
-            }
+            // Check for daily push deduplication
             
             // Check if this is a retry push
             bool isRetryPush = false;
@@ -265,8 +254,8 @@ public class FirebaseService
             var timeZoneId = data?.TryGetValue("timezone", out var timezoneObj) == true ? timezoneObj?.ToString() : "UTC";
             var dedupeKey = $"{pushToken}:{timeZoneId}"; // Combine pushToken with timezone for deduplication
             
-            // Only check date deduplication for first content of regular daily pushes (skip test pushes, retry pushes, and subsequent contents)
-            if (!isTestPush && !isRetryPush && isFirstContent && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
+            // Only check date deduplication for first content of regular daily pushes (skip retry pushes and subsequent contents)
+            if (!isRetryPush && isFirstContent && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
             {
                 _logger.LogInformation("📅 PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, skipping duplicate", 
                     pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
@@ -275,22 +264,7 @@ public class FirebaseService
                 return false;
             }
             
-            if (isTestPush)
-            {
-                _logger.LogDebug("🧪 Test push detected, skipping daily date check for token {TokenPrefix}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-            }
-            else if (isRetryPush)
-            {
-                _logger.LogDebug("🔄 Retry push detected, skipping daily date check for token {TokenPrefix}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-            }
-            else if (!isFirstContent)
-            {
-                _logger.LogDebug("📋 Multi-content push detected (content #{ContentIndex}), skipping daily date check for token {TokenPrefix}", 
-                    data?.TryGetValue("content_index", out var idx) == true ? idx : "?", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-            }
+
             
 
             
@@ -307,36 +281,25 @@ public class FirebaseService
                 success = await SimulatePushAsync(pushToken, title, content);
             }
             
-            // ✅ Record successful daily push date to prevent same-day duplicates (only for first content of regular daily pushes)
+            // Record successful daily push date to prevent same-day duplicates (only for first content of regular daily pushes)
             if (success)
             {
-                if (!isTestPush && !isRetryPush && isFirstContent)
+                if (!isRetryPush && isFirstContent)
                 {
                     _lastPushDates.AddOrUpdate(dedupeKey, today, (key, oldDate) => today);
-                    _logger.LogDebug("📱 Daily push session started successfully for token {TokenPrefix} in timezone {TimeZone} at {PushTime}, date recorded: {Date}", 
-                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, now.ToString("HH:mm:ss"), today.ToString("yyyy-MM-dd"));
-                }
-                else if (!isTestPush && !isRetryPush && !isFirstContent)
-                {
-                    _logger.LogDebug("📋 Daily push content #{ContentIndex} completed successfully for token {TokenPrefix} at {PushTime}, date already recorded", 
-                        data?.TryGetValue("content_index", out var idx) == true ? idx : "?",
-                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
+                    _logger.LogInformation("Daily push sent successfully to token {TokenPrefix} in timezone {TimeZone}", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
                 }
                 else if (isRetryPush)
                 {
-                    _logger.LogDebug("🔄 Retry push completed successfully for token {TokenPrefix} at {PushTime}, date not recorded", 
-                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
-                }
-                else
-                {
-                    _logger.LogDebug("🧪 Test push completed successfully for token {TokenPrefix} at {PushTime}, date not recorded", 
-                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
+                    _logger.LogInformation("Retry push sent successfully to token {TokenPrefix} in timezone {TimeZone}", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
                 }
             }
             else
             {
-                _logger.LogDebug("❌ Push failed for token {TokenPrefix} at {PushTime}, date not recorded", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", now.ToString("HH:mm:ss"));
+                _logger.LogWarning("Push notification failed for token {TokenPrefix}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
             }
             
 

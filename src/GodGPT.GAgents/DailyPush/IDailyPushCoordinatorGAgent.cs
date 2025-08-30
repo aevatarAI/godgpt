@@ -43,21 +43,11 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     /// </summary>
     Task ForceInitializeAsync(string timeZoneId);
     
-    /// <summary>
-    /// Start test mode with rapid push testing - TODO: Remove before production
-    /// </summary>
-    /// <param name="intervalSeconds">Push interval in seconds (default: 600 seconds = 10 minutes)</param>
-    Task StartTestModeAsync(int intervalSeconds = 600);
+
     
-    /// <summary>
-    /// Stop test mode and cleanup test reminders - TODO: Remove before production
-    /// </summary>
-    Task StopTestModeAsync();
+
     
-    /// <summary>
-    /// Get test mode status - TODO: Remove before production
-    /// </summary>
-    Task<(bool IsActive, DateTime StartTime, int RoundsCompleted, int MaxRounds)> GetTestStatusAsync();
+
     
     /// <summary>
     /// Get all devices registered in this timezone with detailed information - TODO: Remove before production

@@ -321,103 +321,11 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         _logger.LogInformation("✅ Force initialization completed for timezone: {TimeZone}", timeZoneId);
     }
     
-    /// <summary>
-    /// Start test mode with rapid push testing - TODO: Remove before production
-    /// </summary>
-    public async Task StartTestModeAsync(int intervalSeconds = 600)
-    {
-        
-        if (State.TestModeActive)
-        {
-            _logger.LogWarning("Test mode already active for timezone {TimeZone}. Current rounds: {Rounds}/{MaxRounds}", 
-                _timeZoneId, State.TestRoundsCompleted, TestModeConstants.MAX_TEST_ROUNDS);
-            return;
-        }
-        
-        // Validate interval (minimum 10 seconds, maximum 1 hour)
-        intervalSeconds = Math.Max(10, Math.Min(intervalSeconds, 3600));
-        var testInterval = TimeSpan.FromSeconds(intervalSeconds);
-        
-        _logger.LogInformation("Starting test mode for timezone {TimeZone} with {IntervalSeconds}s interval", 
-            _timeZoneId, intervalSeconds);
-        
-        // Additional cleanup for safety
-        await CleanupTestRemindersAsync();
-        
-        // ✅ Use event sourcing for test state initialization
-        RaiseEvent(new TestModeStateEventLog
-        {
-            IsActive = true,
-            StartTime = DateTime.UtcNow,
-            CustomInterval = intervalSeconds,
-            ChangeTime = DateTime.UtcNow
-        });
-        
-        // Reset test rounds counter using existing event
-        RaiseEvent(new TestRoundCompletedEventLog
-        {
-            CompletedRound = 0,
-            CompletionTime = DateTime.UtcNow
-        });
-        
-        // Register first test reminder with custom interval
-        await this.RegisterOrUpdateReminder(
-            TestModeConstants.TEST_PUSH_REMINDER,
-            TimeSpan.FromSeconds(10), // Start in 10 seconds
-            testInterval); // Use custom interval
-            
-        // ✅ Confirm all events at end of call chain
-        await ConfirmEvents();
-            
-        _logger.LogInformation("Test mode started for {TimeZone}. Max rounds: {MaxRounds}, Interval: {Interval}s", 
-            _timeZoneId, TestModeConstants.MAX_TEST_ROUNDS, intervalSeconds);
-    }
+
     
-    /// <summary>
-    /// Stop test mode and cleanup test reminders - TODO: Remove before production
-    /// </summary>
-    public async Task StopTestModeAsync()
-    {
-        if (!State.TestModeActive)
-        {
-            _logger.LogInformation("Test mode not active for timezone {TimeZone}", _timeZoneId);
-            return;
-        }
-        
-        _logger.LogInformation("Stopping test mode for timezone {TimeZone}. Completed {Rounds} rounds", 
-            _timeZoneId, State.TestRoundsCompleted);
-        
-        // Cleanup test reminders
-        await CleanupTestRemindersAsync();
-        
-        // ✅ Use event sourcing for test state reset
-        RaiseEvent(new TestModeStateEventLog
-        {
-            IsActive = false,
-            StartTime = DateTime.MinValue,
-            CustomInterval = 0,
-            ChangeTime = DateTime.UtcNow
-        });
-        
-        // Reset test rounds counter
-        RaiseEvent(new TestRoundCompletedEventLog
-        {
-            CompletedRound = 0,
-            CompletionTime = DateTime.UtcNow
-        });
-        
-        await ConfirmEvents();
-        
-        _logger.LogInformation("Test mode stopped and cleaned up for timezone {TimeZone}", _timeZoneId);
-    }
+
     
-    /// <summary>
-    /// Get test mode status - TODO: Remove before production
-    /// </summary>
-    public async Task<(bool IsActive, DateTime StartTime, int RoundsCompleted, int MaxRounds)> GetTestStatusAsync()
-    {
-        return (State.TestModeActive, State.TestStartTime, State.TestRoundsCompleted, TestModeConstants.MAX_TEST_ROUNDS);
-    }
+
     
 
 
@@ -621,18 +529,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         
         try
         {
-            // Handle test mode reminders first - TODO: Remove before production
-            if (reminderName == TestModeConstants.TEST_PUSH_REMINDER)
-            {
-                await HandleTestPushReminderAsync(now);
-                return;
-            }
-            
-            if (reminderName == TestModeConstants.TEST_RETRY_REMINDER)
-            {
-                await HandleTestRetryReminderAsync(now);
-                return;
-            }
+
             // Version control check - only authorized instances should execute
             if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
             {
@@ -988,26 +885,12 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     }
 
     /// <summary>
-    /// Process morning push for test mode (bypasses read status check)
+    /// Process test morning push - deprecated and removed for production
     /// </summary>
     private async Task ProcessTestMorningPushAsync(DateTime targetDate)
     {
-        // Safety check: ensure timezone is initialized
-        if (string.IsNullOrEmpty(_timeZoneId))
-        {
-            _logger.LogError("Cannot process test morning push: timezone ID is not set. Grain needs to be initialized first.");
-            return;
-        }
-        
-        if (State.Status != SchedulerStatus.Active)
-        {
-            _logger.LogWarning("Skipping test morning push for {TimeZone} - scheduler status: {Status}", 
-                _timeZoneId, State.Status);
-            return;
-        }
-
-        _logger.LogInformation("🧪 Processing test morning push for timezone {TimeZone} on {Date}", 
-            _timeZoneId, targetDate);
+        _logger.LogWarning("Test mode is disabled for production environment");
+        return;
 
         try
         {
@@ -1157,14 +1040,9 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             return;
         }
         
-        // Check if reached maximum rounds
-        if (State.TestRoundsCompleted >= TestModeConstants.MAX_TEST_ROUNDS)
-        {
-            _logger.LogInformation("Test mode completed maximum rounds ({MaxRounds}) for {TimeZone}. Stopping test mode.", 
-                TestModeConstants.MAX_TEST_ROUNDS, _timeZoneId);
-            await StopTestModeAsync();
-            return;
-        }
+        // Test mode is disabled for production
+        _logger.LogWarning("Test mode reminder received but test mode is disabled for production");
+        return;
         
         try
         {
@@ -1243,12 +1121,9 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         if (!State.TestModeActive)
             return;
             
-        if (State.TestRoundsCompleted >= TestModeConstants.MAX_TEST_ROUNDS)
-        {
-            _logger.LogInformation("Test mode reached maximum rounds for {TimeZone}. Stopping.", _timeZoneId);
-            await StopTestModeAsync();
-            return;
-        }
+        // Test mode is disabled for production
+        _logger.LogWarning("Test retry reminder received but test mode is disabled for production");
+        return;
         
         // Schedule next push round using custom interval
         var customInterval = TimeSpan.FromSeconds(State.TestCustomInterval);
