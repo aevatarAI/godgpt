@@ -66,8 +66,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         try
         {
-            Logger.LogDebug("State.StreamingModeEnabled is on");
-            await StreamChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content,chatId);
+            Logger.LogWarning("RequestStreamGodChatEvent received but streaming method is outdated and not implemented");
+            content = "Streaming method is not available";
         }
         catch (Exception e)
         {
@@ -484,33 +484,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
     }
 
-    private async Task<string> AppendUserInfoToSystemPromptAsync(IConfigurationGAgent configurationGAgent,
-        string sysMessage, UserProfileDto? userProfile)
-    {
-        if (userProfile == null)
-        {
-            return sysMessage;
-        }
 
-        var userProfilePrompt = await configurationGAgent.GetUserProfilePromptAsync();
-        if (userProfilePrompt.IsNullOrWhiteSpace())
-        {
-            return sysMessage;
-        }
-        
-        var variables = new Dictionary<string, string>
-        {
-            { "Gender", userProfile.Gender },
-            { "BirthDate", userProfile.BirthDate.ToString(FormattedDate) },
-            { "BirthPlace", userProfile.BirthPlace },
-            { "FullName", userProfile.FullName }
-        };
-
-        userProfilePrompt = variables.Aggregate(userProfilePrompt,
-            (current, pair) => current.Replace("{" + pair.Key + "}", pair.Value));
-
-        return $"{sysMessage} \n {userProfilePrompt}";
-    }
 
     public async Task<Tuple<string, string>> ChatWithSessionAsync(Guid sessionId, string sysmLLM, string content,
         ExecutionPromptSettings promptSettings = null)
@@ -518,12 +492,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         throw new Exception("The method is outdated");
     }
     
-    private async Task StreamChatWithSessionAsync(Guid sessionId,string sysmLLM, string content,string chatId,
-        ExecutionPromptSettings promptSettings = null)
-    {
-        throw new Exception("The method is outdated");
 
-    }
 
     public async Task<List<SessionInfoDto>> GetSessionListAsync()
     {

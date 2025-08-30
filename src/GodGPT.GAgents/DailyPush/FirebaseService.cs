@@ -244,16 +244,6 @@ public class FirebaseService
                 }
             }
             
-            // ✅ Also check if this is a manual trigger test push via data payload
-            if (!isTestPush && data != null && data.TryGetValue("is_test_push", out var isTestObj))
-            {
-                if (bool.TryParse(isTestObj?.ToString(), out var isTest) && isTest)
-                {
-                    isTestPush = true;
-                    _logger.LogDebug("🧪 Manual trigger test push detected via is_test_push flag");
-                }
-            }
-            
             // Check if this is a retry push
             bool isRetryPush = false;
             if (data != null && data.TryGetValue("is_retry", out var isRetryObj))
@@ -692,9 +682,11 @@ public class FirebaseService
             
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
             
-            using var rsa = RSA.Create();
+            // Create RSA instance and import key
+            var rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
             
+            // Create security key without disposing RSA immediately
             var key = new RsaSecurityKey(rsa);
             var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
             
@@ -710,11 +702,16 @@ public class FirebaseService
             var token = new JwtSecurityToken(header, payload);
             var handler = new JwtSecurityTokenHandler();
             
-            return handler.WriteToken(token);
+            var jwtString = handler.WriteToken(token);
+            
+            // Dispose RSA after JWT creation is complete
+            rsa.Dispose();
+            
+            return jwtString;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating JWT");
+            _logger.LogError(ex, "Error creating JWT: {ErrorMessage}", ex.Message);
             return null;
         }
     }
