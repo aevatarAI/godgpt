@@ -6,6 +6,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Common.Helpers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -64,7 +65,9 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
     private readonly ILogger<UserBillingGrain> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
     private readonly IOptionsMonitor<ApplePayOptions> _appleOptions;
+    private readonly IOptionsMonitor<GooglePayOptions> _googlePayOptions;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IGooglePayService _googlePayService;
     
     private IStripeClient _client; 
     
@@ -72,12 +75,16 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
         ILogger<UserBillingGrain> logger, 
         IOptionsMonitor<StripeOptions> stripeOptions,
         IOptionsMonitor<ApplePayOptions> appleOptions,
-        IHttpClientFactory httpClientFactory)
+        IOptionsMonitor<GooglePayOptions> googlePayOptions,
+        IHttpClientFactory httpClientFactory,
+        IGooglePayService googlePayService)
     {
         _logger = logger;
         _stripeOptions = stripeOptions;
         _appleOptions = appleOptions;
+        _googlePayOptions = googlePayOptions;
         _httpClientFactory = httpClientFactory;
+        _googlePayService = googlePayService;
     }
 
     public override async Task OnActivateAsync(CancellationToken cancellationToken)

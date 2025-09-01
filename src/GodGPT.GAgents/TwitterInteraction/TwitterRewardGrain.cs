@@ -1245,7 +1245,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
         var totalUsers = userTweets.Count;
         var failedUsers = new List<string>(); // Track failed users for retry
         
-        _logger.LogInformation("🚀 Starting reward calculation user processing using RefetchTweetsByTimeRangeAsync pattern. Total users: {TotalUsers}", totalUsers);
+        _logger.LogInformation("Starting reward calculation user processing using RefetchTweetsByTimeRangeAsync pattern. Total users: {TotalUsers}", totalUsers);
         
         foreach (var kvp in userTweets)
         {
@@ -1305,7 +1305,7 @@ public class TwitterRewardGrain : Grain, ITwitterRewardGrain, IRemindable
                 
                 if (isLastUser)
                 {
-                    _logger.LogInformation("🎉 Completed processing last user {UserCount}/{TotalUsers}. No delay needed.", userCount, totalUsers);
+                    _logger.LogInformation("Completed processing last user {UserCount}/{TotalUsers}. No delay needed.", userCount, totalUsers);
                 }
                 else if (!hasData)
                 {

@@ -748,7 +748,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
                 timeRangeMinutes = minTimeGapMinutes;
             }
             
-            _logger.LogInformation($"🚀 Starting scheduled tweet fetch - Query: '{queryWithFilters}', Max results per window: {_options.CurrentValue.BatchFetchSize}, Time range: {timeRangeMinutes} minutes");
+            _logger.LogInformation($"Starting scheduled tweet fetch - Query: '{queryWithFilters}', Max results per window: {_options.CurrentValue.BatchFetchSize}, Time range: {timeRangeMinutes} minutes");
             
             // Always use RefetchTweetsByTimeRangeAsync pattern: fixed window processing for all scheduled tasks
             _logger.LogInformation($"🔄 Applying RefetchTweetsByTimeRangeAsync pattern: fixed window processing for scheduled tasks");
@@ -919,7 +919,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             var isOverallSuccess = errorMessages.Count == 0;
             var hasAnySuccess = overallResult.LastSuccessfulFetchTime.HasValue;
             
-            _logger.LogInformation("🎉 Scheduled fetch using RefetchTweetsByTimeRangeAsync pattern completed: {Windows} windows processed ({WindowSize} min each), " +
+            _logger.LogInformation("Scheduled fetch using RefetchTweetsByTimeRangeAsync pattern completed: {Windows} windows processed ({WindowSize} min each), " +
                                   "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}, LastSuccessTime={LastSuccessTime}", 
                                   windowCount, maxWindowMinutes, overallResult.TotalFetched, 
                                   overallResult.NewTweets, overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess,
@@ -1051,7 +1051,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             var isOverallSuccess = errorMessages.Count == 0;
             var hasAnySuccess = overallResult.LastSuccessfulFetchTime.HasValue;
             
-            _logger.LogInformation("🎉 Scheduled fetch time window splitting completed: {Windows} windows processed ({WindowSize} min each), " +
+            _logger.LogInformation("Scheduled fetch time window splitting completed: {Windows} windows processed ({WindowSize} min each), " +
                                   "Overall: Fetched={TotalFetched}, New={NewTweets}, Duplicates={Duplicates}, Filtered={Filtered}, Success={Success}, LastSuccessTime={LastSuccessTime}", 
                                   windowCount, maxWindowMinutes, overallResult.TotalFetched, 
                                   overallResult.NewTweets, overallResult.DuplicateSkipped, overallResult.FilteredOut, isOverallSuccess,
@@ -1225,7 +1225,7 @@ public class TwitterMonitorGrain : Grain, ITwitterMonitorGrain, IRemindable
             await _state.WriteStateAsync();
             await RecordFetchHistory(fetchResult, true, string.Empty);
 
-            _logger.LogInformation($"🎉 Fetch completed - Total: {fetchResult.TotalFetched}, New: {fetchResult.NewTweets}, Duplicates: {fetchResult.DuplicateSkipped}, Filtered: {fetchResult.FilteredOut}");
+            _logger.LogInformation($"Fetch completed - Total: {fetchResult.TotalFetched}, New: {fetchResult.NewTweets}, Duplicates: {fetchResult.DuplicateSkipped}, Filtered: {fetchResult.FilteredOut}");
             
             if (fetchResult.NewTweets > 0)
             {
