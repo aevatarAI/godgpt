@@ -1,19 +1,19 @@
 using System.Diagnostics;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
-using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
-using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
+using Aevatar.Application.Grains.Agents.ChatManager.Dtos;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.ChatManager.Share;
 using Aevatar.Application.Grains.Agents.Invitation;
+using Aevatar.Application.Grains.ChatManager.Dtos;
+using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.UserQuota;
-using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
@@ -21,7 +21,9 @@ using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
+using GodGPT.GAgents.DailyPush;
 using GodGPT.GAgents.SpeechChat;
+using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -31,7 +33,7 @@ using Volo.Abp;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
-[Json.Schema.Generation.Description("manage chat agent")]
+[Description("manage chat agent")]
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(ChatGAgentManager))]
@@ -64,8 +66,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         try
         {
-            Logger.LogDebug("State.StreamingModeEnabled is on");
-            await StreamChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content,chatId);
+            Logger.LogWarning("RequestStreamGodChatEvent received but streaming method is outdated and not implemented");
+            content = "Streaming method is not available";
         }
         catch (Exception e)
         {
@@ -301,7 +303,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         Logger.LogDebug($"[ChatGAgentManager][RequestGetUserProfileEvent] start");
 
-        //var userProfileDto = await GetLastSessionUserProfileAsync();
         var userProfileDto = await GetUserProfileAsync();
 
         await PublishAsync(new ResponseGetUserProfile()
@@ -329,10 +330,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         Logger.LogDebug($"[ChatManagerGAgent][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
         
         sw.Reset();
-        //var sysMessage = await configuration.GetPrompt();
-        //put user data into the user prompt
-        //sysMessage = await AppendUserInfoToSystemPromptAsync(configuration, sysMessage, userProfile);
-
+        
         // Add role-specific prompt if guider is provided
         var sysMessage = string.Empty;
         if (!string.IsNullOrEmpty(guider))
@@ -486,33 +484,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
     }
 
-    private async Task<string> AppendUserInfoToSystemPromptAsync(IConfigurationGAgent configurationGAgent,
-        string sysMessage, UserProfileDto? userProfile)
-    {
-        if (userProfile == null)
-        {
-            return sysMessage;
-        }
 
-        var userProfilePrompt = await configurationGAgent.GetUserProfilePromptAsync();
-        if (userProfilePrompt.IsNullOrWhiteSpace())
-        {
-            return sysMessage;
-        }
-        
-        var variables = new Dictionary<string, string>
-        {
-            { "Gender", userProfile.Gender },
-            { "BirthDate", userProfile.BirthDate.ToString(FormattedDate) },
-            { "BirthPlace", userProfile.BirthPlace },
-            { "FullName", userProfile.FullName }
-        };
-
-        userProfilePrompt = variables.Aggregate(userProfilePrompt,
-            (current, pair) => current.Replace("{" + pair.Key + "}", pair.Value));
-
-        return $"{sysMessage} \n {userProfilePrompt}";
-    }
 
     public async Task<Tuple<string, string>> ChatWithSessionAsync(Guid sessionId, string sysmLLM, string content,
         ExecutionPromptSettings promptSettings = null)
@@ -520,12 +492,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         throw new Exception("The method is outdated");
     }
     
-    private async Task StreamChatWithSessionAsync(Guid sessionId,string sysmLLM, string content,string chatId,
-        ExecutionPromptSettings promptSettings = null)
-    {
-        throw new Exception("The method is outdated");
 
-    }
 
     public async Task<List<SessionInfoDto>> GetSessionListAsync()
     {
@@ -732,9 +699,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         catch (Exception ex)
         {
-            // Log but don't throw - return empty string for graceful degradation
-            // Note: Cannot use Logger in static method, but error is rare and non-critical
-            // Logger.LogWarning(ex, "[ChatGAgentManager][ExtractChatContent] Error extracting content");
+            // Return empty string for graceful degradation
         }
 
         return string.Empty;
@@ -1250,6 +1215,24 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 }
                 state.MaxShareCount = initializeNewUserStatusLogEvent.MaxShareCount;
                 break;
+            case RegisterOrUpdateDeviceEventLog registerDeviceEvent:
+                // Remove old token mapping if token changed
+                if (!string.IsNullOrEmpty(registerDeviceEvent.OldPushToken))
+                {
+                    state.TokenToDeviceMap.Remove(registerDeviceEvent.OldPushToken);
+                }
+                
+                // Update device info and token mapping
+                state.UserDevices[registerDeviceEvent.DeviceId] = registerDeviceEvent.DeviceInfo;
+                if (!string.IsNullOrEmpty(registerDeviceEvent.DeviceInfo.PushToken))
+                {
+                    state.TokenToDeviceMap[registerDeviceEvent.DeviceInfo.PushToken] = registerDeviceEvent.DeviceId;
+                }
+                break;
+            case MarkDailyPushReadEventLog markReadEvent:
+                state.DailyPushReadStatus[markReadEvent.DateKey] = true;
+                break;
+
         }   
     }
 
@@ -1423,6 +1406,435 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             Logger.LogError(ex, $"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Error syncing subscription status");
             // Don't throw - this is a best-effort sync operation
+        }
+    }
+
+    // === Daily Push Notification Methods ===
+
+    public async Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage)
+    {
+        var isNewDevice = !State.UserDevices.ContainsKey(deviceId);
+        var deviceInfo = isNewDevice ? new UserDeviceInfo() : 
+            new UserDeviceInfo
+            {
+                DeviceId = State.UserDevices[deviceId].DeviceId,
+                PushToken = State.UserDevices[deviceId].PushToken,
+                TimeZoneId = State.UserDevices[deviceId].TimeZoneId,
+                PushLanguage = State.UserDevices[deviceId].PushLanguage,
+                PushEnabled = State.UserDevices[deviceId].PushEnabled,
+                RegisteredAt = State.UserDevices[deviceId].RegisteredAt,
+                LastTokenUpdate = State.UserDevices[deviceId].LastTokenUpdate
+            };
+        
+        // Store old values for cleanup and change detection
+        var oldPushToken = deviceInfo.PushToken;
+        var oldTimeZone = deviceInfo.TimeZoneId;
+        var oldPushEnabled = deviceInfo.PushEnabled;
+        
+        // Update device information
+        deviceInfo.DeviceId = deviceId;
+        if (!string.IsNullOrEmpty(pushToken))
+        {
+            deviceInfo.PushToken = pushToken;
+            deviceInfo.LastTokenUpdate = DateTime.UtcNow;
+        }
+        if (!string.IsNullOrEmpty(timeZoneId))
+        {
+            deviceInfo.TimeZoneId = timeZoneId;
+        }
+        // Always ensure device has a valid timezone - default to UTC if empty
+        if (string.IsNullOrEmpty(deviceInfo.TimeZoneId))
+        {
+            deviceInfo.TimeZoneId = "UTC";
+            Logger.LogWarning("Device {DeviceId} has empty timezone, defaulting to UTC", deviceId);
+        }
+        if (!string.IsNullOrEmpty(pushLanguage))
+        {
+            deviceInfo.PushLanguage = pushLanguage;
+            Logger.LogInformation("💾 Device language updated: DeviceId={DeviceId}, PushLanguage={PushLanguage}", 
+                deviceId, pushLanguage);
+        }
+        if (pushEnabled.HasValue)
+            deviceInfo.PushEnabled = pushEnabled.Value;
+        
+        if (isNewDevice)
+        {
+            deviceInfo.RegisteredAt = DateTime.UtcNow;
+        }
+        
+        // Use event-driven state update
+        RaiseEvent(new RegisterOrUpdateDeviceEventLog
+        {
+            DeviceId = deviceId,
+            DeviceInfo = deviceInfo,
+            IsNewDevice = isNewDevice,
+            OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
+        });
+        
+        await ConfirmEvents();
+        
+        // Synchronize timezone index when:
+        // 1. Timezone changed
+        // 2. Push enabled status changed from false to true
+        // 3. New device with push enabled
+        var newTimeZone = deviceInfo.TimeZoneId;
+        var newPushEnabled = deviceInfo.PushEnabled;
+        
+        var shouldUpdateIndex = false;
+        var reason = "";
+        
+        if (!string.IsNullOrEmpty(newTimeZone) && oldTimeZone != newTimeZone)
+        {
+            // Timezone changed - update both old and new timezone indexes
+            await UpdateTimezoneIndexAsync(oldTimeZone, newTimeZone);
+            shouldUpdateIndex = false; // Already handled above
+            reason = "timezone changed";
+        }
+        else if (newPushEnabled && (!oldPushEnabled || isNewDevice))
+        {
+            // Push enabled for new device or re-enabled for existing device
+            shouldUpdateIndex = true;
+            reason = isNewDevice ? "new device with push enabled" : "push re-enabled";
+        }
+        else if (!newPushEnabled && oldPushEnabled)
+        {
+            // Push disabled - remove from timezone index
+            if (!string.IsNullOrEmpty(newTimeZone))
+            {
+                var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                await indexGAgent.InitializeAsync(newTimeZone);
+                await indexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
+                Logger.LogInformation("Removed user {UserId} from timezone index {TimeZone} - push disabled", 
+                    State.UserId, newTimeZone);
+            }
+            shouldUpdateIndex = false;
+            reason = "push disabled";
+        }
+        
+        if (shouldUpdateIndex && !string.IsNullOrEmpty(newTimeZone))
+        {
+            // Add user to timezone index (ensure they're indexed for push delivery)
+            var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+            await indexGAgent.InitializeAsync(newTimeZone);
+            await indexGAgent.AddUserToTimezoneAsync(State.UserId);
+            Logger.LogInformation("Added user {UserId} to timezone index {TimeZone} - {Reason}", 
+                State.UserId, newTimeZone, reason);
+        }
+        
+        Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
+        return isNewDevice;
+    }
+
+    public async Task MarkPushAsReadAsync(string deviceId)
+    {
+        // Check if device exists for this user
+        if (State.UserDevices.ContainsKey(deviceId))
+        {
+            var dateKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            
+            // Use event-driven state update
+            RaiseEvent(new MarkDailyPushReadEventLog
+            {
+                DateKey = dateKey,
+                ReadTime = DateTime.UtcNow
+            });
+            
+            await ConfirmEvents();
+            
+            Logger.LogInformation($"Marked daily push as read for device: {deviceId} on {dateKey}");
+        }
+        else
+        {
+            Logger.LogWarning($"Device not found for provided deviceId: {deviceId}");
+        }
+    }
+
+    public async Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId)
+    {
+
+        return State.UserDevices.TryGetValue(deviceId, out var device) ? device : new UserDeviceInfo{ PushEnabled = true };
+    }
+
+    public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
+    {
+        return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
+    }
+
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
+    {
+        var dateKey = targetDate.ToString("yyyy-MM-dd");
+        
+        // Check if any message has been read for today - if so, skip all pushes
+        // Exception: bypass this check when explicitly requested (e.g., test mode main push)
+        if (!bypassReadStatusCheck)
+        {
+            var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+            if (hasAnyReadToday)
+            {
+                // Get device info for logging
+                var devicesInTimezone = State.UserDevices.Values
+                    .Where(d => d.TimeZoneId == timeZoneId)
+                    .Select(d => new { 
+                        DeviceId = d.DeviceId, 
+                        PushToken = !string.IsNullOrEmpty(d.PushToken) ? d.PushToken.Substring(0, Math.Min(8, d.PushToken.Length)) + "..." : "EMPTY",
+                        PushEnabled = d.PushEnabled 
+                    })
+                    .ToList();
+                
+                var deviceInfo = devicesInTimezone.Any() 
+                    ? string.Join(", ", devicesInTimezone.Select(d => $"DeviceId:{d.DeviceId}|Token:{d.PushToken}|Enabled:{d.PushEnabled}"))
+                    : "No devices in timezone";
+                
+                Logger.LogInformation("At least one daily push already read for {DateKey}, skipping all pushes - UserId: {UserId}, TimeZone: {TimeZone}, Devices: [{DeviceInfo}]", 
+                    dateKey, State.UserId, timeZoneId, deviceInfo);
+                return;
+            }
+        }
+        else
+        {
+            Logger.LogInformation("Bypassing read status check for daily push on {DateKey}", dateKey);
+        }
+        
+        // Only process devices in the specified timezone with pushToken deduplication
+        var enabledDevicesRaw = State.UserDevices.Values
+            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
+            .ToList();
+            
+        // Deduplicate by pushToken, keep the device with latest LastTokenUpdate
+        var enabledDevices = enabledDevicesRaw
+            .GroupBy(d => d.PushToken)
+            .Select(g => g.OrderByDescending(d => d.LastTokenUpdate).First())
+            .ToList();
+            
+        var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
+        if (duplicateCount > 0)
+        {
+            Logger.LogInformation("ProcessDailyPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
+                duplicateCount, State.UserId);
+        }
+        
+        Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+            enabledDevices.Count, timeZoneId, State.UserId);
+            
+        if (enabledDevices.Count == 0)
+        {
+            Logger.LogWarning("No enabled devices for daily push - User {UserId}, TimeZone {TimeZone}, Total devices: {TotalDevices}", 
+                State.UserId, timeZoneId, State.UserDevices.Count);
+            return;
+        }
+        
+        // Send push notifications via Firebase FCM
+        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+        if (firebaseService == null)
+        {
+            Logger.LogError("FirebaseService not available for push notifications");
+            return;
+        }
+        
+        var successCount = 0;
+        var failureCount = 0;
+        
+        // Create separate push notifications for each content to ensure individual callbacks
+        var pushTasks = enabledDevices.SelectMany(device =>
+        {
+            // Send separate push for each content with staggered delay
+            return contents.Select(async (content, index) =>
+            {
+                try
+                {
+                    // 🎯 Add staggered delay for multi-content pushes to avoid FCM conflicts
+                    // First content (index=0): no delay, subsequent contents: progressive delay
+                    if (index > 0)
+                    {
+                        var delayMs = index * 500; // 500ms per content (1st=0ms, 2nd=500ms, 3rd=1000ms...)
+                        Logger.LogInformation("Applying push delay: DeviceId={DeviceId}, ContentIndex={ContentIndex}/{TotalContents}, DelayMs={DelayMs}", 
+                            device.DeviceId, index + 1, contents.Count, delayMs);
+                        await Task.Delay(delayMs);
+                    }
+                    
+                    var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+                    Logger.LogInformation("Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
+                        device.DeviceId, device.PushLanguage, availableLanguages);
+                    
+                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
+                    
+                    Logger.LogInformation("Selected content {Index}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
+                        index + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
+                    
+                    // Create unique data payload for each content
+                    var messageId = Guid.NewGuid();
+                    var pushData = new Dictionary<string, object>
+                    {
+                        ["message_id"] = messageId.ToString(),
+                        ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
+                        ["date"] = dateKey,
+                        ["content_id"] = content.Id, // Single content ID for this push
+                        ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
+                        ["device_id"] = device.DeviceId,
+                        ["total_contents"] = contents.Count,
+                        ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
+                        ["is_retry"] = isRetryPush, // Add retry push identification
+                        ["is_test_push"] = isTestPush // Add test push identification for manual triggers
+                    };
+                    
+                    var success = await firebaseService.SendPushNotificationAsync(
+                        device.PushToken,
+                        localizedContent.Title,
+                        localizedContent.Content,
+                        pushData);
+                    
+                    if (success)
+                    {
+                        Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                        return true;
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                        return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, $"Error sending daily push content {index + 1} to device {device.DeviceId}");
+                    return false;
+                }
+            });
+        });
+        
+        // Execute all push tasks concurrently
+        var results = await Task.WhenAll(pushTasks);
+        successCount = results.Count(r => r);
+        failureCount = results.Count(r => !r);
+        
+        Logger.LogInformation("ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
+            State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
+    }
+
+    public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
+    {
+
+        
+        var dateKey = targetDate.ToString("yyyy-MM-dd");
+        var isRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var readStatus) && readStatus;
+        
+        return !isRead && State.UserDevices.Values.Any(d => d.PushEnabled);
+    }
+
+    public async Task<List<UserDeviceInfo>> GetAllUserDevicesAsync()
+    {
+        return State.UserDevices.Values.ToList();
+    }
+
+    public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
+    {
+        try
+        {
+            // Remove user from old timezone index
+            if (!string.IsNullOrEmpty(oldTimeZone))
+            {
+                var oldIndexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(oldTimeZone));
+                await oldIndexGAgent.InitializeAsync(oldTimeZone);
+                await oldIndexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
+                Logger.LogDebug($"Removed user {State.UserId} from timezone index: {oldTimeZone}");
+            }
+            
+            // Add user to new timezone index
+            if (!string.IsNullOrEmpty(newTimeZone))
+            {
+                var newIndexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                await newIndexGAgent.InitializeAsync(newTimeZone);
+                await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
+                Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");
+                
+                // CRITICAL: Complete timezone ecosystem initialization
+                // This ensures ALL timezone-related agents are ready for immediate daily push operation
+                await InitializeTimezoneEcosystemAsync(newTimeZone);
+            }
+            
+            Logger.LogInformation($"Updated timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, $"Failed to update timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
+        }
+    }
+    
+    /// <summary>
+    /// Complete timezone ecosystem initialization - ensures ALL timezone-related agents are ready
+    /// This method guarantees immediate push system availability when user switches to new timezone
+    /// </summary>
+    private async Task InitializeTimezoneEcosystemAsync(string newTimeZone)
+    {
+        // 🛡️ SAFETY: Validate timezone before any Grain operations
+        if (string.IsNullOrWhiteSpace(newTimeZone))
+        {
+            Logger.LogWarning("Empty or invalid timezone ID '{TimeZone}' - skipping timezone ecosystem initialization to prevent orphaned Grains", newTimeZone ?? "null");
+            return;
+        }
+
+        try
+        {
+            // Validate timezone format before creating any Grains
+            TimeZoneInfo.FindSystemTimeZoneById(newTimeZone);
+            Logger.LogInformation("Starting complete timezone ecosystem initialization for {TimeZone}", newTimeZone);
+
+            // Step 1: Initialize DailyContentGAgent timezone mapping (global content service)
+            var contentGAgent = GrainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
+            await contentGAgent.RegisterTimezoneGuidMappingAsync(DailyPushConstants.TimezoneToGuid(newTimeZone), newTimeZone);
+            Logger.LogDebug("DailyContentGAgent timezone mapping registered for {TimeZone}", newTimeZone);
+
+            // Step 2: Initialize and fully activate DailyPushCoordinatorGAgent
+            var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+            
+            // Force complete initialization and activation
+            await coordinatorGAgent.InitializeAsync(newTimeZone);
+            
+            // 🔥 CRITICAL: Force grain to stay active by calling multiple methods
+            var status = await coordinatorGAgent.GetStatusAsync();
+            
+            Logger.LogInformation("DailyPushCoordinatorGAgent fully initialized for {TimeZone}. Status: {Status}, ReminderTargetId: {TargetId}", 
+                newTimeZone, status.Status, status.ReminderTargetId);
+
+            // Step 3: Validate reminders are registered (if authorized)
+            if (status.ReminderTargetId != Guid.Empty)
+            {
+                Logger.LogInformation("Daily push reminders are ready for {TimeZone} with authorized ReminderTargetId", newTimeZone);
+            }
+            else
+            {
+                Logger.LogWarning("ReminderTargetId is empty for {TimeZone} - daily pushes may not work until properly configured", newTimeZone);
+            }
+
+            // Step 4: Pre-warm timezone calculations to ensure immediate readiness
+            var timezoneInfo = TimeZoneInfo.FindSystemTimeZoneById(newTimeZone);
+            var currentUtc = DateTime.UtcNow;
+            var currentLocal = TimeZoneInfo.ConvertTimeFromUtc(currentUtc, timezoneInfo);
+            
+            Logger.LogInformation("Timezone ecosystem fully initialized for {TimeZone}. Current local time: {LocalTime} (UTC: {UtcTime})", 
+                newTimeZone, currentLocal.ToString("yyyy-MM-dd HH:mm:ss"), currentUtc.ToString("yyyy-MM-dd HH:mm:ss"));
+
+            // Step 5: Final verification - ensure all components are responsive
+            var verificationTasks = new Task[]
+            {
+                contentGAgent.GetTimezoneFromGuidAsync(DailyPushConstants.TimezoneToGuid(newTimeZone)),
+                coordinatorGAgent.GetStatusAsync()
+            };
+            
+            await Task.WhenAll(verificationTasks);
+            Logger.LogInformation("Timezone ecosystem verification completed for {TimeZone} - all agents responsive", newTimeZone);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            Logger.LogError(ex, "Invalid timezone ID '{TimeZone}' - timezone ecosystem initialization failed", newTimeZone);
+            throw new ArgumentException($"Invalid timezone ID: {newTimeZone}", nameof(newTimeZone), ex);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Timezone ecosystem initialization failed for {TimeZone} - daily pushes may not work properly", newTimeZone);
+            // Don't rethrow - allow timezone index update to succeed even if ecosystem init partially fails
         }
     }
 }

@@ -4019,8 +4019,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     OrderId = revenueCatTransaction.OriginalTransactionId ?? request.TransactionIdentifier,
                     PaymentState = 1, // Purchased state
                     AutoRenewing = true, // Default for RevenueCat transactions
-                    SubscriptionStartDate = null, // 让业务逻辑自己决定开始时间
-                    SubscriptionEndDate = null     // 让业务逻辑自己决定结束时间
+                    SubscriptionStartDate = null, // Let business logic decide start time
+                    SubscriptionEndDate = null     // Let business logic decide end time
                 };
                 
                 // Process the successful verification
@@ -5168,7 +5168,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     }
 
     /// <summary>
-    /// 简化的订阅时间同步逻辑：终极套餐变化影响高级套餐，高级套餐变化不影响其他订阅
+    /// Simplified subscription time sync logic: Ultimate plan changes affect Premium plan, Premium plan changes don't affect other subscriptions
     /// </summary>
     private async Task SyncOtherSubscriptionTimesAsync(Guid userId, IUserQuotaGAgent userQuotaAgent, PlanType triggerPlanType, bool triggerIsUltimate, bool isExtend)
     {
@@ -5177,7 +5177,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         
         if (triggerIsUltimate)
         {
-            // 终极套餐变化 → 影响高级套餐
+            // Ultimate plan changes → affects Premium plan
             var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
             if (ShouldSyncSubscriptionTime(premiumSubscription))
             {
@@ -5197,27 +5197,27 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     isExtend ? "Extended" : "Reduced", days, triggerPlanType, premiumSubscription.StartDate, premiumSubscription.EndDate);
             }
         }
-        // 高级套餐变化 → 不影响其他订阅，无需处理
+        // Premium plan changes → don't affect other subscriptions, no need to handle
     }
     
     /// <summary>
-    /// 判断订阅是否需要时间同步：生效且未过期，不管状态是Completed还是Cancelled
+    /// Determine if subscription needs time sync: active and not expired, regardless of status being Completed or Cancelled
     /// </summary>
     private bool ShouldSyncSubscriptionTime(SubscriptionInfoDto subscription)
     {
         var now = DateTime.UtcNow;
-        return subscription.EndDate > now && // 未过期
+        return subscription.EndDate > now && // Not expired
                subscription.SubscriptionIds != null && 
-               subscription.SubscriptionIds.Count > 0; // 有订阅ID（即使是已取消的）
+               subscription.SubscriptionIds.Count > 0; // Has subscription ID (even if cancelled)
     }
     
     /// <summary>
-    /// 处理重新激活订阅时的正确起始时间：过期续费总是从当前时间开始
+    /// Handle correct start time for subscription reactivation: expired renewals always start from current time
     /// </summary>
     private async Task<DateTime> CalculateReactivationStartTimeAsync(IUserQuotaGAgent userQuotaAgent, bool isUltimate)
     {
-        // Fix: 过期续费应该总是从当前时间开始，不需要等待其他订阅过期
-        // 因为用户已经为过期间隙失去了服务，续费应该立即生效
+        // Fix: Expired renewals should always start from current time, no need to wait for other subscriptions to expire
+        // Because user has already lost service during the expiration gap, renewal should take effect immediately
         var now = DateTime.UtcNow;
         
         _logger.LogInformation("[UserBillingGAgent][CalculateReactivationStartTimeAsync] Reactivating expired subscription from current time: {StartTime}", now);

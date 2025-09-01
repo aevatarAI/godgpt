@@ -116,3 +116,25 @@ public class InitializeNewUserStatusLogEvent : ChatManageEventLog
     /// </summary>
     [Id(3)] public int MaxShareCount { get; set; }
 }
+
+/// <summary>
+/// Register or update device for daily push notifications
+/// </summary>
+[GenerateSerializer]
+public class RegisterOrUpdateDeviceEventLog : ChatManageEventLog
+{
+    [Id(0)] public string DeviceId { get; set; } = "";
+    [Id(1)] public GodGPT.GAgents.DailyPush.UserDeviceInfo DeviceInfo { get; set; } = null!;
+    [Id(2)] public bool IsNewDevice { get; set; }
+    [Id(3)] public string? OldPushToken { get; set; }
+}
+
+/// <summary>
+/// Mark daily push as read
+/// </summary>
+[GenerateSerializer]
+public class MarkDailyPushReadEventLog : ChatManageEventLog
+{
+    [Id(0)] public string DateKey { get; set; } = "";
+    [Id(1)] public DateTime ReadTime { get; set; } = DateTime.UtcNow;
+}
