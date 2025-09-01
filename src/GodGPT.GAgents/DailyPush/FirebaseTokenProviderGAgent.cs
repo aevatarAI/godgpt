@@ -25,21 +25,15 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
     IFirebaseTokenProviderGAgent
 {
     private readonly ILogger<FirebaseTokenProviderGAgent> _logger;
-    private readonly IConfiguration _configuration;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
-    private readonly HttpClient _httpClient;
     private ServiceAccountInfo? _serviceAccount;
 
     public FirebaseTokenProviderGAgent(
         ILogger<FirebaseTokenProviderGAgent> logger,
-        IConfiguration configuration,
-        IOptionsMonitor<DailyPushOptions> options,
-        HttpClient httpClient)
+        IOptionsMonitor<DailyPushOptions> options)
     {
         _logger = logger;
-        _configuration = configuration;
         _options = options;
-        _httpClient = httpClient;
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -68,9 +62,17 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
     {
         try
         {
+            // Get configuration through ServiceProvider (IOptionsMonitor is directly injected)
+            var configuration = ServiceProvider.GetService(typeof(IConfiguration)) as IConfiguration;
+            
+            if (configuration == null)
+            {
+                throw new InvalidOperationException("IConfiguration not available through ServiceProvider");
+            }
+
             // Load service account from file first, then fallback to configuration
             var fileAccount = LoadServiceAccountFromFile(new[] { _options.CurrentValue.FilePaths.FirebaseKeyPath });
-            var configAccount = fileAccount == null ? LoadServiceAccountFromConfiguration(_configuration) : null;
+            var configAccount = fileAccount == null ? LoadServiceAccountFromConfiguration(configuration) : null;
 
             _serviceAccount = fileAccount ?? configAccount;
 
@@ -145,6 +147,16 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
         const int maxRetries = 3;
         const int retryDelayMs = 1000;
 
+        // Get HttpClient through ServiceProvider (correct pattern for GAgent)
+        var httpClient = ServiceProvider.GetService(typeof(HttpClient)) as HttpClient;
+        if (httpClient == null)
+        {
+            _logger.LogError("HttpClient not available through ServiceProvider for ChatManager {ChatManagerId}", 
+                this.GetPrimaryKeyLong());
+            State.RecordFailure("HttpClient not available");
+            return null;
+        }
+
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
@@ -206,7 +218,7 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
                 });
 
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var response = await _httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
+                var response = await httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 if (response.IsSuccessStatusCode)
