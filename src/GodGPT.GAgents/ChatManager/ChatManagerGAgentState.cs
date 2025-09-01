@@ -1,6 +1,7 @@
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AIGAgent.State;
 using GodGPT.GAgents.SpeechChat;
+using GodGPT.GAgents.DailyPush;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
@@ -16,25 +17,26 @@ public class ChatManagerGAgentState : AIGAgentStateBase
     [Id(6)] public string FullName { get; set; }
     [Id(7)] public int MaxShareCount { get; set; }
     [Id(8)] public int CurrentShareCount { get; set; } = 0;
-    
-    /// <summary>
-    /// Marks whether this is the first access to ChatManagerGAgent (Note: not the first conversation)
-    /// This field is a repurposed field, its actual purpose is to mark whether the user is accessing ChatManagerGAgent for the first time
-    /// null: Not initialized (need to determine if new user or historical user through Version)
-    /// true: First access (new user)
-    /// false: Not first access (historical user)
-    /// </summary>
     [Id(9)] public bool? IsFirstConversation { get; set; }
-    
-    /// <summary>
-    /// User registration time (UTC time)
-    /// For new users: Set to current time on first access
-    /// For historical users: May be null (indicating historical data did not set this field)
-    /// </summary>
     [Id(10)] public DateTime? RegisteredAtUtc { get; set; }
-    
     [Id(11)] public Guid? InviterId { get; set; }
     [Id(12)] public VoiceLanguageEnum VoiceLanguage { get; set; } = VoiceLanguageEnum.Unset;
+    
+    // === Daily Push Notification Fields ===
+    /// <summary>
+    /// User devices for daily push notifications (key: deviceId)
+    /// </summary>
+    [Id(13)] public Dictionary<string, UserDeviceInfo> UserDevices { get; set; } = new();
+
+    /// <summary>
+    /// Mapping from pushToken to deviceId for efficient lookup when token changes
+    /// </summary>
+    [Id(14)] public Dictionary<string, string> TokenToDeviceMap { get; set; } = new();
+
+    /// <summary>
+    /// Daily push read status for current user (key: yyyy-MM-dd)
+    /// </summary>
+    [Id(15)] public Dictionary<string, bool> DailyPushReadStatus { get; set; } = new();
 
     public SessionInfo? GetSession(Guid sessionId)
     {
