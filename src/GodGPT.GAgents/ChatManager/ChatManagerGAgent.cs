@@ -1430,17 +1430,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var oldPushToken = deviceInfo.PushToken;
         var oldTimeZone = deviceInfo.TimeZoneId;
         var oldPushEnabled = deviceInfo.PushEnabled;
+        var oldPushLanguage = deviceInfo.PushLanguage;
         
         // Update device information
         deviceInfo.DeviceId = deviceId;
-        if (!string.IsNullOrEmpty(pushToken))
+        var hasTokenChanged = false;
+        if (!string.IsNullOrEmpty(pushToken) && pushToken != oldPushToken)
         {
             deviceInfo.PushToken = pushToken;
             deviceInfo.LastTokenUpdate = DateTime.UtcNow;
+            hasTokenChanged = true;
         }
-        if (!string.IsNullOrEmpty(timeZoneId))
+        var hasTimeZoneChanged = false;
+        if (!string.IsNullOrEmpty(timeZoneId) && timeZoneId != oldTimeZone)
         {
             deviceInfo.TimeZoneId = timeZoneId;
+            hasTimeZoneChanged = true;
         }
         // Always ensure device has a valid timezone - default to UTC if empty
         if (string.IsNullOrEmpty(deviceInfo.TimeZoneId))
@@ -1448,30 +1453,43 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             deviceInfo.TimeZoneId = "UTC";
             Logger.LogWarning("Device {DeviceId} has empty timezone, defaulting to UTC", deviceId);
         }
-        if (!string.IsNullOrEmpty(pushLanguage))
+        var hasLanguageChanged = false;
+        if (!string.IsNullOrEmpty(pushLanguage) && pushLanguage != oldPushLanguage)
         {
             deviceInfo.PushLanguage = pushLanguage;
+            hasLanguageChanged = true;
             Logger.LogInformation("💾 Device language updated: DeviceId={DeviceId}, PushLanguage={PushLanguage}", 
                 deviceId, pushLanguage);
         }
-        if (pushEnabled.HasValue)
+        var hasPushEnabledChanged = false;
+        if (pushEnabled.HasValue && pushEnabled.Value != oldPushEnabled)
+        {
             deviceInfo.PushEnabled = pushEnabled.Value;
+            hasPushEnabledChanged = true;
+        }
         
         if (isNewDevice)
         {
             deviceInfo.RegisteredAt = DateTime.UtcNow;
         }
         
-        // Use event-driven state update
-        RaiseEvent(new RegisterOrUpdateDeviceEventLog
-        {
-            DeviceId = deviceId,
-            DeviceInfo = deviceInfo,
-            IsNewDevice = isNewDevice,
-            OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
-        });
+        // Check if there are any actual changes
+        var hasAnyChanges = hasTokenChanged || hasTimeZoneChanged || hasLanguageChanged || hasPushEnabledChanged;
         
-        await ConfirmEvents();
+        // Only raise event and update state when there are actual changes or it's a new device
+        if (isNewDevice || hasAnyChanges)
+        {
+            // Use event-driven state update
+            RaiseEvent(new RegisterOrUpdateDeviceEventLog
+            {
+                DeviceId = deviceId,
+                DeviceInfo = deviceInfo,
+                IsNewDevice = isNewDevice,
+                OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
+            });
+            
+            await ConfirmEvents();
+        }
         
         // Synchronize timezone index when:
         // 1. Timezone changed
@@ -1521,7 +1539,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 State.UserId, newTimeZone, reason);
         }
         
-        Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
+        // Only log device updates when there are actual changes or it's a new device
+        if (isNewDevice || hasAnyChanges)
+        {
+            Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
+        }
         return isNewDevice;
     }
 
