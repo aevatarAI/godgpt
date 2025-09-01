@@ -672,6 +672,7 @@ public class FirebaseService
     /// </summary>
     private string? CreateJwt(Dictionary<string, object> claims, string privateKeyPem)
     {
+        RSA? rsa = null;
         try
         {
             // Clean up the private key format
@@ -685,32 +686,42 @@ public class FirebaseService
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Use 'using' statement to ensure proper RSA disposal after JWT creation
-            using var rsa = RSA.Create();
+            // Create RSA instance and keep it alive until JWT is fully serialized
+            rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
 
-            var key = new RsaSecurityKey(rsa);
-            var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
-
-            var header = new JwtHeader(credentials);
+            // Create JWT payload first
             var payload = new JwtPayload();
-
-            // Add claims to payload
             foreach (var claim in claims)
             {
                 payload[claim.Key] = claim.Value;
             }
 
+            // Create security key and credentials - RSA must remain valid
+            var key = new RsaSecurityKey(rsa);
+            var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
+
+            // Create header with credentials
+            var header = new JwtHeader(credentials);
+            
+            // Create token and serialize immediately
             var token = new JwtSecurityToken(header, payload);
             var handler = new JwtSecurityTokenHandler();
 
-            // JWT creation and RSA disposal are now properly synchronized
-            return handler.WriteToken(token);
+            // Serialize JWT - this is where RSA must still be valid
+            var jwtString = handler.WriteToken(token);
+            
+            return jwtString;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating JWT: {ErrorMessage}", ex.Message);
             return null;
+        }
+        finally
+        {
+            // Always dispose RSA in finally block to prevent leaks
+            rsa?.Dispose();
         }
     }
 
