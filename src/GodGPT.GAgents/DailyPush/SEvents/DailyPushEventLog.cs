@@ -290,3 +290,48 @@ public class TestRoundCompletedEventLog : DailyPushLogEvent
     [Id(0)] public int CompletedRound { get; set; }
     [Id(1)] public DateTime CompletionTime { get; set; } = DateTime.UtcNow;
 }
+
+// === Firebase Token Provider Events ===
+
+/// <summary>
+/// Token creation success event
+/// </summary>
+[GenerateSerializer]
+public class TokenCreationSuccessEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime CreationTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public DateTime TokenExpiry { get; set; }
+    [Id(2)] public int AttemptNumber { get; set; }
+}
+
+/// <summary>
+/// Token creation failure event
+/// </summary>
+[GenerateSerializer]
+public class TokenCreationFailureEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime FailureTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public string ErrorMessage { get; set; } = "";
+    [Id(2)] public string ErrorType { get; set; } = "";
+    [Id(3)] public int AttemptNumber { get; set; }
+}
+
+/// <summary>
+/// Token cache cleared event
+/// </summary>
+[GenerateSerializer]
+public class TokenCacheClearedEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime ClearTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public string Reason { get; set; } = "";
+}
+
+/// <summary>
+/// Token provider activation event
+/// </summary>
+[GenerateSerializer]
+public class TokenProviderActivationEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime ActivationTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public long ChatManagerId { get; set; }
+}

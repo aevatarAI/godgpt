@@ -1630,6 +1630,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Logger.LogError("FirebaseService not available for push notifications");
             return;
         }
+
+        // Get TokenProvider for this ChatManager (new architecture with graceful fallback)
+        IFirebaseTokenProviderGAgent? tokenProvider = null;
+        try
+        {
+            tokenProvider = GrainFactory.GetGrain<IFirebaseTokenProviderGAgent>(this.GetPrimaryKeyLong());
+            Logger.LogDebug("Using FirebaseTokenProvider for ChatManager {UserId}", State.UserId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "FirebaseTokenProvider not available for ChatManager {UserId}, using legacy method", State.UserId);
+        }
         
         var successCount = 0;
         var failureCount = 0;
@@ -1681,7 +1693,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         device.PushToken,
                         localizedContent.Title,
                         localizedContent.Content,
-                        pushData);
+                        pushData,
+                        tokenProvider);
                     
                     if (success)
                     {

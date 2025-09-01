@@ -211,7 +211,8 @@ public class FirebaseService
         string pushToken,
         string title,
         string content,
-        Dictionary<string, object>? data = null)
+        Dictionary<string, object>? data = null,
+        IFirebaseTokenProviderGAgent? tokenProvider = null)
     {
         try
         {
@@ -274,7 +275,7 @@ public class FirebaseService
             bool success;
             if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
             {
-                success = await SendPushNotificationV1Async(pushToken, title, content, data);
+                success = await SendPushNotificationV1Async(pushToken, title, content, data, tokenProvider);
             }
             else
             {
@@ -348,11 +349,12 @@ public class FirebaseService
         string pushToken,
         string title,
         string content,
-        Dictionary<string, object>? data = null)
+        Dictionary<string, object>? data = null,
+        IFirebaseTokenProviderGAgent? tokenProvider = null)
     {
         try
         {
-            var accessToken = await GetAccessTokenAsync();
+            var accessToken = await GetAccessTokenAsync(tokenProvider);
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogError("Failed to obtain access token for FCM API v1");
@@ -520,9 +522,41 @@ public class FirebaseService
 
 
     /// <summary>
-    /// Get access token for FCM API v1 using service account
+    /// Get access token for FCM API v1 using TokenProvider or legacy method
     /// </summary>
-    private async Task<string?> GetAccessTokenAsync()
+    private async Task<string?> GetAccessTokenAsync(IFirebaseTokenProviderGAgent? tokenProvider = null)
+    {
+        // Try to use TokenProvider first (new architecture)
+        if (tokenProvider != null)
+        {
+            try 
+            {
+                var token = await tokenProvider.GetAccessTokenAsync();
+                if (!string.IsNullOrEmpty(token))
+                {
+                    _logger.LogDebug("Using token from FirebaseTokenProvider");
+                    return token;
+                }
+                else
+                {
+                    _logger.LogWarning("TokenProvider returned empty token, falling back to legacy method");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "TokenProvider failed, falling back to legacy method");
+            }
+        }
+        
+        // Fallback to legacy method (for compatibility with old ChatManagerGAgent)
+        _logger.LogDebug("Using legacy token creation method");
+        return await GetAccessTokenLegacyAsync();
+    }
+
+    /// <summary>
+    /// Get access token for FCM API v1 using service account (legacy method)
+    /// </summary>
+    private async Task<string?> GetAccessTokenLegacyAsync()
     {
         // First check without lock for performance
         if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
@@ -816,7 +850,7 @@ public class FirebaseService
 
         try
         {
-            var accessToken = await GetAccessTokenAsync();
+            var accessToken = await GetAccessTokenLegacyAsync(); // SendEachAsync doesn't support TokenProvider yet
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogError("Failed to obtain access token for FCM batch send");
