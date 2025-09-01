@@ -24,8 +24,9 @@ public class FirebaseService
     private readonly string? _projectId;
     private string? _cachedAccessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
+    private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);
 
-    // ✅ Global pushToken daily push tracking to prevent same-day duplicates across timezones
+    // Global pushToken daily push tracking to prevent same-day duplicates across timezones
     private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
     private static int _cleanupCounter = 0;
 
@@ -52,16 +53,16 @@ public class FirebaseService
         // Log the source of credentials
         if (fileAccount != null)
         {
-            _logger.LogInformation("🎯 Firebase credentials loaded from FILE for project: {ProjectId}", _projectId);
+            _logger.LogInformation("Firebase credentials loaded from FILE for project: {ProjectId}", _projectId);
         }
         else if (configAccount != null)
         {
-            _logger.LogInformation("🎯 Firebase credentials loaded from APPSETTINGS for project: {ProjectId}",
+            _logger.LogInformation("Firebase credentials loaded from APPSETTINGS for project: {ProjectId}",
                 _projectId);
         }
         else if (!string.IsNullOrEmpty(_projectId))
         {
-            _logger.LogWarning("⚠️ Firebase project ID found in config but no service account - limited functionality");
+            _logger.LogWarning("Firebase project ID found in config but no service account - limited functionality");
         }
         else
         {
@@ -116,7 +117,7 @@ public class FirebaseService
             if (serviceAccount != null)
             {
                 _logger.LogInformation(
-                    "✅ Successfully loaded Firebase service account from file for project: {ProjectId}",
+                    "Successfully loaded Firebase service account from file for project: {ProjectId}",
                     serviceAccount.ProjectId);
 
                 // Log key fields presence (without exposing values)
@@ -136,13 +137,13 @@ public class FirebaseService
         }
         catch (JsonException jsonEx)
         {
-            _logger.LogError(jsonEx, "💥 JSON parsing error loading Firebase service account from file: {KeyPath}",
+            _logger.LogError(jsonEx, "JSON parsing error loading Firebase service account from file: {KeyPath}",
                 filePaths.FirebaseKeyPath);
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "💥 Critical error loading Firebase service account from file: {KeyPath}",
+            _logger.LogError(ex, "Critical error loading Firebase service account from file: {KeyPath}",
                 filePaths.FirebaseKeyPath);
             return null;
         }
@@ -219,7 +220,7 @@ public class FirebaseService
                 return false;
             }
 
-            // ✅ Dual-layer deduplication: short-term + same-day prevention
+            // Dual-layer deduplication: short-term + same-day prevention
             var now = DateTime.UtcNow;
             var today = DateOnly.FromDateTime(now);
 
@@ -249,7 +250,7 @@ public class FirebaseService
                 }
             }
 
-            // ✅ Timezone-based deduplication: each timezone can have daily pushes independently
+            // Timezone-based deduplication: each timezone can have daily pushes independently
             var timeZoneId = data?.TryGetValue("timezone", out var timezoneObj) == true
                 ? timezoneObj?.ToString()
                 : "UTC";
@@ -468,14 +469,14 @@ public class FirebaseService
                     {
                         var messageName = nameElement.GetString();
                         _logger.LogInformation(
-                            "✅ Push notification sent successfully via FCM v1 - Message: {MessageName}, Token: {TokenPrefix}..., Title: {Title}",
+                            "Push notification sent successfully via FCM v1 - Message: {MessageName}, Token: {TokenPrefix}..., Title: {Title}",
                             messageName, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                         return true;
                     }
 
                     // Unexpected response format
                     _logger.LogWarning(
-                        "⚠️ FCM returned 200 but unexpected response format: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}",
+                        "FCM returned 200 but unexpected response format: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}",
                         responseContent, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                     return false;
                 }
@@ -484,7 +485,7 @@ public class FirebaseService
                     _logger.LogError(ex, "Failed to parse FCM response JSON: {ResponseContent}", responseContent);
                     // Assume success if we can't parse the response but got 200
                     _logger.LogInformation(
-                        "✅ Push notification sent successfully via FCM v1 (assumed from 200 status) - Token: {TokenPrefix}..., Title: {Title}",
+                        "Push notification sent successfully via FCM v1 (assumed from 200 status) - Token: {TokenPrefix}..., Title: {Title}",
                         pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                     return true;
                 }
@@ -492,7 +493,7 @@ public class FirebaseService
             else
             {
                 _logger.LogError(
-                    "💥 FCM v1 request failed with status {StatusCode}: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}",
+                    "FCM v1 request failed with status {StatusCode}: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}",
                     response.StatusCode, responseContent,
                     pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
 
@@ -510,7 +511,7 @@ public class FirebaseService
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "💥 Error sending push notification via FCM API v1 - Token: {TokenPrefix}..., Title: {Title}",
+                "Error sending push notification via FCM API v1 - Token: {TokenPrefix}..., Title: {Title}",
                 pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
             return false;
         }
@@ -525,33 +526,43 @@ public class FirebaseService
         const int maxRetries = 3;
         const int retryDelayMs = 1000;
 
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        // First check without lock for performance
+        if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
         {
-            try
+            return _cachedAccessToken;
+        }
+
+        // Acquire lock for token creation
+        await _tokenSemaphore.WaitAsync();
+        try
+        {
+            // Double-check pattern: verify token is still invalid after acquiring lock
+            if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
             {
-                // Check if cached token is still valid
-                if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
-                {
-                    return _cachedAccessToken;
-                }
+                return _cachedAccessToken;
+            }
 
-                if (_serviceAccount == null)
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
                 {
-                    _logger.LogError("Service account not configured on attempt {Attempt}/{MaxRetries}", attempt,
-                        maxRetries);
-                    if (attempt < maxRetries)
+                    if (_serviceAccount == null)
                     {
-                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", retryDelayMs);
-                        await Task.Delay(retryDelayMs);
-                        continue;
-                    }
+                        _logger.LogError("Service account not configured on attempt {Attempt}/{MaxRetries}", attempt,
+                            maxRetries);
+                        if (attempt < maxRetries)
+                        {
+                            _logger.LogInformation("Retrying access token request in {DelayMs}ms...", retryDelayMs);
+                            await Task.Delay(retryDelayMs);
+                            continue;
+                        }
 
-                    return null;
-                }
+                        return null;
+                    }
 
                 // Create JWT for OAuth 2.0 flow
                 var now = DateTimeOffset.UtcNow;
-                var expiry = now.AddHours(1);
+                var expiry = now.AddHours(24); // Extended to 24 hours to reduce JWT creation frequency
 
                 var claims = new Dictionary<string, object>
                 {
@@ -596,16 +607,16 @@ public class FirebaseService
                     if (tokenResponse?.AccessToken != null)
                     {
                         _cachedAccessToken = tokenResponse.AccessToken;
-                        _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 300); // 5 min buffer
+                        _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60); // 1 min buffer for better cache efficiency
 
                         _logger.LogInformation(
-                            "✅ Successfully obtained access token for FCM API v1 on attempt {Attempt}", attempt);
+                            "Successfully obtained access token for FCM API v1 on attempt {Attempt}", attempt);
                         return _cachedAccessToken;
                     }
                 }
 
                 _logger.LogWarning(
-                    "⚠️ Failed to obtain access token on attempt {Attempt}/{MaxRetries}: {StatusCode} - {ResponseContent}",
+                    "Failed to obtain access token on attempt {Attempt}/{MaxRetries}: {StatusCode} - {ResponseContent}",
                     attempt, maxRetries, response.StatusCode, responseContent);
 
                 if (attempt < maxRetries)
@@ -620,7 +631,7 @@ public class FirebaseService
             }
             catch (OperationCanceledException)
             {
-                _logger.LogWarning("⏰ Access token request timed out on attempt {Attempt}/{MaxRetries}", attempt,
+                _logger.LogWarning("Access token request timed out on attempt {Attempt}/{MaxRetries}", attempt,
                     maxRetries);
                 if (attempt < maxRetries)
                 {
@@ -634,7 +645,7 @@ public class FirebaseService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "💥 Error obtaining access token for FCM API v1 on attempt {Attempt}/{MaxRetries}",
+                _logger.LogError(ex, "Error obtaining access token for FCM API v1 on attempt {Attempt}/{MaxRetries}",
                     attempt, maxRetries);
                 if (attempt < maxRetries)
                 {
@@ -646,9 +657,14 @@ public class FirebaseService
 
                 return null;
             }
-        }
+            }
 
-        return null; // All retries failed
+            return null; // All retries failed
+        }
+        finally
+        {
+            _tokenSemaphore.Release();
+        }
     }
 
     /// <summary>
@@ -669,11 +685,10 @@ public class FirebaseService
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Create RSA instance and import key
-            var rsa = RSA.Create();
+            // Use 'using' statement to ensure proper RSA disposal after JWT creation
+            using var rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
 
-            // Create security key without disposing RSA immediately
             var key = new RsaSecurityKey(rsa);
             var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
 
@@ -689,12 +704,8 @@ public class FirebaseService
             var token = new JwtSecurityToken(header, payload);
             var handler = new JwtSecurityTokenHandler();
 
-            var jwtString = handler.WriteToken(token);
-
-            // Dispose RSA after JWT creation is complete
-            rsa.Dispose();
-
-            return jwtString;
+            // JWT creation and RSA disposal are now properly synchronized
+            return handler.WriteToken(token);
         }
         catch (Exception ex)
         {
@@ -718,7 +729,7 @@ public class FirebaseService
             return results;
         }
 
-        // ✅ Global pushToken deduplication - prevent cross-timezone duplicates
+        // Global pushToken deduplication - prevent cross-timezone duplicates
         var originalCount = messages.Count;
         var deduplicatedMessages = messages
             .Where(m => !string.IsNullOrEmpty(m.Token))
@@ -809,7 +820,7 @@ public class FirebaseService
                     _logger.LogDebug("📱 Processing token {TokenIndex}/{BatchSize}: {TokenPrefix} - Title: '{Title}'",
                         index + 1, batch.Count, tokenPrefix, message.Title);
 
-                    // ✅ Use SendPushNotificationAsync to apply global date-based deduplication
+                    // Use SendPushNotificationAsync to apply global date-based deduplication
                     var success = await SendPushNotificationAsync(
                         message.Token,
                         message.Title,
@@ -819,7 +830,7 @@ public class FirebaseService
                     if (success)
                     {
                         results.SuccessCount++;
-                        _logger.LogInformation("✅ Push SUCCESS for token {TokenPrefix} - Title: '{Title}'",
+                        _logger.LogInformation("Push SUCCESS for token {TokenPrefix} - Title: '{Title}'",
                             tokenPrefix, message.Title);
                     }
                     else
@@ -862,9 +873,9 @@ public class FirebaseService
                                       (remainingFailures > 0 ? $" (+{remainingFailures} more)" : "");
 
                 _logger.LogWarning(
-                    "⚠️ FCM batch push completed with failures: {SuccessCount}/{TotalCount} successful ({SuccessRate:F1}% success rate)",
+                    "FCM batch push completed with failures: {SuccessCount}/{TotalCount} successful ({SuccessRate:F1}% success rate)",
                     results.SuccessCount, results.SuccessCount + results.FailureCount, successRate);
-                _logger.LogWarning("💔 Failed tokens: [{FailedTokens}] - Check detailed errors above", failedTokenText);
+                _logger.LogWarning("Failed tokens: [{FailedTokens}] - Check detailed errors above", failedTokenText);
             }
 
             return results;
