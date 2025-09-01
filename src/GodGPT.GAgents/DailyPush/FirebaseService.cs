@@ -25,6 +25,7 @@ public class FirebaseService
     private string? _cachedAccessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
     private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);
+    private volatile Task<string?>? _tokenCreationTask;
 
     // Global pushToken daily push tracking to prevent same-day duplicates across timezones
     private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
@@ -523,147 +524,172 @@ public class FirebaseService
     /// </summary>
     private async Task<string?> GetAccessTokenAsync()
     {
-        const int maxRetries = 3;
-        const int retryDelayMs = 1000;
-
         // First check without lock for performance
         if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
         {
             return _cachedAccessToken;
         }
 
+        // Use task-based singleton pattern to avoid blocking all threads during retry
+        var currentTask = _tokenCreationTask;
+        if (currentTask != null && !currentTask.IsCompleted)
+        {
+            // Another thread is already creating the token, await its result
+            return await currentTask;
+        }
+
         // Acquire lock for token creation
         await _tokenSemaphore.WaitAsync();
         try
         {
-            // Double-check pattern: verify token is still invalid after acquiring lock
+            // Double-check: another thread might have completed token creation while we waited
             if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
             {
                 return _cachedAccessToken;
             }
 
+            // Check if another thread started creation while we were waiting
+            currentTask = _tokenCreationTask;
+            if (currentTask != null && !currentTask.IsCompleted)
+            {
+                return await currentTask;
+            }
+
+            // Start new token creation task
+            _tokenCreationTask = CreateAccessTokenInternalAsync();
+            return await _tokenCreationTask;
+        }
+        finally
+        {
+            _tokenSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Internal method to create access token with retry logic
+    /// This method is designed to be called by only one thread at a time through task singleton pattern
+    /// </summary>
+    private async Task<string?> CreateAccessTokenInternalAsync()
+    {
+        const int maxRetries = 3;
+        const int retryDelayMs = 1000;
+
+        try
+        {
             for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
                 try
                 {
                     if (_serviceAccount == null)
                     {
-                        _logger.LogError("Service account not configured on attempt {Attempt}/{MaxRetries}", attempt,
-                            maxRetries);
+                        _logger.LogError("Service account not configured on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
                         if (attempt < maxRetries)
                         {
                             _logger.LogInformation("Retrying access token request in {DelayMs}ms...", retryDelayMs);
                             await Task.Delay(retryDelayMs);
                             continue;
                         }
-
                         return null;
                     }
 
-                // Create JWT for OAuth 2.0 flow
-                var now = DateTimeOffset.UtcNow;
-                var expiry = now.AddHours(24); // Extended to 24 hours to reduce JWT creation frequency
+                    // Create JWT for OAuth 2.0 flow
+                    var now = DateTimeOffset.UtcNow;
+                    var expiry = now.AddHours(24); // Extended to 24 hours to reduce JWT creation frequency
 
-                var claims = new Dictionary<string, object>
-                {
-                    ["iss"] = _serviceAccount.ClientEmail,
-                    ["scope"] = "https://www.googleapis.com/auth/firebase.messaging",
-                    ["aud"] = "https://oauth2.googleapis.com/token",
-                    ["iat"] = now.ToUnixTimeSeconds(),
-                    ["exp"] = expiry.ToUnixTimeSeconds()
-                };
-
-                // Parse private key
-                var privateKeyPem = _serviceAccount.PrivateKey;
-                if (string.IsNullOrEmpty(privateKeyPem))
-                {
-                    _logger.LogError("Private key not found in service account");
-                    return null;
-                }
-
-                // Create JWT
-                var jwt = CreateJwt(claims, privateKeyPem);
-                if (string.IsNullOrEmpty(jwt))
-                {
-                    _logger.LogError("Failed to create JWT");
-                    return null;
-                }
-
-                // Exchange JWT for access token
-                var tokenRequest = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                    new KeyValuePair<string, string>("assertion", jwt)
-                });
-
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30s timeout
-                var response =
-                    await _httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
-                    if (tokenResponse?.AccessToken != null)
+                    var claims = new Dictionary<string, object>
                     {
-                        _cachedAccessToken = tokenResponse.AccessToken;
-                        _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60); // 1 min buffer for better cache efficiency
+                        ["iss"] = _serviceAccount.ClientEmail,
+                        ["scope"] = "https://www.googleapis.com/auth/firebase.messaging",
+                        ["aud"] = "https://oauth2.googleapis.com/token",
+                        ["iat"] = now.ToUnixTimeSeconds(),
+                        ["exp"] = expiry.ToUnixTimeSeconds()
+                    };
 
-                        _logger.LogInformation(
-                            "Successfully obtained access token for FCM API v1 on attempt {Attempt}", attempt);
-                        return _cachedAccessToken;
+                    // Parse private key
+                    var privateKeyPem = _serviceAccount.PrivateKey;
+                    if (string.IsNullOrEmpty(privateKeyPem))
+                    {
+                        _logger.LogError("Private key not found in service account");
+                        return null;
                     }
+
+                    // Create JWT
+                    var jwt = CreateJwt(claims, privateKeyPem);
+                    if (string.IsNullOrEmpty(jwt))
+                    {
+                        _logger.LogError("Failed to create JWT");
+                        return null;
+                    }
+
+                    // Exchange JWT for access token
+                    var tokenRequest = new FormUrlEncodedContent(new[]
+                    {
+                        new KeyValuePair<string, string>("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                        new KeyValuePair<string, string>("assertion", jwt)
+                    });
+
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30s timeout
+                    var response = await _httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
+                    var responseContent = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
+                        if (tokenResponse?.AccessToken != null)
+                        {
+                            _cachedAccessToken = tokenResponse.AccessToken;
+                            _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60); // 1 min buffer for better cache efficiency
+
+                            _logger.LogInformation("Successfully obtained access token for FCM API v1 on attempt {Attempt}", attempt);
+                            return _cachedAccessToken;
+                        }
+                    }
+
+                    _logger.LogWarning("Failed to obtain access token on attempt {Attempt}/{MaxRetries}: {StatusCode} - {ResponseContent}",
+                        attempt, maxRetries, response.StatusCode, responseContent);
+
+                    if (attempt < maxRetries)
+                    {
+                        var delay = retryDelayMs * attempt; // Exponential backoff
+                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                        await Task.Delay(delay);
+                        continue;
+                    }
+
+                    return null;
                 }
-
-                _logger.LogWarning(
-                    "Failed to obtain access token on attempt {Attempt}/{MaxRetries}: {StatusCode} - {ResponseContent}",
-                    attempt, maxRetries, response.StatusCode, responseContent);
-
-                if (attempt < maxRetries)
+                catch (OperationCanceledException)
                 {
-                    var delay = retryDelayMs * attempt; // Exponential backoff
-                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
-                    await Task.Delay(delay);
-                    continue;
+                    _logger.LogWarning("Access token request timed out on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
+                    if (attempt < maxRetries)
+                    {
+                        var delay = retryDelayMs * attempt;
+                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                        await Task.Delay(delay);
+                        continue;
+                    }
+                    return null;
                 }
-
-                return null;
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.LogWarning("Access token request timed out on attempt {Attempt}/{MaxRetries}", attempt,
-                    maxRetries);
-                if (attempt < maxRetries)
+                catch (Exception ex)
                 {
-                    var delay = retryDelayMs * attempt;
-                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
-                    await Task.Delay(delay);
-                    continue;
+                    _logger.LogError(ex, "Error obtaining access token for FCM API v1 on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
+                    if (attempt < maxRetries)
+                    {
+                        var delay = retryDelayMs * attempt;
+                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                        await Task.Delay(delay);
+                        continue;
+                    }
+                    return null;
                 }
-
-                return null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error obtaining access token for FCM API v1 on attempt {Attempt}/{MaxRetries}",
-                    attempt, maxRetries);
-                if (attempt < maxRetries)
-                {
-                    var delay = retryDelayMs * attempt;
-                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
-                    await Task.Delay(delay);
-                    continue;
-                }
-
-                return null;
-            }
             }
 
             return null; // All retries failed
         }
         finally
         {
-            _tokenSemaphore.Release();
+            // Clear the task reference when creation is complete (success or failure)
+            _tokenCreationTask = null;
         }
     }
 
