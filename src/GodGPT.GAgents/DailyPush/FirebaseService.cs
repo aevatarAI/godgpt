@@ -732,7 +732,6 @@ public class FirebaseService
     /// </summary>
     private string? CreateJwt(Dictionary<string, object> claims, string privateKeyPem)
     {
-        RSA? rsa = null;
         try
         {
             // Clean up the private key format
@@ -746,8 +745,8 @@ public class FirebaseService
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Create RSA instance and keep it alive until JWT is fully serialized
-            rsa = RSA.Create();
+            // Use 'using' statement to ensure proper disposal after JWT is fully created
+            using var rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
 
             // Create JWT payload first
@@ -757,31 +756,27 @@ public class FirebaseService
                 payload[claim.Key] = claim.Value;
             }
 
-            // Create security key and credentials - RSA must remain valid
+            // Create security key and credentials
             var key = new RsaSecurityKey(rsa);
             var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
 
             // Create header with credentials
             var header = new JwtHeader(credentials);
             
-            // Create token and serialize immediately
+            // Create token and serialize immediately while RSA is still valid
             var token = new JwtSecurityToken(header, payload);
             var handler = new JwtSecurityTokenHandler();
 
-            // Serialize JWT - this is where RSA must still be valid
+            // Serialize JWT while RSA is guaranteed to be valid
             var jwtString = handler.WriteToken(token);
             
+            // RSA will be disposed here automatically by 'using' statement
             return jwtString;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating JWT: {ErrorMessage}", ex.Message);
             return null;
-        }
-        finally
-        {
-            // Always dispose RSA in finally block to prevent leaks
-            rsa?.Dispose();
         }
     }
 
