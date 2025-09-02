@@ -11,7 +11,7 @@ namespace Aevatar.Application.Grains.UserStatistics;
 
 public interface IUserStatisticsGAgent : IGAgent
 {
-    Task<AppRatingRecordDto> RecordAppRatingAsync(string platform, string deviceId);
+    Task<AppRatingRecordDto> RecordAppRatingAsync(Guid userId, string platform, string deviceId);
     [ReadOnly]
     Task<UserStatisticsDto> GetUserStatisticsAsync();
     [ReadOnly]
@@ -41,7 +41,7 @@ public class UserStatisticsGAgent : GAgentBase<UserStatisticsState, UserStatisti
         return Task.FromResult("manages user behavior statistics including app ratings");
     }
 
-    public async Task<AppRatingRecordDto> RecordAppRatingAsync(string platform, string deviceId)
+    public async Task<AppRatingRecordDto> RecordAppRatingAsync(Guid userId, string platform, string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId))
         {
@@ -62,7 +62,9 @@ public class UserStatisticsGAgent : GAgentBase<UserStatisticsState, UserStatisti
                 Platform = platform,
                 DeviceId = deviceId,
                 RatingTime = ratingTime,
-                RatingCount = isFirstRating ? 1 : State.AppRatings[deviceId].RatingCount + 1
+                RatingCount = isFirstRating ? 1 : State.AppRatings[deviceId].RatingCount + 1,
+                IsRealUser = false,
+                RealUserId = userId
             });
 
             _logger.LogDebug("[UserStatisticsGAgent][RecordAppRatingAsync] App rating recorded successfully for user: {UserId}, platform: {Platform}, device: {DeviceID}", 
@@ -211,12 +213,20 @@ public class UserStatisticsGAgent : GAgentBase<UserStatisticsState, UserStatisti
 
             case RecordAppRatingEventLog ratingEvent:
                 var key = ratingEvent.DeviceId;
+                if (ratingEvent.RealUserId.HasValue)
+                {
+                    state.UserId = ratingEvent.RealUserId.Value;
+                }
+
+                if (ratingEvent.IsRealUser.HasValue)
+                {
+                    state.IsRealUser = ratingEvent.IsRealUser.Value;
+                }
                 
                 if (state.AppRatings == null)
                 {
                     state.AppRatings = new Dictionary<string, AppRatingInfo>();
                 }
-                
                 if (state.AppRatings.ContainsKey(key))
                 {
                     var existing = state.AppRatings[key];
