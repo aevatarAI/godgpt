@@ -282,32 +282,26 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Use using statement like UserBillingGrain to ensure RSA remains valid throughout JWT creation
-            using var rsa = RSA.Create();
-            rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
-
-            // Create JWT payload
-            var payload = new JwtPayload();
-            foreach (var claim in claims)
+            // Use exact same pattern as UserBillingGrain and GlobalJwtProviderGAgent to avoid ObjectDisposedException
+            using (var rsa = RSA.Create())
             {
-                payload[claim.Key] = claim.Value;
+                rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+                var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
+                var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
+
+                // Use SecurityTokenDescriptor pattern from UserBillingGrain
+                var securityTokenDescriptor = new SecurityTokenDescriptor
+                {
+                    Claims = claims,
+                    SigningCredentials = signingCredentials
+                };
+
+                var tokenHandler = new JwtSecurityTokenHandler();
+                var securityToken = tokenHandler.CreateJwtSecurityToken(securityTokenDescriptor);
+                
+                // Complete token signing within using block to ensure RSA is still alive
+                return tokenHandler.WriteToken(securityToken);
             }
-
-            // Create security key and credentials
-            var key = new RsaSecurityKey(rsa);
-            var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
-
-            // Create header with credentials
-            var header = new JwtHeader(credentials);
-            
-            // Create token and serialize - RSA will remain valid until end of using block
-            var token = new JwtSecurityToken(header, payload);
-            var handler = new JwtSecurityTokenHandler();
-
-            // Serialize JWT - RSA is guaranteed to be valid throughout this call
-            var jwtString = handler.WriteToken(token);
-            
-            return jwtString;
         }
         catch (Exception ex)
         {
