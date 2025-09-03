@@ -82,25 +82,36 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
         // Get dependencies through ServiceProvider
         var httpClient = ServiceProvider.GetService(typeof(HttpClient)) as HttpClient;
 
-        if (_options?.CurrentValue?.ServiceAccount == null)
+        var firebaseKeyPath = _options?.CurrentValue?.FilePaths?.FirebaseKeyPath;
+        if (string.IsNullOrEmpty(firebaseKeyPath))
         {
-            var error = "DailyPushOptions.ServiceAccount not configured";
-            _logger.LogError("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
-            State.RecordFailure(error);
-            RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = 1 });
+            var configError = "DailyPushOptions.FilePaths.FirebaseKeyPath not configured";
+            _logger.LogError("{Error} for ChatManager {ChatManagerId}", configError, this.GetPrimaryKeyLong());
+            State.RecordFailure(configError);
+            RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = configError, AttemptNumber = 1 });
             return null;
         }
 
         if (httpClient == null)
         {
-            var error = "HttpClient not available through ServiceProvider";
-            _logger.LogError("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
-            State.RecordFailure(error);
-            RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = 1 });
+            var httpError = "HttpClient not available through ServiceProvider";
+            _logger.LogError("{Error} for ChatManager {ChatManagerId}", httpError, this.GetPrimaryKeyLong());
+            State.RecordFailure(httpError);
+            RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = httpError, AttemptNumber = 1 });
             return null;
         }
 
-        var serviceAccount = _options.CurrentValue.ServiceAccount;
+        // Load service account from Firebase key file
+        var serviceAccount = LoadServiceAccountFromFile(firebaseKeyPath);
+
+        if (serviceAccount == null)
+        {
+            var loadError = $"Failed to load service account from {firebaseKeyPath}";
+            _logger.LogError("{Error} for ChatManager {ChatManagerId}", loadError, this.GetPrimaryKeyLong());
+            State.RecordFailure(loadError);
+            RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = loadError, AttemptNumber = 1 });
+            return null;
+        }
 
         for (int attempt = 1; attempt <= maxRetries; attempt++)
         {
@@ -170,8 +181,8 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
                     }
                 }
 
-                var error = $"Failed to obtain access token on attempt {attempt}/{maxRetries}: {response.StatusCode} - {responseContent}";
-                _logger.LogWarning("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+                var httpError = $"Failed to obtain access token on attempt {attempt}/{maxRetries}: {response.StatusCode} - {responseContent}";
+                _logger.LogWarning("{Error} for ChatManager {ChatManagerId}", httpError, this.GetPrimaryKeyLong());
 
                 if (attempt < maxRetries)
                 {
@@ -180,14 +191,14 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
                     continue;
                 }
 
-                State.RecordFailure(error);
-                RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = attempt });
+                State.RecordFailure(httpError);
+                RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = httpError, AttemptNumber = attempt });
                 return null;
             }
             catch (Exception ex)
             {
-                var error = $"Exception during token creation attempt {attempt}: {ex.Message}";
-                _logger.LogError(ex, "{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+                var exceptionError = $"Exception during token creation attempt {attempt}: {ex.Message}";
+                _logger.LogError(ex, "{Error} for ChatManager {ChatManagerId}", exceptionError, this.GetPrimaryKeyLong());
                 
                 if (attempt < maxRetries)
                 {
@@ -195,13 +206,61 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
                     continue;
                 }
                 
-                State.RecordFailure(error);
-                RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = attempt });
+                State.RecordFailure(exceptionError);
+                RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = exceptionError, AttemptNumber = attempt });
                 return null;
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Load service account information from Firebase key file
+    /// </summary>
+    private ServiceAccountInfo? LoadServiceAccountFromFile(string firebaseKeyPath)
+    {
+        try
+        {
+            _logger.LogDebug("Loading Firebase key from path: {KeyPath} for ChatManager {ChatManagerId}", firebaseKeyPath, this.GetPrimaryKeyLong());
+
+            if (!File.Exists(firebaseKeyPath))
+            {
+                _logger.LogWarning("Firebase key file not found: {KeyPath} for ChatManager {ChatManagerId}", firebaseKeyPath, this.GetPrimaryKeyLong());
+                return null;
+            }
+
+            var jsonContent = File.ReadAllText(firebaseKeyPath);
+            if (string.IsNullOrWhiteSpace(jsonContent))
+            {
+                _logger.LogWarning("Firebase key file is empty: {KeyPath} for ChatManager {ChatManagerId}", firebaseKeyPath, this.GetPrimaryKeyLong());
+                return null;
+            }
+
+            var serviceAccount = JsonSerializer.Deserialize<ServiceAccountInfo>(jsonContent, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            });
+
+            if (serviceAccount != null)
+            {
+                _logger.LogDebug("Successfully loaded Firebase service account for ChatManager {ChatManagerId}", this.GetPrimaryKeyLong());
+                return serviceAccount;
+            }
+
+            _logger.LogWarning("Failed to deserialize Firebase service account from file: {KeyPath} for ChatManager {ChatManagerId}", firebaseKeyPath, this.GetPrimaryKeyLong());
+            return null;
+        }
+        catch (JsonException jsonEx)
+        {
+            _logger.LogError(jsonEx, "JSON parsing error loading Firebase service account from file: {KeyPath} for ChatManager {ChatManagerId}", firebaseKeyPath, this.GetPrimaryKeyLong());
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Critical error loading Firebase service account from file: {KeyPath} for ChatManager {ChatManagerId}", firebaseKeyPath, this.GetPrimaryKeyLong());
+            return null;
+        }
     }
 
     /// <summary>
@@ -279,7 +338,7 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
     {
         return new TokenProviderStatus
         {
-            IsReady = _options?.CurrentValue?.ServiceAccount != null, // Ready if service account is configured
+            IsReady = !string.IsNullOrEmpty(_options?.CurrentValue?.FilePaths?.FirebaseKeyPath), // Ready if firebase key path is configured
             HasCachedToken = !string.IsNullOrEmpty(State.CachedAccessToken),
             TokenExpiry = State.TokenExpiry != DateTime.MinValue ? State.TokenExpiry : null,
             TotalRequests = State.TotalRequests,
