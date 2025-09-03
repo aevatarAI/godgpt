@@ -753,7 +753,7 @@ public class FirebaseService
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Use 'using' to ensure RSA is disposed after JWT is completely serialized
+            // Use using statement like UserBillingGrain to ensure RSA remains valid throughout JWT creation
             using var rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
 
@@ -771,7 +771,7 @@ public class FirebaseService
             // Create header with credentials
             var header = new JwtHeader(credentials);
             
-            // Create token and serialize - RSA will remain valid until method end
+            // Create token and serialize - RSA will remain valid until end of using block
             var token = new JwtSecurityToken(header, payload);
             var handler = new JwtSecurityTokenHandler();
 
@@ -779,7 +779,6 @@ public class FirebaseService
             var jwtString = handler.WriteToken(token);
             
             return jwtString;
-            // RSA will be disposed here automatically after JWT is fully created
         }
         catch (Exception ex)
         {
