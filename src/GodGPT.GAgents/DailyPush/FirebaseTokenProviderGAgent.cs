@@ -5,12 +5,17 @@ using GodGPT.GAgents.DailyPush.SEvents;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.Providers;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.IdentityModel.Tokens;
 
 namespace GodGPT.GAgents.DailyPush;
 
 /// <summary>
 /// Firebase access token provider GAgent implementation
-/// Provides local token caching for individual ChatManager, delegates JWT creation to FirebaseService
+/// Each ChatManager has its own instance - eliminates concurrency issues with JWT creation
 /// </summary>
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
@@ -61,59 +66,194 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
             return State.CachedAccessToken;
         }
 
-        // Get FirebaseService through ServiceProvider and delegate token creation
-        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
-        if (firebaseService == null)
+        // Create token directly in this Agent instance (no shared state, no concurrency issues)
+        return await CreateAccessTokenAsync();
+    }
+
+    /// <summary>
+    /// Create access token directly in this Agent instance - eliminates concurrency issues
+    /// Each ChatManager has its own FirebaseTokenProviderGAgent, so no shared state
+    /// </summary>
+    private async Task<string?> CreateAccessTokenAsync()
+    {
+        const int maxRetries = 3;
+        const int retryDelayMs = 1000;
+
+        // Get dependencies through ServiceProvider
+        var httpClient = ServiceProvider.GetService(typeof(HttpClient)) as HttpClient;
+
+        if (_options?.CurrentValue?.ServiceAccount == null)
         {
-            var error = "FirebaseService not available through ServiceProvider";
+            var error = "DailyPushOptions.ServiceAccount not configured";
             _logger.LogError("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
             State.RecordFailure(error);
+            RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = 1 });
             return null;
         }
 
-        try
+        if (httpClient == null)
         {
-            // Delegate to FirebaseService for token creation (with global caching and proper concurrency control)
-            var token = await firebaseService.GetAccessTokenAsync();
-            
-            if (!string.IsNullOrEmpty(token))
+            var error = "HttpClient not available through ServiceProvider";
+            _logger.LogError("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+            State.RecordFailure(error);
+            RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = 1 });
+            return null;
+        }
+
+        var serviceAccount = _options.CurrentValue.ServiceAccount;
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        {
+            try
             {
-                // Cache token locally with reasonable expiry
-                var tokenExpiry = DateTime.UtcNow.AddHours(1); // Shorter than FirebaseService to ensure freshness
-                State.UpdateToken(token, tokenExpiry);
-                
-                _logger.LogInformation("Successfully obtained access token from FirebaseService for ChatManager {ChatManagerId}", 
-                    this.GetPrimaryKeyLong());
-                
-                RaiseEvent(new TokenCreationSuccessEventLog 
-                { 
-                    TokenExpiry = tokenExpiry,
-                    AttemptNumber = 1 
+                // Create JWT for OAuth 2.0 flow
+                var now = DateTimeOffset.UtcNow;
+                var expiry = now.AddHours(1); // 1 hour expiry per agent instance
+
+                var claims = new Dictionary<string, object>
+                {
+                    ["iss"] = serviceAccount.ClientEmail,
+                    ["scope"] = "https://www.googleapis.com/auth/firebase.messaging",
+                    ["aud"] = "https://oauth2.googleapis.com/token",
+                    ["iat"] = now.ToUnixTimeSeconds(),
+                    ["exp"] = expiry.ToUnixTimeSeconds()
+                };
+
+                // Create JWT using same pattern as UserBillingGrain
+                var jwt = CreateJwt(claims, serviceAccount.PrivateKey);
+                if (string.IsNullOrEmpty(jwt))
+                {
+                    var error = $"Failed to create JWT on attempt {attempt}";
+                    _logger.LogError("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+                    
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(retryDelayMs * attempt);
+                        continue;
+                    }
+                    
+                    State.RecordFailure(error);
+                    RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = attempt });
+                    return null;
+                }
+
+                // Exchange JWT for access token
+                var tokenRequest = new FormUrlEncodedContent(new[]
+                {
+                    new KeyValuePair<string, string>("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                    new KeyValuePair<string, string>("assertion", jwt)
                 });
-                
-                return token;
-            }
-            else
-            {
-                var error = "FirebaseService returned null token";
-                _logger.LogError("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var response = await httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
+                    if (tokenResponse?.AccessToken != null)
+                    {
+                        // Cache token locally with 1-hour expiry
+                        var tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60); // 1 min buffer
+                        State.UpdateToken(tokenResponse.AccessToken, tokenExpiry);
+                        
+                        _logger.LogInformation("Successfully created access token for ChatManager {ChatManagerId} on attempt {Attempt}", 
+                            this.GetPrimaryKeyLong(), attempt);
+                        
+                        RaiseEvent(new TokenCreationSuccessEventLog 
+                        { 
+                            TokenExpiry = tokenExpiry,
+                            AttemptNumber = attempt 
+                        });
+                        
+                        return tokenResponse.AccessToken;
+                    }
+                }
+
+                var error = $"Failed to obtain access token on attempt {attempt}/{maxRetries}: {response.StatusCode} - {responseContent}";
+                _logger.LogWarning("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+
+                if (attempt < maxRetries)
+                {
+                    var delay = retryDelayMs * attempt; // Exponential backoff
+                    await Task.Delay(delay);
+                    continue;
+                }
+
                 State.RecordFailure(error);
+                RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = attempt });
+                return null;
+            }
+            catch (Exception ex)
+            {
+                var error = $"Exception during token creation attempt {attempt}: {ex.Message}";
+                _logger.LogError(ex, "{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+                
+                if (attempt < maxRetries)
+                {
+                    await Task.Delay(retryDelayMs * attempt);
+                    continue;
+                }
+                
+                State.RecordFailure(error);
+                RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = error, AttemptNumber = attempt });
                 return null;
             }
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Create JWT using RSA private key - same pattern as UserBillingGrain to avoid ObjectDisposedException
+    /// Each Agent instance handles its own JWT creation - no concurrency issues
+    /// </summary>
+    private string? CreateJwt(Dictionary<string, object> claims, string privateKeyPem)
+    {
+        try
+        {
+            // Clean up the private key format
+            var privateKeyContent = privateKeyPem
+                .Replace("-----BEGIN PRIVATE KEY-----", "")
+                .Replace("-----END PRIVATE KEY-----", "")
+                .Replace("\\n", "\n")
+                .Replace("\n", "")
+                .Replace("\r", "")
+                .Trim();
+
+            var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
+
+            // Use using statement like UserBillingGrain to ensure RSA remains valid throughout JWT creation
+            using var rsa = RSA.Create();
+            rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+
+            // Create JWT payload
+            var payload = new JwtPayload();
+            foreach (var claim in claims)
+            {
+                payload[claim.Key] = claim.Value;
+            }
+
+            // Create security key and credentials
+            var key = new RsaSecurityKey(rsa);
+            var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
+
+            // Create header with credentials
+            var header = new JwtHeader(credentials);
+            
+            // Create token and serialize - RSA will remain valid until end of using block
+            var token = new JwtSecurityToken(header, payload);
+            var handler = new JwtSecurityTokenHandler();
+
+            // Serialize JWT - RSA is guaranteed to be valid throughout this call
+            var jwtString = handler.WriteToken(token);
+            
+            return jwtString;
+        }
         catch (Exception ex)
         {
-            var error = $"Error getting token from FirebaseService: {ex.Message}";
-            _logger.LogError(ex, "{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
-            State.RecordFailure(error);
-            
-            RaiseEvent(new TokenCreationFailureEventLog 
-            { 
-                ErrorMessage = error,
-                ErrorType = "FirebaseServiceError",
-                AttemptNumber = 1 
-            });
-            
+            _logger.LogError(ex, "Error creating JWT for ChatManager {ChatManagerId}: {ErrorMessage}", 
+                this.GetPrimaryKeyLong(), ex.Message);
             return null;
         }
     }
@@ -139,7 +279,7 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
     {
         return new TokenProviderStatus
         {
-            IsReady = true, // Always ready since we delegate to FirebaseService
+            IsReady = _options?.CurrentValue?.ServiceAccount != null, // Ready if service account is configured
             HasCachedToken = !string.IsNullOrEmpty(State.CachedAccessToken),
             TokenExpiry = State.TokenExpiry != DateTime.MinValue ? State.TokenExpiry : null,
             TotalRequests = State.TotalRequests,
