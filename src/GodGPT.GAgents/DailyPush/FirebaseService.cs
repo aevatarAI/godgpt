@@ -206,7 +206,9 @@ public class FirebaseService
 
     /// <summary>
     /// Send push notification to a device using FCM API v1
+    /// DEPRECATED: Use GlobalJwtProviderGAgent + direct HTTP push instead
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent with direct HTTP push for better performance and reliability", false)]
     public async Task<bool> SendPushNotificationAsync(
         string pushToken,
         string title,
@@ -523,7 +525,9 @@ public class FirebaseService
 
     /// <summary>
     /// Get access token for FCM API v1 (public interface for external access)
+    /// DEPRECATED: Use GlobalJwtProviderGAgent.GetFirebaseAccessTokenAsync() instead
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent.GetFirebaseAccessTokenAsync() for better concurrency and performance", false)]
     public async Task<string?> GetAccessTokenAsync()
     {
         return await GetAccessTokenLegacyAsync();

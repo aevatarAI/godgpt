@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Net.Mime;
+using System.Text;
+using System.Text.Json;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
@@ -22,7 +26,9 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using GodGPT.GAgents.DailyPush;
+using GodGPT.GAgents.DailyPush.Options;
 using GodGPT.GAgents.SpeechChat;
+using Microsoft.Extensions.Configuration;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -1479,16 +1485,16 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // Only raise event and update state when there are actual changes or it's a new device
         if (isNewDevice || hasAnyChanges)
         {
-            // Use event-driven state update
-            RaiseEvent(new RegisterOrUpdateDeviceEventLog
-            {
-                DeviceId = deviceId,
-                DeviceInfo = deviceInfo,
-                IsNewDevice = isNewDevice,
-                OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
-            });
-            
-            await ConfirmEvents();
+        // Use event-driven state update
+        RaiseEvent(new RegisterOrUpdateDeviceEventLog
+        {
+            DeviceId = deviceId,
+            DeviceInfo = deviceInfo,
+            IsNewDevice = isNewDevice,
+            OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
+        });
+        
+        await ConfirmEvents();
         }
         
         // Synchronize timezone index when:
@@ -1542,7 +1548,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // Only log device updates when there are actual changes or it's a new device
         if (isNewDevice || hasAnyChanges)
         {
-            Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
+        Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
         }
         return isNewDevice;
     }
@@ -1645,24 +1651,16 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             return;
         }
         
-        // Send push notifications via Firebase FCM
-        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
-        if (firebaseService == null)
+        // Get Global JWT Provider (new architecture - single instance for entire system)
+        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(0);
+        
+        // Get Firebase project configuration
+        var configuration = ServiceProvider.GetService(typeof(IConfiguration)) as IConfiguration;
+        var projectId = configuration?["Firebase:ProjectId"];
+        if (string.IsNullOrEmpty(projectId))
         {
-            Logger.LogError("FirebaseService not available for push notifications");
+            Logger.LogError("Firebase ProjectId not configured for push notifications");
             return;
-        }
-
-        // Get TokenProvider for this ChatManager (new architecture with graceful fallback)
-        IFirebaseTokenProviderGAgent? tokenProvider = null;
-        try
-        {
-            tokenProvider = GrainFactory.GetGrain<IFirebaseTokenProviderGAgent>(this.GetPrimaryKeyLong());
-            Logger.LogDebug("Using FirebaseTokenProvider for ChatManager {UserId}", State.UserId);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogDebug(ex, "FirebaseTokenProvider not available for ChatManager {UserId}, using legacy method", State.UserId);
         }
         
         var successCount = 0;
@@ -1711,12 +1709,17 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         ["is_test_push"] = isTestPush // Add test push identification for manual triggers
                     };
                     
-                    var success = await firebaseService.SendPushNotificationAsync(
+                    // Use new global JWT architecture with direct HTTP push
+                    var success = await SendDirectPushNotificationAsync(
+                        globalJwtProvider,
+                        projectId,
                         device.PushToken,
                         localizedContent.Title,
                         localizedContent.Content,
                         pushData,
-                        tokenProvider);
+                        timeZoneId,
+                        isRetryPush,
+                        index == 0); // isFirstContent
                     
                     if (success)
                     {
@@ -1894,24 +1897,16 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         Logger.LogInformation("Found {DeviceCount} enabled devices for user {UserId}", enabledDevices.Count, State.UserId);
 
-        // Get Firebase service
-        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
-        if (firebaseService == null)
+        // Get Global JWT Provider (new architecture - single instance for entire system)
+        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(0);
+        
+        // Get Firebase project configuration
+        var configuration = ServiceProvider.GetService(typeof(IConfiguration)) as IConfiguration;
+        var projectId = configuration?["Firebase:ProjectId"];
+        if (string.IsNullOrEmpty(projectId))
         {
-            Logger.LogError("FirebaseService not available for test push notifications");
+            Logger.LogError("Firebase ProjectId not configured for test push notifications");
             return 0;
-        }
-
-        // Get TokenProvider for this ChatManager (new architecture with graceful fallback)
-        IFirebaseTokenProviderGAgent? tokenProvider = null;
-        try
-        {
-            tokenProvider = GrainFactory.GetGrain<IFirebaseTokenProviderGAgent>(this.GetPrimaryKeyLong());
-            Logger.LogDebug("Using FirebaseTokenProvider for test push to ChatManager {UserId}", State.UserId);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogDebug(ex, "FirebaseTokenProvider not available for ChatManager {UserId}, using legacy method", State.UserId);
         }
 
         var successCount = 0;
@@ -1924,12 +1919,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 Logger.LogDebug("Sending test push to device {DeviceId}", device.DeviceId);
 
-                var success = await firebaseService.SendPushNotificationAsync(
+                // Use new global JWT architecture with direct HTTP push (test pushes bypass deduplication)
+                var success = await SendDirectPushNotificationAsync(
+                    globalJwtProvider,
+                    projectId,
                     device.PushToken,
                     title,
                     content,
                     customData,
-                    tokenProvider); // Pass the tokenProvider
+                    "UTC", // Test pushes don't have specific timezone  
+                    false, // isRetryPush = false
+                    true, // isFirstContent = true
+                    true); // isTestPush = true (bypass deduplication)
 
                 if (success)
                 {
@@ -1960,5 +1961,159 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             State.UserId, successCount, failureCount);
 
         return successCount;
+    }
+
+    /// <summary>
+    /// Send push notification directly to Firebase FCM API using Global JWT Provider
+    /// This replaces the FirebaseService architecture with a more efficient global JWT approach
+    /// </summary>
+    private async Task<bool> SendDirectPushNotificationAsync(
+        IGlobalJwtProviderGAgent globalJwtProvider,
+        string projectId,
+        string pushToken,
+        string title,
+        string content,
+        Dictionary<string, object>? data = null,
+        string timeZoneId = "UTC",
+        bool isRetryPush = false,
+        bool isFirstContent = true,
+        bool isTestPush = false)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(pushToken))
+            {
+                Logger.LogWarning("Push token is empty");
+                return false;
+            }
+
+            // For test pushes, bypass deduplication entirely
+            if (!isTestPush)
+            {
+                // Check global deduplication
+                var canSend = await globalJwtProvider.CanSendPushAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
+                if (!canSend)
+                {
+                    Logger.LogInformation("Push blocked by global deduplication: token {TokenPrefix}, timezone {TimeZone}", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                    return false;
+                }
+            }
+
+            // Get JWT access token from global provider
+            var accessToken = await globalJwtProvider.GetFirebaseAccessTokenAsync();
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                Logger.LogError("Failed to obtain access token from Global JWT Provider");
+                return false;
+            }
+
+            // Create FCM v1 payload
+            var dataPayload = CreateDataPayload(data);
+            var message = new
+            {
+                message = new
+                {
+                    token = pushToken,
+                    notification = new
+                    {
+                        title = title,
+                        body = content
+                    },
+                    data = dataPayload,
+                    android = new
+                    {
+                        priority = "high",
+                        notification = new
+                        {
+                            sound = "default",
+                            channel_id = "daily_push_channel",
+                            notification_count = dataPayload.TryGetValue("content_index", out var contentIndex)
+                                ? int.Parse(contentIndex.ToString() ?? "1")
+                                : 1
+                        }
+                    },
+                    apns = new
+                    {
+                        headers = new
+                        {
+                            apns_push_type = "alert"
+                        },
+                        payload = new
+                        {
+                            aps = new
+                            {
+                                sound = "default"
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Send HTTP request to Firebase FCM API
+            var httpClient = ServiceProvider.GetService(typeof(HttpClient)) as HttpClient;
+            if (httpClient == null)
+            {
+                Logger.LogError("HttpClient not available for push notification");
+                return false;
+            }
+
+            var fcmEndpoint = $"https://fcm.googleapis.com/v1/projects/{projectId}/messages:send";
+            var jsonPayload = System.Text.Json.JsonSerializer.Serialize(message, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            var httpContent = new StringContent(jsonPayload, Encoding.UTF8, MediaTypeNames.Application.Json);
+            using var request = new HttpRequestMessage(HttpMethod.Post, fcmEndpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Content = httpContent;
+
+            Logger.LogDebug("Sending direct FCM push to token: {TokenPrefix}...",
+                pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken);
+
+            using var response = await httpClient.SendAsync(request);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                Logger.LogDebug("Push notification sent successfully: {ResponseContent}", responseContent);
+                
+                // Mark push as sent for deduplication (unless it's a test push)
+                if (!isTestPush)
+                {
+                    await globalJwtProvider.MarkPushSentAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
+                }
+                
+                return true;
+            }
+            else
+            {
+                Logger.LogWarning("Push notification failed: {StatusCode} - {ResponseContent}", 
+                    response.StatusCode, responseContent);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Exception in direct push notification: {ErrorMessage}", ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Create data payload for FCM message, converting all values to strings
+    /// </summary>
+    private static Dictionary<string, string> CreateDataPayload(Dictionary<string, object>? data)
+    {
+        var dataPayload = new Dictionary<string, string>();
+        if (data != null)
+        {
+            foreach (var kvp in data)
+            {
+                dataPayload[kvp.Key] = kvp.Value?.ToString() ?? "";
+            }
+        }
+        return dataPayload;
     }
 }

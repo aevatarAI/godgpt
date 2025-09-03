@@ -335,3 +335,15 @@ public class TokenProviderActivationEventLog : DailyPushLogEvent
     [Id(0)] public DateTime ActivationTime { get; set; } = DateTime.UtcNow;
     [Id(1)] public long ChatManagerId { get; set; }
 }
+
+/// <summary>
+/// Duplicate push prevention event - logged when a duplicate push is prevented by global deduplication
+/// </summary>
+[GenerateSerializer]
+public class DuplicatePreventionEventLog : DailyPushLogEvent
+{
+    [Id(0)] public string PushTokenPrefix { get; set; } = "";
+    [Id(1)] public string TimeZone { get; set; } = "";
+    [Id(2)] public DateTime PreventionDate { get; set; }
+    [Id(3)] public DateTime PreventionTime { get; set; } = DateTime.UtcNow;
+}
