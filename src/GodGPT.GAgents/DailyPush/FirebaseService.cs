@@ -206,7 +206,9 @@ public class FirebaseService
 
     /// <summary>
     /// Send push notification to a device using FCM API v1
+    /// DEPRECATED: Use GlobalJwtProviderGAgent + direct HTTP push instead
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent with direct HTTP push for better performance and reliability", false)]
     public async Task<bool> SendPushNotificationAsync(
         string pushToken,
         string title,
@@ -523,7 +525,9 @@ public class FirebaseService
 
     /// <summary>
     /// Get access token for FCM API v1 (public interface for external access)
+    /// DEPRECATED: Use GlobalJwtProviderGAgent.GetFirebaseAccessTokenAsync() instead
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent.GetFirebaseAccessTokenAsync() for better concurrency and performance", false)]
     public async Task<string?> GetAccessTokenAsync()
     {
         return await GetAccessTokenLegacyAsync();
@@ -542,12 +546,12 @@ public class FirebaseService
                 var token = await tokenProvider.GetAccessTokenAsync();
                 if (!string.IsNullOrEmpty(token))
                 {
-                    _logger.LogDebug("Using token from FirebaseTokenProvider");
+                    _logger.LogInformation("✅ SUCCESS: Using token from NEW FirebaseTokenProvider architecture - no RSA concurrency issues");
                     return token;
                 }
                 else
                 {
-                    _logger.LogWarning("TokenProvider returned empty token, falling back to legacy method");
+                    _logger.LogError("❌ NEW ARCHITECTURE FAILED: TokenProvider returned empty token, falling back to legacy method with potential RSA issues");
                 }
             }
             catch (Exception ex)
@@ -557,7 +561,7 @@ public class FirebaseService
         }
         
         // Fallback to legacy method (for compatibility with old ChatManagerGAgent)
-        _logger.LogDebug("Using legacy token creation method");
+        _logger.LogError("⚠️ USING LEGACY METHOD: Potential RSA concurrency issues - new architecture failed or not configured");
         return await GetAccessTokenLegacyAsync();
     }
 

@@ -85,7 +85,7 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
         var firebaseKeyPath = _options?.CurrentValue?.FilePaths?.FirebaseKeyPath;
         if (string.IsNullOrEmpty(firebaseKeyPath))
         {
-            var configError = "DailyPushOptions.FilePaths.FirebaseKeyPath not configured";
+            var configError = "❌ CRITICAL CONFIG ERROR: DailyPushOptions.FilePaths.FirebaseKeyPath not configured - falling back to legacy with RSA issues";
             _logger.LogError("{Error} for ChatManager {ChatManagerId}", configError, this.GetPrimaryKeyLong());
             State.RecordFailure(configError);
             RaiseEvent(new TokenCreationFailureEventLog { ErrorMessage = configError, AttemptNumber = 1 });
