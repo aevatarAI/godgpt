@@ -406,21 +406,26 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Use proven RSA pattern from UserBillingGrain - critical for avoiding ObjectDisposedException
-            using var rsa = RSA.Create();
-            rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
-
-            var payload = new JwtPayload();
-            foreach (var claim in claims)
+            // Use exact same pattern as UserBillingGrain to avoid ObjectDisposedException
+            using (var rsa = RSA.Create())
             {
-                payload[claim.Key] = claim.Value;
-            }
+                rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+                var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
+                var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
 
-            var header = new JwtHeader(new SigningCredentials(new RsaSecurityKey(rsa), SecurityAlgorithms.RsaSha256));
-            var token = new JwtSecurityToken(header, payload);
-            
-            var handler = new JwtSecurityTokenHandler();
-            return handler.WriteToken(token);
+                // Use SecurityTokenDescriptor pattern from UserBillingGrain
+                var securityTokenDescriptor = new SecurityTokenDescriptor
+                {
+                    Claims = claims,
+                    SigningCredentials = signingCredentials
+                };
+
+                var tokenHandler = new JwtSecurityTokenHandler();
+                var securityToken = tokenHandler.CreateJwtSecurityToken(securityTokenDescriptor);
+                
+                // Complete token signing within using block to ensure RSA is still alive
+                return tokenHandler.WriteToken(securityToken);
+            }
         }
         catch (Exception ex)
         {
