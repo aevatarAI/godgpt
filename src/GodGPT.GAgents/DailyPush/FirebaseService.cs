@@ -522,6 +522,14 @@ public class FirebaseService
 
 
     /// <summary>
+    /// Get access token for FCM API v1 (public interface for external access)
+    /// </summary>
+    public async Task<string?> GetAccessTokenAsync()
+    {
+        return await GetAccessTokenLegacyAsync();
+    }
+
+    /// <summary>
     /// Get access token for FCM API v1 using TokenProvider or legacy method
     /// </summary>
     private async Task<string?> GetAccessTokenAsync(IFirebaseTokenProviderGAgent? tokenProvider = null)

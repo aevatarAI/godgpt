@@ -1,22 +1,16 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using GodGPT.GAgents.DailyPush.Options;
 using GodGPT.GAgents.DailyPush.SEvents;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using Orleans.Providers;
 
 namespace GodGPT.GAgents.DailyPush;
 
 /// <summary>
 /// Firebase access token provider GAgent implementation
-/// Provides JWT token management for individual ChatManager without concurrency conflicts
+/// Provides local token caching for individual ChatManager, delegates JWT creation to FirebaseService
 /// </summary>
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
@@ -26,7 +20,6 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
 {
     private readonly ILogger<FirebaseTokenProviderGAgent> _logger;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
-    private ServiceAccountInfo? _serviceAccount;
 
     public FirebaseTokenProviderGAgent(
         ILogger<FirebaseTokenProviderGAgent> logger,
@@ -46,9 +39,6 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
         var chatManagerId = this.GetPrimaryKeyLong();
         _logger.LogInformation("FirebaseTokenProviderGAgent activated for ChatManager {ChatManagerId}", chatManagerId);
 
-        // Initialize service account configuration
-        await InitializeServiceAccountAsync();
-
         // Log activation event
         RaiseEvent(new TokenProviderActivationEventLog 
         { 
@@ -58,42 +48,7 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
         State.ActivationTime = DateTime.UtcNow;
     }
 
-    private async Task InitializeServiceAccountAsync()
-    {
-        try
-        {
-            // Get configuration through ServiceProvider (IOptionsMonitor is directly injected)
-            var configuration = ServiceProvider.GetService(typeof(IConfiguration)) as IConfiguration;
-            
-            if (configuration == null)
-            {
-                throw new InvalidOperationException("IConfiguration not available through ServiceProvider");
-            }
 
-            // Load service account from file first, then fallback to configuration
-            var fileAccount = LoadServiceAccountFromFile(new[] { _options.CurrentValue.FilePaths.FirebaseKeyPath });
-            var configAccount = fileAccount == null ? LoadServiceAccountFromConfiguration(configuration) : null;
-
-            _serviceAccount = fileAccount ?? configAccount;
-
-            if (_serviceAccount != null)
-            {
-                _logger.LogInformation("Firebase service account loaded successfully for ChatManager {ChatManagerId}", 
-                    this.GetPrimaryKeyLong());
-            }
-            else
-            {
-                _logger.LogWarning("Firebase service account not configured for ChatManager {ChatManagerId}. Token provider will not be functional.", 
-                    this.GetPrimaryKeyLong());
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error initializing service account for ChatManager {ChatManagerId}", 
-                this.GetPrimaryKeyLong());
-            State.RecordFailure($"Service account initialization failed: {ex.Message}");
-        }
-    }
 
     public async Task<string?> GetAccessTokenAsync()
     {
@@ -106,8 +61,61 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
             return State.CachedAccessToken;
         }
 
-        // Create new token
-        return await CreateAccessTokenAsync();
+        // Get FirebaseService through ServiceProvider and delegate token creation
+        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+        if (firebaseService == null)
+        {
+            var error = "FirebaseService not available through ServiceProvider";
+            _logger.LogError("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+            State.RecordFailure(error);
+            return null;
+        }
+
+        try
+        {
+            // Delegate to FirebaseService for token creation (with global caching and proper concurrency control)
+            var token = await firebaseService.GetAccessTokenAsync();
+            
+            if (!string.IsNullOrEmpty(token))
+            {
+                // Cache token locally with reasonable expiry
+                var tokenExpiry = DateTime.UtcNow.AddHours(1); // Shorter than FirebaseService to ensure freshness
+                State.UpdateToken(token, tokenExpiry);
+                
+                _logger.LogInformation("Successfully obtained access token from FirebaseService for ChatManager {ChatManagerId}", 
+                    this.GetPrimaryKeyLong());
+                
+                RaiseEvent(new TokenCreationSuccessEventLog 
+                { 
+                    TokenExpiry = tokenExpiry,
+                    AttemptNumber = 1 
+                });
+                
+                return token;
+            }
+            else
+            {
+                var error = "FirebaseService returned null token";
+                _logger.LogError("{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+                State.RecordFailure(error);
+                return null;
+            }
+        }
+        catch (Exception ex)
+        {
+            var error = $"Error getting token from FirebaseService: {ex.Message}";
+            _logger.LogError(ex, "{Error} for ChatManager {ChatManagerId}", error, this.GetPrimaryKeyLong());
+            State.RecordFailure(error);
+            
+            RaiseEvent(new TokenCreationFailureEventLog 
+            { 
+                ErrorMessage = error,
+                ErrorType = "FirebaseServiceError",
+                AttemptNumber = 1 
+            });
+            
+            return null;
+        }
     }
 
     public async Task<bool> IsTokenValidAsync()
@@ -131,7 +139,7 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
     {
         return new TokenProviderStatus
         {
-            IsReady = _serviceAccount != null,
+            IsReady = true, // Always ready since we delegate to FirebaseService
             HasCachedToken = !string.IsNullOrEmpty(State.CachedAccessToken),
             TokenExpiry = State.TokenExpiry != DateTime.MinValue ? State.TokenExpiry : null,
             TotalRequests = State.TotalRequests,
@@ -141,291 +149,4 @@ public class FirebaseTokenProviderGAgent : GAgentBase<FirebaseTokenProviderGAgen
             LastError = State.LastError
         };
     }
-
-    private async Task<string?> CreateAccessTokenAsync()
-    {
-        const int maxRetries = 3;
-        const int retryDelayMs = 1000;
-
-        // Get HttpClient through ServiceProvider (correct pattern for GAgent)
-        var httpClient = ServiceProvider.GetService(typeof(HttpClient)) as HttpClient;
-        if (httpClient == null)
-        {
-            _logger.LogError("HttpClient not available through ServiceProvider for ChatManager {ChatManagerId}", 
-                this.GetPrimaryKeyLong());
-            State.RecordFailure("HttpClient not available");
-            return null;
-        }
-
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
-        {
-            try
-            {
-                if (_serviceAccount == null)
-                {
-                    var error = "Service account not configured";
-                    _logger.LogError("{Error} for ChatManager {ChatManagerId} on attempt {Attempt}/{MaxRetries}", 
-                        error, this.GetPrimaryKeyLong(), attempt, maxRetries);
-                    
-                    State.RecordFailure(error);
-                    
-                    RaiseEvent(new TokenCreationFailureEventLog 
-                    { 
-                        ErrorMessage = error,
-                        ErrorType = "Configuration",
-                        AttemptNumber = attempt 
-                    });
-                    
-                    return null;
-                }
-
-                // Create JWT for OAuth 2.0 flow
-                var now = DateTimeOffset.UtcNow;
-                var expiry = now.AddHours(24); // 24 hours validity
-
-                var claims = new Dictionary<string, object>
-                {
-                    ["iss"] = _serviceAccount.ClientEmail,
-                    ["scope"] = "https://www.googleapis.com/auth/firebase.messaging",
-                    ["aud"] = "https://oauth2.googleapis.com/token",
-                    ["iat"] = now.ToUnixTimeSeconds(),
-                    ["exp"] = expiry.ToUnixTimeSeconds()
-                };
-
-                // Create JWT
-                var jwt = CreateJwt(claims, _serviceAccount.PrivateKey);
-                if (string.IsNullOrEmpty(jwt))
-                {
-                    var error = "Failed to create JWT";
-                    _logger.LogError("{Error} for ChatManager {ChatManagerId} on attempt {Attempt}/{MaxRetries}", 
-                        error, this.GetPrimaryKeyLong(), attempt, maxRetries);
-                    
-                    State.RecordFailure(error);
-                    
-                    if (attempt < maxRetries)
-                    {
-                        await Task.Delay(retryDelayMs * attempt);
-                        continue;
-                    }
-                    return null;
-                }
-
-                // Exchange JWT for access token
-                var tokenRequest = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                    new KeyValuePair<string, string>("assertion", jwt)
-                });
-
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var response = await httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
-                    if (tokenResponse?.AccessToken != null)
-                    {
-                        var tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60); // 1 min buffer
-                        State.UpdateToken(tokenResponse.AccessToken, tokenExpiry);
-
-                        _logger.LogInformation("Successfully created access token for ChatManager {ChatManagerId} on attempt {Attempt}", 
-                            this.GetPrimaryKeyLong(), attempt);
-
-                        RaiseEvent(new TokenCreationSuccessEventLog 
-                        { 
-                            TokenExpiry = tokenExpiry,
-                            AttemptNumber = attempt 
-                        });
-
-                        return tokenResponse.AccessToken;
-                    }
-                }
-
-                var errorMsg = $"HTTP {response.StatusCode}: {responseContent}";
-                _logger.LogWarning("Failed to obtain access token for ChatManager {ChatManagerId} on attempt {Attempt}/{MaxRetries}: {Error}",
-                    this.GetPrimaryKeyLong(), attempt, maxRetries, errorMsg);
-
-                State.RecordFailure(errorMsg);
-
-                RaiseEvent(new TokenCreationFailureEventLog 
-                { 
-                    ErrorMessage = errorMsg,
-                    ErrorType = "HttpError",
-                    AttemptNumber = attempt 
-                });
-
-                if (attempt < maxRetries)
-                {
-                    var delay = retryDelayMs * attempt; // Exponential backoff
-                    _logger.LogInformation("Retrying access token request in {DelayMs}ms for ChatManager {ChatManagerId}...", 
-                        delay, this.GetPrimaryKeyLong());
-                    await Task.Delay(delay);
-                    continue;
-                }
-
-                return null;
-            }
-            catch (OperationCanceledException)
-            {
-                var error = "Request timeout";
-                _logger.LogWarning("Access token request timed out for ChatManager {ChatManagerId} on attempt {Attempt}/{MaxRetries}", 
-                    this.GetPrimaryKeyLong(), attempt, maxRetries);
-                
-                State.RecordFailure(error);
-
-                RaiseEvent(new TokenCreationFailureEventLog 
-                { 
-                    ErrorMessage = error,
-                    ErrorType = "Timeout",
-                    AttemptNumber = attempt 
-                });
-
-                if (attempt < maxRetries)
-                {
-                    var delay = retryDelayMs * attempt;
-                    await Task.Delay(delay);
-                    continue;
-                }
-                return null;
-            }
-            catch (Exception ex)
-            {
-                var error = $"Unexpected error: {ex.Message}";
-                _logger.LogError(ex, "Error obtaining access token for ChatManager {ChatManagerId} on attempt {Attempt}/{MaxRetries}", 
-                    this.GetPrimaryKeyLong(), attempt, maxRetries);
-                
-                State.RecordFailure(error);
-
-                RaiseEvent(new TokenCreationFailureEventLog 
-                { 
-                    ErrorMessage = error,
-                    ErrorType = ex.GetType().Name,
-                    AttemptNumber = attempt 
-                });
-
-                if (attempt < maxRetries)
-                {
-                    var delay = retryDelayMs * attempt;
-                    await Task.Delay(delay);
-                    continue;
-                }
-                return null;
-            }
-        }
-
-        return null; // All retries failed
-    }
-
-    private string? CreateJwt(Dictionary<string, object> claims, string privateKeyPem)
-    {
-        try
-        {
-            // Clean up the private key format
-            var privateKeyContent = privateKeyPem
-                .Replace("-----BEGIN PRIVATE KEY-----", "")
-                .Replace("-----END PRIVATE KEY-----", "")
-                .Replace("\\n", "\n")
-                .Replace("\n", "")
-                .Replace("\r", "")
-                .Trim();
-
-            var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
-
-            // Use 'using' to ensure RSA is disposed after JWT is completely serialized
-            using var rsa = RSA.Create();
-            rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
-
-            // Create JWT payload first
-            var payload = new JwtPayload();
-            foreach (var claim in claims)
-            {
-                payload[claim.Key] = claim.Value;
-            }
-
-            // Create security key and credentials
-            var key = new RsaSecurityKey(rsa);
-            var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
-
-            // Create header with credentials
-            var header = new JwtHeader(credentials);
-            
-            // Create token and serialize - RSA will remain valid until method end
-            var token = new JwtSecurityToken(header, payload);
-            var handler = new JwtSecurityTokenHandler();
-
-            // Serialize JWT - RSA is guaranteed to be valid throughout this call
-            var jwtString = handler.WriteToken(token);
-            
-            return jwtString;
-            // RSA will be disposed here automatically after JWT is fully created
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error creating JWT for ChatManager {ChatManagerId}: {ErrorMessage}", 
-                this.GetPrimaryKeyLong(), ex.Message);
-            return null;
-        }
-    }
-
-    #region Service Account Loading (copied from FirebaseService)
-
-    private ServiceAccountInfo? LoadServiceAccountFromFile(IEnumerable<string>? filePaths)
-    {
-        if (filePaths == null) return null;
-
-        foreach (var filePath in filePaths)
-        {
-            try
-            {
-                if (File.Exists(filePath))
-                {
-                    var json = File.ReadAllText(filePath);
-                    var account = JsonSerializer.Deserialize<ServiceAccountInfo>(json);
-                    if (account?.ProjectId != null && account.PrivateKey != null && account.ClientEmail != null)
-                    {
-                        _logger.LogInformation("Service account loaded from file: {FilePath}", filePath);
-                        return account;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to load service account from file: {FilePath}", filePath);
-            }
-        }
-
-        return null;
-    }
-
-    private ServiceAccountInfo? LoadServiceAccountFromConfiguration(IConfiguration configuration)
-    {
-        try
-        {
-            var projectId = configuration["Firebase:ProjectId"];
-            var privateKey = configuration["Firebase:PrivateKey"];
-            var clientEmail = configuration["Firebase:ClientEmail"];
-
-            if (!string.IsNullOrEmpty(projectId) && !string.IsNullOrEmpty(privateKey) && !string.IsNullOrEmpty(clientEmail))
-            {
-                _logger.LogInformation("Service account loaded from configuration");
-                return new ServiceAccountInfo
-                {
-                    ProjectId = projectId,
-                    PrivateKey = privateKey,
-                    ClientEmail = clientEmail
-                };
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load service account from configuration");
-        }
-
-        return null;
-    }
-
-    #endregion
 }
-
-
