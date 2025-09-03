@@ -68,7 +68,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         // Check cached token first (24-hour cache)
         if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
         {
-            _logger.LogDebug("Using cached JWT token (expires at {Expiry})", _tokenExpiry);
+            _logger.LogDebug("Using cached JWT token (expires at {Expiry} UTC, current: {CurrentTime} UTC)", _tokenExpiry, DateTime.UtcNow);
             return _cachedJwtToken;
         }
 
@@ -283,6 +283,9 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         // Cache token with 24-hour expiry (or shorter if specified)
                         var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
                         _tokenExpiry = DateTime.UtcNow.AddHours(expiryHours);
+                        
+                        _logger.LogDebug("🔍 Token expiry calculation: ExpiresIn={ExpiresInSeconds}s, ExpiryHours={ExpiryHours}h, CalculatedExpiry={CalculatedExpiry}", 
+                            tokenResponse.ExpiresIn, expiryHours, _tokenExpiry);
                         _cachedJwtToken = tokenResponse.AccessToken;
                         
                         State.RecordSuccessfulTokenCreation();
@@ -296,7 +299,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         _consecutiveFailures = 0;
                         _lastFailureTime = DateTime.MinValue;
                         
-                        _logger.LogInformation("✅ Global JWT token created successfully, expires at {Expiry}", _tokenExpiry);
+                        _logger.LogInformation("✅ Global JWT token created successfully, expires at {Expiry} UTC (Current: {CurrentTime} UTC)", _tokenExpiry, DateTime.UtcNow);
                         return tokenResponse.AccessToken;
                     }
                     else
@@ -499,7 +502,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
             if (response.IsSuccessStatusCode)
             {
-                return JsonSerializer.Deserialize<TokenResponse>(responseContent);
+                var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
+                _logger.LogDebug("🔍 Firebase OAuth response: ExpiresIn={ExpiresIn}s, TokenType={TokenType}", 
+                    tokenResponse?.ExpiresIn, tokenResponse?.TokenType);
+                return tokenResponse;
             }
             else
             {
