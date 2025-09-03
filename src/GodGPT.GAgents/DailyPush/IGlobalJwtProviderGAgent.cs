@@ -1,3 +1,4 @@
+using Aevatar.Core.Abstractions;
 using Orleans;
 
 namespace GodGPT.GAgents.DailyPush;
@@ -6,7 +7,7 @@ namespace GodGPT.GAgents.DailyPush;
 /// Global JWT Provider GAgent - singleton for entire system
 /// Manages JWT creation, caching, and global push token deduplication
 /// </summary>
-public interface IGlobalJwtProviderGAgent : IGrainWithIntegerKey
+public interface IGlobalJwtProviderGAgent : IGAgent
 {
     /// <summary>
     /// Get Firebase access token (cached globally for 24 hours)
