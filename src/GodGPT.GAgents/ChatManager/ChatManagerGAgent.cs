@@ -1872,4 +1872,93 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Don't rethrow - allow timezone index update to succeed even if ecosystem init partially fails
         }
     }
+
+    /// <summary>
+    /// Send test push notification to all enabled devices
+    /// Bypasses all business logic restrictions (read status, deduplication, etc.)
+    /// </summary>
+    public async Task<int> SendTestPushNotificationAsync(string title, string content, Dictionary<string, object> customData)
+    {
+        Logger.LogInformation("Sending test push notification to user {UserId}: '{Title}'", State.UserId, title);
+
+        // Get all enabled devices (bypass timezone filtering for test)
+        var enabledDevices = State.UserDevices.Values
+            .Where(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken))
+            .ToList();
+
+        if (enabledDevices.Count == 0)
+        {
+            Logger.LogInformation("No enabled devices found for user {UserId}", State.UserId);
+            return 0;
+        }
+
+        Logger.LogInformation("Found {DeviceCount} enabled devices for user {UserId}", enabledDevices.Count, State.UserId);
+
+        // Get Firebase service
+        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+        if (firebaseService == null)
+        {
+            Logger.LogError("FirebaseService not available for test push notifications");
+            return 0;
+        }
+
+        // Get TokenProvider for this ChatManager (new architecture with graceful fallback)
+        IFirebaseTokenProviderGAgent? tokenProvider = null;
+        try
+        {
+            tokenProvider = GrainFactory.GetGrain<IFirebaseTokenProviderGAgent>(this.GetPrimaryKeyLong());
+            Logger.LogDebug("Using FirebaseTokenProvider for test push to ChatManager {UserId}", State.UserId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "FirebaseTokenProvider not available for ChatManager {UserId}, using legacy method", State.UserId);
+        }
+
+        var successCount = 0;
+        var failureCount = 0;
+
+        // Send push to each device
+        var pushTasks = enabledDevices.Select(async device =>
+        {
+            try
+            {
+                Logger.LogDebug("Sending test push to device {DeviceId}", device.DeviceId);
+
+                var success = await firebaseService.SendPushNotificationAsync(
+                    device.PushToken,
+                    title,
+                    content,
+                    customData,
+                    tokenProvider); // Pass the tokenProvider
+
+                if (success)
+                {
+                    Logger.LogDebug("Test push sent successfully to device {DeviceId}", device.DeviceId);
+                    return true;
+                }
+                else
+                {
+                    Logger.LogWarning("Failed to send test push to device {DeviceId}", device.DeviceId);
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error sending test push to device {DeviceId}", device.DeviceId);
+                return false;
+            }
+        });
+
+        // Execute all push tasks concurrently
+        var results = await Task.WhenAll(pushTasks);
+        
+        successCount = results.Count(r => r);
+        failureCount = results.Count(r => !r);
+
+        Logger.LogInformation(
+            "Test push completed for user {UserId}: {SuccessCount} successful, {FailureCount} failed",
+            State.UserId, successCount, failureCount);
+
+        return successCount;
+    }
 }
