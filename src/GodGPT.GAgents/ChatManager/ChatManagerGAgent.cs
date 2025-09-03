@@ -1673,21 +1673,23 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var failureCount = 0;
         
         // Create separate push notifications for each content to ensure individual callbacks
-        var pushTasks = enabledDevices.SelectMany(device =>
+        var pushTasks = enabledDevices.SelectMany((device, deviceIndex) =>
         {
             // Send separate push for each content with staggered delay
-            return contents.Select(async (content, index) =>
+            return contents.Select(async (content, contentIndex) =>
             {
                 try
                 {
-                    // 🎯 Add staggered delay for multi-content pushes to avoid FCM conflicts
-                    // First content (index=0): no delay, subsequent contents: progressive delay
-                    if (index > 0)
+                    // 🎯 Add device-level delay to reduce concurrent JWT requests + content delay for FCM conflicts
+                    var deviceDelay = Random.Shared.Next(50, 300) + (deviceIndex * 150); // Random + staggered per device
+                    var contentDelay = contentIndex * 300; // 300ms per content (1st=0ms, 2nd=300ms, etc.)
+                    var totalDelay = deviceDelay + contentDelay;
+                    
+                    if (totalDelay > 0)
                     {
-                        var delayMs = index * 500; // 500ms per content (1st=0ms, 2nd=500ms, 3rd=1000ms...)
-                        Logger.LogInformation("Applying push delay: DeviceId={DeviceId}, ContentIndex={ContentIndex}/{TotalContents}, DelayMs={DelayMs}", 
-                            device.DeviceId, index + 1, contents.Count, delayMs);
-                        await Task.Delay(delayMs);
+                        Logger.LogInformation("Applying push delay: DeviceId={DeviceId}, DeviceIndex={DeviceIndex}, ContentIndex={ContentIndex}/{TotalContents}, DeviceDelay={DeviceDelay}ms, ContentDelay={ContentDelay}ms, TotalDelay={TotalDelay}ms", 
+                            device.DeviceId, deviceIndex + 1, contentIndex + 1, contents.Count, deviceDelay, contentDelay, totalDelay);
+                        await Task.Delay(totalDelay);
                     }
                     
                     var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
@@ -1696,8 +1698,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     
                     var localizedContent = content.GetLocalizedContent(device.PushLanguage);
                     
-                    Logger.LogInformation("Selected content {Index}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
-                        index + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
+                    Logger.LogInformation("Selected content {ContentIndex}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
+                        contentIndex + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
                     
                     // Create unique data payload for each content
                     var messageId = Guid.NewGuid();
@@ -1707,7 +1709,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
                         ["date"] = dateKey,
                         ["content_id"] = content.Id, // Single content ID for this push
-                        ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
+                        ["content_index"] = contentIndex + 1, // Which content this is (1, 2, etc.)
                         ["device_id"] = device.DeviceId,
                         ["total_contents"] = contents.Count,
                         ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
@@ -1725,24 +1727,24 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         pushData,
                         timeZoneId,
                         isRetryPush,
-                        index == 0); // isFirstContent
+                        contentIndex == 0); // isFirstContent
                     
                     if (success)
                     {
                         Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                            device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
                         return true;
                     }
                     else
                     {
                         Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                            device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
                         return false;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogError(ex, $"Error sending daily push content {index + 1} to device {device.DeviceId}");
+                    Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
                     return false;
                 }
             });
@@ -1924,12 +1926,16 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
 
-        // Send push to each device
-        var pushTasks = enabledDevices.Select(async device =>
+        // Send push to each device with random delay to avoid concurrency issues
+        var pushTasks = enabledDevices.Select(async (device, index) =>
         {
             try
             {
-                Logger.LogDebug("Sending test push to device {DeviceId}", device.DeviceId);
+                // Add random delay to reduce concurrent JWT requests (50-500ms per device)
+                var delay = Random.Shared.Next(50, 500) + (index * 100); // Staggered delay
+                await Task.Delay(delay);
+                
+                Logger.LogDebug("Sending test push to device {DeviceId} after {Delay}ms delay", device.DeviceId, delay);
 
                 // Use new global JWT architecture with direct HTTP push (test pushes bypass deduplication)
                 var success = await SendDirectPushNotificationAsync(

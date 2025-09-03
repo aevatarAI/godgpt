@@ -406,25 +406,28 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Use exact same pattern as UserBillingGrain to avoid ObjectDisposedException
+            // Simple and direct RSA lifecycle management - complete all JWT operations within using block
             using (var rsa = RSA.Create())
             {
                 rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+                
+                // Create security key and signing credentials
                 var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
                 var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
 
-                // Use SecurityTokenDescriptor pattern from UserBillingGrain
-                var securityTokenDescriptor = new SecurityTokenDescriptor
+                // Create token descriptor with claims and signing credentials  
+                var tokenDescriptor = new SecurityTokenDescriptor
                 {
                     Claims = claims,
                     SigningCredentials = signingCredentials
                 };
 
+                // Create and sign token - all operations completed within RSA lifetime
                 var tokenHandler = new JwtSecurityTokenHandler();
-                var securityToken = tokenHandler.CreateJwtSecurityToken(securityTokenDescriptor);
+                var token = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
                 
-                // Complete token signing within using block to ensure RSA is still alive
-                return tokenHandler.WriteToken(securityToken);
+                // Return signed token string - RSA object remains valid throughout entire process
+                return tokenHandler.WriteToken(token);
             }
         }
         catch (Exception ex)
