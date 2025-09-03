@@ -40,6 +40,12 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private DateTime _tokenExpiry = DateTime.MinValue;
     private volatile Task<string?>? _tokenCreationTask;
     private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);
+    
+    // Error handling and retry control
+    private DateTime _lastFailureTime = DateTime.MinValue;
+    private int _consecutiveFailures = 0;
+    private const int MAX_CONSECUTIVE_FAILURES = 3;
+    private static readonly TimeSpan FAILURE_COOLDOWN = TimeSpan.FromMinutes(5);
 
     public GlobalJwtProviderGAgent(
         ILogger<GlobalJwtProviderGAgent> logger,
@@ -64,6 +70,27 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         {
             _logger.LogDebug("Using cached JWT token (expires at {Expiry})", _tokenExpiry);
             return _cachedJwtToken;
+        }
+
+        // Check for failure cooldown period to prevent rapid retries after consecutive failures
+        if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+        {
+            var timeSinceLastFailure = DateTime.UtcNow - _lastFailureTime;
+            if (timeSinceLastFailure < FAILURE_COOLDOWN)
+            {
+                var remainingCooldown = FAILURE_COOLDOWN - timeSinceLastFailure;
+                _logger.LogWarning(
+                    "⏱️ JWT creation in cooldown period due to {FailureCount} consecutive failures. " +
+                    "Remaining cooldown: {RemainingTime:mm\\:ss}. Last failure: {LastFailure}",
+                    _consecutiveFailures, remainingCooldown, _lastFailureTime);
+                return null;
+            }
+            else
+            {
+                // Reset failure count after cooldown period
+                _logger.LogInformation("🔄 Cooldown period expired, resetting failure count from {FailureCount} to 0", _consecutiveFailures);
+                _consecutiveFailures = 0;
+            }
         }
 
         // Use task-based singleton pattern for thread-safe token creation
@@ -265,6 +292,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                             TokenExpiry = _tokenExpiry 
                         });
                         
+                        // Reset failure tracking on success
+                        _consecutiveFailures = 0;
+                        _lastFailureTime = DateTime.MinValue;
+                        
                         _logger.LogInformation("✅ Global JWT token created successfully, expires at {Expiry}", _tokenExpiry);
                         return tokenResponse.AccessToken;
                     }
@@ -285,6 +316,9 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                             AttemptNumber = maxRetries,
                             ErrorMessage = httpError 
                         });
+                        
+                        // Record failure for cooldown mechanism
+                        RecordTokenCreationFailure();
                         return null;
                     }
                 }
@@ -305,6 +339,9 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         AttemptNumber = maxRetries,
                         ErrorMessage = exceptionError 
                     });
+                    
+                    // Record failure for cooldown mechanism
+                    RecordTokenCreationFailure();
                     return null;
                 }
             }
@@ -315,6 +352,28 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         {
             _tokenCreationTask = null;
         }
+    }
+
+    /// <summary>
+    /// Record token creation failure and clear cache to prevent invalid state
+    /// </summary>
+    private void RecordTokenCreationFailure()
+    {
+        _consecutiveFailures++;
+        _lastFailureTime = DateTime.UtcNow;
+        
+        // Clear invalid cached state to force fresh attempt after cooldown
+        _cachedJwtToken = null;
+        _tokenExpiry = DateTime.MinValue;
+        
+        _logger.LogError(
+            "🔥 JWT creation failed. Consecutive failures: {FailureCount}/{MaxFailures}. " +
+            "Next attempt blocked until: {CooldownEnd}",
+            _consecutiveFailures,
+            MAX_CONSECUTIVE_FAILURES,
+            _consecutiveFailures >= MAX_CONSECUTIVE_FAILURES 
+                ? (_lastFailureTime + FAILURE_COOLDOWN).ToString("HH:mm:ss")
+                : "immediate");
     }
 
     /// <summary>
