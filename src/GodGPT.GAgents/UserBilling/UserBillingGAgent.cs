@@ -3638,46 +3638,49 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var result = new ActiveSubscriptionStatusDto();
         var now = DateTime.UtcNow;
         
-        _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Starting check with {PaymentCount} payments in history, Current time: {Now}", 
-            State.PaymentHistory?.Count ?? 0, now);
-        
         // Single iteration through payment history for optimal performance
         foreach (var payment in State.PaymentHistory)
         {
-            _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Checking payment: Platform={Platform}, OrderId={OrderId}, Status={Status}, InvoiceCount={InvoiceCount}", 
-                payment.Platform, payment.OrderId, payment.Status, payment.InvoiceDetails?.Count ?? 0);
-            
             // Check if payment has active subscription
             // Active subscription means: has invoice details AND has at least one completed (not cancelled/refunded) and unexpired invoice
             var hasInvoiceDetails = payment.InvoiceDetails != null && payment.InvoiceDetails.Any();
             
             if (!hasInvoiceDetails)
             {
-                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no invoice details, skipping", payment.OrderId);
+                _logger.LogDebug("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no invoice details, skipping", payment.OrderId);
                 continue;
             }
-            
-            // Check each invoice detail
-            bool hasActiveInvoice = false;
-            foreach (var invoice in payment.InvoiceDetails)
+
+            var isActiveSubscription = false;
+            if (payment.Platform == PaymentPlatform.GooglePlay)
             {
-                var isCompleted = invoice.Status == PaymentStatus.Completed;
-                var hasEndDate = invoice.SubscriptionEndDate != null;
-                var isUnexpired = invoice.SubscriptionEndDate > now;
-                
-                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Invoice {InvoiceId}: Status={Status} (Completed={IsCompleted}), EndDate={EndDate} (HasEndDate={HasEndDate}, Unexpired={IsUnexpired})", 
-                    invoice.InvoiceId, invoice.Status, isCompleted, invoice.SubscriptionEndDate, hasEndDate, isUnexpired);
-                
-                if (isCompleted && hasEndDate && isUnexpired)
+                foreach (var invoice in payment.InvoiceDetails)
                 {
-                    hasActiveInvoice = true;
-                    break;
+                    var isCompleted = invoice.Status == PaymentStatus.Completed;
+                    var hasEndDate = invoice.SubscriptionEndDate != null;
+                    var isUnexpired = invoice.SubscriptionEndDate > now;
+                
+                    _logger.LogDebug("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Invoice {InvoiceId}: Status={Status} (Completed={IsCompleted}), EndDate={EndDate} (HasEndDate={HasEndDate}, Unexpired={IsUnexpired})", 
+                        invoice.InvoiceId, invoice.Status, isCompleted, invoice.SubscriptionEndDate, hasEndDate, isUnexpired);
+                
+                    if (isCompleted && hasEndDate && isUnexpired)
+                    {
+                        isActiveSubscription = true;
+                        break;
+                    }
                 }
             }
-            
-            if (!hasActiveInvoice)
+            else
             {
-                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no active invoices, skipping", payment.OrderId);
+                // Check if payment has active subscription (same logic as HasActiveAppleSubscriptionAsync)
+                isActiveSubscription = payment.InvoiceDetails != null && 
+                                           payment.InvoiceDetails.Any() &&
+                                           payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled);
+            }
+            
+            if (!isActiveSubscription)
+            {
+                _logger.LogDebug("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no active invoices, skipping", payment.OrderId);
                 continue;
             }
             
@@ -3707,24 +3710,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                                      result.HasActiveStripeSubscription || 
                                      result.HasActiveGooglePlaySubscription;
         
-        _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Apple: {Apple}, Stripe: {Stripe}, GooglePlay: {GooglePlay}, Overall: {Overall}", 
-            result.HasActiveAppleSubscription, result.HasActiveStripeSubscription, result.HasActiveGooglePlaySubscription, result.HasActiveSubscription);
-        
-        // Debug: Also check UserQuotaGAgent status for comparison
-        try
-        {
-            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
-            var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
-            var ultimateSubscription = await userQuotaAgent.GetSubscriptionAsync(true);
-            
-            _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] UserQuotaGAgent status - Premium: IsActive={PremiumActive}, EndDate={PremiumEnd}, Ultimate: IsActive={UltimateActive}, EndDate={UltimateEnd}", 
-                premiumSubscription.IsActive, premiumSubscription.EndDate, ultimateSubscription.IsActive, ultimateSubscription.EndDate);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Error checking UserQuotaGAgent status");
-        }
-            
+        _logger.LogDebug("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] {UserId} Apple: {Apple}, Stripe: {Stripe}, GooglePlay: {GooglePlay}, Overall: {Overall}", 
+            this.GetPrimaryKey().ToString(), result.HasActiveAppleSubscription, result.HasActiveStripeSubscription, result.HasActiveGooglePlaySubscription, result.HasActiveSubscription);
+
         return result;
     }
     
