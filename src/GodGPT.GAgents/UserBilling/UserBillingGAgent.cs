@@ -1311,7 +1311,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     OrderId = paymentSummary.OrderId,
                     PlanType = invoiceDetail.PlanType == PlanType.None ?  paymentSummary.PlanType : invoiceDetail.PlanType,
                     Amount = invoiceDetail.Amount == null ? paymentSummary.Amount : (decimal) invoiceDetail.Amount,
-                    Currency = paymentSummary.Currency,
+                    Currency = invoiceDetail.Currency == null ? paymentSummary.Currency : invoiceDetail.Currency,
                     CreatedAt = invoiceDetail.CreatedAt,
                     CompletedAt = invoiceDetail.CompletedAt,
                     Status = invoiceDetail.Status,
@@ -2977,8 +2977,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             Id = paymentGrainId,
             UserId = userId,
             PriceId = appleProduct.ProductId,
-            Amount = appleProduct.Amount,
-            Currency = appleProduct.Currency,
+            Amount = appleResponse.Price,
+            Currency = appleResponse.Currency,
             PaymentType = PaymentType.Subscription,
             Status = PaymentStatus.Completed,
             Method = PaymentMethod.ApplePay,
@@ -3001,8 +3001,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             PaymentGrainId = paymentGrainId,
             OrderId = appleResponse.OriginalTransactionId,
             PlanType = (PlanType)appleProduct.PlanType,
-            Amount = appleProduct.Amount,
-            Currency = appleProduct.Currency,
+            Amount = appleResponse.Price,
+            Currency = appleResponse.Currency,
             UserId = userId,
             CreatedAt = purchaseDate,
             CompletedAt = DateTime.UtcNow,
@@ -3027,7 +3027,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = appleResponse.ProductId,
             MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
-            Amount = appleProduct.Amount,
+            Amount = appleResponse.Price,
+            Currency = appleResponse.Currency,
             PlanType = (PlanType)appleProduct.PlanType
         };
 
@@ -3200,7 +3201,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         existingSubscription.CompletedAt = DateTime.UtcNow;
         existingSubscription.Status = PaymentStatus.Completed;
         existingSubscription.SubscriptionId = transactionInfo.OriginalTransactionId;
-        existingSubscription.PriceId = transactionInfo.ProductId;
         existingSubscription.PlanType = (PlanType)appleProduct.PlanType;
         existingSubscription.MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate);
         existingSubscription.SubscriptionStartDate = subscriptionStartDate;
@@ -3219,7 +3219,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = transactionInfo.ProductId,
             MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
-            Amount = appleProduct.Amount,
+            Amount = transactionInfo.Price,
+            Currency = transactionInfo.Currency,
             PlanType = (PlanType)appleProduct.PlanType
         };
         invoiceDetails.Add(invoiceDetail);
