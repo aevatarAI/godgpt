@@ -31,6 +31,11 @@ public class FirebaseService
     private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
     private static int _cleanupCounter = 0;
 
+    /// <summary>
+    /// Firebase Project ID configured for this service
+    /// </summary>
+    public string? ProjectId => _projectId;
+
     public FirebaseService(
         ILogger<FirebaseService> logger,
         HttpClient httpClient,

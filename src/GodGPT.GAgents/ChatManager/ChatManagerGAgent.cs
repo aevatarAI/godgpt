@@ -1654,12 +1654,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // Get Global JWT Provider (new architecture - single instance for entire system)
         var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(0);
         
-        // Get Firebase project configuration
-        var configuration = ServiceProvider.GetService(typeof(IConfiguration)) as IConfiguration;
-        var projectId = configuration?["Firebase:ProjectId"];
+        // Get Firebase project configuration via FirebaseService
+        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+        if (firebaseService == null)
+        {
+            Logger.LogError("FirebaseService not available for push notifications");
+            return;
+        }
+        
+        var projectId = firebaseService.ProjectId;
         if (string.IsNullOrEmpty(projectId))
         {
-            Logger.LogError("Firebase ProjectId not configured for push notifications");
+            Logger.LogError("Firebase ProjectId not configured in FirebaseService for push notifications");
             return;
         }
         
@@ -1900,12 +1906,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // Get Global JWT Provider (new architecture - single instance for entire system)
         var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(0);
         
-        // Get Firebase project configuration
-        var configuration = ServiceProvider.GetService(typeof(IConfiguration)) as IConfiguration;
-        var projectId = configuration?["Firebase:ProjectId"];
+        // Get Firebase project configuration via FirebaseService
+        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+        if (firebaseService == null)
+        {
+            Logger.LogError("FirebaseService not available for test push notifications");
+            return 0;
+        }
+        
+        var projectId = firebaseService.ProjectId;
         if (string.IsNullOrEmpty(projectId))
         {
-            Logger.LogError("Firebase ProjectId not configured for test push notifications");
+            Logger.LogError("Firebase ProjectId not configured in FirebaseService for test push notifications");
             return 0;
         }
 
