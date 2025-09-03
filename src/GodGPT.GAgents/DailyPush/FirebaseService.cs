@@ -794,8 +794,10 @@ public class FirebaseService
 
     /// <summary>
     /// Send push notifications to multiple devices using FCM sendEach (single HTTP request)
-    /// This is the recommended approach for multiple messages in FCM API v1
+    /// DEPRECATED: This method has RSA concurrency issues due to legacy JWT creation
+    /// Use GlobalJwtProviderGAgent with individual push calls instead
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent with direct HTTP calls for better performance and reliability", false)]
     public async Task<BatchPushResult> SendEachAsync(
         List<PushMessage> messages)
     {
@@ -850,14 +852,17 @@ public class FirebaseService
 
     /// <summary>
     /// Send multiple messages using FCM API v1 (single HTTP request)
+    /// DEPRECATED: This method uses legacy JWT creation with RSA concurrency issues
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent with direct HTTP calls for better performance and reliability", false)]
     private async Task<BatchPushResult> SendEachV1Async(List<PushMessage> messages)
     {
         var results = new BatchPushResult();
 
         try
         {
-            var accessToken = await GetAccessTokenLegacyAsync(); // SendEachAsync doesn't support TokenProvider yet
+            _logger.LogWarning("⚠️ USING DEPRECATED BATCH METHOD: SendEachV1Async has RSA concurrency issues. Consider using individual push calls with GlobalJwtProviderGAgent instead.");
+            var accessToken = await GetAccessTokenLegacyAsync(); // DEPRECATED: This still uses problematic RSA method
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogError("Failed to obtain access token for FCM batch send");
