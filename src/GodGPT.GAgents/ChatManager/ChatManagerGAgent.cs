@@ -1652,7 +1652,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         
         // Get Global JWT Provider (new architecture - single instance for entire system)
-        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(0);
+        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
         
         // Get Firebase project configuration via FirebaseService
         var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
@@ -1904,7 +1904,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         Logger.LogInformation("Found {DeviceCount} enabled devices for user {UserId}", enabledDevices.Count, State.UserId);
 
         // Get Global JWT Provider (new architecture - single instance for entire system)
-        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(0);
+        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
         
         // Get Firebase project configuration via FirebaseService
         var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
