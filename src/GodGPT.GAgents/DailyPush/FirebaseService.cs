@@ -732,7 +732,6 @@ public class FirebaseService
     /// </summary>
     private string? CreateJwt(Dictionary<string, object> claims, string privateKeyPem)
     {
-        RSA? rsa = null; // Declare outside try for finally block access
         try
         {
             // Clean up the private key format
@@ -746,8 +745,8 @@ public class FirebaseService
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Create RSA instance and keep it alive until JWT is fully serialized
-            rsa = RSA.Create();
+            // Use 'using' to ensure RSA is disposed after JWT is completely serialized
+            using var rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
 
             // Create JWT payload first
@@ -764,24 +763,20 @@ public class FirebaseService
             // Create header with credentials
             var header = new JwtHeader(credentials);
             
-            // Create token and serialize immediately while RSA is still valid
+            // Create token and serialize - RSA will remain valid until method end
             var token = new JwtSecurityToken(header, payload);
             var handler = new JwtSecurityTokenHandler();
 
-            // Serialize JWT - this is where RSA must still be valid
+            // Serialize JWT - RSA is guaranteed to be valid throughout this call
             var jwtString = handler.WriteToken(token);
             
             return jwtString;
+            // RSA will be disposed here automatically after JWT is fully created
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating JWT: {ErrorMessage}", ex.Message);
             return null;
-        }
-        finally
-        {
-            // Always dispose RSA in finally block to prevent leaks
-            rsa?.Dispose();
         }
     }
 
