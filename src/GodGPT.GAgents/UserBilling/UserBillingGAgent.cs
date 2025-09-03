@@ -2412,7 +2412,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         "[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Subscribed",
                         userId.ToString(), signedTransactionInfo.TransactionId);
                     //Report payment success to Google Analytics for completed payments
-                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Subscription, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
+                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Subscription, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, GetActualApplePrice(signedTransactionInfo.Price));
                     break;
                 case AppStoreNotificationType.DID_RENEW:
                     // Handle successful renewal
@@ -2422,7 +2422,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         userId.ToString(), signedTransactionInfo.TransactionId);
 
                     //Report payment success to Google Analytics for completed payments
-                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
+                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, GetActualApplePrice(signedTransactionInfo.Price));
 
                     break;
                 case AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS:
@@ -2469,7 +2469,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                             _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, User upgraded subscription, effective immediately",
                                 userId.ToString(), signedTransactionInfo.TransactionId);
                             //Report payment success to Google Analytics for completed payments
-                            _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
+                            _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, GetActualApplePrice(signedTransactionInfo.Price));
                             break;
                         case AppStoreNotificationSubtype.DOWNGRADE:
                             _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, User downgraded subscription, effective at next renewal",
@@ -2520,8 +2520,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     {
         // Record payment success event to OpenTelemetry
         PaymentTelemetryMetrics.RecordPaymentSuccess(paymentPlatform.ToString(), purchaseType.ToString(), userId.ToString(), productId, _logger);
-        _logger.LogInformation("[UserBillingGAgent][ReportApplePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}",
-            paymentPlatform, purchaseType, userId, productId);
+        _logger.LogInformation("[UserBillingGAgent][ReportApplePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}, Amount={Amount}",
+            paymentPlatform, purchaseType, userId, productId, amount);
         
         try
         {
@@ -2977,7 +2977,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             Id = paymentGrainId,
             UserId = userId,
             PriceId = appleProduct.ProductId,
-            Amount = appleResponse.Price,
+            Amount = GetActualApplePrice(appleResponse.Price),
             Currency = appleResponse.Currency,
             PaymentType = PaymentType.Subscription,
             Status = PaymentStatus.Completed,
@@ -3001,7 +3001,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             PaymentGrainId = paymentGrainId,
             OrderId = appleResponse.OriginalTransactionId,
             PlanType = (PlanType)appleProduct.PlanType,
-            Amount = appleResponse.Price,
+            Amount = GetActualApplePrice(appleResponse.Price),
             Currency = appleResponse.Currency,
             UserId = userId,
             CreatedAt = purchaseDate,
@@ -3027,7 +3027,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = appleResponse.ProductId,
             MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
-            Amount = appleResponse.Price,
+            Amount = GetActualApplePrice(appleResponse.Price),
             Currency = appleResponse.Currency,
             PlanType = (PlanType)appleProduct.PlanType
         };
@@ -3219,7 +3219,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = transactionInfo.ProductId,
             MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
-            Amount = transactionInfo.Price,
+            Amount = GetActualApplePrice(transactionInfo.Price),
             Currency = transactionInfo.Currency,
             PlanType = (PlanType)appleProduct.PlanType
         };
@@ -5214,4 +5214,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     }
 
     #endregion
+
+    /// <summary>
+    /// Apple returns price multiplied by 1000, this method divides by 1000 to get the real amount.
+    /// </summary>
+    private static decimal GetActualApplePrice(decimal applePrice)
+    {
+        return applePrice / 1000m;
+    }
 }
