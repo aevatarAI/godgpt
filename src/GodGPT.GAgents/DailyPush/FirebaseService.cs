@@ -740,6 +740,7 @@ public class FirebaseService
     /// </summary>
     private string? CreateJwt(Dictionary<string, object> claims, string privateKeyPem)
     {
+        RSA? rsa = null;
         try
         {
             // Clean up the private key format
@@ -753,8 +754,8 @@ public class FirebaseService
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Use 'using' to ensure RSA is disposed after JWT is completely serialized
-            using var rsa = RSA.Create();
+            // Create RSA instance and keep reference for manual disposal
+            rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
 
             // Create JWT payload first
@@ -779,12 +780,16 @@ public class FirebaseService
             var jwtString = handler.WriteToken(token);
             
             return jwtString;
-            // RSA will be disposed here automatically after JWT is fully created
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating JWT: {ErrorMessage}", ex.Message);
             return null;
+        }
+        finally
+        {
+            // Ensure RSA is disposed even if exceptions occur
+            rsa?.Dispose();
         }
     }
 
