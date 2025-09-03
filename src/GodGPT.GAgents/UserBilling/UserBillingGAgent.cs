@@ -3670,13 +3670,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         break;
                     }
                 }
+            } else if (payment.Platform == PaymentPlatform.AppStore)
+            {
+                isActiveSubscription = payment.InvoiceDetails.LastOrDefault()?.Status == PaymentStatus.Completed;
             }
             else
             {
                 // Check if payment has active subscription (same logic as HasActiveAppleSubscriptionAsync)
-                isActiveSubscription = payment.InvoiceDetails != null && 
-                                           payment.InvoiceDetails.Any() &&
-                                           payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled);
+                isActiveSubscription = payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled);
             }
             
             if (!isActiveSubscription)
