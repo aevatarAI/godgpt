@@ -526,7 +526,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                 return null;
             }
 
-            var serviceAccount = JsonSerializer.Deserialize<ServiceAccountInfo>(jsonContent);
+            var serviceAccount = JsonSerializer.Deserialize<ServiceAccountInfo>(jsonContent, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+            });
             if (serviceAccount != null)
             {
                 _logger.LogDebug("Successfully loaded Firebase service account for global JWT provider");
