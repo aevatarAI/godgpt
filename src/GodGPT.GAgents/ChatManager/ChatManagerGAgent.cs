@@ -1679,8 +1679,37 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
         
+        // Pre-check: Filter devices that haven't received today's push yet
+        var eligibleDevices = new List<UserDeviceInfo>();
+        foreach (var device in enabledDevices)
+        {
+            // Check if this device (pushToken) can receive daily push
+            var canSendToDevice = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, true); // isFirstContent=true for sequence check
+            if (canSendToDevice)
+            {
+                eligibleDevices.Add(device);
+                Logger.LogInformation("📱 DEVICE ELIGIBLE: DeviceId {DeviceId}, PushToken {TokenPrefix}... can receive push sequence", 
+                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+            }
+            else
+            {
+                Logger.LogInformation("📱 DEVICE FILTERED: DeviceId {DeviceId}, PushToken {TokenPrefix}... already received today's push, skipping entire sequence", 
+                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+            }
+        }
+        
+        if (eligibleDevices.Count == 0)
+        {
+            Logger.LogInformation("No eligible devices for daily push after sequence deduplication - User {UserId}, TimeZone {TimeZone}, Original devices: {OriginalCount}", 
+                State.UserId, timeZoneId, enabledDevices.Count);
+            return;
+        }
+        
+        Logger.LogInformation("Proceeding with {EligibleCount} eligible devices (filtered from {OriginalCount}) for user {UserId}", 
+            eligibleDevices.Count, enabledDevices.Count, State.UserId);
+        
         // Create separate push notifications for each content to ensure individual callbacks
-        var pushTasks = enabledDevices.SelectMany((device, deviceIndex) =>
+        var pushTasks = eligibleDevices.SelectMany((device, deviceIndex) =>
         {
             // Send separate push for each content with staggered delay
             return contents.Select(async (content, contentIndex) =>
