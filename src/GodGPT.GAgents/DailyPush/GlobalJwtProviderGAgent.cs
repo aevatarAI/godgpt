@@ -403,29 +403,28 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Simple and direct RSA lifecycle management - complete all JWT operations within using block
-            using (var rsa = RSA.Create())
+            // Fix RSA lifecycle issue: don't use using statement to prevent premature disposal
+            // Let .NET garbage collector handle RSA cleanup naturally
+            var rsa = RSA.Create();
+            rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+            
+            // Create security key and signing credentials with proper RSA lifecycle
+            var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
+            var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
+
+            // Create token descriptor with claims and signing credentials  
+            var tokenDescriptor = new SecurityTokenDescriptor
             {
-                rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
-                
-                // Create security key and signing credentials
-                var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
-                var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
+                Claims = claims,
+                SigningCredentials = signingCredentials
+            };
 
-                // Create token descriptor with claims and signing credentials  
-                var tokenDescriptor = new SecurityTokenDescriptor
-                {
-                    Claims = claims,
-                    SigningCredentials = signingCredentials
-                };
-
-                // Create and sign token - all operations completed within RSA lifetime
-                var tokenHandler = new JwtSecurityTokenHandler();
-                var token = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
-                
-                // Return signed token string - RSA object remains valid throughout entire process
-                return tokenHandler.WriteToken(token);
-            }
+            // Create and sign token - RSA object will be garbage collected naturally
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var token = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
+            
+            // Return signed token string
+            return tokenHandler.WriteToken(token);
         }
         catch (Exception ex)
         {
