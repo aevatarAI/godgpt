@@ -71,11 +71,11 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     {
         State.IncrementTokenRequests();
         
-        // Check cached token first (24-hour cache)
-        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+        // Check global cached token first (pure memory, no State delay)
+        if (!string.IsNullOrEmpty(_globalCachedToken) && DateTime.UtcNow < _globalTokenExpiry.AddMinutes(-5))
         {
-            _logger.LogDebug("Using cached JWT token");
-            return _cachedJwtToken;
+            _logger.LogDebug("Using global cached JWT token");
+            return _globalCachedToken;
         }
 
         // Check for failure cooldown period to prevent rapid retries after consecutive failures
@@ -110,10 +110,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         await _tokenSemaphore.WaitAsync();
         try
         {
-            // Double-check after acquiring lock
-            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+            // Double-check after acquiring lock (use global cache)
+            if (!string.IsNullOrEmpty(_globalCachedToken) && DateTime.UtcNow < _globalTokenExpiry.AddMinutes(-5))
             {
-                return _cachedJwtToken;
+                return _globalCachedToken;
             }
 
             // Check if another thread started creation
@@ -274,6 +274,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     public async Task RefreshTokenAsync()
     {
         _logger.LogInformation("Force refreshing JWT token");
+        
+        // Clear both global and instance cache
+        _globalCachedToken = null;
+        _globalTokenExpiry = DateTime.MinValue;
         _cachedJwtToken = null;
         _tokenExpiry = DateTime.MinValue;
         _tokenCreationTask = null;
@@ -340,8 +344,12 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
                         _tokenExpiry = DateTime.UtcNow.AddHours(expiryHours);
                         
-                        _logger.LogDebug("Token calculated with {ExpiryHours}h expiry", expiryHours);
+                        // Update both global (primary) and instance (backup) cache
+                        _globalTokenExpiry = _tokenExpiry;
+                        _globalCachedToken = tokenResponse.AccessToken;
                         _cachedJwtToken = tokenResponse.AccessToken;
+                        
+                        _logger.LogDebug("Token cached globally with {ExpiryHours}h expiry", expiryHours);
                         
                         State.RecordSuccessfulTokenCreation();
                         RaiseEvent(new TokenCreationSuccessEventLog 
@@ -421,6 +429,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         _lastFailureTime = DateTime.UtcNow;
         
         // Clear invalid cached state to force fresh attempt after cooldown
+        _globalCachedToken = null;
+        _globalTokenExpiry = DateTime.MinValue;
         _cachedJwtToken = null;
         _tokenExpiry = DateTime.MinValue;
         
