@@ -149,34 +149,72 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             CleanupOldRecords();
         }
 
-        // Timezone-based deduplication: each timezone can have daily pushes independently
+        // Enhanced deduplication: prevent same pushToken from receiving multiple pushes per day across ALL users
         var dedupeKey = $"{pushToken}:{timeZoneId}";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        // Only check date deduplication for first content of regular daily pushes
-        if (!isRetryPush && isFirstContent && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
+        // For non-retry pushes, check if this pushToken already received push today
+        if (!isRetryPush)
         {
-            _logger.LogInformation(
-                "📅 PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, preventing duplicate",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
-                timeZoneId,
-                today.ToString("yyyy-MM-dd"));
-            
-            State.IncrementPreventedDuplicates();
-            
-            // Log deduplication event for analytics
-            var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
-            RaiseEvent(new DuplicatePreventionEventLog 
-            { 
-                PushTokenPrefix = tokenPrefix,
-                TimeZone = timeZoneId,
-                PreventionDate = today.ToDateTime(TimeOnly.MinValue),
-                PreventionTime = DateTime.UtcNow
-            });
-            
-            return false;
+            if (isFirstContent)
+            {
+                // For first content, use atomic TryAdd to reserve the push slot
+                // TryAdd returns true only if the key was NOT already present
+                var wasReserved = _lastPushDates.TryAdd(dedupeKey, today);
+                if (!wasReserved)
+                {
+                    // Another user/content already reserved this pushToken for today
+                    _logger.LogInformation(
+                        "🚫 CROSS-USER DEDUP: PushToken {TokenPrefix} in timezone {TimeZone} already reserved for daily push on {Date}",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
+                        timeZoneId,
+                        today.ToString("yyyy-MM-dd"));
+                    
+                    State.IncrementPreventedDuplicates();
+                    
+                    // Log deduplication event for analytics
+                    var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
+                    RaiseEvent(new DuplicatePreventionEventLog 
+                    { 
+                        PushTokenPrefix = tokenPrefix,
+                        TimeZone = timeZoneId,
+                        PreventionDate = today.ToDateTime(TimeOnly.MinValue),
+                        PreventionTime = DateTime.UtcNow
+                    });
+                    
+                    return false;
+                }
+                else
+                {
+                    _logger.LogDebug("✅ RESERVATION SUCCESS: PushToken {TokenPrefix} reserved for daily sequence in timezone {TimeZone}",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                    return true;
+                }
+            }
+            else
+            {
+                // For subsequent content, check if the pushToken was reserved today
+                if (_lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
+                {
+                    _logger.LogDebug("✅ CONTENT ALLOWED: PushToken {TokenPrefix} in timezone {TimeZone} within reserved sequence",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                    return true;
+                }
+                else
+                {
+                    // No reservation found - this should not happen unless reservation failed
+                    _logger.LogWarning("🚫 NO RESERVATION: PushToken {TokenPrefix} in timezone {TimeZone} has no daily reservation for content {ContentType}",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isFirstContent ? "first" : "subsequent");
+                    
+                    State.IncrementPreventedDuplicates();
+                    return false;
+                }
+            }
         }
-
+        
+        // Retry pushes are always allowed
+        _logger.LogDebug("✅ RETRY ALLOWED: PushToken {TokenPrefix} in timezone {TimeZone} (retry push bypasses deduplication)",
+            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
         return true;
     }
 
@@ -187,18 +225,30 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return;
         }
 
-        // Record successful daily push date to prevent same-day duplicates (only for first content of regular daily pushes)
-        if (!isRetryPush && isFirstContent)
+        // Confirm push sent - reservation was already made in CanSendPushAsync
+        if (!isRetryPush)
         {
             var dedupeKey = $"{pushToken}:{timeZoneId}";
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
-            _lastPushDates.AddOrUpdate(dedupeKey, today, (key, oldDate) => today);
-            
-            _logger.LogDebug("Marked push sent: token {TokenPrefix} in timezone {TimeZone} on {Date}",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
-                timeZoneId, 
-                today.ToString("yyyy-MM-dd"));
+            // Verify that the reservation exists (should have been made in CanSendPushAsync)
+            if (_lastPushDates.TryGetValue(dedupeKey, out var reservedDate) && reservedDate == today)
+            {
+                _logger.LogDebug("✅ PUSH CONFIRMED: token {TokenPrefix} in timezone {TimeZone} successfully sent (content: {ContentType})",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                    timeZoneId, 
+                    isFirstContent ? "first" : "subsequent");
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ RESERVATION MISMATCH: token {TokenPrefix} sent but no reservation found - possible race condition",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
+            }
+        }
+        else
+        {
+            _logger.LogDebug("✅ RETRY CONFIRMED: token {TokenPrefix} in timezone {TimeZone} retry push sent",
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
         }
 
         await Task.CompletedTask;
