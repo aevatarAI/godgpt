@@ -1637,8 +1637,15 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
         if (duplicateCount > 0)
         {
-            Logger.LogInformation("ProcessDailyPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
-                duplicateCount, State.UserId);
+            Logger.LogInformation("🔍 DEVICE DEDUPLICATION: User {UserId} had {RawCount} devices, deduplicated to {FinalCount} devices. Removed {DuplicateCount} duplicate pushTokens", 
+                State.UserId, enabledDevicesRaw.Count, enabledDevices.Count, duplicateCount);
+        }
+        
+        // Log all final devices for debugging
+        foreach (var device in enabledDevices)
+        {
+            Logger.LogInformation("📱 FINAL DEVICE: User {UserId}, DeviceId {DeviceId}, PushToken {TokenPrefix}...", 
+                State.UserId, device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
         }
         
         Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}. Contents count: {ContentCount}", 
@@ -1698,8 +1705,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     
                     var localizedContent = content.GetLocalizedContent(device.PushLanguage);
                     
-                    Logger.LogInformation("Selected content {ContentIndex}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
-                        contentIndex + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
+                    Logger.LogInformation("📬 PUSH ATTEMPT: User {UserId}, DeviceId {DeviceId}, Content {ContentIndex}/{Total}, Title '{Title}', ContentId {ContentId}, PushToken {TokenPrefix}...", 
+                        State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title, content.Id, 
+                        device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
                     
                     // Create unique data payload for each content
                     var messageId = Guid.NewGuid();

@@ -155,15 +155,17 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         var dedupeKey = $"{pushToken}:{timeZoneId}";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        // Check deduplication for all daily pushes (not just first content)
+        // CROSS-USER DEDUPLICATION: Check ALL pushes to prevent duplicate content delivery
+        // Same pushToken should only receive content once per day, regardless of user or content index
         if (!isRetryPush && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
         {
             _logger.LogInformation(
-                "📅 PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, preventing duplicate (isRetryPush:{IsRetryPush})",
+                "📅 CROSS-USER DEDUPLICATION: PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, preventing duplicate (isRetryPush:{IsRetryPush}, isFirstContent:{IsFirstContent})",
                 pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
                 timeZoneId,
                 today.ToString("yyyy-MM-dd"),
-                isRetryPush);
+                isRetryPush,
+                isFirstContent);
             
             State.IncrementPreventedDuplicates();
             
@@ -180,8 +182,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return false;
         }
 
-        _logger.LogDebug("✅ Push allowed for token {TokenPrefix} in timezone {TimeZone} (isRetryPush:{IsRetryPush})", 
-            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isRetryPush);
+        _logger.LogInformation("✅ PUSH ALLOWED: token {TokenPrefix} in timezone {TimeZone} (isRetryPush:{IsRetryPush}, isFirstContent:{IsFirstContent}) - no previous record found", 
+            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isRetryPush, isFirstContent);
             
         return true;
     }
@@ -193,7 +195,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return;
         }
 
-        // Record successful daily push date to prevent same-day duplicates (for all daily pushes)
+        // Record ALL successful daily pushes to prevent same-day duplicates
+        // This ensures cross-user deduplication works correctly
         if (!isRetryPush)
         {
             var dedupeKey = $"{pushToken}:{timeZoneId}";
@@ -201,11 +204,12 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             
             _lastPushDates.AddOrUpdate(dedupeKey, today, (key, oldDate) => today);
             
-            _logger.LogInformation("📝 Marked push sent: token {TokenPrefix} in timezone {TimeZone} on {Date} (isRetryPush:{IsRetryPush})",
+            _logger.LogInformation("📝 RECORDING DEDUP: token {TokenPrefix} in timezone {TimeZone} on {Date} (isRetryPush:{IsRetryPush}, isFirstContent:{IsFirstContent}) - will block future pushes",
                 pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
                 timeZoneId, 
                 today.ToString("yyyy-MM-dd"),
-                isRetryPush);
+                isRetryPush,
+                isFirstContent);
         }
 
         await Task.CompletedTask;
