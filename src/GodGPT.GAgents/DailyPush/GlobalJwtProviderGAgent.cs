@@ -148,12 +148,12 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             CleanupOldRecords();
         }
 
-        // Timezone-based deduplication: each timezone can have daily pushes independently
+        // Enhanced deduplication: prevent same pushToken from receiving multiple pushes per day
         var dedupeKey = $"{pushToken}:{timeZoneId}";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        // Only check date deduplication for first content of regular daily pushes
-        if (!isRetryPush && isFirstContent && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
+        // Check deduplication for all daily pushes (not just first content)
+        if (!isRetryPush && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
         {
             _logger.LogInformation(
                 "📅 PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, preventing duplicate",
@@ -186,8 +186,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return;
         }
 
-        // Record successful daily push date to prevent same-day duplicates (only for first content of regular daily pushes)
-        if (!isRetryPush && isFirstContent)
+        // Record successful daily push date to prevent same-day duplicates (for all daily pushes)
+        if (!isRetryPush)
         {
             var dedupeKey = $"{pushToken}:{timeZoneId}";
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
