@@ -65,8 +65,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     {
         State.IncrementTokenRequests();
         
-        // Check cached token first (24-hour cache) - reduced buffer time to extend usable period
-        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-2))
+        // Check cached token first - minimal buffer time for maximum usage (Firebase max: 1 hour)
+        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
         {
             var remainingTime = _tokenExpiry.Subtract(DateTime.UtcNow);
             _logger.LogDebug("✅ Using cached JWT token (expires at {Expiry} UTC, current: {CurrentTime} UTC, remaining: {RemainingTime})", 
@@ -110,7 +110,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         try
         {
             // Double-check after acquiring lock - consistent with main check
-            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-2))
+            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
             {
                 return _cachedJwtToken;
             }
@@ -392,7 +392,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var expiry = now.AddHours(2); // Extended JWT validity to reduce recreation frequency
+            var expiry = now.AddHours(1); // Maximum allowed by Firebase OAuth (3600 seconds)
 
             var claims = new Dictionary<string, object>
             {
