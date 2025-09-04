@@ -156,10 +156,11 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         if (!isRetryPush && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
         {
             _logger.LogInformation(
-                "📅 PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, preventing duplicate",
+                "📅 PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, preventing duplicate (isRetryPush:{IsRetryPush})",
                 pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
                 timeZoneId,
-                today.ToString("yyyy-MM-dd"));
+                today.ToString("yyyy-MM-dd"),
+                isRetryPush);
             
             State.IncrementPreventedDuplicates();
             
@@ -176,6 +177,9 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return false;
         }
 
+        _logger.LogDebug("✅ Push allowed for token {TokenPrefix} in timezone {TimeZone} (isRetryPush:{IsRetryPush})", 
+            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isRetryPush);
+            
         return true;
     }
 
@@ -194,10 +198,11 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             
             _lastPushDates.AddOrUpdate(dedupeKey, today, (key, oldDate) => today);
             
-            _logger.LogDebug("Marked push sent: token {TokenPrefix} in timezone {TimeZone} on {Date}",
+            _logger.LogInformation("📝 Marked push sent: token {TokenPrefix} in timezone {TimeZone} on {Date} (isRetryPush:{IsRetryPush})",
                 pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
                 timeZoneId, 
-                today.ToString("yyyy-MM-dd"));
+                today.ToString("yyyy-MM-dd"),
+                isRetryPush);
         }
 
         await Task.CompletedTask;
