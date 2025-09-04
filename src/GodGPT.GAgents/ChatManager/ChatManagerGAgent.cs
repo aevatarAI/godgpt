@@ -1637,19 +1637,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
         if (duplicateCount > 0)
         {
-            Logger.LogInformation("🔍 DEVICE DEDUPLICATION: User {UserId} had {RawCount} devices, deduplicated to {FinalCount} devices. Removed {DuplicateCount} duplicate pushTokens", 
-                State.UserId, enabledDevicesRaw.Count, enabledDevices.Count, duplicateCount);
+            Logger.LogDebug("Device deduplication: removed {DuplicateCount} duplicate pushTokens", duplicateCount);
         }
         
-        // Log all final devices for debugging
-        foreach (var device in enabledDevices)
-        {
-            Logger.LogInformation("📱 FINAL DEVICE: User {UserId}, DeviceId {DeviceId}, PushToken {TokenPrefix}...", 
-                State.UserId, device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
-        }
-        
-        Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}. Contents count: {ContentCount}", 
-            enabledDevices.Count, timeZoneId, State.UserId, contents.Count);
+        Logger.LogInformation("Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+            enabledDevices.Count, timeZoneId, State.UserId);
             
         if (enabledDevices.Count == 0)
         {
@@ -1679,22 +1671,21 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
         
-        // Pre-check: Filter devices that haven't received today's push yet
+        // Pre-check: Filter devices that haven't received today's push sequence yet
         var eligibleDevices = new List<UserDeviceInfo>();
         foreach (var device in enabledDevices)
         {
-            // Check if this device (pushToken) can receive daily push
-            var canSendToDevice = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, true); // isFirstContent=true for sequence check
-            if (canSendToDevice)
+            // Check if this device can start a new push sequence today
+            // This checks sequence-level deduplication (not content-level)
+            var canStartSequence = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, true); // isFirstContent=true for sequence check
+            if (canStartSequence)
             {
                 eligibleDevices.Add(device);
-                Logger.LogInformation("📱 DEVICE ELIGIBLE: DeviceId {DeviceId}, PushToken {TokenPrefix}... can receive push sequence", 
-                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+                Logger.LogDebug("Device eligible for push sequence: DeviceId {DeviceId}", device.DeviceId);
             }
             else
             {
-                Logger.LogInformation("📱 DEVICE FILTERED: DeviceId {DeviceId}, PushToken {TokenPrefix}... already received today's push, skipping entire sequence", 
-                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+                Logger.LogDebug("Device filtered - sequence already exists: DeviceId {DeviceId}", device.DeviceId);
             }
         }
         
@@ -1705,8 +1696,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             return;
         }
         
-        Logger.LogInformation("Proceeding with {EligibleCount} eligible devices (filtered from {OriginalCount}) for user {UserId}", 
-            eligibleDevices.Count, enabledDevices.Count, State.UserId);
+        Logger.LogInformation("Proceeding with {EligibleCount} eligible devices for user {UserId}", 
+            eligibleDevices.Count, State.UserId);
         
         // Create separate push notifications for each content to ensure individual callbacks
         var pushTasks = eligibleDevices.SelectMany((device, deviceIndex) =>
@@ -1755,6 +1746,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     };
                     
                     // Use new global JWT architecture with direct HTTP push
+                    // Skip deduplication check since device already passed pre-check
                     var success = await SendDirectPushNotificationAsync(
                         globalJwtProvider,
                         projectId,
@@ -1764,7 +1756,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         pushData,
                         timeZoneId,
                         isRetryPush,
-                        contentIndex == 0); // isFirstContent
+                        contentIndex == 0, // isFirstContent
+                        false, // isTestPush
+                        true); // skipDeduplicationCheck - device already passed pre-check
                     
                     if (success)
                     {
@@ -1939,7 +1933,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         string timeZoneId = "UTC",
         bool isRetryPush = false,
         bool isFirstContent = true,
-        bool isTestPush = false)
+        bool isTestPush = false,
+        bool skipDeduplicationCheck = false)
     {
         try
         {
@@ -1949,8 +1944,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 return false;
             }
 
-            // For test pushes, bypass deduplication entirely
-            if (!isTestPush)
+            // Check deduplication only if not bypassed
+            if (!isTestPush && !skipDeduplicationCheck)
             {
                 // Check global deduplication
                 var canSend = await globalJwtProvider.CanSendPushAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
@@ -2041,8 +2036,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 Logger.LogDebug("Push notification sent successfully: {ResponseContent}", responseContent);
                 
-                // Mark push as sent for deduplication (unless it's a test push)
-                if (!isTestPush)
+                // Mark push as sent for deduplication (unless it's a test push or deduplication was skipped)
+                if (!isTestPush && !skipDeduplicationCheck)
                 {
                     await globalJwtProvider.MarkPushSentAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
                 }
