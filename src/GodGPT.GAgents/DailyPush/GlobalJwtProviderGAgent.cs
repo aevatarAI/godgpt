@@ -31,15 +31,17 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private readonly ILogger<GlobalJwtProviderGAgent> _logger;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     
-    // Global pushToken daily push tracking to prevent same-day duplicates across users
-    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
+    // Global pushToken daily push tracking - STATIC MEMORY for cross-user deduplication
+    // This is NOT stored in Orleans State to ensure immediate consistency across all requests
+    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new(); // ✅ Static in-memory only
     private static int _cleanupCounter = 0;
     
-    // JWT caching and creation control
-    private string? _cachedJwtToken;
-    private DateTime _tokenExpiry = DateTime.MinValue;
-    private volatile Task<string?>? _tokenCreationTask;
-    private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);
+    // JWT caching and creation control - ALL IN MEMORY for zero-latency access
+    // These are NOT stored in Orleans State to avoid any persistence delays
+    private string? _cachedJwtToken;           // ✅ In-memory only
+    private DateTime _tokenExpiry = DateTime.MinValue;  // ✅ In-memory only
+    private volatile Task<string?>? _tokenCreationTask; // ✅ In-memory only
+    private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);  // ✅ In-memory only
     
     // Error handling and retry control
     private DateTime _lastFailureTime = DateTime.MinValue;
@@ -63,14 +65,20 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
     public async Task<string?> GetFirebaseAccessTokenAsync()
     {
+        // Fast path: increment counter without blocking (statistics only)
         State.IncrementTokenRequests();
         
-        // Check cached token first (24-hour cache)
-        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+        // Check cached token first - aggressive optimization: use token until last 30 seconds
+        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
         {
-            _logger.LogDebug("Using cached JWT token (expires at {Expiry})", _tokenExpiry);
+            var remainingTime = _tokenExpiry.Subtract(DateTime.UtcNow);
+            _logger.LogDebug("✅ Using cached JWT token (expires at {Expiry} UTC, current: {CurrentTime} UTC, remaining: {RemainingTime})", 
+                _tokenExpiry, DateTime.UtcNow, remainingTime);
             return _cachedJwtToken;
         }
+        
+        _logger.LogInformation("🔄 JWT token expired or near expiry, creating new token (expired at: {Expiry} UTC, current: {CurrentTime} UTC)", 
+            _tokenExpiry, DateTime.UtcNow);
 
         // Check for failure cooldown period to prevent rapid retries after consecutive failures
         if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
@@ -104,8 +112,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         await _tokenSemaphore.WaitAsync();
         try
         {
-            // Double-check after acquiring lock
-            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+            // Double-check after acquiring lock - consistent with main check
+            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
             {
                 return _cachedJwtToken;
             }
@@ -143,34 +151,59 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             CleanupOldRecords();
         }
 
-        // Timezone-based deduplication: each timezone can have daily pushes independently
+        // Enhanced deduplication: prevent same pushToken from receiving multiple pushes per day
         var dedupeKey = $"{pushToken}:{timeZoneId}";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        // Only check date deduplication for first content of regular daily pushes
-        if (!isRetryPush && isFirstContent && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
+        // CROSS-USER DEDUPLICATION: Only check for first content to prevent duplicate SEQUENCES
+        // Same pushToken should only receive one complete content sequence per day, regardless of user
+        // But allow all contents within the same sequence (isFirstContent=false is allowed)
+        if (!isRetryPush && isFirstContent)
         {
-            _logger.LogInformation(
-                "📅 PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, preventing duplicate",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
-                timeZoneId,
-                today.ToString("yyyy-MM-dd"));
-            
-            State.IncrementPreventedDuplicates();
-            
-            // Log deduplication event for analytics
-            var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
-            RaiseEvent(new DuplicatePreventionEventLog 
-            { 
-                PushTokenPrefix = tokenPrefix,
-                TimeZone = timeZoneId,
-                PreventionDate = today.ToDateTime(TimeOnly.MinValue),
-                PreventionTime = DateTime.UtcNow
-            });
-            
-            return false;
+            // Atomic check-and-set operation to prevent concurrent race conditions
+            // TryAdd returns true if the key was added (not previously present)
+            var wasAdded = _lastPushDates.TryAdd(dedupeKey, today);
+            if (!wasAdded)
+            {
+                _logger.LogInformation(
+                    "📅 SEQUENCE DEDUPLICATION: PushToken {TokenPrefix} in timezone {TimeZone} already received daily push sequence on {Date}, preventing duplicate sequence start (isRetryPush:{IsRetryPush}, isFirstContent:{IsFirstContent})",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
+                    timeZoneId,
+                    today.ToString("yyyy-MM-dd"),
+                    isRetryPush,
+                    isFirstContent);
+                
+                State.IncrementPreventedDuplicates();
+                
+                // Log deduplication event for analytics
+                var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
+                RaiseEvent(new DuplicatePreventionEventLog 
+                { 
+                    PushTokenPrefix = tokenPrefix,
+                    TimeZone = timeZoneId,
+                    PreventionDate = today.ToDateTime(TimeOnly.MinValue),
+                    PreventionTime = DateTime.UtcNow
+                });
+                
+                return false;
+            }
+            else
+            {
+                _logger.LogInformation("✅ SEQUENCE START ALLOWED: token {TokenPrefix} in timezone {TimeZone} (isRetryPush:{IsRetryPush}) - successfully reserved sequence slot", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isRetryPush);
+            }
         }
-
+        else if (!isRetryPush && !isFirstContent)
+        {
+            _logger.LogInformation("✅ CONTENT ALLOWED: token {TokenPrefix} in timezone {TimeZone} (isRetryPush:{IsRetryPush}) - within same sequence, not first content", 
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isRetryPush);
+        }
+        else if (isRetryPush)
+        {
+            _logger.LogInformation("✅ RETRY ALLOWED: token {TokenPrefix} in timezone {TimeZone} (isFirstContent:{IsFirstContent}) - retry push bypasses sequence deduplication", 
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isFirstContent);
+        }
+            
         return true;
     }
 
@@ -181,18 +214,31 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return;
         }
 
-        // Record successful daily push date to prevent same-day duplicates (only for first content of regular daily pushes)
+        // Confirm ONLY first content success (already set in CanSendPushAsync)
+        // This provides confirmation that the sequence start was actually sent successfully
         if (!isRetryPush && isFirstContent)
         {
             var dedupeKey = $"{pushToken}:{timeZoneId}";
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
-            _lastPushDates.AddOrUpdate(dedupeKey, today, (key, oldDate) => today);
-            
-            _logger.LogDebug("Marked push sent: token {TokenPrefix} in timezone {TimeZone} on {Date}",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
-                timeZoneId, 
-                today.ToString("yyyy-MM-dd"));
+            // Verify that the deduplication record exists (should already be set by CanSendPushAsync)
+            if (_lastPushDates.TryGetValue(dedupeKey, out var recordedDate) && recordedDate == today)
+            {
+                _logger.LogInformation("📝 SEQUENCE CONFIRMED: token {TokenPrefix} in timezone {TimeZone} on {Date} - first content sent successfully, sequence protected",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                    timeZoneId, 
+                    today.ToString("yyyy-MM-dd"));
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ DEDUP INCONSISTENCY: token {TokenPrefix} sent successfully but no deduplication record found - this may indicate a race condition",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
+            }
+        }
+        else if (!isRetryPush && !isFirstContent)
+        {
+            _logger.LogInformation("📝 CONTENT CONFIRMED: token {TokenPrefix} in timezone {TimeZone} - additional content in sequence sent successfully",
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
         }
 
         await Task.CompletedTask;
@@ -283,6 +329,9 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         // Cache token with 24-hour expiry (or shorter if specified)
                         var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
                         _tokenExpiry = DateTime.UtcNow.AddHours(expiryHours);
+                        
+                        _logger.LogDebug("🔍 Token expiry calculation: ExpiresIn={ExpiresInSeconds}s, ExpiryHours={ExpiryHours}h, CalculatedExpiry={CalculatedExpiry}", 
+                            tokenResponse.ExpiresIn, expiryHours, _tokenExpiry);
                         _cachedJwtToken = tokenResponse.AccessToken;
                         
                         State.RecordSuccessfulTokenCreation();
@@ -296,7 +345,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         _consecutiveFailures = 0;
                         _lastFailureTime = DateTime.MinValue;
                         
-                        _logger.LogInformation("✅ Global JWT token created successfully, expires at {Expiry}", _tokenExpiry);
+                        _logger.LogInformation("✅ Global JWT token created successfully, expires at {Expiry} UTC (Current: {CurrentTime} UTC)", _tokenExpiry, DateTime.UtcNow);
                         return tokenResponse.AccessToken;
                     }
                     else
@@ -384,7 +433,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var expiry = now.AddHours(1);
+            var expiry = now.AddHours(1); // Maximum allowed by Firebase OAuth (3600 seconds)
 
             var claims = new Dictionary<string, object>
             {
@@ -499,7 +548,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
             if (response.IsSuccessStatusCode)
             {
-                return JsonSerializer.Deserialize<TokenResponse>(responseContent);
+                var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
+                _logger.LogDebug("🔍 Firebase OAuth response: ExpiresIn={ExpiresIn}s, TokenType={TokenType}", 
+                    tokenResponse?.ExpiresIn, tokenResponse?.TokenType);
+                return tokenResponse;
             }
             else
             {

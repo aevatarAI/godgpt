@@ -1637,12 +1637,19 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
         if (duplicateCount > 0)
         {
-            Logger.LogInformation("ProcessDailyPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
-                duplicateCount, State.UserId);
+            Logger.LogInformation("🔍 DEVICE DEDUPLICATION: User {UserId} had {RawCount} devices, deduplicated to {FinalCount} devices. Removed {DuplicateCount} duplicate pushTokens", 
+                State.UserId, enabledDevicesRaw.Count, enabledDevices.Count, duplicateCount);
         }
         
-        Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
-            enabledDevices.Count, timeZoneId, State.UserId);
+        // Log all final devices for debugging
+        foreach (var device in enabledDevices)
+        {
+            Logger.LogInformation("📱 FINAL DEVICE: User {UserId}, DeviceId {DeviceId}, PushToken {TokenPrefix}...", 
+                State.UserId, device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+        }
+        
+        Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}. Contents count: {ContentCount}", 
+            enabledDevices.Count, timeZoneId, State.UserId, contents.Count);
             
         if (enabledDevices.Count == 0)
         {
@@ -1672,8 +1679,37 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
         
+        // Pre-check: Filter devices that haven't received today's push yet
+        var eligibleDevices = new List<UserDeviceInfo>();
+        foreach (var device in enabledDevices)
+        {
+            // Check if this device (pushToken) can receive daily push
+            var canSendToDevice = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, true); // isFirstContent=true for sequence check
+            if (canSendToDevice)
+            {
+                eligibleDevices.Add(device);
+                Logger.LogInformation("📱 DEVICE ELIGIBLE: DeviceId {DeviceId}, PushToken {TokenPrefix}... can receive push sequence", 
+                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+            }
+            else
+            {
+                Logger.LogInformation("📱 DEVICE FILTERED: DeviceId {DeviceId}, PushToken {TokenPrefix}... already received today's push, skipping entire sequence", 
+                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+            }
+        }
+        
+        if (eligibleDevices.Count == 0)
+        {
+            Logger.LogInformation("No eligible devices for daily push after sequence deduplication - User {UserId}, TimeZone {TimeZone}, Original devices: {OriginalCount}", 
+                State.UserId, timeZoneId, enabledDevices.Count);
+            return;
+        }
+        
+        Logger.LogInformation("Proceeding with {EligibleCount} eligible devices (filtered from {OriginalCount}) for user {UserId}", 
+            eligibleDevices.Count, enabledDevices.Count, State.UserId);
+        
         // Create separate push notifications for each content to ensure individual callbacks
-        var pushTasks = enabledDevices.SelectMany((device, deviceIndex) =>
+        var pushTasks = eligibleDevices.SelectMany((device, deviceIndex) =>
         {
             // Send separate push for each content with staggered delay
             return contents.Select(async (content, contentIndex) =>
@@ -1698,8 +1734,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     
                     var localizedContent = content.GetLocalizedContent(device.PushLanguage);
                     
-                    Logger.LogInformation("Selected content {ContentIndex}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
-                        contentIndex + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
+                    Logger.LogInformation("📬 PUSH ATTEMPT: User {UserId}, DeviceId {DeviceId}, Content {ContentIndex}/{Total}, Title '{Title}', ContentId {ContentId}, PushToken {TokenPrefix}...", 
+                        State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title, content.Id, 
+                        device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
                     
                     // Create unique data payload for each content
                     var messageId = Guid.NewGuid();
@@ -1751,6 +1788,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         });
         
         // Execute all push tasks concurrently
+        var totalPushTasks = pushTasks.Count();
+        Logger.LogInformation("ProcessDailyPushAsync: Executing {TotalPushTasks} push tasks for {DeviceCount} devices × {ContentCount} contents", 
+            totalPushTasks, enabledDevices.Count, contents.Count);
+            
         var results = await Task.WhenAll(pushTasks);
         successCount = results.Count(r => r);
         failureCount = results.Count(r => !r);
