@@ -146,21 +146,31 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             CleanupOldRecords();
         }
 
-        // Enhanced deduplication: prevent same pushToken from receiving multiple pushes per day
-        var dedupeKey = $"{pushToken}:{timeZoneId}";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-
-        // CROSS-USER DEDUPLICATION: Only check for first content to prevent duplicate SEQUENCES
-        // Same pushToken should only receive one complete content sequence per day, regardless of user
-        // But allow all contents within the same sequence (isFirstContent=false is allowed)
-        if (!isRetryPush && isFirstContent)
+        
+        // IMPROVED DEDUPLICATION LOGIC:
+        // Use sequence-level deduplication to prevent duplicate content sequences
+        // but allow retry pushes and proper content flow
+        
+        if (isRetryPush)
         {
-            // Atomic check-and-set operation to prevent concurrent race conditions
-            // TryAdd returns true if the key was added (not previously present)
-            var wasAdded = _lastPushDates.TryAdd(dedupeKey, today);
+            // Retry pushes are always allowed - they don't interfere with normal daily pushes
+            _logger.LogDebug("Retry push allowed for timezone {TimeZone}", timeZoneId);
+            return true;
+        }
+
+        // For normal daily pushes, check sequence-level deduplication
+        var sequenceKey = $"{pushToken}:{timeZoneId}";
+        
+        if (isFirstContent)
+        {
+            // For first content, check if sequence has already started today
+            // Use atomic TryAdd to prevent race conditions
+            var wasAdded = _lastPushDates.TryAdd(sequenceKey, today);
             if (!wasAdded)
             {
-                _logger.LogDebug("Push blocked by sequence deduplication for timezone {TimeZone}", timeZoneId);
+                // Sequence already started by another user
+                _logger.LogDebug("Push sequence blocked - already started for timezone {TimeZone}", timeZoneId);
                 
                 State.IncrementPreventedDuplicates();
                 
@@ -178,19 +188,27 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             }
             else
             {
-                _logger.LogDebug("Sequence start allowed for timezone {TimeZone}", timeZoneId);
+                _logger.LogDebug("Push sequence start allowed for timezone {TimeZone}", timeZoneId);
+                return true;
             }
         }
-        else if (!isRetryPush && !isFirstContent)
+        else
         {
-            _logger.LogDebug("Content allowed within sequence for timezone {TimeZone}", timeZoneId);
+            // For subsequent content, check if sequence was started today
+            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
+            {
+                // Sequence exists and is for today - allow content
+                _logger.LogDebug("Content allowed within existing sequence for timezone {TimeZone}", timeZoneId);
+                return true;
+            }
+            else
+            {
+                // No sequence started today - block this content
+                _logger.LogDebug("Content blocked - no sequence started today for timezone {TimeZone}", timeZoneId);
+                State.IncrementPreventedDuplicates();
+                return false;
+            }
         }
-        else if (isRetryPush)
-        {
-            _logger.LogDebug("Retry push allowed for timezone {TimeZone}", timeZoneId);
-        }
-            
-        return true;
     }
 
     public async Task MarkPushSentAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true)
@@ -200,26 +218,39 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return;
         }
 
-        // Confirm ONLY first content success (already set in CanSendPushAsync)
-        // This provides confirmation that the sequence start was actually sent successfully
-        if (!isRetryPush && isFirstContent)
+        // For retry pushes, no deduplication tracking needed
+        if (isRetryPush)
         {
-            var dedupeKey = $"{pushToken}:{timeZoneId}";
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            
-            // Verify that the deduplication record exists (should already be set by CanSendPushAsync)
-            if (_lastPushDates.TryGetValue(dedupeKey, out var recordedDate) && recordedDate == today)
+            _logger.LogDebug("Retry push sent confirmation for timezone {TimeZone}", timeZoneId);
+            return;
+        }
+
+        var sequenceKey = $"{pushToken}:{timeZoneId}";
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        
+        if (isFirstContent)
+        {
+            // Verify that the sequence record exists (should already be set by CanSendPushAsync.TryAdd)
+            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
             {
-                _logger.LogDebug("Sequence confirmed for timezone {TimeZone}", timeZoneId);
+                _logger.LogDebug("First content sent - sequence confirmed for timezone {TimeZone}", timeZoneId);
             }
             else
             {
-                _logger.LogWarning("Deduplication record inconsistency detected for timezone {TimeZone}", timeZoneId);
+                _logger.LogWarning("Sequence record inconsistency detected for timezone {TimeZone}", timeZoneId);
             }
         }
-        else if (!isRetryPush && !isFirstContent)
+        else
         {
-            _logger.LogDebug("Content confirmed for timezone {TimeZone}", timeZoneId);
+            // For subsequent content, just confirm it was sent within an existing sequence
+            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
+            {
+                _logger.LogDebug("Subsequent content sent within sequence for timezone {TimeZone}", timeZoneId);
+            }
+            else
+            {
+                _logger.LogWarning("Content sent without sequence record for timezone {TimeZone}", timeZoneId);
+            }
         }
 
         await Task.CompletedTask;
@@ -580,3 +611,4 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         }
     }
 }
+
