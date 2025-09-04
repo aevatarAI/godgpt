@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -31,17 +32,20 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private readonly ILogger<GlobalJwtProviderGAgent> _logger;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     
-    // Global pushToken daily push tracking - STATIC MEMORY for cross-user deduplication
-    // This is NOT stored in Orleans State to ensure immediate consistency across all requests
-    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new(); // ✅ Static in-memory only
+    // Global pushToken daily push tracking to prevent same-day duplicates across users
+    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
     private static int _cleanupCounter = 0;
     
-    // JWT caching and creation control - ALL IN MEMORY for zero-latency access
-    // These are NOT stored in Orleans State to avoid any persistence delays
-    private string? _cachedJwtToken;           // ✅ In-memory only
-    private DateTime _tokenExpiry = DateTime.MinValue;  // ✅ In-memory only
-    private volatile Task<string?>? _tokenCreationTask; // ✅ In-memory only
-    private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);  // ✅ In-memory only
+    // JWT caching and creation control (instance-level)
+    private string? _cachedJwtToken;
+    private DateTime _tokenExpiry = DateTime.MinValue;
+    private volatile Task<string?>? _tokenCreationTask;
+    private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);
+    
+    // Global JWT creation lock to prevent multiple grain instances from concurrent creation
+    private static readonly SemaphoreSlim _globalJwtLock = new(1, 1);
+    private static string? _globalCachedToken;
+    private static DateTime _globalTokenExpiry = DateTime.MinValue;
     
     // Error handling and retry control
     private DateTime _lastFailureTime = DateTime.MinValue;
@@ -65,18 +69,14 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
     public async Task<string?> GetFirebaseAccessTokenAsync()
     {
-        // Fast path: increment counter without blocking (statistics only)
         State.IncrementTokenRequests();
         
-        // Check cached token first - aggressive optimization: use token until last 30 seconds
-        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
+        // Check global cached token first (pure memory, no State delay)
+        if (!string.IsNullOrEmpty(_globalCachedToken) && DateTime.UtcNow < _globalTokenExpiry.AddMinutes(-5))
         {
-            var remainingTime = _tokenExpiry.Subtract(DateTime.UtcNow);
-            _logger.LogDebug("Using cached JWT token");
-            return _cachedJwtToken;
+            _logger.LogDebug("Using global cached JWT token");
+            return _globalCachedToken;
         }
-        
-        _logger.LogDebug("JWT token expired, creating new token");
 
         // Check for failure cooldown period to prevent rapid retries after consecutive failures
         if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
@@ -85,13 +85,16 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             if (timeSinceLastFailure < FAILURE_COOLDOWN)
             {
                 var remainingCooldown = FAILURE_COOLDOWN - timeSinceLastFailure;
-                _logger.LogWarning("JWT creation in cooldown period due to {FailureCount} consecutive failures", _consecutiveFailures);
+                _logger.LogWarning(
+                    "⏱️ JWT creation in cooldown period due to {FailureCount} consecutive failures. " +
+                    "Remaining cooldown: {RemainingTime:mm\\:ss}. Last failure: {LastFailure}",
+                    _consecutiveFailures, remainingCooldown, _lastFailureTime);
                 return null;
             }
             else
             {
                 // Reset failure count after cooldown period
-                _logger.LogDebug("Cooldown period expired, resetting failure count");
+                _logger.LogInformation("🔄 Cooldown period expired, resetting failure count from {FailureCount} to 0", _consecutiveFailures);
                 _consecutiveFailures = 0;
             }
         }
@@ -107,10 +110,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         await _tokenSemaphore.WaitAsync();
         try
         {
-            // Double-check after acquiring lock - consistent with main check
-            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
+            // Double-check after acquiring lock (use global cache)
+            if (!string.IsNullOrEmpty(_globalCachedToken) && DateTime.UtcNow < _globalTokenExpiry.AddMinutes(-5))
             {
-                return _cachedJwtToken;
+                return _globalCachedToken;
             }
 
             // Check if another thread started creation
@@ -146,69 +149,73 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             CleanupOldRecords();
         }
 
+        // Enhanced deduplication: prevent same pushToken from receiving multiple pushes per day across ALL users
+        var dedupeKey = $"{pushToken}:{timeZoneId}";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        
-        // IMPROVED DEDUPLICATION LOGIC:
-        // Use sequence-level deduplication to prevent duplicate content sequences
-        // but allow retry pushes and proper content flow
-        
-        if (isRetryPush)
-        {
-            // Retry pushes are always allowed - they don't interfere with normal daily pushes
-            _logger.LogDebug("Retry push allowed for timezone {TimeZone}", timeZoneId);
-            return true;
-        }
 
-        // For normal daily pushes, check sequence-level deduplication
-        var sequenceKey = $"{pushToken}:{timeZoneId}";
+        // For non-retry pushes, check if this pushToken already received push today
+        if (!isRetryPush)
+        {
+            if (isFirstContent)
+            {
+                // For first content, use atomic TryAdd to reserve the push slot
+                // TryAdd returns true only if the key was NOT already present
+                var wasReserved = _lastPushDates.TryAdd(dedupeKey, today);
+                if (!wasReserved)
+                {
+                    // Another user/content already reserved this pushToken for today
+                    _logger.LogInformation(
+                        "🚫 CROSS-USER DEDUP: PushToken {TokenPrefix} in timezone {TimeZone} already reserved for daily push on {Date}",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
+                        timeZoneId,
+                        today.ToString("yyyy-MM-dd"));
+                    
+                    State.IncrementPreventedDuplicates();
+                    
+                    // Log deduplication event for analytics
+                    var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
+                    RaiseEvent(new DuplicatePreventionEventLog 
+                    { 
+                        PushTokenPrefix = tokenPrefix,
+                        TimeZone = timeZoneId,
+                        PreventionDate = today.ToDateTime(TimeOnly.MinValue),
+                        PreventionTime = DateTime.UtcNow
+                    });
+                    
+                    return false;
+                }
+                else
+                {
+                    _logger.LogDebug("✅ RESERVATION SUCCESS: PushToken {TokenPrefix} reserved for daily sequence in timezone {TimeZone}",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                    return true;
+                }
+            }
+            else
+            {
+                // For subsequent content, check if the pushToken was reserved today
+                if (_lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
+                {
+                    _logger.LogDebug("✅ CONTENT ALLOWED: PushToken {TokenPrefix} in timezone {TimeZone} within reserved sequence",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                    return true;
+                }
+                else
+                {
+                    // No reservation found - this should not happen unless reservation failed
+                    _logger.LogWarning("🚫 NO RESERVATION: PushToken {TokenPrefix} in timezone {TimeZone} has no daily reservation for content {ContentType}",
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isFirstContent ? "first" : "subsequent");
+                    
+                    State.IncrementPreventedDuplicates();
+                    return false;
+                }
+            }
+        }
         
-        if (isFirstContent)
-        {
-            // For first content, check if sequence has already started today
-            // Use atomic TryAdd to prevent race conditions
-            var wasAdded = _lastPushDates.TryAdd(sequenceKey, today);
-            if (!wasAdded)
-            {
-                // Sequence already started by another user
-                _logger.LogDebug("Push sequence blocked - already started for timezone {TimeZone}", timeZoneId);
-                
-                State.IncrementPreventedDuplicates();
-                
-                // Log deduplication event for analytics
-                var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
-                RaiseEvent(new DuplicatePreventionEventLog 
-                { 
-                    PushTokenPrefix = tokenPrefix,
-                    TimeZone = timeZoneId,
-                    PreventionDate = today.ToDateTime(TimeOnly.MinValue),
-                    PreventionTime = DateTime.UtcNow
-                });
-                
-                return false;
-            }
-            else
-            {
-                _logger.LogDebug("Push sequence start allowed for timezone {TimeZone}", timeZoneId);
-                return true;
-            }
-        }
-        else
-        {
-            // For subsequent content, check if sequence was started today
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
-            {
-                // Sequence exists and is for today - allow content
-                _logger.LogDebug("Content allowed within existing sequence for timezone {TimeZone}", timeZoneId);
-                return true;
-            }
-            else
-            {
-                // No sequence started today - block this content
-                _logger.LogDebug("Content blocked - no sequence started today for timezone {TimeZone}", timeZoneId);
-                State.IncrementPreventedDuplicates();
-                return false;
-            }
-        }
+        // Retry pushes are always allowed
+        _logger.LogDebug("✅ RETRY ALLOWED: PushToken {TokenPrefix} in timezone {TimeZone} (retry push bypasses deduplication)",
+            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+        return true;
     }
 
     public async Task MarkPushSentAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true)
@@ -218,39 +225,30 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return;
         }
 
-        // For retry pushes, no deduplication tracking needed
-        if (isRetryPush)
+        // Confirm push sent - reservation was already made in CanSendPushAsync
+        if (!isRetryPush)
         {
-            _logger.LogDebug("Retry push sent confirmation for timezone {TimeZone}", timeZoneId);
-            return;
-        }
-
-        var sequenceKey = $"{pushToken}:{timeZoneId}";
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        
-        if (isFirstContent)
-        {
-            // Verify that the sequence record exists (should already be set by CanSendPushAsync.TryAdd)
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
+            var dedupeKey = $"{pushToken}:{timeZoneId}";
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            
+            // Verify that the reservation exists (should have been made in CanSendPushAsync)
+            if (_lastPushDates.TryGetValue(dedupeKey, out var reservedDate) && reservedDate == today)
             {
-                _logger.LogDebug("First content sent - sequence confirmed for timezone {TimeZone}", timeZoneId);
+                _logger.LogDebug("✅ PUSH CONFIRMED: token {TokenPrefix} in timezone {TimeZone} successfully sent (content: {ContentType})",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                    timeZoneId, 
+                    isFirstContent ? "first" : "subsequent");
             }
             else
             {
-                _logger.LogWarning("Sequence record inconsistency detected for timezone {TimeZone}", timeZoneId);
+                _logger.LogWarning("⚠️ RESERVATION MISMATCH: token {TokenPrefix} sent but no reservation found - possible race condition",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
             }
         }
         else
         {
-            // For subsequent content, just confirm it was sent within an existing sequence
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
-            {
-                _logger.LogDebug("Subsequent content sent within sequence for timezone {TimeZone}", timeZoneId);
-            }
-            else
-            {
-                _logger.LogWarning("Content sent without sequence record for timezone {TimeZone}", timeZoneId);
-            }
+            _logger.LogDebug("✅ RETRY CONFIRMED: token {TokenPrefix} in timezone {TimeZone} retry push sent",
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
         }
 
         await Task.CompletedTask;
@@ -276,6 +274,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     public async Task RefreshTokenAsync()
     {
         _logger.LogInformation("Force refreshing JWT token");
+        
+        // Clear both global and instance cache
+        _globalCachedToken = null;
+        _globalTokenExpiry = DateTime.MinValue;
         _cachedJwtToken = null;
         _tokenExpiry = DateTime.MinValue;
         _tokenCreationTask = null;
@@ -342,8 +344,12 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
                         _tokenExpiry = DateTime.UtcNow.AddHours(expiryHours);
                         
-                        _logger.LogDebug("Token expiry calculated: expires in {ExpiresInSeconds}s", tokenResponse.ExpiresIn);
+                        // Update both global (primary) and instance (backup) cache
+                        _globalTokenExpiry = _tokenExpiry;
+                        _globalCachedToken = tokenResponse.AccessToken;
                         _cachedJwtToken = tokenResponse.AccessToken;
+                        
+                        _logger.LogDebug("Token cached globally with {ExpiryHours}h expiry", expiryHours);
                         
                         State.RecordSuccessfulTokenCreation();
                         RaiseEvent(new TokenCreationSuccessEventLog 
@@ -423,17 +429,14 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         _lastFailureTime = DateTime.UtcNow;
         
         // Clear invalid cached state to force fresh attempt after cooldown
+        _globalCachedToken = null;
+        _globalTokenExpiry = DateTime.MinValue;
         _cachedJwtToken = null;
         _tokenExpiry = DateTime.MinValue;
         
         _logger.LogError(
-            "🔥 JWT creation failed. Consecutive failures: {FailureCount}/{MaxFailures}. " +
-            "Next attempt blocked until: {CooldownEnd}",
-            _consecutiveFailures,
-            MAX_CONSECUTIVE_FAILURES,
-            _consecutiveFailures >= MAX_CONSECUTIVE_FAILURES 
-                ? (_lastFailureTime + FAILURE_COOLDOWN).ToString("HH:mm:ss")
-                : "immediate");
+            "JWT creation failed after {FailureCount} consecutive failures. Next attempt blocked until cooldown expires",
+            _consecutiveFailures);
     }
 
     /// <summary>
@@ -444,7 +447,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var expiry = now.AddHours(1); // Maximum allowed by Firebase OAuth (3600 seconds)
+            var expiry = now.AddHours(1);
 
             var claims = new Dictionary<string, object>
             {
@@ -466,29 +469,33 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Simple and direct RSA lifecycle management - complete all JWT operations within using block
-            using (var rsa = RSA.Create())
+            // FIXED: Create JWT with proper RSA lifecycle management and immediate signing
+            // The key is to complete ALL operations (including signing) within the using block
+            using var rsa = RSA.Create();
+            rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+            
+            // Create security key and credentials within RSA scope
+            var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
+            var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
+            
+            // Create and immediately sign the token within RSA lifetime
+            var tokenDescriptor = new SecurityTokenDescriptor
             {
-                rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
-                
-                // Create security key and signing credentials
-                var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
-                var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
-
-                // Create token descriptor with claims and signing credentials  
-                var tokenDescriptor = new SecurityTokenDescriptor
-                {
-                    Claims = claims,
-                    SigningCredentials = signingCredentials
-                };
-
-                // Create and sign token - all operations completed within RSA lifetime
-                var tokenHandler = new JwtSecurityTokenHandler();
-                var token = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
-                
-                // Return signed token string - RSA object remains valid throughout entire process
-                return tokenHandler.WriteToken(token);
-            }
+                Claims = claims,
+                SigningCredentials = signingCredentials,
+                NotBefore = DateTime.UtcNow,
+                Expires = expiry.DateTime,
+                Issuer = serviceAccount.ClientEmail,
+                Audience = "https://oauth2.googleapis.com/token"
+            };
+            
+            var tokenHandler = new JwtSecurityTokenHandler();
+            
+            // Complete token creation and signing within RSA using block
+            var securityToken = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
+            var tokenString = tokenHandler.WriteToken(securityToken);
+            
+            return tokenString;
         }
         catch (Exception ex)
         {
@@ -611,4 +618,3 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         }
     }
 }
-
