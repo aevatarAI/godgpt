@@ -65,12 +65,17 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     {
         State.IncrementTokenRequests();
         
-        // Check cached token first (24-hour cache)
-        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+        // Check cached token first (24-hour cache) - reduced buffer time to extend usable period
+        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-2))
         {
-            _logger.LogDebug("Using cached JWT token (expires at {Expiry} UTC, current: {CurrentTime} UTC)", _tokenExpiry, DateTime.UtcNow);
+            var remainingTime = _tokenExpiry.Subtract(DateTime.UtcNow);
+            _logger.LogDebug("✅ Using cached JWT token (expires at {Expiry} UTC, current: {CurrentTime} UTC, remaining: {RemainingTime})", 
+                _tokenExpiry, DateTime.UtcNow, remainingTime);
             return _cachedJwtToken;
         }
+        
+        _logger.LogInformation("🔄 JWT token expired or near expiry, creating new token (expired at: {Expiry} UTC, current: {CurrentTime} UTC)", 
+            _tokenExpiry, DateTime.UtcNow);
 
         // Check for failure cooldown period to prevent rapid retries after consecutive failures
         if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
@@ -104,8 +109,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         await _tokenSemaphore.WaitAsync();
         try
         {
-            // Double-check after acquiring lock
-            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+            // Double-check after acquiring lock - consistent with main check
+            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-2))
             {
                 return _cachedJwtToken;
             }
@@ -387,7 +392,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         try
         {
             var now = DateTimeOffset.UtcNow;
-            var expiry = now.AddHours(1);
+            var expiry = now.AddHours(2); // Extended JWT validity to reduce recreation frequency
 
             var claims = new Dictionary<string, object>
             {
