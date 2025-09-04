@@ -31,15 +31,17 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private readonly ILogger<GlobalJwtProviderGAgent> _logger;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     
-    // Global pushToken daily push tracking to prevent same-day duplicates across users
-    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
+    // Global pushToken daily push tracking - STATIC MEMORY for cross-user deduplication
+    // This is NOT stored in Orleans State to ensure immediate consistency across all requests
+    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new(); // ✅ Static in-memory only
     private static int _cleanupCounter = 0;
     
-    // JWT caching and creation control
-    private string? _cachedJwtToken;
-    private DateTime _tokenExpiry = DateTime.MinValue;
-    private volatile Task<string?>? _tokenCreationTask;
-    private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);
+    // JWT caching and creation control - ALL IN MEMORY for zero-latency access
+    // These are NOT stored in Orleans State to avoid any persistence delays
+    private string? _cachedJwtToken;           // ✅ In-memory only
+    private DateTime _tokenExpiry = DateTime.MinValue;  // ✅ In-memory only
+    private volatile Task<string?>? _tokenCreationTask; // ✅ In-memory only
+    private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);  // ✅ In-memory only
     
     // Error handling and retry control
     private DateTime _lastFailureTime = DateTime.MinValue;
@@ -63,6 +65,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
     public async Task<string?> GetFirebaseAccessTokenAsync()
     {
+        // Fast path: increment counter without blocking (statistics only)
         State.IncrementTokenRequests();
         
         // Check cached token first - aggressive optimization: use token until last 30 seconds
