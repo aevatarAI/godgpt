@@ -1588,7 +1588,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
     }
 
-    public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false)
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         
@@ -1713,8 +1713,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         ["device_id"] = device.DeviceId,
                         ["total_contents"] = contents.Count,
                         ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
-                        ["is_retry"] = isRetryPush, // Add retry push identification
-                        ["is_test_push"] = isTestPush // Add test push identification for manual triggers
+                        ["is_retry"] = isRetryPush // Add retry push identification
                     };
                     
                     // Use new global JWT architecture with direct HTTP push
@@ -1884,102 +1883,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
     }
 
-    /// <summary>
-    /// Send test push notification to all enabled devices
-    /// Bypasses all business logic restrictions (read status, deduplication, etc.)
-    /// </summary>
-    public async Task<int> SendTestPushNotificationAsync(string title, string content, Dictionary<string, object> customData)
-    {
-        Logger.LogInformation("Sending test push notification to user {UserId}: '{Title}'", State.UserId, title);
-
-        // Get all enabled devices (bypass timezone filtering for test)
-        var enabledDevices = State.UserDevices.Values
-            .Where(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken))
-            .ToList();
-
-        if (enabledDevices.Count == 0)
-        {
-            Logger.LogInformation("No enabled devices found for user {UserId}", State.UserId);
-            return 0;
-        }
-
-        Logger.LogInformation("Found {DeviceCount} enabled devices for user {UserId}", enabledDevices.Count, State.UserId);
-
-        // Get Global JWT Provider (new architecture - single instance for entire system)
-        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
-        
-        // Get Firebase project configuration via FirebaseService
-        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
-        if (firebaseService == null)
-        {
-            Logger.LogError("FirebaseService not available for test push notifications");
-            return 0;
-        }
-        
-        var projectId = firebaseService.ProjectId;
-        if (string.IsNullOrEmpty(projectId))
-        {
-            Logger.LogError("Firebase ProjectId not configured in FirebaseService for test push notifications");
-            return 0;
-        }
-
-        var successCount = 0;
-        var failureCount = 0;
-
-        // Send push to each device with random delay to avoid concurrency issues
-        var pushTasks = enabledDevices.Select(async (device, index) =>
-        {
-            try
-            {
-                // Add random delay to reduce concurrent JWT requests (50-500ms per device)
-                var delay = Random.Shared.Next(50, 500) + (index * 100); // Staggered delay
-                await Task.Delay(delay);
-                
-                Logger.LogDebug("Sending test push to device {DeviceId} after {Delay}ms delay", device.DeviceId, delay);
-
-                // Use new global JWT architecture with direct HTTP push (test pushes bypass deduplication)
-                var success = await SendDirectPushNotificationAsync(
-                    globalJwtProvider,
-                    projectId,
-                    device.PushToken,
-                    title,
-                    content,
-                    customData,
-                    "UTC", // Test pushes don't have specific timezone  
-                    false, // isRetryPush = false
-                    true, // isFirstContent = true
-                    true); // isTestPush = true (bypass deduplication)
-
-                if (success)
-                {
-                    Logger.LogDebug("Test push sent successfully to device {DeviceId}", device.DeviceId);
-                    return true;
-                }
-                else
-                {
-                    Logger.LogWarning("Failed to send test push to device {DeviceId}", device.DeviceId);
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error sending test push to device {DeviceId}", device.DeviceId);
-                return false;
-            }
-        });
-
-        // Execute all push tasks concurrently
-        var results = await Task.WhenAll(pushTasks);
-        
-        successCount = results.Count(r => r);
-        failureCount = results.Count(r => !r);
-
-        Logger.LogInformation(
-            "Test push completed for user {UserId}: {SuccessCount} successful, {FailureCount} failed",
-            State.UserId, successCount, failureCount);
-
-        return successCount;
-    }
 
     /// <summary>
     /// Send push notification directly to Firebase FCM API using Global JWT Provider
@@ -1994,8 +1897,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         Dictionary<string, object>? data = null,
         string timeZoneId = "UTC",
         bool isRetryPush = false,
-        bool isFirstContent = true,
-        bool isTestPush = false)
+        bool isFirstContent = true)
     {
         try
         {
@@ -2005,17 +1907,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 return false;
             }
 
-            // For test pushes, bypass deduplication entirely
-            if (!isTestPush)
+            // Check global deduplication
+            var canSend = await globalJwtProvider.CanSendPushAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
+            if (!canSend)
             {
-                // Check global deduplication
-                var canSend = await globalJwtProvider.CanSendPushAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
-                if (!canSend)
-                {
-                    Logger.LogInformation("Push blocked by global deduplication: token {TokenPrefix}, timezone {TimeZone}", 
-                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-                    return false;
-                }
+                Logger.LogInformation("Push blocked by global deduplication: token {TokenPrefix}, timezone {TimeZone}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                return false;
             }
 
             // Get JWT access token from global provider
@@ -2097,11 +1995,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 Logger.LogDebug("Push notification sent successfully: {ResponseContent}", responseContent);
                 
-                // Mark push as sent for deduplication (unless it's a test push)
-                if (!isTestPush)
-                {
-                    await globalJwtProvider.MarkPushSentAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
-                }
+                // Mark push as sent for deduplication
+                await globalJwtProvider.MarkPushSentAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
                 
                 return true;
             }
