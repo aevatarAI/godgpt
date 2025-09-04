@@ -68,7 +68,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         // Check cached token first (24-hour cache)
         if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
         {
-            _logger.LogDebug("Using cached JWT token (expires at {Expiry} UTC, current: {CurrentTime} UTC)", _tokenExpiry, DateTime.UtcNow);
+            _logger.LogDebug("Using cached JWT token");
             return _cachedJwtToken;
         }
 
@@ -284,8 +284,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
                         _tokenExpiry = DateTime.UtcNow.AddHours(expiryHours);
                         
-                        _logger.LogDebug("🔍 Token expiry calculation: ExpiresIn={ExpiresInSeconds}s, ExpiryHours={ExpiryHours}h, CalculatedExpiry={CalculatedExpiry}", 
-                            tokenResponse.ExpiresIn, expiryHours, _tokenExpiry);
+                        _logger.LogDebug("Token calculated with {ExpiryHours}h expiry", expiryHours);
                         _cachedJwtToken = tokenResponse.AccessToken;
                         
                         State.RecordSuccessfulTokenCreation();
@@ -299,7 +298,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         _consecutiveFailures = 0;
                         _lastFailureTime = DateTime.MinValue;
                         
-                        _logger.LogInformation("✅ Global JWT token created successfully, expires at {Expiry} UTC (Current: {CurrentTime} UTC)", _tokenExpiry, DateTime.UtcNow);
+                        _logger.LogInformation("Global JWT token created successfully");
                         return tokenResponse.AccessToken;
                     }
                     else
@@ -370,13 +369,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         _tokenExpiry = DateTime.MinValue;
         
         _logger.LogError(
-            "🔥 JWT creation failed. Consecutive failures: {FailureCount}/{MaxFailures}. " +
-            "Next attempt blocked until: {CooldownEnd}",
-            _consecutiveFailures,
-            MAX_CONSECUTIVE_FAILURES,
-            _consecutiveFailures >= MAX_CONSECUTIVE_FAILURES 
-                ? (_lastFailureTime + FAILURE_COOLDOWN).ToString("HH:mm:ss")
-                : "immediate");
+            "JWT creation failed after {FailureCount} consecutive failures. Next attempt blocked until cooldown expires",
+            _consecutiveFailures);
     }
 
     /// <summary>
@@ -503,8 +497,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             if (response.IsSuccessStatusCode)
             {
                 var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
-                _logger.LogDebug("🔍 Firebase OAuth response: ExpiresIn={ExpiresIn}s, TokenType={TokenType}", 
-                    tokenResponse?.ExpiresIn, tokenResponse?.TokenType);
+                _logger.LogDebug("Firebase OAuth response received");
                 return tokenResponse;
             }
             else
@@ -544,8 +537,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
             if (removedCount > 0)
             {
-                _logger.LogDebug("🧹 Cleaned up {RemovedCount} old push records (older than {CutoffDate})", 
-                    removedCount, cutoffDate.ToString("yyyy-MM-dd"));
+                _logger.LogDebug("Cleaned up {RemovedCount} old push records", removedCount);
             }
 
             State.RecordCleanup();

@@ -81,7 +81,7 @@ public interface IChatManagerGAgent : IGAgent
     /// <summary>
     /// Process daily push for this user (called by timezone scheduler)
     /// </summary>
-    Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false);
+    Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false);
     
     /// <summary>
     /// Check if user should receive afternoon retry push
@@ -98,13 +98,4 @@ public interface IChatManagerGAgent : IGAgent
     /// </summary>
     Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
     
-    /// <summary>
-    /// Send test push notification to all enabled devices
-    /// Bypasses all business logic restrictions (read status, deduplication, etc.)
-    /// </summary>
-    /// <param name="title">Custom push title</param>
-    /// <param name="content">Custom push content</param>
-    /// <param name="customData">Custom push data payload</param>
-    /// <returns>Number of devices that received the push notification</returns>
-    Task<int> SendTestPushNotificationAsync(string title, string content, Dictionary<string, object> customData);
 }
