@@ -155,35 +155,54 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         var dedupeKey = $"{pushToken}:{timeZoneId}";
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-        // CROSS-USER DEDUPLICATION: Check ALL pushes to prevent duplicate content delivery
-        // Same pushToken should only receive content once per day, regardless of user or content index
-        if (!isRetryPush && _lastPushDates.TryGetValue(dedupeKey, out var lastPushDate) && lastPushDate == today)
+        // CROSS-USER DEDUPLICATION: Only check for first content to prevent duplicate SEQUENCES
+        // Same pushToken should only receive one complete content sequence per day, regardless of user
+        // But allow all contents within the same sequence (isFirstContent=false is allowed)
+        if (!isRetryPush && isFirstContent)
         {
-            _logger.LogInformation(
-                "📅 CROSS-USER DEDUPLICATION: PushToken {TokenPrefix} in timezone {TimeZone} already received daily push on {Date}, preventing duplicate (isRetryPush:{IsRetryPush}, isFirstContent:{IsFirstContent})",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
-                timeZoneId,
-                today.ToString("yyyy-MM-dd"),
-                isRetryPush,
-                isFirstContent);
-            
-            State.IncrementPreventedDuplicates();
-            
-            // Log deduplication event for analytics
-            var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
-            RaiseEvent(new DuplicatePreventionEventLog 
-            { 
-                PushTokenPrefix = tokenPrefix,
-                TimeZone = timeZoneId,
-                PreventionDate = today.ToDateTime(TimeOnly.MinValue),
-                PreventionTime = DateTime.UtcNow
-            });
-            
-            return false;
+            // Atomic check-and-set operation to prevent concurrent race conditions
+            // TryAdd returns true if the key was added (not previously present)
+            var wasAdded = _lastPushDates.TryAdd(dedupeKey, today);
+            if (!wasAdded)
+            {
+                _logger.LogInformation(
+                    "📅 SEQUENCE DEDUPLICATION: PushToken {TokenPrefix} in timezone {TimeZone} already received daily push sequence on {Date}, preventing duplicate sequence start (isRetryPush:{IsRetryPush}, isFirstContent:{IsFirstContent})",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
+                    timeZoneId,
+                    today.ToString("yyyy-MM-dd"),
+                    isRetryPush,
+                    isFirstContent);
+                
+                State.IncrementPreventedDuplicates();
+                
+                // Log deduplication event for analytics
+                var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
+                RaiseEvent(new DuplicatePreventionEventLog 
+                { 
+                    PushTokenPrefix = tokenPrefix,
+                    TimeZone = timeZoneId,
+                    PreventionDate = today.ToDateTime(TimeOnly.MinValue),
+                    PreventionTime = DateTime.UtcNow
+                });
+                
+                return false;
+            }
+            else
+            {
+                _logger.LogInformation("✅ SEQUENCE START ALLOWED: token {TokenPrefix} in timezone {TimeZone} (isRetryPush:{IsRetryPush}) - successfully reserved sequence slot", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isRetryPush);
+            }
         }
-
-        _logger.LogInformation("✅ PUSH ALLOWED: token {TokenPrefix} in timezone {TimeZone} (isRetryPush:{IsRetryPush}, isFirstContent:{IsFirstContent}) - no previous record found", 
-            pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isRetryPush, isFirstContent);
+        else if (!isRetryPush && !isFirstContent)
+        {
+            _logger.LogInformation("✅ CONTENT ALLOWED: token {TokenPrefix} in timezone {TimeZone} (isRetryPush:{IsRetryPush}) - within same sequence, not first content", 
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isRetryPush);
+        }
+        else if (isRetryPush)
+        {
+            _logger.LogInformation("✅ RETRY ALLOWED: token {TokenPrefix} in timezone {TimeZone} (isFirstContent:{IsFirstContent}) - retry push bypasses sequence deduplication", 
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId, isFirstContent);
+        }
             
         return true;
     }
@@ -195,21 +214,31 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return;
         }
 
-        // Record ALL successful daily pushes to prevent same-day duplicates
-        // This ensures cross-user deduplication works correctly
-        if (!isRetryPush)
+        // Confirm ONLY first content success (already set in CanSendPushAsync)
+        // This provides confirmation that the sequence start was actually sent successfully
+        if (!isRetryPush && isFirstContent)
         {
             var dedupeKey = $"{pushToken}:{timeZoneId}";
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
-            _lastPushDates.AddOrUpdate(dedupeKey, today, (key, oldDate) => today);
-            
-            _logger.LogInformation("📝 RECORDING DEDUP: token {TokenPrefix} in timezone {TimeZone} on {Date} (isRetryPush:{IsRetryPush}, isFirstContent:{IsFirstContent}) - will block future pushes",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
-                timeZoneId, 
-                today.ToString("yyyy-MM-dd"),
-                isRetryPush,
-                isFirstContent);
+            // Verify that the deduplication record exists (should already be set by CanSendPushAsync)
+            if (_lastPushDates.TryGetValue(dedupeKey, out var recordedDate) && recordedDate == today)
+            {
+                _logger.LogInformation("📝 SEQUENCE CONFIRMED: token {TokenPrefix} in timezone {TimeZone} on {Date} - first content sent successfully, sequence protected",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", 
+                    timeZoneId, 
+                    today.ToString("yyyy-MM-dd"));
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ DEDUP INCONSISTENCY: token {TokenPrefix} sent successfully but no deduplication record found - this may indicate a race condition",
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
+            }
+        }
+        else if (!isRetryPush && !isFirstContent)
+        {
+            _logger.LogInformation("📝 CONTENT CONFIRMED: token {TokenPrefix} in timezone {TimeZone} - additional content in sequence sent successfully",
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
         }
 
         await Task.CompletedTask;
