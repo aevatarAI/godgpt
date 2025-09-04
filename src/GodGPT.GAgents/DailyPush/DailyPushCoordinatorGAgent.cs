@@ -861,9 +861,8 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 // Check if user has enabled devices in this timezone
                 if (await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId))
                 {
-                    // For manual triggers, treat as test push to bypass deduplication
                     await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId,
-                        bypassReadStatusCheck: isManualTrigger, isTestPush: isManualTrigger);
+                        bypassReadStatusCheck: isManualTrigger);
                     Interlocked.Increment(ref processedCount);
                 }
             }
@@ -900,10 +899,8 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
                 if (await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId) &&
                     (isManualTrigger || await chatManagerGAgent.ShouldSendAfternoonRetryAsync(targetDate)))
                 {
-                    // For manual triggers, treat as test push to bypass deduplication
                     await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId,
-                        bypassReadStatusCheck: isManualTrigger, isRetryPush: !isManualTrigger,
-                        isTestPush: isManualTrigger);
+                        bypassReadStatusCheck: isManualTrigger, isRetryPush: !isManualTrigger);
                     Interlocked.Increment(ref retryCount);
                 }
             }
