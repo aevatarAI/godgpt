@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -35,11 +36,16 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
     private static int _cleanupCounter = 0;
     
-    // JWT caching and creation control
+    // JWT caching and creation control (instance-level)
     private string? _cachedJwtToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
     private volatile Task<string?>? _tokenCreationTask;
     private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);
+    
+    // Global JWT creation lock to prevent multiple grain instances from concurrent creation
+    private static readonly SemaphoreSlim _globalJwtLock = new(1, 1);
+    private static string? _globalCachedToken;
+    private static DateTime _globalTokenExpiry = DateTime.MinValue;
     
     // Error handling and retry control
     private DateTime _lastFailureTime = DateTime.MinValue;
@@ -403,28 +409,33 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Fix RSA lifecycle issue: don't use using statement to prevent premature disposal
-            // Let .NET garbage collector handle RSA cleanup naturally
-            var rsa = RSA.Create();
+            // FIXED: Create JWT with proper RSA lifecycle management and immediate signing
+            // The key is to complete ALL operations (including signing) within the using block
+            using var rsa = RSA.Create();
             rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
             
-            // Create security key and signing credentials with proper RSA lifecycle
+            // Create security key and credentials within RSA scope
             var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
             var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
-
-            // Create token descriptor with claims and signing credentials  
+            
+            // Create and immediately sign the token within RSA lifetime
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Claims = claims,
-                SigningCredentials = signingCredentials
+                SigningCredentials = signingCredentials,
+                NotBefore = DateTime.UtcNow,
+                Expires = expiry.DateTime,
+                Issuer = serviceAccount.ClientEmail,
+                Audience = "https://oauth2.googleapis.com/token"
             };
-
-            // Create and sign token - RSA object will be garbage collected naturally
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var token = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
             
-            // Return signed token string
-            return tokenHandler.WriteToken(token);
+            var tokenHandler = new JwtSecurityTokenHandler();
+            
+            // Complete token creation and signing within RSA using block
+            var securityToken = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
+            var tokenString = tokenHandler.WriteToken(securityToken);
+            
+            return tokenString;
         }
         catch (Exception ex)
         {
