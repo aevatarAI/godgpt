@@ -65,8 +65,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     {
         State.IncrementTokenRequests();
         
-        // Check cached token first - minimal buffer time for maximum usage (Firebase max: 1 hour)
-        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
+        // Check cached token first - aggressive optimization: use token until last 30 seconds
+        if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
         {
             var remainingTime = _tokenExpiry.Subtract(DateTime.UtcNow);
             _logger.LogDebug("✅ Using cached JWT token (expires at {Expiry} UTC, current: {CurrentTime} UTC, remaining: {RemainingTime})", 
@@ -110,7 +110,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         try
         {
             // Double-check after acquiring lock - consistent with main check
-            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
+            if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
             {
                 return _cachedJwtToken;
             }
