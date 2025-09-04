@@ -1641,8 +1641,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 duplicateCount, State.UserId);
         }
         
-        Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
-            enabledDevices.Count, timeZoneId, State.UserId);
+        Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}. Contents count: {ContentCount}", 
+            enabledDevices.Count, timeZoneId, State.UserId, contents.Count);
             
         if (enabledDevices.Count == 0)
         {
@@ -1751,6 +1751,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         });
         
         // Execute all push tasks concurrently
+        var totalPushTasks = pushTasks.Count();
+        Logger.LogInformation("ProcessDailyPushAsync: Executing {TotalPushTasks} push tasks for {DeviceCount} devices × {ContentCount} contents", 
+            totalPushTasks, enabledDevices.Count, contents.Count);
+            
         var results = await Task.WhenAll(pushTasks);
         successCount = results.Count(r => r);
         failureCount = results.Count(r => !r);
