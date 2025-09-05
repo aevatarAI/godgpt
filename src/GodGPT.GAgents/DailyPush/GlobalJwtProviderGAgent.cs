@@ -249,75 +249,55 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return true;
         }
 
-        // DUAL-LAYER LOCAL-TIME-BASED DEDUPLICATION: Prevent duplicates at both device and token level
-        // This handles two scenarios:
-        // 1. Same deviceId with different pushTokens (multiple users on one device)
-        // 2. Different deviceIds with same pushToken (one token used on multiple devices)
+        // DEVICE-BASED DAILY DEDUPLICATION: One push per device per day
         // 
-        // Key design: Use LOCAL date + fixed hour (8) for deduplication
-        // This allows device to receive push again if timezone changes
+        // New requirements:
+        // 1. Same deviceId only receives push once per day at 8AM (regardless of timezone changes)
+        // 2. 15PM retry pushes are allowed (bypass deduplication)
+        // 3. No timezone switching - once pushed on a UTC date, no more pushes that day
         
-        // Convert UTC to device's local timezone for proper deduplication
-        TimeZoneInfo deviceTimeZone;
-        try
-        {
-            deviceTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-        }
-        catch (Exception)
-        {
-            // Fallback to UTC if timezone is invalid
-            deviceTimeZone = TimeZoneInfo.Utc;
-            _logger.LogWarning("Invalid timezone {TimeZone}, falling back to UTC for deduplication", timeZoneId);
-        }
+        var deviceKey = !string.IsNullOrEmpty(deviceId) ? $"device:{deviceId}:{todayUtc:yyyy-MM-dd}" : null;
+        var tokenKey = $"token:{pushToken}:{todayUtc:yyyy-MM-dd}"; // Fallback for devices without deviceId
         
-        var localTime = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, deviceTimeZone);
-        var localDate = localTime.Date;
-        const int pushHour = 8; // Fixed daily push hour
-        
-        var deviceKey = !string.IsNullOrEmpty(deviceId) ? $"device:{deviceId}:{localDate:yyyy-MM-dd}:{pushHour:D2}:{timeZoneId}" : null;
-        var tokenKey = $"token:{pushToken}:{todayUtc:yyyy-MM-dd}:{currentUtcHour:D2}"; // Keep token key UTC-based
-        
-        // Check deviceId-based deduplication first (if deviceId provided)
+        // PRIORITY-BASED DEDUPLICATION: Use deviceId if available, fallback to pushToken
         if (!string.IsNullOrEmpty(deviceId))
         {
-            // ATOMIC CHECK-AND-SET: Use ConcurrentDictionary.TryAdd for true atomicity
-            var deviceAdded = _lastPushDates.TryAdd(deviceKey, todayUtc);
+            // PRIMARY: DeviceId-based deduplication when available
+            var deviceAdded = _lastPushDates.TryAdd(deviceKey!, todayUtc);
             if (!deviceAdded)
             {
-                _logger.LogInformation("Push BLOCKED - device already received push at LOCAL {LocalDate} {PushHour}:00: deviceId {DeviceId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
-                    localDate.ToString("yyyy-MM-dd"), pushHour.ToString("D2"), 
-                    deviceId, pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                _logger.LogInformation("Push BLOCKED - device already received daily push: deviceId {DeviceId}, date {Date}, pushToken {TokenPrefix}", 
+                    deviceId, todayUtc.ToString("yyyy-MM-dd"), 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
                 
                 Interlocked.Increment(ref _preventedDuplicates);
-                
                 return false;
             }
+            
+            // Device check passed - allow push
+            _logger.LogInformation("Push CLAIMED - daily push reserved: deviceId {DeviceId}, date {Date}, pushToken {TokenPrefix}", 
+                deviceId, todayUtc.ToString("yyyy-MM-dd"),
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
+            return true;
         }
-        
-        // Check pushToken-based deduplication second
-        var tokenAdded = _lastPushDates.TryAdd(tokenKey, todayUtc);
-        if (!tokenAdded)
+        else
         {
-            // If device check passed but token check failed, we need to remove the device entry to maintain consistency
-            if (!string.IsNullOrEmpty(deviceId))
+            // FALLBACK: PushToken-based deduplication when deviceId is not available
+            var tokenAdded = _lastPushDates.TryAdd(tokenKey, todayUtc);
+            if (!tokenAdded)
             {
-                _lastPushDates.TryRemove(deviceKey, out _);
+                _logger.LogInformation("Push BLOCKED - pushToken already received daily push: pushToken {TokenPrefix}, date {Date}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", todayUtc.ToString("yyyy-MM-dd"));
+                
+                Interlocked.Increment(ref _preventedDuplicates);
+                return false;
             }
             
-            _logger.LogInformation("Push BLOCKED - pushToken already received push at UTC {UtcDate} {UtcHour}:00: deviceId {DeviceId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
-                todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"), 
-                deviceId ?? "N/A", pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-            
-            Interlocked.Increment(ref _preventedDuplicates);
-            
-            return false;
+            // Token check passed
+            _logger.LogInformation("Push CLAIMED - daily push reserved: pushToken {TokenPrefix}, date {Date}",
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", todayUtc.ToString("yyyy-MM-dd"));
+            return true;
         }
-        
-        // Both checks passed - successfully claimed both device and token for this push window
-        _logger.LogInformation("Push CLAIMED - sequence reserved for LOCAL {LocalDate} {PushHour}:00: deviceId {DeviceId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
-            localDate.ToString("yyyy-MM-dd"), pushHour.ToString("D2"),
-            deviceId ?? "N/A", pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-        return true;
     }
 
     public async Task MarkPushSentAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true)
@@ -330,36 +310,20 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         // For retry pushes, no deduplication tracking needed
         if (isRetryPush)
         {
-            _logger.LogDebug("Retry push sent confirmation for timezone {TimeZone}", timeZoneId);
+            _logger.LogDebug("Retry push sent confirmation - no tracking needed");
             return;
         }
 
-        var sequenceKey = $"{pushToken}:{timeZoneId}";
+        // Simple confirmation logging - deduplication is already handled in CanSendPushAsync
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         
         if (isFirstContent)
         {
-            // Verify that the sequence record exists (should already be set by CanSendPushAsync.TryAdd)
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
-            {
-                _logger.LogDebug("First content sent - sequence confirmed for timezone {TimeZone}", timeZoneId);
-            }
-            else
-            {
-                _logger.LogWarning("Sequence record inconsistency detected for timezone {TimeZone}", timeZoneId);
-            }
+            _logger.LogDebug("First content sent for date {Date}", today.ToString("yyyy-MM-dd"));
         }
         else
         {
-            // For subsequent content, just confirm it was sent within an existing sequence
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
-            {
-                _logger.LogDebug("Subsequent content sent within sequence for timezone {TimeZone}", timeZoneId);
-            }
-            else
-            {
-                _logger.LogWarning("Content sent without sequence record for timezone {TimeZone}", timeZoneId);
-            }
+            _logger.LogDebug("Second content sent for date {Date}", today.ToString("yyyy-MM-dd"));
         }
 
         await Task.CompletedTask;
