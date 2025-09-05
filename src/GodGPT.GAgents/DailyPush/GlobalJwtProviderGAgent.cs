@@ -166,20 +166,53 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return true;
         }
 
-        // UTC-BASED DEDUPLICATION: Each device can only receive push at the same UTC hour once per day
-        // Use deviceId for deduplication if available, fallback to pushToken
-        var dedupeIdentifier = !string.IsNullOrEmpty(deviceId) ? deviceId : pushToken;
-        var sequenceKey = $"{dedupeIdentifier}:{todayUtc:yyyy-MM-dd}:{currentUtcHour:D2}";
-        var wasAdded = _lastPushDates.TryAdd(sequenceKey, todayUtc);
+        // DUAL-LAYER UTC-BASED DEDUPLICATION: Prevent duplicates at both device and token level
+        // This handles two scenarios:
+        // 1. Same deviceId with different pushTokens (multiple users on one device)
+        // 2. Different deviceIds with same pushToken (one token used on multiple devices)
         
-        if (!wasAdded)
+        var deviceKey = !string.IsNullOrEmpty(deviceId) ? $"device:{deviceId}:{todayUtc:yyyy-MM-dd}:{currentUtcHour:D2}" : null;
+        var tokenKey = $"token:{pushToken}:{todayUtc:yyyy-MM-dd}:{currentUtcHour:D2}";
+        
+        // Check deviceId-based deduplication first (if deviceId provided)
+        if (!string.IsNullOrEmpty(deviceId))
         {
-            // Device already received push at this UTC hour today - block duplicate
-            _logger.LogInformation("Push BLOCKED - device already received push at UTC {UtcDate} {UtcHour}:00: {DedupeType} {DedupeId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
+            var deviceAdded = _lastPushDates.TryAdd(deviceKey, todayUtc);
+            if (!deviceAdded)
+            {
+                _logger.LogInformation("Push BLOCKED - device already received push at UTC {UtcDate} {UtcHour}:00: deviceId {DeviceId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
+                    todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"), 
+                    deviceId, pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                
+                Interlocked.Increment(ref _preventedDuplicates);
+                
+                // Log deduplication event for analytics
+                var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
+                RaiseEvent(new DuplicatePreventionEventLog 
+                { 
+                    PushTokenPrefix = tokenPrefix,
+                    TimeZone = timeZoneId,
+                    PreventionDate = todayUtc.ToDateTime(TimeOnly.MinValue),
+                    PreventionTime = DateTime.UtcNow
+                });
+                
+                return false;
+            }
+        }
+        
+        // Check pushToken-based deduplication second
+        var tokenAdded = _lastPushDates.TryAdd(tokenKey, todayUtc);
+        if (!tokenAdded)
+        {
+            // If device check passed but token check failed, we need to remove the device entry to maintain consistency
+            if (!string.IsNullOrEmpty(deviceId))
+            {
+                _lastPushDates.TryRemove(deviceKey, out _);
+            }
+            
+            _logger.LogInformation("Push BLOCKED - pushToken already received push at UTC {UtcDate} {UtcHour}:00: deviceId {DeviceId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
                 todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"), 
-                !string.IsNullOrEmpty(deviceId) ? "deviceId" : "pushToken",
-                !string.IsNullOrEmpty(deviceId) ? deviceId : pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                deviceId ?? "N/A", pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
             
             Interlocked.Increment(ref _preventedDuplicates);
             
@@ -195,16 +228,12 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             
             return false;
         }
-        else
-        {
-            // Successfully claimed device for this UTC hour - this user owns pushes to this device at this UTC time
-            _logger.LogInformation("Push CLAIMED - device push sequence reserved for UTC {UtcDate} {UtcHour}:00: {DedupeType} {DedupeId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
-                todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"),
-                !string.IsNullOrEmpty(deviceId) ? "deviceId" : "pushToken",
-                !string.IsNullOrEmpty(deviceId) ? deviceId : pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-            return true;
-        }
+        
+        // Both checks passed - successfully claimed both device and token for this UTC hour
+        _logger.LogInformation("Push CLAIMED - sequence reserved for UTC {UtcDate} {UtcHour}:00: deviceId {DeviceId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
+            todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"),
+            deviceId ?? "N/A", pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+        return true;
     }
 
     public async Task MarkPushSentAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true)
