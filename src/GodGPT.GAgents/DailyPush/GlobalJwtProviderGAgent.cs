@@ -41,9 +41,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private readonly ILogger<GlobalJwtProviderGAgent> _logger;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     
-    // Global pushToken daily push tracking - STATIC MEMORY for cross-user deduplication
-    // This is NOT stored in Orleans State to ensure immediate consistency across all requests
-    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new(); // ✅ Static in-memory only
+    // Global pushToken daily push tracking - MUST USE STATIC MEMORY for immediate consistency  
+    // CRITICAL: Orleans State updates via RaiseEvent are ASYNC and have delays!
+    // Since GlobalJwtProviderGAgent uses fixed GUID, it's singleton across all silos
+    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
     private static int _cleanupCounter = 0;
     
     // JWT caching and creation control - ALL IN MEMORY for zero-latency access
@@ -279,6 +280,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         // Check deviceId-based deduplication first (if deviceId provided)
         if (!string.IsNullOrEmpty(deviceId))
         {
+            // ATOMIC CHECK-AND-SET: Use ConcurrentDictionary.TryAdd for true atomicity
             var deviceAdded = _lastPushDates.TryAdd(deviceKey, todayUtc);
             if (!deviceAdded)
             {
