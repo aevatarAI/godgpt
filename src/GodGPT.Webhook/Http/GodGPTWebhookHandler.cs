@@ -1,6 +1,3 @@
-using System;
-using Aevatar.Application.Grains.Agents.ChatManager.Common;
-using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.Webhook;
@@ -47,18 +44,15 @@ public class GodGPTWebhookHandler : IWebhookHandler
     {
         try
         {
-            _logger.LogInformation(
+            _logger.LogDebug(
                 "GodGPTWebhookHandler Received request: Method={method}, Path={path}, QueryString={query}",
                 request.Method, request.Path, request.QueryString);
 
-            var fullUrl = $"{request.Scheme}://{request.Host}{request.PathBase}{request.Path}{request.QueryString}";
-            _logger.LogInformation("GodGPTWebhookHandler Raw URL: {rawUrl}", fullUrl);
-
             var headers = request.Headers;
-            var token = headers["X-Telegram-Bot-Api-Secret-Token"].ToString();
-            _logger.LogInformation("GodGPTWebhookHandler token={A}", token);
+            var signature = headers["Stripe-Signature"].ToString();
+            _logger.LogDebug("[GodGPTPaymentController][webhook] Signature={A}", signature);
             var json = await new StreamReader(request.Body).ReadToEndAsync();
-            _logger.LogInformation("[GodGPTPaymentController][webhook] josn: {0}", json);
+            _logger.LogDebug("[GodGPTPaymentController][webhook] Json: {0}", json);
 
             string internalUserId = null;
             try
@@ -76,8 +70,8 @@ public class GodGPTWebhookHandler : IWebhookHandler
             if (!internalUserId.IsNullOrWhiteSpace() && Guid.TryParse(internalUserId, out var userId))
             {
                 var result =
-                    await HandleStripeWebhookEventAsync(userId, json,
-                        request.Headers["Stripe-Signature"]);
+                    await HandleStripeWebhookEventAsync(userId, json, signature);
+                _logger.LogInformation("[GodGPTPaymentController][Webhook] result={0}", result);
                 if (!result)
                 {
                     return Task.CompletedTask;
@@ -85,9 +79,7 @@ public class GodGPTWebhookHandler : IWebhookHandler
 
                 return Task.CompletedTask;
             }
-
-            _logger.LogWarning("[GodGPTPaymentController][Webhook] ");
-
+            _logger.LogWarning("[GodGPTPaymentController][Webhook] User not found {0}", internalUserId);
             return Task.CompletedTask;
         }
         catch (Exception ex)
