@@ -24,10 +24,17 @@ public class FirebaseService
     private readonly string? _projectId;
     private string? _cachedAccessToken;
     private DateTime _tokenExpiry = DateTime.MinValue;
+    private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);
+    private volatile Task<string?>? _tokenCreationTask;
 
-    // ✅ Global pushToken daily push tracking to prevent same-day duplicates across timezones
+    // Global pushToken daily push tracking to prevent same-day duplicates across timezones
     private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
     private static int _cleanupCounter = 0;
+
+    /// <summary>
+    /// Firebase Project ID configured for this service
+    /// </summary>
+    public string? ProjectId => _projectId;
 
     public FirebaseService(
         ILogger<FirebaseService> logger,
@@ -52,16 +59,16 @@ public class FirebaseService
         // Log the source of credentials
         if (fileAccount != null)
         {
-            _logger.LogInformation("🎯 Firebase credentials loaded from FILE for project: {ProjectId}", _projectId);
+            _logger.LogInformation("Firebase credentials loaded from FILE for project: {ProjectId}", _projectId);
         }
         else if (configAccount != null)
         {
-            _logger.LogInformation("🎯 Firebase credentials loaded from APPSETTINGS for project: {ProjectId}",
+            _logger.LogInformation("Firebase credentials loaded from APPSETTINGS for project: {ProjectId}",
                 _projectId);
         }
         else if (!string.IsNullOrEmpty(_projectId))
         {
-            _logger.LogWarning("⚠️ Firebase project ID found in config but no service account - limited functionality");
+            _logger.LogWarning("Firebase project ID found in config but no service account - limited functionality");
         }
         else
         {
@@ -116,7 +123,7 @@ public class FirebaseService
             if (serviceAccount != null)
             {
                 _logger.LogInformation(
-                    "✅ Successfully loaded Firebase service account from file for project: {ProjectId}",
+                    "Successfully loaded Firebase service account from file for project: {ProjectId}",
                     serviceAccount.ProjectId);
 
                 // Log key fields presence (without exposing values)
@@ -136,13 +143,13 @@ public class FirebaseService
         }
         catch (JsonException jsonEx)
         {
-            _logger.LogError(jsonEx, "💥 JSON parsing error loading Firebase service account from file: {KeyPath}",
+            _logger.LogError(jsonEx, "JSON parsing error loading Firebase service account from file: {KeyPath}",
                 filePaths.FirebaseKeyPath);
             return null;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "💥 Critical error loading Firebase service account from file: {KeyPath}",
+            _logger.LogError(ex, "Critical error loading Firebase service account from file: {KeyPath}",
                 filePaths.FirebaseKeyPath);
             return null;
         }
@@ -204,12 +211,15 @@ public class FirebaseService
 
     /// <summary>
     /// Send push notification to a device using FCM API v1
+    /// DEPRECATED: Use GlobalJwtProviderGAgent + direct HTTP push instead
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent with direct HTTP push for better performance and reliability", false)]
     public async Task<bool> SendPushNotificationAsync(
         string pushToken,
         string title,
         string content,
-        Dictionary<string, object>? data = null)
+        Dictionary<string, object>? data = null,
+        IFirebaseTokenProviderGAgent? tokenProvider = null)
     {
         try
         {
@@ -219,7 +229,7 @@ public class FirebaseService
                 return false;
             }
 
-            // ✅ Dual-layer deduplication: short-term + same-day prevention
+            // Dual-layer deduplication: short-term + same-day prevention
             var now = DateTime.UtcNow;
             var today = DateOnly.FromDateTime(now);
 
@@ -249,7 +259,7 @@ public class FirebaseService
                 }
             }
 
-            // ✅ Timezone-based deduplication: each timezone can have daily pushes independently
+            // Timezone-based deduplication: each timezone can have daily pushes independently
             var timeZoneId = data?.TryGetValue("timezone", out var timezoneObj) == true
                 ? timezoneObj?.ToString()
                 : "UTC";
@@ -272,7 +282,7 @@ public class FirebaseService
             bool success;
             if (_serviceAccount != null && !string.IsNullOrEmpty(_projectId))
             {
-                success = await SendPushNotificationV1Async(pushToken, title, content, data);
+                success = await SendPushNotificationV1Async(pushToken, title, content, data, tokenProvider);
             }
             else
             {
@@ -346,11 +356,12 @@ public class FirebaseService
         string pushToken,
         string title,
         string content,
-        Dictionary<string, object>? data = null)
+        Dictionary<string, object>? data = null,
+        IFirebaseTokenProviderGAgent? tokenProvider = null)
     {
         try
         {
-            var accessToken = await GetAccessTokenAsync();
+            var accessToken = await GetAccessTokenAsync(tokenProvider);
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogError("Failed to obtain access token for FCM API v1");
@@ -468,14 +479,14 @@ public class FirebaseService
                     {
                         var messageName = nameElement.GetString();
                         _logger.LogInformation(
-                            "✅ Push notification sent successfully via FCM v1 - Message: {MessageName}, Token: {TokenPrefix}..., Title: {Title}",
+                            "Push notification sent successfully via FCM v1 - Message: {MessageName}, Token: {TokenPrefix}..., Title: {Title}",
                             messageName, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                         return true;
                     }
 
                     // Unexpected response format
                     _logger.LogWarning(
-                        "⚠️ FCM returned 200 but unexpected response format: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}",
+                        "FCM returned 200 but unexpected response format: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}",
                         responseContent, pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                     return false;
                 }
@@ -484,7 +495,7 @@ public class FirebaseService
                     _logger.LogError(ex, "Failed to parse FCM response JSON: {ResponseContent}", responseContent);
                     // Assume success if we can't parse the response but got 200
                     _logger.LogInformation(
-                        "✅ Push notification sent successfully via FCM v1 (assumed from 200 status) - Token: {TokenPrefix}..., Title: {Title}",
+                        "Push notification sent successfully via FCM v1 (assumed from 200 status) - Token: {TokenPrefix}..., Title: {Title}",
                         pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                     return true;
                 }
@@ -492,7 +503,7 @@ public class FirebaseService
             else
             {
                 _logger.LogError(
-                    "💥 FCM v1 request failed with status {StatusCode}: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}",
+                    "FCM v1 request failed with status {StatusCode}: {ResponseContent}, Token: {TokenPrefix}..., Title: {Title}",
                     response.StatusCode, responseContent,
                     pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
 
@@ -510,7 +521,7 @@ public class FirebaseService
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "💥 Error sending push notification via FCM API v1 - Token: {TokenPrefix}..., Title: {Title}",
+                "Error sending push notification via FCM API v1 - Token: {TokenPrefix}..., Title: {Title}",
                 pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
             return false;
         }
@@ -518,137 +529,219 @@ public class FirebaseService
 
 
     /// <summary>
-    /// Get access token for FCM API v1 using service account
+    /// Get access token for FCM API v1 (public interface for external access)
+    /// DEPRECATED: Use GlobalJwtProviderGAgent.GetFirebaseAccessTokenAsync() instead
     /// </summary>
-    private async Task<string?> GetAccessTokenAsync()
+    [Obsolete("Use GlobalJwtProviderGAgent.GetFirebaseAccessTokenAsync() for better concurrency and performance", false)]
+    public async Task<string?> GetAccessTokenAsync()
+    {
+        return await GetAccessTokenLegacyAsync();
+    }
+
+    /// <summary>
+    /// Get access token for FCM API v1 using TokenProvider or legacy method
+    /// </summary>
+    private async Task<string?> GetAccessTokenAsync(IFirebaseTokenProviderGAgent? tokenProvider = null)
+    {
+        // Try to use TokenProvider first (new architecture)
+        if (tokenProvider != null)
+        {
+            try 
+            {
+                var token = await tokenProvider.GetAccessTokenAsync();
+                if (!string.IsNullOrEmpty(token))
+                {
+                    _logger.LogInformation("✅ SUCCESS: Using token from NEW FirebaseTokenProvider architecture - no RSA concurrency issues");
+                    return token;
+                }
+                else
+                {
+                    _logger.LogError("❌ NEW ARCHITECTURE FAILED: TokenProvider returned empty token, falling back to legacy method with potential RSA issues");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "TokenProvider failed, falling back to legacy method");
+            }
+        }
+        
+        // Fallback to legacy method (for compatibility with old ChatManagerGAgent)
+        _logger.LogError("⚠️ USING LEGACY METHOD: Potential RSA concurrency issues - new architecture failed or not configured");
+        return await GetAccessTokenLegacyAsync();
+    }
+
+    /// <summary>
+    /// Get access token for FCM API v1 using service account (legacy method)
+    /// </summary>
+    private async Task<string?> GetAccessTokenLegacyAsync()
+    {
+        // First check without lock for performance
+        if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
+        {
+            return _cachedAccessToken;
+        }
+
+        // Use task-based singleton pattern to avoid blocking all threads during retry
+        var currentTask = _tokenCreationTask;
+        if (currentTask != null && !currentTask.IsCompleted)
+        {
+            // Another thread is already creating the token, await its result
+            return await currentTask;
+        }
+
+        // Acquire lock for token creation
+        await _tokenSemaphore.WaitAsync();
+        try
+        {
+            // Double-check: another thread might have completed token creation while we waited
+            if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-1))
+            {
+                return _cachedAccessToken;
+            }
+
+            // Check if another thread started creation while we were waiting
+            currentTask = _tokenCreationTask;
+            if (currentTask != null && !currentTask.IsCompleted)
+            {
+                return await currentTask;
+            }
+
+            // Start new token creation task
+            _tokenCreationTask = CreateAccessTokenInternalAsync();
+            return await _tokenCreationTask;
+        }
+        finally
+        {
+            _tokenSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Internal method to create access token with retry logic
+    /// This method is designed to be called by only one thread at a time through task singleton pattern
+    /// </summary>
+    private async Task<string?> CreateAccessTokenInternalAsync()
     {
         const int maxRetries = 3;
         const int retryDelayMs = 1000;
 
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        try
         {
-            try
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                // Check if cached token is still valid
-                if (!string.IsNullOrEmpty(_cachedAccessToken) && DateTime.UtcNow < _tokenExpiry.AddMinutes(-5))
+                try
                 {
-                    return _cachedAccessToken;
-                }
+                    if (_serviceAccount == null)
+                    {
+                        _logger.LogError("Service account not configured on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
+                        if (attempt < maxRetries)
+                        {
+                            _logger.LogInformation("Retrying access token request in {DelayMs}ms...", retryDelayMs);
+                            await Task.Delay(retryDelayMs);
+                            continue;
+                        }
+                        return null;
+                    }
 
-                if (_serviceAccount == null)
-                {
-                    _logger.LogError("Service account not configured on attempt {Attempt}/{MaxRetries}", attempt,
-                        maxRetries);
+                    // Create JWT for OAuth 2.0 flow
+                    var now = DateTimeOffset.UtcNow;
+                    var expiry = now.AddHours(24); // Extended to 24 hours to reduce JWT creation frequency
+
+                    var claims = new Dictionary<string, object>
+                    {
+                        ["iss"] = _serviceAccount.ClientEmail,
+                        ["scope"] = "https://www.googleapis.com/auth/firebase.messaging",
+                        ["aud"] = "https://oauth2.googleapis.com/token",
+                        ["iat"] = now.ToUnixTimeSeconds(),
+                        ["exp"] = expiry.ToUnixTimeSeconds()
+                    };
+
+                    // Parse private key
+                    var privateKeyPem = _serviceAccount.PrivateKey;
+                    if (string.IsNullOrEmpty(privateKeyPem))
+                    {
+                        _logger.LogError("Private key not found in service account");
+                        return null;
+                    }
+
+                    // Create JWT
+                    var jwt = CreateJwt(claims, privateKeyPem);
+                    if (string.IsNullOrEmpty(jwt))
+                    {
+                        _logger.LogError("Failed to create JWT");
+                        return null;
+                    }
+
+                    // Exchange JWT for access token
+                    var tokenRequest = new FormUrlEncodedContent(new[]
+                    {
+                        new KeyValuePair<string, string>("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                        new KeyValuePair<string, string>("assertion", jwt)
+                    });
+
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30s timeout
+                    var response = await _httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
+                    var responseContent = await response.Content.ReadAsStringAsync();
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
+                        if (tokenResponse?.AccessToken != null)
+                        {
+                            _cachedAccessToken = tokenResponse.AccessToken;
+                            _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 60); // 1 min buffer for better cache efficiency
+
+                            _logger.LogInformation("Successfully obtained access token for FCM API v1 on attempt {Attempt}", attempt);
+                            return _cachedAccessToken;
+                        }
+                    }
+
+                    _logger.LogWarning("Failed to obtain access token on attempt {Attempt}/{MaxRetries}: {StatusCode} - {ResponseContent}",
+                        attempt, maxRetries, response.StatusCode, responseContent);
+
                     if (attempt < maxRetries)
                     {
-                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", retryDelayMs);
-                        await Task.Delay(retryDelayMs);
+                        var delay = retryDelayMs * attempt; // Exponential backoff
+                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                        await Task.Delay(delay);
                         continue;
                     }
 
                     return null;
                 }
-
-                // Create JWT for OAuth 2.0 flow
-                var now = DateTimeOffset.UtcNow;
-                var expiry = now.AddHours(1);
-
-                var claims = new Dictionary<string, object>
+                catch (OperationCanceledException)
                 {
-                    ["iss"] = _serviceAccount.ClientEmail,
-                    ["scope"] = "https://www.googleapis.com/auth/firebase.messaging",
-                    ["aud"] = "https://oauth2.googleapis.com/token",
-                    ["iat"] = now.ToUnixTimeSeconds(),
-                    ["exp"] = expiry.ToUnixTimeSeconds()
-                };
-
-                // Parse private key
-                var privateKeyPem = _serviceAccount.PrivateKey;
-                if (string.IsNullOrEmpty(privateKeyPem))
-                {
-                    _logger.LogError("Private key not found in service account");
-                    return null;
-                }
-
-                // Create JWT
-                var jwt = CreateJwt(claims, privateKeyPem);
-                if (string.IsNullOrEmpty(jwt))
-                {
-                    _logger.LogError("Failed to create JWT");
-                    return null;
-                }
-
-                // Exchange JWT for access token
-                var tokenRequest = new FormUrlEncodedContent(new[]
-                {
-                    new KeyValuePair<string, string>("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
-                    new KeyValuePair<string, string>("assertion", jwt)
-                });
-
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30)); // 30s timeout
-                var response =
-                    await _httpClient.PostAsync("https://oauth2.googleapis.com/token", tokenRequest, cts.Token);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var tokenResponse = JsonSerializer.Deserialize<TokenResponse>(responseContent);
-                    if (tokenResponse?.AccessToken != null)
+                    _logger.LogWarning("Access token request timed out on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
+                    if (attempt < maxRetries)
                     {
-                        _cachedAccessToken = tokenResponse.AccessToken;
-                        _tokenExpiry = DateTime.UtcNow.AddSeconds(tokenResponse.ExpiresIn - 300); // 5 min buffer
-
-                        _logger.LogInformation(
-                            "✅ Successfully obtained access token for FCM API v1 on attempt {Attempt}", attempt);
-                        return _cachedAccessToken;
+                        var delay = retryDelayMs * attempt;
+                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                        await Task.Delay(delay);
+                        continue;
                     }
+                    return null;
                 }
-
-                _logger.LogWarning(
-                    "⚠️ Failed to obtain access token on attempt {Attempt}/{MaxRetries}: {StatusCode} - {ResponseContent}",
-                    attempt, maxRetries, response.StatusCode, responseContent);
-
-                if (attempt < maxRetries)
+                catch (Exception ex)
                 {
-                    var delay = retryDelayMs * attempt; // Exponential backoff
-                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
-                    await Task.Delay(delay);
-                    continue;
+                    _logger.LogError(ex, "Error obtaining access token for FCM API v1 on attempt {Attempt}/{MaxRetries}", attempt, maxRetries);
+                    if (attempt < maxRetries)
+                    {
+                        var delay = retryDelayMs * attempt;
+                        _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
+                        await Task.Delay(delay);
+                        continue;
+                    }
+                    return null;
                 }
-
-                return null;
             }
-            catch (OperationCanceledException)
-            {
-                _logger.LogWarning("⏰ Access token request timed out on attempt {Attempt}/{MaxRetries}", attempt,
-                    maxRetries);
-                if (attempt < maxRetries)
-                {
-                    var delay = retryDelayMs * attempt;
-                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
-                    await Task.Delay(delay);
-                    continue;
-                }
 
-                return null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "💥 Error obtaining access token for FCM API v1 on attempt {Attempt}/{MaxRetries}",
-                    attempt, maxRetries);
-                if (attempt < maxRetries)
-                {
-                    var delay = retryDelayMs * attempt;
-                    _logger.LogInformation("Retrying access token request in {DelayMs}ms...", delay);
-                    await Task.Delay(delay);
-                    continue;
-                }
-
-                return null;
-            }
+            return null; // All retries failed
         }
-
-        return null; // All retries failed
+        finally
+        {
+            // Clear the task reference when creation is complete (success or failure)
+            _tokenCreationTask = null;
+        }
     }
 
     /// <summary>
@@ -669,32 +762,28 @@ public class FirebaseService
 
             var privateKeyBytes = Convert.FromBase64String(privateKeyContent);
 
-            // Create RSA instance and import key
-            var rsa = RSA.Create();
-            rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
-
-            // Create security key without disposing RSA immediately
-            var key = new RsaSecurityKey(rsa);
-            var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
-
-            var header = new JwtHeader(credentials);
-            var payload = new JwtPayload();
-
-            // Add claims to payload
-            foreach (var claim in claims)
+            // Simple RSA lifecycle management - complete all JWT operations within using block
+            using (var rsa = RSA.Create())
             {
-                payload[claim.Key] = claim.Value;
+                rsa.ImportPkcs8PrivateKey(privateKeyBytes, out _);
+                
+                // Create security key and signing credentials
+                var securityKey = new RsaSecurityKey(rsa) { KeyId = Guid.NewGuid().ToString() };
+                var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.RsaSha256);
+
+                // Create token descriptor and sign token within RSA lifetime
+                var tokenDescriptor = new SecurityTokenDescriptor
+                {
+                    Claims = claims,
+                    SigningCredentials = signingCredentials
+                };
+
+                var tokenHandler = new JwtSecurityTokenHandler();
+                var token = tokenHandler.CreateJwtSecurityToken(tokenDescriptor);
+                
+                // Return signed token - all operations completed within RSA scope
+                return tokenHandler.WriteToken(token);
             }
-
-            var token = new JwtSecurityToken(header, payload);
-            var handler = new JwtSecurityTokenHandler();
-
-            var jwtString = handler.WriteToken(token);
-
-            // Dispose RSA after JWT creation is complete
-            rsa.Dispose();
-
-            return jwtString;
         }
         catch (Exception ex)
         {
@@ -705,8 +794,10 @@ public class FirebaseService
 
     /// <summary>
     /// Send push notifications to multiple devices using FCM sendEach (single HTTP request)
-    /// This is the recommended approach for multiple messages in FCM API v1
+    /// DEPRECATED: This method has RSA concurrency issues due to legacy JWT creation
+    /// Use GlobalJwtProviderGAgent with individual push calls instead
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent with direct HTTP calls for better performance and reliability", false)]
     public async Task<BatchPushResult> SendEachAsync(
         List<PushMessage> messages)
     {
@@ -718,7 +809,7 @@ public class FirebaseService
             return results;
         }
 
-        // ✅ Global pushToken deduplication - prevent cross-timezone duplicates
+        // Global pushToken deduplication - prevent cross-timezone duplicates
         var originalCount = messages.Count;
         var deduplicatedMessages = messages
             .Where(m => !string.IsNullOrEmpty(m.Token))
@@ -761,14 +852,17 @@ public class FirebaseService
 
     /// <summary>
     /// Send multiple messages using FCM API v1 (single HTTP request)
+    /// DEPRECATED: This method uses legacy JWT creation with RSA concurrency issues
     /// </summary>
+    [Obsolete("Use GlobalJwtProviderGAgent with direct HTTP calls for better performance and reliability", false)]
     private async Task<BatchPushResult> SendEachV1Async(List<PushMessage> messages)
     {
         var results = new BatchPushResult();
 
         try
         {
-            var accessToken = await GetAccessTokenAsync();
+            _logger.LogWarning("⚠️ USING DEPRECATED BATCH METHOD: SendEachV1Async has RSA concurrency issues. Consider using individual push calls with GlobalJwtProviderGAgent instead.");
+            var accessToken = await GetAccessTokenLegacyAsync(); // DEPRECATED: This still uses problematic RSA method
             if (string.IsNullOrEmpty(accessToken))
             {
                 _logger.LogError("Failed to obtain access token for FCM batch send");
@@ -809,7 +903,7 @@ public class FirebaseService
                     _logger.LogDebug("📱 Processing token {TokenIndex}/{BatchSize}: {TokenPrefix} - Title: '{Title}'",
                         index + 1, batch.Count, tokenPrefix, message.Title);
 
-                    // ✅ Use SendPushNotificationAsync to apply global date-based deduplication
+                    // Use SendPushNotificationAsync to apply global date-based deduplication
                     var success = await SendPushNotificationAsync(
                         message.Token,
                         message.Title,
@@ -819,7 +913,7 @@ public class FirebaseService
                     if (success)
                     {
                         results.SuccessCount++;
-                        _logger.LogInformation("✅ Push SUCCESS for token {TokenPrefix} - Title: '{Title}'",
+                        _logger.LogInformation("Push SUCCESS for token {TokenPrefix} - Title: '{Title}'",
                             tokenPrefix, message.Title);
                     }
                     else
@@ -862,9 +956,9 @@ public class FirebaseService
                                       (remainingFailures > 0 ? $" (+{remainingFailures} more)" : "");
 
                 _logger.LogWarning(
-                    "⚠️ FCM batch push completed with failures: {SuccessCount}/{TotalCount} successful ({SuccessRate:F1}% success rate)",
+                    "FCM batch push completed with failures: {SuccessCount}/{TotalCount} successful ({SuccessRate:F1}% success rate)",
                     results.SuccessCount, results.SuccessCount + results.FailureCount, successRate);
-                _logger.LogWarning("💔 Failed tokens: [{FailedTokens}] - Check detailed errors above", failedTokenText);
+                _logger.LogWarning("Failed tokens: [{FailedTokens}] - Check detailed errors above", failedTokenText);
             }
 
             return results;

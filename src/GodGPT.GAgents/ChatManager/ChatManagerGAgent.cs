@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Net.Mime;
+using System.Text;
+using System.Text.Json;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
@@ -22,7 +26,9 @@ using Aevatar.GAgents.AIGAgent.Dtos;
 using Aevatar.GAgents.AIGAgent.GEvents;
 using Aevatar.GAgents.ChatAgent.Dtos;
 using GodGPT.GAgents.DailyPush;
+using GodGPT.GAgents.DailyPush.Options;
 using GodGPT.GAgents.SpeechChat;
+using Microsoft.Extensions.Configuration;
 using Json.Schema.Generation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -1430,17 +1436,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var oldPushToken = deviceInfo.PushToken;
         var oldTimeZone = deviceInfo.TimeZoneId;
         var oldPushEnabled = deviceInfo.PushEnabled;
+        var oldPushLanguage = deviceInfo.PushLanguage;
         
         // Update device information
         deviceInfo.DeviceId = deviceId;
-        if (!string.IsNullOrEmpty(pushToken))
+        var hasTokenChanged = false;
+        if (!string.IsNullOrEmpty(pushToken) && pushToken != oldPushToken)
         {
             deviceInfo.PushToken = pushToken;
             deviceInfo.LastTokenUpdate = DateTime.UtcNow;
+            hasTokenChanged = true;
         }
-        if (!string.IsNullOrEmpty(timeZoneId))
+        var hasTimeZoneChanged = false;
+        if (!string.IsNullOrEmpty(timeZoneId) && timeZoneId != oldTimeZone)
         {
             deviceInfo.TimeZoneId = timeZoneId;
+            hasTimeZoneChanged = true;
         }
         // Always ensure device has a valid timezone - default to UTC if empty
         if (string.IsNullOrEmpty(deviceInfo.TimeZoneId))
@@ -1448,20 +1459,32 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             deviceInfo.TimeZoneId = "UTC";
             Logger.LogWarning("Device {DeviceId} has empty timezone, defaulting to UTC", deviceId);
         }
-        if (!string.IsNullOrEmpty(pushLanguage))
+        var hasLanguageChanged = false;
+        if (!string.IsNullOrEmpty(pushLanguage) && pushLanguage != oldPushLanguage)
         {
             deviceInfo.PushLanguage = pushLanguage;
+            hasLanguageChanged = true;
             Logger.LogInformation("💾 Device language updated: DeviceId={DeviceId}, PushLanguage={PushLanguage}", 
                 deviceId, pushLanguage);
         }
-        if (pushEnabled.HasValue)
+        var hasPushEnabledChanged = false;
+        if (pushEnabled.HasValue && pushEnabled.Value != oldPushEnabled)
+        {
             deviceInfo.PushEnabled = pushEnabled.Value;
+            hasPushEnabledChanged = true;
+        }
         
         if (isNewDevice)
         {
             deviceInfo.RegisteredAt = DateTime.UtcNow;
         }
         
+        // Check if there are any actual changes
+        var hasAnyChanges = hasTokenChanged || hasTimeZoneChanged || hasLanguageChanged || hasPushEnabledChanged;
+        
+        // Only raise event and update state when there are actual changes or it's a new device
+        if (isNewDevice || hasAnyChanges)
+        {
         // Use event-driven state update
         RaiseEvent(new RegisterOrUpdateDeviceEventLog
         {
@@ -1472,6 +1495,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         });
         
         await ConfirmEvents();
+        }
         
         // Synchronize timezone index when:
         // 1. Timezone changed
@@ -1521,7 +1545,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 State.UserId, newTimeZone, reason);
         }
         
+        // Only log device updates when there are actual changes or it's a new device
+        if (isNewDevice || hasAnyChanges)
+        {
         Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
+        }
         return isNewDevice;
     }
 
@@ -1609,11 +1637,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
         if (duplicateCount > 0)
         {
-            Logger.LogInformation("ProcessDailyPushAsync: Deduplicated {DuplicateCount} devices with duplicate pushTokens for user {UserId}", 
-                duplicateCount, State.UserId);
+            Logger.LogDebug("Device deduplication: removed {DuplicateCount} duplicate pushTokens", duplicateCount);
         }
         
-        Logger.LogInformation("ProcessDailyPushAsync: Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
+        Logger.LogInformation("Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
             enabledDevices.Count, timeZoneId, State.UserId);
             
         if (enabledDevices.Count == 0)
@@ -1623,7 +1650,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             return;
         }
         
-        // Send push notifications via Firebase FCM
+        // Get Global JWT Provider (new architecture - single instance for entire system)
+        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
+        
+        // Get Firebase project configuration via FirebaseService
         var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
         if (firebaseService == null)
         {
@@ -1631,25 +1661,62 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             return;
         }
         
+        var projectId = firebaseService.ProjectId;
+        if (string.IsNullOrEmpty(projectId))
+        {
+            Logger.LogError("Firebase ProjectId not configured in FirebaseService for push notifications");
+            return;
+        }
+        
         var successCount = 0;
         var failureCount = 0;
         
+        // Pre-check: Filter devices that haven't received today's push sequence yet
+        var eligibleDevices = new List<UserDeviceInfo>();
+        foreach (var device in enabledDevices)
+        {
+            // Check if this device can start a new push sequence today
+            // This checks sequence-level deduplication (not content-level)
+            var canStartSequence = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, true); // isFirstContent=true for sequence check
+            if (canStartSequence)
+            {
+                eligibleDevices.Add(device);
+                Logger.LogDebug("Device eligible for push sequence: DeviceId {DeviceId}", device.DeviceId);
+            }
+            else
+            {
+                Logger.LogDebug("Device filtered - sequence already exists: DeviceId {DeviceId}", device.DeviceId);
+            }
+        }
+        
+        if (eligibleDevices.Count == 0)
+        {
+            Logger.LogInformation("No eligible devices for daily push after sequence deduplication - User {UserId}, TimeZone {TimeZone}, Original devices: {OriginalCount}", 
+                State.UserId, timeZoneId, enabledDevices.Count);
+            return;
+        }
+        
+        Logger.LogInformation("Proceeding with {EligibleCount} eligible devices for user {UserId}", 
+            eligibleDevices.Count, State.UserId);
+        
         // Create separate push notifications for each content to ensure individual callbacks
-        var pushTasks = enabledDevices.SelectMany(device =>
+        var pushTasks = eligibleDevices.SelectMany((device, deviceIndex) =>
         {
             // Send separate push for each content with staggered delay
-            return contents.Select(async (content, index) =>
+            return contents.Select(async (content, contentIndex) =>
             {
                 try
                 {
-                    // 🎯 Add staggered delay for multi-content pushes to avoid FCM conflicts
-                    // First content (index=0): no delay, subsequent contents: progressive delay
-                    if (index > 0)
+                    // 🎯 Add device-level delay to reduce concurrent JWT requests + content delay for FCM conflicts
+                    var deviceDelay = Random.Shared.Next(50, 300) + (deviceIndex * 150); // Random + staggered per device
+                    var contentDelay = contentIndex * 300; // 300ms per content (1st=0ms, 2nd=300ms, etc.)
+                    var totalDelay = deviceDelay + contentDelay;
+                    
+                    if (totalDelay > 0)
                     {
-                        var delayMs = index * 500; // 500ms per content (1st=0ms, 2nd=500ms, 3rd=1000ms...)
-                        Logger.LogInformation("Applying push delay: DeviceId={DeviceId}, ContentIndex={ContentIndex}/{TotalContents}, DelayMs={DelayMs}", 
-                            device.DeviceId, index + 1, contents.Count, delayMs);
-                        await Task.Delay(delayMs);
+                        Logger.LogInformation("Applying push delay: DeviceId={DeviceId}, DeviceIndex={DeviceIndex}, ContentIndex={ContentIndex}/{TotalContents}, DeviceDelay={DeviceDelay}ms, ContentDelay={ContentDelay}ms, TotalDelay={TotalDelay}ms", 
+                            device.DeviceId, deviceIndex + 1, contentIndex + 1, contents.Count, deviceDelay, contentDelay, totalDelay);
+                        await Task.Delay(totalDelay);
                     }
                     
                     var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
@@ -1658,8 +1725,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     
                     var localizedContent = content.GetLocalizedContent(device.PushLanguage);
                     
-                    Logger.LogInformation("Selected content {Index}/{Total}: DeviceId={DeviceId}, RequestedLanguage={PushLanguage}, SelectedTitle='{Title}', ContentId={ContentId}", 
-                        index + 1, contents.Count, device.DeviceId, device.PushLanguage, localizedContent.Title, content.Id);
+                    Logger.LogInformation("📬 PUSH ATTEMPT: User {UserId}, DeviceId {DeviceId}, Content {ContentIndex}/{Total}, Title '{Title}', ContentId {ContentId}, PushToken {TokenPrefix}...", 
+                        State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title, content.Id, 
+                        device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
                     
                     // Create unique data payload for each content
                     var messageId = Guid.NewGuid();
@@ -1669,7 +1737,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
                         ["date"] = dateKey,
                         ["content_id"] = content.Id, // Single content ID for this push
-                        ["content_index"] = index + 1, // Which content this is (1, 2, etc.)
+                        ["content_index"] = contentIndex + 1, // Which content this is (1, 2, etc.)
                         ["device_id"] = device.DeviceId,
                         ["total_contents"] = contents.Count,
                         ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
@@ -1677,34 +1745,47 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         ["is_test_push"] = isTestPush // Add test push identification for manual triggers
                     };
                     
-                    var success = await firebaseService.SendPushNotificationAsync(
+                    // Use new global JWT architecture with direct HTTP push
+                    // Skip deduplication check since device already passed pre-check
+                    var success = await SendDirectPushNotificationAsync(
+                        globalJwtProvider,
+                        projectId,
                         device.PushToken,
                         localizedContent.Title,
                         localizedContent.Content,
-                        pushData);
+                        pushData,
+                        timeZoneId,
+                        isRetryPush,
+                        contentIndex == 0, // isFirstContent
+                        false, // isTestPush
+                        true); // skipDeduplicationCheck - device already passed pre-check
                     
                     if (success)
                     {
                         Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                            device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
                         return true;
                     }
                     else
                     {
                         Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                            device.DeviceId, messageId, index + 1, contents.Count, dateKey);
+                            device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
                         return false;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogError(ex, $"Error sending daily push content {index + 1} to device {device.DeviceId}");
+                    Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
                     return false;
                 }
             });
         });
         
         // Execute all push tasks concurrently
+        var totalPushTasks = pushTasks.Count();
+        Logger.LogInformation("ProcessDailyPushAsync: Executing {TotalPushTasks} push tasks for {DeviceCount} devices × {ContentCount} contents", 
+            totalPushTasks, enabledDevices.Count, contents.Count);
+            
         var results = await Task.WhenAll(pushTasks);
         successCount = results.Count(r => r);
         failureCount = results.Count(r => !r);
@@ -1836,5 +1917,160 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Logger.LogError(ex, "Timezone ecosystem initialization failed for {TimeZone} - daily pushes may not work properly", newTimeZone);
             // Don't rethrow - allow timezone index update to succeed even if ecosystem init partially fails
         }
+    }
+
+    /// <summary>
+    /// Send push notification directly to Firebase FCM API using Global JWT Provider
+    /// This replaces the FirebaseService architecture with a more efficient global JWT approach
+    /// </summary>
+    private async Task<bool> SendDirectPushNotificationAsync(
+        IGlobalJwtProviderGAgent globalJwtProvider,
+        string projectId,
+        string pushToken,
+        string title,
+        string content,
+        Dictionary<string, object>? data = null,
+        string timeZoneId = "UTC",
+        bool isRetryPush = false,
+        bool isFirstContent = true,
+        bool isTestPush = false,
+        bool skipDeduplicationCheck = false)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(pushToken))
+            {
+                Logger.LogWarning("Push token is empty");
+                return false;
+            }
+
+            // Check deduplication only if not bypassed
+            if (!isTestPush && !skipDeduplicationCheck)
+            {
+                // Check global deduplication
+                var canSend = await globalJwtProvider.CanSendPushAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
+                if (!canSend)
+                {
+                    Logger.LogInformation("Push blocked by global deduplication: token {TokenPrefix}, timezone {TimeZone}", 
+                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                    return false;
+                }
+            }
+
+            // Get JWT access token from global provider
+            var accessToken = await globalJwtProvider.GetFirebaseAccessTokenAsync();
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                Logger.LogError("Failed to obtain access token from Global JWT Provider");
+                return false;
+            }
+
+            // Create FCM v1 payload
+            var dataPayload = CreateDataPayload(data);
+            var message = new
+            {
+                message = new
+                {
+                    token = pushToken,
+                    notification = new
+                    {
+                        title = title,
+                        body = content
+                    },
+                    data = dataPayload,
+                    android = new
+                    {
+                        priority = "high",
+                        notification = new
+                        {
+                            sound = "default",
+                            channel_id = "daily_push_channel",
+                            notification_count = dataPayload.TryGetValue("content_index", out var contentIndex)
+                                ? int.Parse(contentIndex.ToString() ?? "1")
+                                : 1
+                        }
+                    },
+                    apns = new
+                    {
+                        headers = new
+                        {
+                            apns_push_type = "alert"
+                        },
+                        payload = new
+                        {
+                            aps = new
+                            {
+                                sound = "default"
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Send HTTP request to Firebase FCM API
+            var httpClient = ServiceProvider.GetService(typeof(HttpClient)) as HttpClient;
+            if (httpClient == null)
+            {
+                Logger.LogError("HttpClient not available for push notification");
+                return false;
+            }
+
+            var fcmEndpoint = $"https://fcm.googleapis.com/v1/projects/{projectId}/messages:send";
+            var jsonPayload = System.Text.Json.JsonSerializer.Serialize(message, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            var httpContent = new StringContent(jsonPayload, Encoding.UTF8, MediaTypeNames.Application.Json);
+            using var request = new HttpRequestMessage(HttpMethod.Post, fcmEndpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            request.Content = httpContent;
+
+            Logger.LogDebug("Sending direct FCM push to token: {TokenPrefix}...",
+                pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken);
+
+            using var response = await httpClient.SendAsync(request);
+            var responseContent = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                Logger.LogDebug("Push notification sent successfully: {ResponseContent}", responseContent);
+                
+                // Mark push as sent for deduplication (unless it's a test push or deduplication was skipped)
+                if (!isTestPush && !skipDeduplicationCheck)
+                {
+                    await globalJwtProvider.MarkPushSentAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
+                }
+                
+                return true;
+            }
+            else
+            {
+                Logger.LogWarning("Push notification failed: {StatusCode} - {ResponseContent}", 
+                    response.StatusCode, responseContent);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Exception in direct push notification: {ErrorMessage}", ex.Message);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Create data payload for FCM message, converting all values to strings
+    /// </summary>
+    private static Dictionary<string, string> CreateDataPayload(Dictionary<string, object>? data)
+    {
+        var dataPayload = new Dictionary<string, string>();
+        if (data != null)
+        {
+            foreach (var kvp in data)
+            {
+                dataPayload[kvp.Key] = kvp.Value?.ToString() ?? "";
+            }
+        }
+        return dataPayload;
     }
 }
