@@ -37,7 +37,7 @@ public static class GodGPTLanguageHelper
             var context = RequestContext.Get(IsCN);
             if (context != null && context is bool isCN)
             {
-                return true;
+                return isCN;
             }
         }
         catch (Exception)
