@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using GodGPT.GAgents.DailyPush.Options;
@@ -114,8 +115,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             }
         }
 
-        // Thread-safe token creation with proper semaphore handling
-        await _tokenSemaphore.WaitAsync();
+        // Thread-safe token creation with timeout protection against deadlocks
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(2)); // 2分钟超时
+        
+        await _tokenSemaphore.WaitAsync(timeoutCts.Token);
         try
         {
             // Double-check after acquiring lock - consistent with main check
@@ -128,14 +131,34 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             var currentTask = _tokenCreationTask;
             if (currentTask != null && !currentTask.IsCompleted)
             {
-                _logger.LogDebug("JWT creation already in progress by another thread, awaiting result");
-                return await currentTask;
+                _logger.LogDebug("JWT creation already in progress, releasing semaphore and awaiting result");
+                // 🔧 DEADLOCK FIX: Release semaphore before awaiting external task
+                _tokenSemaphore.Release();
+                try
+                {
+                    using var taskTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+                    return await currentTask.WaitAsync(taskTimeout.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("JWT creation task timed out, will retry");
+                    // Re-acquire semaphore for cleanup
+                    await _tokenSemaphore.WaitAsync(timeoutCts.Token);
+                    _tokenCreationTask = null; // Clear hung task
+                }
+                catch
+                {
+                    // Re-acquire semaphore for cleanup  
+                    await _tokenSemaphore.WaitAsync(timeoutCts.Token);
+                    _tokenCreationTask = null; // Clear failed task
+                    throw;
+                }
             }
 
-            // Create token synchronously within semaphore protection
-            // This prevents RSA concurrency issues by ensuring only one creation at a time
-            _logger.LogDebug("Creating new JWT token within semaphore protection");
-            var tokenResult = await CreateJwtTokenInternalWithExpiryAsync();
+            // Create token with timeout protection
+            _logger.LogDebug("Creating new JWT token with deadlock protection");
+            using var createTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            var tokenResult = await CreateJwtTokenInternalWithExpiryAsync().WaitAsync(createTimeout.Token);
             
             if (tokenResult != null && !string.IsNullOrEmpty(tokenResult.Token))
             {
@@ -152,9 +175,26 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             _tokenCreationTask = null;
             return null;
         }
+        catch (OperationCanceledException)
+        {
+            _logger.LogError("JWT creation timed out - preventing potential deadlock");
+            _tokenCreationTask = null;
+            return null;
+        }
         finally
         {
-            _tokenSemaphore.Release();
+            try
+            {
+                _tokenSemaphore.Release();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Semaphore disposed, ignore
+            }
+            catch (SemaphoreFullException)
+            {
+                // Already released, ignore
+            }
         }
     }
 
