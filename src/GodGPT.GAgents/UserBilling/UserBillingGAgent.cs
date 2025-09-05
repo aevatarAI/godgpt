@@ -1083,7 +1083,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var purchaseType = !paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.InvoiceDetails.Count == 1
                 ? PurchaseType.Subscription
                 : PurchaseType.Renewal;
-            _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,productConfig.PriceId, productConfig.Currency, productConfig.Amount);
+            var amount = invoiceDetail.AmountNetTotal ?? invoiceDetail.Amount;
+            amount = amount ?? productConfig.Amount;
+            _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,
+                productConfig.PriceId, invoiceDetail.Currency ?? string.Empty, amount.Value);
             
         } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
@@ -1527,7 +1530,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             {
                 InvoiceId = paymentDetails.InvoiceId,
                 CreatedAt = paymentDetails.CreatedAt,
-                Status = paymentDetails.Status
+                Status = paymentDetails.Status,
+                Amount = paymentDetails.Amount,
+                Currency = paymentDetails.Currency
             };
             if (paymentDetails.Status == PaymentStatus.Completed)
             {
@@ -1548,6 +1553,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             if (paymentDetails.Status == PaymentStatus.Completed)
             {
                 invoiceDetail.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
+                invoiceDetail.AmountNetTotal = paymentDetails.AmountNetTotal;
+                invoiceDetail.Discounts = paymentDetails.Discounts;
             }
             if (paymentDetails.Status == PaymentStatus.Completed && invoiceDetail.SubscriptionStartDate == default)
             {
