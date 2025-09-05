@@ -95,7 +95,14 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return _cachedJwtToken;
         }
         
-        _logger.LogDebug("JWT token expired, creating new token");
+        // Check if we're in failure cooldown period (token is null but expiry is set to prevent rapid retries)
+        if (string.IsNullOrEmpty(_cachedJwtToken) && _tokenExpiry > DateTime.MinValue && DateTime.UtcNow < _tokenExpiry)
+        {
+            _logger.LogDebug("JWT creation in failure cooldown period, returning null");
+            return null;
+        }
+        
+        _logger.LogDebug("JWT token expired or not cached, creating new token");
 
         // Check for failure cooldown period to prevent rapid retries after consecutive failures
         if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
@@ -125,6 +132,13 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
             {
                 return _cachedJwtToken;
+            }
+            
+            // Double-check failure cooldown period
+            if (string.IsNullOrEmpty(_cachedJwtToken) && _tokenExpiry > DateTime.MinValue && DateTime.UtcNow < _tokenExpiry)
+            {
+                _logger.LogDebug("JWT creation in failure cooldown period after acquiring lock, returning null");
+                return null;
             }
 
             // Check if another thread already started creation while we were waiting
@@ -173,12 +187,21 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             
             // Clear the task reference since we failed
             _tokenCreationTask = null;
+            
+            // 🔧 CONCURRENCY FIX: Set short-term failure cache to prevent immediate retry by other threads
+            // This prevents all waiting threads from attempting creation if first one fails
+            _tokenExpiry = DateTime.UtcNow.AddSeconds(30); // 30-second failure cache
+            _logger.LogWarning("JWT creation failed, setting 30-second failure cache to prevent concurrent retries");
+            
             return null;
         }
         catch (OperationCanceledException)
         {
             _logger.LogError("JWT creation timed out - preventing potential deadlock");
             _tokenCreationTask = null;
+            
+            // Set short-term failure cache for timeout scenarios as well
+            _tokenExpiry = DateTime.UtcNow.AddSeconds(30);
             return null;
         }
         finally
