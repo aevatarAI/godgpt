@@ -50,7 +50,7 @@ namespace Aevatar.Application.Grains.Common.Security
                 _logger.LogDebug("[GooglePaySecurityValidator] Verifying Pub/Sub message signature");
 
                 // 1. Parse RSA public key from base64
-                var rsa = RSA.Create();
+                using var rsa = RSA.Create();
                 var publicKeyBytes = Convert.FromBase64String(_options.RsaPublicKey);
                 rsa.ImportRSAPublicKey(publicKeyBytes, out _);
 

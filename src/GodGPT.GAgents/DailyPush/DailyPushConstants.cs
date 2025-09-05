@@ -41,6 +41,12 @@ public static class DailyPushConstants
     public static readonly Guid CONTENT_GAGENT_ID = new Guid("12345678-1234-5678-9abc-123456789012");
 
     /// <summary>
+    /// Well-known GUID for the singleton GlobalJwtProviderGAgent instance
+    /// Manages JWT creation, caching, and global push token deduplication for entire system
+    /// </summary>
+    public static readonly Guid GLOBAL_JWT_PROVIDER_ID = new Guid("87654321-4321-8765-dcba-987654321098");
+
+    /// <summary>
     /// Convert timezone string to deterministic GUID for PushSubscriberIndexGAgent and DailyPushCoordinatorGAgent
     /// </summary>
     public static Guid TimezoneToGuid(string timezoneId)

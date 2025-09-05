@@ -97,4 +97,5 @@ public interface IChatManagerGAgent : IGAgent
     /// Get device status for query API
     /// </summary>
     Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
+    
 }
