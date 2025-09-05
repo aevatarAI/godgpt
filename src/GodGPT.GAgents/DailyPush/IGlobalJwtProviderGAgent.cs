@@ -50,16 +50,36 @@ public interface IGlobalJwtProviderGAgent : IGAgent
 /// <summary>
 /// Status information for GlobalJwtProviderGAgent
 /// </summary>
+[Orleans.GenerateSerializer]
 public class GlobalJwtProviderStatus
 {
+    [Orleans.Id(0)]
     public bool IsReady { get; set; }
+    
+    [Orleans.Id(1)]
     public bool HasCachedToken { get; set; }
+    
+    [Orleans.Id(2)]
     public DateTime? TokenExpiry { get; set; }
+    
+    [Orleans.Id(3)]
     public int TotalTokenRequests { get; set; }
+    
+    [Orleans.Id(4)]
     public int TotalDeduplicationChecks { get; set; }
+    
+    [Orleans.Id(5)]
     public int PreventedDuplicates { get; set; }
+    
+    [Orleans.Id(6)]
     public int TrackedPushTokens { get; set; }
+    
+    [Orleans.Id(7)]
     public DateTime? LastTokenCreation { get; set; }
+    
+    [Orleans.Id(8)]
     public DateTime? LastCleanup { get; set; }
+    
+    [Orleans.Id(9)]
     public string? LastError { get; set; }
 }
