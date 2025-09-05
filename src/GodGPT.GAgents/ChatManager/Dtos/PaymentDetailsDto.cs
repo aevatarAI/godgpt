@@ -26,7 +26,7 @@ public class PaymentDetailsDto
     [Id(17)] public string SessionId { get; set; }
     [Id(18)] public List<PaymentInvoiceDetailDto> InvoiceDetails { get; set; }
     //Total after discounts and taxes.
-    [Id(19)] public decimal AmountNetTotal { get; set; }
+    [Id(19)] public decimal? AmountNetTotal { get; set; }
     [Id(20)] public List<DiscountDetails> Discounts { get; set; }
 }
 
@@ -38,6 +38,6 @@ public class PaymentInvoiceDetailDto
     [Id(2)] public DateTime CreatedAt { get; set; }
     [Id(3)] public DateTime? CompletedAt { get; set; }
     [Id(4)] public decimal Amount { get; set; }   
-    [Id(5)] public decimal AmountNetTotal { get; set; }
+    [Id(5)] public decimal? AmountNetTotal { get; set; }
     [Id(6)] public List<DiscountDetails> Discounts { get; set; }
 }

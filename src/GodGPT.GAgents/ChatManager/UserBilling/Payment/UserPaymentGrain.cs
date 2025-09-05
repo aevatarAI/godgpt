@@ -45,6 +45,8 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                 stripeSignature,
                 _stripeOptions.CurrentValue.WebhookSecret
             );
+            //Debug
+            //var stripeEvent = EventUtility.ParseEvent(jsonPayload);
             
             _logger.LogDebug("[PaymentGAgent][ProcessPaymentCallbackAsync] Processing Stripe webhook event, {0}, {1}", stripeEvent.Type, stripeEvent.Id);
             

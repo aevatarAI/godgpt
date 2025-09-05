@@ -958,6 +958,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 stripeSignature,
                 _stripeOptions.CurrentValue.WebhookSecret
             );
+            //Debug
+            //stripeEvent = EventUtility.ParseEvent(jsonPayload);
         }
         catch (StripeException ex)
         {
@@ -1531,7 +1533,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 InvoiceId = paymentDetails.InvoiceId,
                 CreatedAt = paymentDetails.CreatedAt,
                 Status = paymentDetails.Status,
-                Amount = paymentDetails.Amount,
+                Amount = productConfig.Amount,
                 Currency = paymentDetails.Currency
             };
             if (paymentDetails.Status == PaymentStatus.Completed)
