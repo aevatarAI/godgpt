@@ -26,6 +26,9 @@ public class UserPaymentState
     [Id(17)] public string SessionId { get; set; }
     [Id(18)] public string PaymentIntentId { get; set; }
     [Id(19)] public List<PaymentInvoiceDetail> InvoiceDetails { get; set; } = new List<PaymentInvoiceDetail>();
+    //Total after discounts and taxes.
+    [Id(20)] public decimal? AmountNetTotal { get; set; }
+    [Id(21)] public List<DiscountDetails>? Discounts { get; set; }
 
     public PaymentDetailsDto ToDto()
     {
@@ -49,7 +52,9 @@ public class UserPaymentState
             SubscriptionId = this.SubscriptionId,
             InvoiceId = this.InvoiceId,
             SessionId = this.SessionId,
-            InvoiceDetails = ToInvoiceDetailDtos()
+            InvoiceDetails = ToInvoiceDetailDtos(),
+            AmountNetTotal = this.AmountNetTotal,
+            Discounts = this.Discounts
         };
     }
 
@@ -68,7 +73,10 @@ public class UserPaymentState
                 InvoiceId = paymentInvoiceDetail.InvoiceId,
                 Status = paymentInvoiceDetail.Status,
                 CreatedAt = paymentInvoiceDetail.CreatedAt,
-                CompletedAt = paymentInvoiceDetail.CompletedAt
+                CompletedAt = paymentInvoiceDetail.CompletedAt,
+                Amount = paymentInvoiceDetail.Amount,
+                AmountNetTotal = paymentInvoiceDetail.AmountNetTotal,
+                Discounts = paymentInvoiceDetail.Discounts
             });
         }
 
@@ -98,6 +106,8 @@ public class UserPaymentState
             InvoiceId = dto.InvoiceId,
             SessionId = dto.SessionId,
             InvoiceDetails = FromInvoiceDetails(dto.InvoiceDetails),
+            AmountNetTotal = dto.AmountNetTotal,
+            Discounts = dto.Discounts
         };
     }
 
@@ -116,7 +126,10 @@ public class UserPaymentState
                 InvoiceId = invoiceDetailDto.InvoiceId,
                 Status = invoiceDetailDto.Status,
                 CreatedAt = invoiceDetailDto.CreatedAt,
-                CompletedAt = invoiceDetailDto.CompletedAt
+                CompletedAt = invoiceDetailDto.CompletedAt,
+                Amount = invoiceDetailDto.Amount,
+                AmountNetTotal = invoiceDetailDto.AmountNetTotal,
+                Discounts = invoiceDetailDto.Discounts
             });
         }
         return paymentInvoiceDetails;
@@ -130,4 +143,19 @@ public class PaymentInvoiceDetail
     [Id(1)] public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
     [Id(2)] public DateTime CreatedAt { get; set; }
     [Id(3)] public DateTime? CompletedAt { get; set; }
+    [Id(4)] public decimal Amount { get; set; }   
+    [Id(5)] public decimal? AmountNetTotal { get; set; }
+    [Id(6)] public List<DiscountDetails>? Discounts { get; set; }
+}
+
+[GenerateSerializer]
+public class DiscountDetails
+{
+    [Id(0)] public string DiscountId { get; set; }
+    [Id(1)] public string CouponId { get; set; }
+    [Id(2)] public string CouponName { get; set; }
+    [Id(3)] public long? AmountOff { get; set; }
+    [Id(4)] public decimal? PercentOff { get; set; }
+    [Id(5)] public string PromotionCodeId { get; set; }
+    [Id(6)] public string PromotionCode { get; set; }
 }

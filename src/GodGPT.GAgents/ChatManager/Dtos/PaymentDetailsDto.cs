@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.Common.Constants;
 
 namespace Aevatar.Application.Grains.ChatManager.Dtos;
@@ -24,6 +25,9 @@ public class PaymentDetailsDto
     [Id(16)] public string InvoiceId { get; set; }
     [Id(17)] public string SessionId { get; set; }
     [Id(18)] public List<PaymentInvoiceDetailDto> InvoiceDetails { get; set; }
+    //Total after discounts and taxes.
+    [Id(19)] public decimal AmountNetTotal { get; set; }
+    [Id(20)] public List<DiscountDetails> Discounts { get; set; }
 }
 
 [GenerateSerializer]
@@ -33,4 +37,7 @@ public class PaymentInvoiceDetailDto
     [Id(1)] public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
     [Id(2)] public DateTime CreatedAt { get; set; }
     [Id(3)] public DateTime? CompletedAt { get; set; }
+    [Id(4)] public decimal Amount { get; set; }   
+    [Id(5)] public decimal AmountNetTotal { get; set; }
+    [Id(6)] public List<DiscountDetails> Discounts { get; set; }
 }

@@ -386,7 +386,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         { "order_id", orderId }
                     }
                 }
-                : null
+                : null,
+            AllowPromotionCodes = true
         };
 
         if (createCheckoutSessionDto.PaymentMethodTypes != null && createCheckoutSessionDto.PaymentMethodTypes.Any())
@@ -1232,7 +1233,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         return payment;
     }
 
-    public async Task<List<ChatManager.UserBilling.PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
+    public async Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
     {
         _logger.LogInformation(
             "[UserBillingGAgent][GetPaymentHistoryAsync] Getting payment history page {Page} with size {PageSize}",
@@ -1301,27 +1302,49 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             
             if (paymentSummary.InvoiceDetails.IsNullOrEmpty())
             {
+                if (paymentSummary.AmountNetTotal == null)
+                {
+                    paymentSummary.AmountNetTotal = paymentSummary.Amount;
+                }
                 paymentHistories.Add(paymentSummary);
             }
             else
             {
-                paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail => new ChatManager.UserBilling.PaymentSummary
+                paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail =>
                 {
-                    PaymentGrainId = paymentSummary.PaymentGrainId,
-                    OrderId = paymentSummary.OrderId,
-                    PlanType = invoiceDetail.PlanType == PlanType.None ?  paymentSummary.PlanType : invoiceDetail.PlanType,
-                    Amount = invoiceDetail.Amount == null ? paymentSummary.Amount : (decimal) invoiceDetail.Amount,
-                    Currency = invoiceDetail.Currency == null ? paymentSummary.Currency : invoiceDetail.Currency,
-                    CreatedAt = invoiceDetail.CreatedAt,
-                    CompletedAt = invoiceDetail.CompletedAt,
-                    Status = invoiceDetail.Status,
-                    SubscriptionId = paymentSummary.SubscriptionId,
-                    SubscriptionStartDate = invoiceDetail.SubscriptionStartDate,
-                    SubscriptionEndDate = invoiceDetail.SubscriptionEndDate,
-                    UserId = paymentSummary.UserId,
-                    PriceId = invoiceDetail.PriceId.IsNullOrWhiteSpace() ? paymentSummary.PriceId : invoiceDetail.PriceId,
-                    Platform = paymentSummary.Platform,
-                    MembershipLevel = invoiceDetail.MembershipLevel.IsNullOrWhiteSpace() ? paymentSummary.MembershipLevel : invoiceDetail.MembershipLevel
+                    var payment = new ChatManager.UserBilling.PaymentSummary
+                    {
+                        PaymentGrainId = paymentSummary.PaymentGrainId,
+                        OrderId = paymentSummary.OrderId,
+                        PlanType = invoiceDetail.PlanType == PlanType.None
+                            ? paymentSummary.PlanType
+                            : invoiceDetail.PlanType,
+                        Amount = invoiceDetail.Amount == null ? paymentSummary.Amount : (decimal)invoiceDetail.Amount,
+                        Currency = invoiceDetail.Currency == null ? paymentSummary.Currency : invoiceDetail.Currency,
+                        CreatedAt = invoiceDetail.CreatedAt,
+                        CompletedAt = invoiceDetail.CompletedAt,
+                        Status = invoiceDetail.Status,
+                        SubscriptionId = paymentSummary.SubscriptionId,
+                        SubscriptionStartDate = invoiceDetail.SubscriptionStartDate,
+                        SubscriptionEndDate = invoiceDetail.SubscriptionEndDate,
+                        UserId = paymentSummary.UserId,
+                        PriceId = invoiceDetail.PriceId.IsNullOrWhiteSpace()
+                            ? paymentSummary.PriceId
+                            : invoiceDetail.PriceId,
+                        Platform = paymentSummary.Platform,
+                        MembershipLevel = invoiceDetail.MembershipLevel.IsNullOrWhiteSpace()
+                            ? paymentSummary.MembershipLevel
+                            : invoiceDetail.MembershipLevel,
+                        AmountNetTotal = invoiceDetail.AmountNetTotal == null
+                            ? paymentSummary.AmountNetTotal
+                            : invoiceDetail.AmountNetTotal
+                    };
+                    if (payment.AmountNetTotal == null)
+                    {
+                        payment.AmountNetTotal = payment.Amount;
+                    }
+
+                    return payment;
                 }));
             }
         }
@@ -1437,6 +1460,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             existingPaymentSummary.Currency = productConfig.Currency;
             existingPaymentSummary.Status = paymentDetails.Status;
             existingPaymentSummary.SubscriptionId = paymentDetails.SubscriptionId;
+            existingPaymentSummary.AmountNetTotal = paymentDetails.AmountNetTotal;
             await CreateOrUpdateInvoiceDetailAsync(paymentDetails, productConfig, existingPaymentSummary);
             
             RaiseEvent(new UpdatePaymentLogEvent
@@ -1470,7 +1494,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 Currency = productConfig.Currency,
                 CreatedAt = paymentDetails.CreatedAt,
                 Status = paymentDetails.Status,
-                SubscriptionId = paymentDetails.SubscriptionId
+                SubscriptionId = paymentDetails.SubscriptionId,
+                AmountNetTotal = paymentDetails.AmountNetTotal
             };
             await CreateOrUpdateInvoiceDetailAsync(paymentDetails, productConfig, newPaymentSummary);
             await AddPaymentRecordAsync(newPaymentSummary);
@@ -1511,7 +1536,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     await CalculateSubscriptionDurationAsync(paymentDetails.UserId, productConfig);
                 invoiceDetail.SubscriptionStartDate = subscriptionStartDate;
                 invoiceDetail.SubscriptionEndDate = subscriptionEndDate;
+                invoiceDetail.AmountNetTotal = paymentDetails.AmountNetTotal;
+                invoiceDetail.Discounts = paymentDetails.Discounts;
             }
+
             paymentSummary.InvoiceDetails.Add(invoiceDetail);
         }
         else
