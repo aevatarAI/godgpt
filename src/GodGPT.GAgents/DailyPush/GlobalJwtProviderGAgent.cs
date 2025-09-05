@@ -290,16 +290,6 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                 
                 Interlocked.Increment(ref _preventedDuplicates);
                 
-                // Log deduplication event for analytics
-                var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
-                RaiseEvent(new DuplicatePreventionEventLog 
-                { 
-                    PushTokenPrefix = tokenPrefix,
-                    TimeZone = timeZoneId,
-                    PreventionDate = todayUtc.ToDateTime(TimeOnly.MinValue),
-                    PreventionTime = DateTime.UtcNow
-                });
-                
                 return false;
             }
         }
@@ -319,16 +309,6 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                 deviceId ?? "N/A", pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
             
             Interlocked.Increment(ref _preventedDuplicates);
-            
-            // Log deduplication event for analytics
-            var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
-            RaiseEvent(new DuplicatePreventionEventLog 
-            { 
-                PushTokenPrefix = tokenPrefix,
-                TimeZone = timeZoneId,
-                PreventionDate = todayUtc.ToDateTime(TimeOnly.MinValue),
-                PreventionTime = DateTime.UtcNow
-            });
             
             return false;
         }
@@ -493,16 +473,6 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         _lastTokenCreation = DateTime.UtcNow;
                         _lastError = null; // Clear error on success
                         
-                        // Calculate expiry for event logging (but don't store in instance fields)
-                        var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
-                        var calculatedExpiry = DateTime.UtcNow.AddHours(expiryHours);
-                        
-                        RaiseEvent(new TokenCreationSuccessEventLog 
-                        { 
-                            CreationTime = DateTime.UtcNow,
-                            TokenExpiry = calculatedExpiry 
-                        });
-                        
                         // Reset failure tracking on success
                         _consecutiveFailures = 0;
                         _lastFailureTime = DateTime.MinValue;
@@ -522,11 +492,6 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         }
                         
                         _lastError = httpError;
-                        RaiseEvent(new TokenCreationFailureEventLog 
-                        { 
-                            AttemptNumber = maxRetries,
-                            ErrorMessage = httpError 
-                        });
                         
                         // Record failure for cooldown mechanism
                         RecordTokenCreationFailure();
@@ -545,11 +510,6 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                     }
                     
                     _lastError = exceptionError;
-                    RaiseEvent(new TokenCreationFailureEventLog 
-                    { 
-                        AttemptNumber = maxRetries,
-                        ErrorMessage = exceptionError 
-                    });
                     
                     // Record failure for cooldown mechanism
                     RecordTokenCreationFailure();
