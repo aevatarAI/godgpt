@@ -139,7 +139,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         }
     }
 
-    public async Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true)
+    public async Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false)
     {
         if (string.IsNullOrEmpty(pushToken))
         {
@@ -155,11 +155,9 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             CleanupOldRecords();
         }
 
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        
-        // IMPROVED DEDUPLICATION LOGIC:
-        // Use sequence-level deduplication to prevent duplicate content sequences
-        // but allow retry pushes and proper content flow
+        var nowUtc = DateTime.UtcNow;
+        var todayUtc = DateOnly.FromDateTime(nowUtc);
+        var currentUtcHour = nowUtc.Hour;
         
         if (isRetryPush)
         {
@@ -168,60 +166,39 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return true;
         }
 
-        // For normal daily pushes, check sequence-level deduplication
-        var sequenceKey = $"{pushToken}:{timeZoneId}";
+        // UTC-BASED DEDUPLICATION: Each device can only receive push at the same UTC hour once per day
+        // This prevents duplicate push sequences regardless of timezone switching
+        var sequenceKey = $"{pushToken}:{todayUtc:yyyy-MM-dd}:{currentUtcHour:D2}";
+        var wasAdded = _lastPushDates.TryAdd(sequenceKey, todayUtc);
         
-        if (isFirstContent)
+        if (!wasAdded)
         {
-            // For first content, use atomic reservation to prevent race conditions
-            // This ensures only ONE user can claim the push sequence for this device+timezone today
-            var wasAdded = _lastPushDates.TryAdd(sequenceKey, today);
-            if (!wasAdded)
-            {
-                // Sequence already claimed by another user/process
-                _logger.LogDebug("Push sequence blocked - already claimed for pushToken {TokenPrefix}, timezone {TimeZone}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-                
-                Interlocked.Increment(ref _preventedDuplicates);
-                
-                // Log deduplication event for analytics
-                var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
-                RaiseEvent(new DuplicatePreventionEventLog 
-                { 
-                    PushTokenPrefix = tokenPrefix,
-                    TimeZone = timeZoneId,
-                    PreventionDate = today.ToDateTime(TimeOnly.MinValue),
-                    PreventionTime = DateTime.UtcNow
-                });
-                
-                return false;
-            }
-            else
-            {
-                // Successfully claimed sequence - this user/process owns the push sequence for this device today
-                _logger.LogDebug("Push sequence claimed successfully for pushToken {TokenPrefix}, timezone {TimeZone}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-                return true;
-            }
+            // Device already received push at this UTC hour today - block duplicate
+            _logger.LogInformation("Push BLOCKED - device already received push at UTC {UtcDate} {UtcHour}:00: pushToken {TokenPrefix}, timezone {TimeZone}", 
+                todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"), 
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+            
+            Interlocked.Increment(ref _preventedDuplicates);
+            
+            // Log deduplication event for analytics
+            var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
+            RaiseEvent(new DuplicatePreventionEventLog 
+            { 
+                PushTokenPrefix = tokenPrefix,
+                TimeZone = timeZoneId,
+                PreventionDate = todayUtc.ToDateTime(TimeOnly.MinValue),
+                PreventionTime = DateTime.UtcNow
+            });
+            
+            return false;
         }
         else
         {
-            // For subsequent content, verify that sequence was claimed today by some user
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
-            {
-                // Sequence exists and is for today - allow subsequent content
-                _logger.LogDebug("Subsequent content allowed - sequence exists for pushToken {TokenPrefix}, timezone {TimeZone}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-                return true;
-            }
-            else
-            {
-                // No sequence claimed today - this should not happen in normal flow
-                _logger.LogWarning("Subsequent content blocked - no sequence claimed for pushToken {TokenPrefix}, timezone {TimeZone}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-                Interlocked.Increment(ref _preventedDuplicates);
-                return false;
-            }
+            // Successfully claimed device for this UTC hour - this user owns pushes to this device at this UTC time
+            _logger.LogInformation("Push CLAIMED - device push sequence reserved for UTC {UtcDate} {UtcHour}:00: pushToken {TokenPrefix}, timezone {TimeZone}", 
+                todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"),
+                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+            return true;
         }
     }
 

@@ -1671,23 +1671,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
         
-        // CRITICAL: Claim push sequences atomically for eligible devices
-        // This prevents cross-user race conditions where multiple users claim the same device
+        // CRITICAL: Check UTC-based deduplication for each device
+        // Only devices that haven't received push at current UTC hour will be eligible
         var eligibleDevices = new List<UserDeviceInfo>();
         foreach (var device in enabledDevices)
         {
-            // Atomically claim the push sequence for this device today
-            // This will succeed for only ONE user across the entire system for this device+timezone
-            var sequenceClaimed = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, true); // isFirstContent=true claims the sequence
-            if (sequenceClaimed)
+            // Check if this device can receive push at current UTC time point
+            var canReceivePush = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush);
+            if (canReceivePush)
             {
                 eligibleDevices.Add(device);
-                Logger.LogInformation("Push sequence CLAIMED for device: DeviceId {DeviceId}, PushToken {TokenPrefix}, User {UserId}", 
+                Logger.LogInformation("Device ELIGIBLE for push: DeviceId {DeviceId}, PushToken {TokenPrefix}, User {UserId}", 
                     device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)) + "...", State.UserId);
             }
             else
             {
-                Logger.LogInformation("Push sequence BLOCKED - already claimed by another user: DeviceId {DeviceId}, PushToken {TokenPrefix}, User {UserId}", 
+                Logger.LogInformation("Device BLOCKED - already received push at this UTC hour: DeviceId {DeviceId}, PushToken {TokenPrefix}, User {UserId}", 
                     device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)) + "...", State.UserId);
             }
         }
@@ -1749,7 +1748,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     };
                     
                     // Use new global JWT architecture with direct HTTP push
-                    // Skip deduplication check since sequence already claimed atomically above
+                    // Skip deduplication since device already passed UTC-based pre-check
                     var success = await SendDirectPushNotificationAsync(
                         globalJwtProvider,
                         projectId,
@@ -1761,7 +1760,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         isRetryPush,
                         contentIndex == 0, // isFirstContent - first content=true, subsequent=false
                         false, // isTestPush
-                        true); // skipDeduplicationCheck - sequence already claimed atomically
+                        true); // skipDeduplicationCheck - device already passed UTC-based pre-check
                     
                     if (success)
                     {
@@ -1951,7 +1950,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             if (!isTestPush && !skipDeduplicationCheck)
             {
                 // Check global deduplication
-                var canSend = await globalJwtProvider.CanSendPushAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
+                var canSend = await globalJwtProvider.CanSendPushAsync(pushToken, timeZoneId, isRetryPush);
                 if (!canSend)
                 {
                     Logger.LogInformation("Push blocked by global deduplication: token {TokenPrefix}, timezone {TimeZone}", 

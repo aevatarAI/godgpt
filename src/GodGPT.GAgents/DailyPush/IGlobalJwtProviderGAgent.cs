@@ -16,15 +16,14 @@ public interface IGlobalJwtProviderGAgent : IGAgent
     Task<string?> GetFirebaseAccessTokenAsync();
 
     /// <summary>
-    /// Check if push token can receive push notification (global deduplication)
-    /// Prevents same device from receiving duplicate pushes across different users
+    /// Check if push token can receive push notification (UTC-based deduplication)
+    /// Prevents same device from receiving duplicate pushes at the same UTC hour
     /// </summary>
     /// <param name="pushToken">Firebase push token</param>
     /// <param name="timeZoneId">Target timezone (e.g., "Asia/Shanghai")</param>
-    /// <param name="isRetryPush">Whether this is a retry push (bypasses same-day check)</param>
-    /// <param name="isFirstContent">Whether this is first content of multi-content push</param>
-    /// <returns>True if push can be sent, false if duplicate</returns>
-    Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true);
+    /// <param name="isRetryPush">Whether this is a retry push (bypasses UTC hour check)</param>
+    /// <returns>True if push can be sent, false if duplicate at this UTC hour</returns>
+    Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false);
 
     /// <summary>
     /// Mark push as sent for deduplication tracking
