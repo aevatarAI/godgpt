@@ -16,6 +16,15 @@ using Orleans.Providers;
 
 namespace GodGPT.GAgents.DailyPush;
 
+/// <summary>
+/// Result container for JWT token creation with expiry information
+/// </summary>
+public class TokenResult
+{
+    public string Token { get; set; } = "";
+    public DateTime Expiry { get; set; }
+}
+
 // Note: Using TokenResponse from FirebaseService.cs
 
 /// <summary>
@@ -105,14 +114,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             }
         }
 
-        // Use task-based singleton pattern for thread-safe token creation
-        var currentTask = _tokenCreationTask;
-        if (currentTask != null && !currentTask.IsCompleted)
-        {
-            _logger.LogDebug("JWT creation already in progress, awaiting result");
-            return await currentTask;
-        }
-
+        // Thread-safe token creation with proper semaphore handling
         await _tokenSemaphore.WaitAsync();
         try
         {
@@ -122,16 +124,33 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                 return _cachedJwtToken;
             }
 
-            // Check if another thread started creation
-            currentTask = _tokenCreationTask;
+            // Check if another thread already started creation while we were waiting
+            var currentTask = _tokenCreationTask;
             if (currentTask != null && !currentTask.IsCompleted)
             {
+                _logger.LogDebug("JWT creation already in progress by another thread, awaiting result");
                 return await currentTask;
             }
 
-            // Start new token creation
-            _tokenCreationTask = CreateJwtTokenInternalAsync();
-            return await _tokenCreationTask;
+            // Create token synchronously within semaphore protection
+            // This prevents RSA concurrency issues by ensuring only one creation at a time
+            _logger.LogDebug("Creating new JWT token within semaphore protection");
+            var tokenResult = await CreateJwtTokenInternalWithExpiryAsync();
+            
+            if (tokenResult != null && !string.IsNullOrEmpty(tokenResult.Token))
+            {
+                _cachedJwtToken = tokenResult.Token;
+                _tokenExpiry = tokenResult.Expiry;
+                _logger.LogDebug("JWT token cached successfully with expiry: {Expiry}", _tokenExpiry);
+                
+                // Clear the task reference since we completed successfully
+                _tokenCreationTask = null;
+                return tokenResult.Token;
+            }
+            
+            // Clear the task reference since we failed
+            _tokenCreationTask = null;
+            return null;
         }
         finally
         {
@@ -330,6 +349,22 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     }
 
     /// <summary>
+    /// Internal JWT creation with proper RSA lifecycle management and expiry information
+    /// Uses proven pattern from UserBillingGrain to avoid ObjectDisposedException
+    /// </summary>
+    private async Task<TokenResult?> CreateJwtTokenInternalWithExpiryAsync()
+    {
+        var token = await CreateJwtTokenInternalAsync();
+        if (!string.IsNullOrEmpty(token))
+        {
+            // Use conservative expiry: 50 minutes (10 minutes before actual 60-minute expiry)
+            var expiry = DateTime.UtcNow.AddMinutes(50);
+            return new TokenResult { Token = token, Expiry = expiry };
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Internal JWT creation with proper RSA lifecycle management
     /// Uses proven pattern from UserBillingGrain to avoid ObjectDisposedException
     /// </summary>
@@ -383,22 +418,24 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                     var tokenResponse = await ExchangeJwtForAccessTokenAsync(httpClient, jwt);
                     if (tokenResponse != null && !string.IsNullOrEmpty(tokenResponse.AccessToken))
                     {
-                        // Cache token with 24-hour expiry (or shorter if specified)
-                        var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
-                        _tokenExpiry = DateTime.UtcNow.AddHours(expiryHours);
+                        // Note: Token caching (_cachedJwtToken, _tokenExpiry) is now handled by the calling method
+                        // within proper semaphore protection to prevent race conditions
                         
                         _logger.LogDebug("Token expiry calculated: expires in {ExpiresInSeconds}s", tokenResponse.ExpiresIn);
-                        _cachedJwtToken = tokenResponse.AccessToken;
                         
                         // Record success in memory only - avoid slow State operations
                         Interlocked.Increment(ref _successfulTokenCreations);
                         _lastTokenCreation = DateTime.UtcNow;
                         _lastError = null; // Clear error on success
                         
+                        // Calculate expiry for event logging (but don't store in instance fields)
+                        var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
+                        var calculatedExpiry = DateTime.UtcNow.AddHours(expiryHours);
+                        
                         RaiseEvent(new TokenCreationSuccessEventLog 
                         { 
                             CreationTime = DateTime.UtcNow,
-                            TokenExpiry = _tokenExpiry 
+                            TokenExpiry = calculatedExpiry 
                         });
                         
                         // Reset failure tracking on success
