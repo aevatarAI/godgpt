@@ -43,6 +43,15 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private volatile Task<string?>? _tokenCreationTask; // ✅ In-memory only
     private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);  // ✅ In-memory only
     
+    // Statistics tracking - ALL IN MEMORY to avoid slow State operations
+    private static int _totalTokenRequests = 0;
+    private static int _totalDeduplicationChecks = 0;
+    private static int _preventedDuplicates = 0;
+    private static int _successfulTokenCreations = 0;
+    private static DateTime? _lastTokenCreation = null;
+    private static DateTime? _lastCleanup = null;
+    private static string? _lastError = null;
+    
     // Error handling and retry control
     private DateTime _lastFailureTime = DateTime.MinValue;
     private int _consecutiveFailures = 0;
@@ -66,7 +75,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     public async Task<string?> GetFirebaseAccessTokenAsync()
     {
         // Fast path: increment counter without blocking (statistics only)
-        State.IncrementTokenRequests();
+        Interlocked.Increment(ref _totalTokenRequests);
         
         // Check cached token first - aggressive optimization: use token until last 30 seconds
         if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
@@ -138,7 +147,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return false;
         }
 
-        State.IncrementDeduplicationChecks();
+        Interlocked.Increment(ref _totalDeduplicationChecks);
 
         // Periodically cleanup old records (every 100 calls)
         if (Interlocked.Increment(ref _cleanupCounter) % 100 == 0)
@@ -164,15 +173,16 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         
         if (isFirstContent)
         {
-            // For first content, check if sequence has already started today
-            // Use atomic TryAdd to prevent race conditions
+            // For first content, use atomic reservation to prevent race conditions
+            // This ensures only ONE user can claim the push sequence for this device+timezone today
             var wasAdded = _lastPushDates.TryAdd(sequenceKey, today);
             if (!wasAdded)
             {
-                // Sequence already started by another user
-                _logger.LogDebug("Push sequence blocked - already started for timezone {TimeZone}", timeZoneId);
+                // Sequence already claimed by another user/process
+                _logger.LogDebug("Push sequence blocked - already claimed for pushToken {TokenPrefix}, timezone {TimeZone}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
                 
-                State.IncrementPreventedDuplicates();
+                Interlocked.Increment(ref _preventedDuplicates);
                 
                 // Log deduplication event for analytics
                 var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
@@ -188,24 +198,28 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             }
             else
             {
-                _logger.LogDebug("Push sequence start allowed for timezone {TimeZone}", timeZoneId);
+                // Successfully claimed sequence - this user/process owns the push sequence for this device today
+                _logger.LogDebug("Push sequence claimed successfully for pushToken {TokenPrefix}, timezone {TimeZone}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
                 return true;
             }
         }
         else
         {
-            // For subsequent content, check if sequence was started today
+            // For subsequent content, verify that sequence was claimed today by some user
             if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
             {
-                // Sequence exists and is for today - allow content
-                _logger.LogDebug("Content allowed within existing sequence for timezone {TimeZone}", timeZoneId);
+                // Sequence exists and is for today - allow subsequent content
+                _logger.LogDebug("Subsequent content allowed - sequence exists for pushToken {TokenPrefix}, timezone {TimeZone}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
                 return true;
             }
             else
             {
-                // No sequence started today - block this content
-                _logger.LogDebug("Content blocked - no sequence started today for timezone {TimeZone}", timeZoneId);
-                State.IncrementPreventedDuplicates();
+                // No sequence claimed today - this should not happen in normal flow
+                _logger.LogWarning("Subsequent content blocked - no sequence claimed for pushToken {TokenPrefix}, timezone {TimeZone}", 
+                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
+                Interlocked.Increment(ref _preventedDuplicates);
                 return false;
             }
         }
@@ -263,13 +277,13 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             IsReady = !string.IsNullOrEmpty(_options?.CurrentValue?.FilePaths?.FirebaseKeyPath),
             HasCachedToken = !string.IsNullOrEmpty(_cachedJwtToken),
             TokenExpiry = _tokenExpiry != DateTime.MinValue ? _tokenExpiry : null,
-            TotalTokenRequests = State.TotalTokenRequests,
-            TotalDeduplicationChecks = State.TotalDeduplicationChecks,
-            PreventedDuplicates = State.PreventedDuplicates,
+            TotalTokenRequests = _totalTokenRequests,
+            TotalDeduplicationChecks = _totalDeduplicationChecks,
+            PreventedDuplicates = _preventedDuplicates,
             TrackedPushTokens = _lastPushDates.Count,
-            LastTokenCreation = State.LastTokenCreation,
-            LastCleanup = State.LastCleanup,
-            LastError = State.LastError
+            LastTokenCreation = _lastTokenCreation,
+            LastCleanup = _lastCleanup,
+            LastError = _lastError
         };
     }
 
@@ -300,7 +314,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             {
                 var error = "❌ CRITICAL: DailyPushOptions.FilePaths.FirebaseKeyPath not configured for GlobalJwtProviderGAgent";
                 _logger.LogError(error);
-                State.RecordError(error);
+                _lastError = error;
                 return null;
             }
 
@@ -309,7 +323,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             {
                 var error = "HttpClient not available for GlobalJwtProviderGAgent";
                 _logger.LogError(error);
-                State.RecordError(error);
+                _lastError = error;
                 return null;
             }
 
@@ -319,7 +333,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             {
                 var error = $"Failed to load service account from {firebaseKeyPath}";
                 _logger.LogError(error);
-                State.RecordError(error);
+                _lastError = error;
                 return null;
             }
 
@@ -345,7 +359,11 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         _logger.LogDebug("Token expiry calculated: expires in {ExpiresInSeconds}s", tokenResponse.ExpiresIn);
                         _cachedJwtToken = tokenResponse.AccessToken;
                         
-                        State.RecordSuccessfulTokenCreation();
+                        // Record success in memory only - avoid slow State operations
+                        Interlocked.Increment(ref _successfulTokenCreations);
+                        _lastTokenCreation = DateTime.UtcNow;
+                        _lastError = null; // Clear error on success
+                        
                         RaiseEvent(new TokenCreationSuccessEventLog 
                         { 
                             CreationTime = DateTime.UtcNow,
@@ -370,7 +388,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                             continue;
                         }
                         
-                        State.RecordError(httpError);
+                        _lastError = httpError;
                         RaiseEvent(new TokenCreationFailureEventLog 
                         { 
                             AttemptNumber = maxRetries,
@@ -393,7 +411,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         continue;
                     }
                     
-                    State.RecordError(exceptionError);
+                    _lastError = exceptionError;
                     RaiseEvent(new TokenCreationFailureEventLog 
                     { 
                         AttemptNumber = maxRetries,
@@ -603,7 +621,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                 _logger.LogDebug("Cleaned up {RemovedCount} old push records", removedCount);
             }
 
-            State.RecordCleanup();
+            _lastCleanup = DateTime.UtcNow;
         }
         catch (Exception ex)
         {

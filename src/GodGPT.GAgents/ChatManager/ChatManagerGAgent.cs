@@ -1671,21 +1671,24 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
         
-        // Pre-check: Filter devices that haven't received today's push sequence yet
+        // CRITICAL: Claim push sequences atomically for eligible devices
+        // This prevents cross-user race conditions where multiple users claim the same device
         var eligibleDevices = new List<UserDeviceInfo>();
         foreach (var device in enabledDevices)
         {
-            // Check if this device can start a new push sequence today
-            // This checks sequence-level deduplication (not content-level)
-            var canStartSequence = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, true); // isFirstContent=true for sequence check
-            if (canStartSequence)
+            // Atomically claim the push sequence for this device today
+            // This will succeed for only ONE user across the entire system for this device+timezone
+            var sequenceClaimed = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, true); // isFirstContent=true claims the sequence
+            if (sequenceClaimed)
             {
                 eligibleDevices.Add(device);
-                Logger.LogDebug("Device eligible for push sequence: DeviceId {DeviceId}", device.DeviceId);
+                Logger.LogInformation("Push sequence CLAIMED for device: DeviceId {DeviceId}, PushToken {TokenPrefix}, User {UserId}", 
+                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)) + "...", State.UserId);
             }
             else
             {
-                Logger.LogDebug("Device filtered - sequence already exists: DeviceId {DeviceId}", device.DeviceId);
+                Logger.LogInformation("Push sequence BLOCKED - already claimed by another user: DeviceId {DeviceId}, PushToken {TokenPrefix}, User {UserId}", 
+                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)) + "...", State.UserId);
             }
         }
         
@@ -1746,7 +1749,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     };
                     
                     // Use new global JWT architecture with direct HTTP push
-                    // Skip deduplication check since device already passed pre-check
+                    // Skip deduplication check since sequence already claimed atomically above
                     var success = await SendDirectPushNotificationAsync(
                         globalJwtProvider,
                         projectId,
@@ -1756,9 +1759,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         pushData,
                         timeZoneId,
                         isRetryPush,
-                        contentIndex == 0, // isFirstContent
+                        contentIndex == 0, // isFirstContent - first content=true, subsequent=false
                         false, // isTestPush
-                        true); // skipDeduplicationCheck - device already passed pre-check
+                        true); // skipDeduplicationCheck - sequence already claimed atomically
                     
                     if (success)
                     {
