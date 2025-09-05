@@ -1676,8 +1676,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var eligibleDevices = new List<UserDeviceInfo>();
         foreach (var device in enabledDevices)
         {
-            // Check if this device can receive push at current UTC time point
-            var canReceivePush = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush);
+            // Check if this device can receive push at current UTC time point - use deviceId for deduplication
+            var canReceivePush = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, device.DeviceId);
             if (canReceivePush)
             {
                 eligibleDevices.Add(device);

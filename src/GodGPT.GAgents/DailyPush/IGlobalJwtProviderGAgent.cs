@@ -22,8 +22,9 @@ public interface IGlobalJwtProviderGAgent : IGAgent
     /// <param name="pushToken">Firebase push token</param>
     /// <param name="timeZoneId">Target timezone (e.g., "Asia/Shanghai")</param>
     /// <param name="isRetryPush">Whether this is a retry push (bypasses UTC hour check)</param>
+    /// <param name="deviceId">Device ID for deduplication (preferred over pushToken if provided)</param>
     /// <returns>True if push can be sent, false if duplicate at this UTC hour</returns>
-    Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false);
+    Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false, string? deviceId = null);
 
     /// <summary>
     /// Mark push as sent for deduplication tracking

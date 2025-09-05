@@ -139,7 +139,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         }
     }
 
-    public async Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false)
+    public async Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false, string? deviceId = null)
     {
         if (string.IsNullOrEmpty(pushToken))
         {
@@ -167,15 +167,18 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         }
 
         // UTC-BASED DEDUPLICATION: Each device can only receive push at the same UTC hour once per day
-        // This prevents duplicate push sequences regardless of timezone switching
-        var sequenceKey = $"{pushToken}:{todayUtc:yyyy-MM-dd}:{currentUtcHour:D2}";
+        // Use deviceId for deduplication if available, fallback to pushToken
+        var dedupeIdentifier = !string.IsNullOrEmpty(deviceId) ? deviceId : pushToken;
+        var sequenceKey = $"{dedupeIdentifier}:{todayUtc:yyyy-MM-dd}:{currentUtcHour:D2}";
         var wasAdded = _lastPushDates.TryAdd(sequenceKey, todayUtc);
         
         if (!wasAdded)
         {
             // Device already received push at this UTC hour today - block duplicate
-            _logger.LogInformation("Push BLOCKED - device already received push at UTC {UtcDate} {UtcHour}:00: pushToken {TokenPrefix}, timezone {TimeZone}", 
+            _logger.LogInformation("Push BLOCKED - device already received push at UTC {UtcDate} {UtcHour}:00: {DedupeType} {DedupeId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
                 todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"), 
+                !string.IsNullOrEmpty(deviceId) ? "deviceId" : "pushToken",
+                !string.IsNullOrEmpty(deviceId) ? deviceId : pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
                 pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
             
             Interlocked.Increment(ref _preventedDuplicates);
@@ -195,8 +198,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         else
         {
             // Successfully claimed device for this UTC hour - this user owns pushes to this device at this UTC time
-            _logger.LogInformation("Push CLAIMED - device push sequence reserved for UTC {UtcDate} {UtcHour}:00: pushToken {TokenPrefix}, timezone {TimeZone}", 
+            _logger.LogInformation("Push CLAIMED - device push sequence reserved for UTC {UtcDate} {UtcHour}:00: {DedupeType} {DedupeId}, pushToken {TokenPrefix}, timezone {TimeZone}", 
                 todayUtc.ToString("yyyy-MM-dd"), currentUtcHour.ToString("D2"),
+                !string.IsNullOrEmpty(deviceId) ? "deviceId" : "pushToken",
+                !string.IsNullOrEmpty(deviceId) ? deviceId : pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...",
                 pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
             return true;
         }
