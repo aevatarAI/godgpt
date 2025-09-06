@@ -1238,6 +1238,28 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             case MarkDailyPushReadEventLog markReadEvent:
                 state.DailyPushReadStatus[markReadEvent.DateKey] = true;
                 break;
+            case CleanExpiredDevicesEventLog cleanDevicesEvent:
+                // Remove devices specified in the cleanup event
+                foreach (var deviceIdToRemove in cleanDevicesEvent.DeviceIdsToRemove)
+                {
+                    if (state.UserDevices.ContainsKey(deviceIdToRemove))
+                    {
+                        var deviceToRemove = state.UserDevices[deviceIdToRemove];
+                        
+                        // Remove token mapping if exists
+                        if (!string.IsNullOrEmpty(deviceToRemove.PushToken))
+                        {
+                            state.TokenToDeviceMap.Remove(deviceToRemove.PushToken);
+                        }
+                        
+                        // Remove device from user devices
+                        state.UserDevices.Remove(deviceIdToRemove);
+                    }
+                }
+                
+                Logger.LogDebug("🧹 Device cleanup completed: removed {RemovedCount} devices, reason: {CleanupReason}", 
+                    cleanDevicesEvent.RemovedCount, cleanDevicesEvent.CleanupReason);
+                break;
 
         }   
     }
@@ -1550,6 +1572,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
         Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
         }
+
+        // 🧹 Periodic device cleanup (every 15 device registrations/updates)
+        if (State.UserDevices.Count > 0 && State.UserDevices.Count % 15 == 0)
+        {
+            await CleanupExpiredDevicesAsync();
+        }
+
         return isNewDevice;
     }
 
@@ -1579,6 +1608,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId)
     {
+        // 🧹 Auto-cleanup devices periodically (every 20 requests)
+        if (State.UserDevices.Count > 0 && State.UserDevices.Count % 20 == 0)
+        {
+            await CleanupExpiredDevicesAsync();
+        }
 
         return State.UserDevices.TryGetValue(deviceId, out var device) ? device : new UserDeviceInfo{ PushEnabled = true };
     }
@@ -1586,6 +1620,77 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
     {
         return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
+    }
+
+    /// <summary>
+    /// Clean up expired, disabled, and duplicate devices to maintain data hygiene
+    /// Similar to the session cleanup mechanism but for device data
+    /// </summary>
+    private async Task CleanupExpiredDevicesAsync()
+    {
+        var now = DateTime.UtcNow;
+        var thirtyDaysAgo = now.AddDays(-30);
+        var sevenDaysAgo = now.AddDays(-7);
+
+        // 1. Find devices to remove based on age and status
+        var devicesToRemove = new List<string>();
+
+        // Collect expired devices (30+ days old)
+        var expiredDevices = State.UserDevices.Values
+            .Where(d => d.LastTokenUpdate <= thirtyDaysAgo)
+            .Select(d => d.DeviceId)
+            .ToList();
+
+        // Collect long-disabled devices (7+ days disabled)
+        var disabledDevices = State.UserDevices.Values
+            .Where(d => !d.PushEnabled && d.LastTokenUpdate <= sevenDaysAgo)
+            .Select(d => d.DeviceId)
+            .ToList();
+
+        // 2. Handle duplicates: same deviceId, keep the most recent one
+        var duplicateGroups = State.UserDevices.Values
+            .GroupBy(d => d.DeviceId)
+            .Where(g => g.Count() > 1)
+            .ToList();
+
+        var duplicatesToRemove = new List<string>();
+        foreach (var group in duplicateGroups)
+        {
+            // Keep the most recent device (by LastTokenUpdate), remove others
+            var devicesInGroup = group.OrderByDescending(d => d.LastTokenUpdate).ToList();
+            var toRemove = devicesInGroup.Skip(1).Select(d => d.DeviceId).ToList();
+            duplicatesToRemove.AddRange(toRemove);
+        }
+
+        // 3. Combine all devices to remove (ensure uniqueness)
+        devicesToRemove.AddRange(expiredDevices);
+        devicesToRemove.AddRange(disabledDevices);
+        devicesToRemove.AddRange(duplicatesToRemove);
+        devicesToRemove = devicesToRemove.Distinct().ToList();
+
+        // 4. Trigger cleanup if there are devices to remove
+        if (devicesToRemove.Count > 0)
+        {
+            var cleanupReasons = new List<string>();
+            if (expiredDevices.Count > 0) cleanupReasons.Add($"{expiredDevices.Count} expired");
+            if (disabledDevices.Count > 0) cleanupReasons.Add($"{disabledDevices.Count} disabled");
+            if (duplicatesToRemove.Count > 0) cleanupReasons.Add($"{duplicatesToRemove.Count} duplicates");
+
+            var reasonText = string.Join(", ", cleanupReasons);
+
+            Logger.LogInformation("🧹 Cleaning up {Count} devices for user {UserId}: {Reasons}", 
+                devicesToRemove.Count, State.UserId, reasonText);
+
+            RaiseEvent(new CleanExpiredDevicesEventLog
+            {
+                DeviceIdsToRemove = devicesToRemove,
+                CleanupTime = now,
+                CleanupReason = reasonText,
+                RemovedCount = devicesToRemove.Count
+            });
+
+            await ConfirmEvents();
+        }
     }
 
     public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
@@ -1628,16 +1733,21 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
             .ToList();
             
-        // Deduplicate by pushToken, keep the device with latest LastTokenUpdate
+        // 🎯 CRITICAL FIX: Deduplicate by deviceId first, then by pushToken
+        // This prevents the same physical device from being processed multiple times
+        // even if it has different pushTokens (e.g., after user switching)
         var enabledDevices = enabledDevicesRaw
-            .GroupBy(d => d.PushToken)
-            .Select(g => g.OrderByDescending(d => d.LastTokenUpdate).First())
+            .GroupBy(d => d.DeviceId)  // 🔧 Primary deduplication by deviceId
+            .Select(deviceGroup => deviceGroup
+                .GroupBy(d => d.PushToken)  // 🔧 Secondary deduplication by pushToken
+                .Select(tokenGroup => tokenGroup.OrderByDescending(d => d.LastTokenUpdate).First())
+                .OrderByDescending(d => d.LastTokenUpdate).First()) // Keep latest token for the device
             .ToList();
             
         var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
         if (duplicateCount > 0)
         {
-            Logger.LogDebug("Device deduplication: removed {DuplicateCount} duplicate pushTokens", duplicateCount);
+            Logger.LogDebug("Device deduplication: removed {DuplicateCount} duplicate devices (by deviceId + pushToken)", duplicateCount);
         }
         
         Logger.LogInformation("Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 

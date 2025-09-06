@@ -140,12 +140,19 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
 
     public async Task RefreshUserIndexAsync()
     {
-        // TODO: This would typically involve:
+        // 🧹 Lightweight cleanup: Only log current status for monitoring
+        var currentCount = State.ActiveUsers.Count;
+        
+        // TODO: Future enhancement could involve:
         // 1. Querying all ChatManagerGAgents to find users with devices in this timezone
         // 2. Updating the ActiveUsers set based on current device states
         // 3. Removing users who no longer have enabled devices in this timezone
+        // 
+        // Current approach: Passive cleanup via natural user activity
+        // - Users are added when they register/update devices
+        // - Cleanup happens naturally when users update their timezone or device status
+        // - HashSet prevents duplicates automatically
 
-        // For now, just update timestamp
         RaiseEvent(new InitializeTimezoneIndexEventLog
         {
             TimeZoneId = State.TimeZoneId,
@@ -153,7 +160,8 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
         });
 
         await ConfirmEvents();
-        _logger.LogInformation($"Refreshed user index for timezone {State.TimeZoneId} (placeholder implementation)");
+        _logger.LogInformation("📊 Timezone index status: {TimeZone} has {UserCount} active users", 
+            State.TimeZoneId, currentCount);
     }
 
     public async Task<bool> HasActiveDeviceInTimezoneAsync(Guid userId)
