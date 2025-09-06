@@ -138,3 +138,15 @@ public class MarkDailyPushReadEventLog : ChatManageEventLog
     [Id(0)] public string DateKey { get; set; } = "";
     [Id(1)] public DateTime ReadTime { get; set; } = DateTime.UtcNow;
 }
+
+/// <summary>
+/// Clean expired and duplicate devices for daily push notifications
+/// </summary>
+[GenerateSerializer]
+public class CleanExpiredDevicesEventLog : ChatManageEventLog
+{
+    [Id(0)] public List<string> DeviceIdsToRemove { get; set; } = new();
+    [Id(1)] public DateTime CleanupTime { get; set; } = DateTime.UtcNow;
+    [Id(2)] public string CleanupReason { get; set; } = "";
+    [Id(3)] public int RemovedCount { get; set; }
+}
