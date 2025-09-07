@@ -18,8 +18,8 @@ public class PushDeduplicationService : IPushDeduplicationService
     private const string MORNING_KEY_PREFIX = "godgpt:push:morning";
     private const string RETRY_KEY_PREFIX = "godgpt:push:retry";
     
-    // TTL for Redis keys (48 hours to ensure cleanup after timezone switches)
-    private static readonly TimeSpan KEY_TTL = TimeSpan.FromHours(48);
+    // TTL for Redis keys (24 hours for daily push deduplication)
+    private static readonly TimeSpan KEY_TTL = TimeSpan.FromHours(24);
     
     public PushDeduplicationService(IConnectionMultiplexer redis, ILogger<PushDeduplicationService> logger)
     {
