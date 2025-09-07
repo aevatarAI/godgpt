@@ -15,6 +15,7 @@ using GodGPT.GAgents.DailyPush;
 using GodGPT.GAgents.DailyPush.Options;
 using GodGPT.GAgents.DailyPush.Services;
 using Microsoft.Extensions.Configuration;
+using StackExchange.Redis;
 
 namespace Aevatar.Application.Grains;
 
@@ -59,5 +60,24 @@ public class GodGPTGAgentModule : AbpModule
         // Note: ILogger<T>, IConfiguration, IOptionsMonitor<T> are automatically registered by ABP/ASP.NET Core
         context.Services.AddSingleton<FirebaseService>();
         context.Services.AddSingleton<DailyPushContentService>();
+        
+        // Register Redis connection for push deduplication
+        // Connection string should be configured in appsettings.json under "ConnectionStrings:Redis"
+        context.Services.AddSingleton<IConnectionMultiplexer>(provider =>
+        {
+            var connectionString = configuration.GetConnectionString("Redis") ?? "localhost:6379";
+            var options = ConfigurationOptions.Parse(connectionString);
+            
+            // Configure Redis options for production resilience
+            options.AbortOnConnectFail = false;
+            options.ConnectRetry = 3;
+            options.ConnectTimeout = 5000;
+            options.SyncTimeout = 5000;
+            
+            return ConnectionMultiplexer.Connect(options);
+        });
+        
+        // Register push deduplication service
+        context.Services.AddSingleton<IPushDeduplicationService, PushDeduplicationService>();
     }
 }

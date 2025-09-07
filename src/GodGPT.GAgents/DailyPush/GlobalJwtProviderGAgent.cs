@@ -41,11 +41,6 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private readonly ILogger<GlobalJwtProviderGAgent> _logger;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     
-    // Global pushToken daily push tracking - MUST USE STATIC MEMORY for immediate consistency  
-    // CRITICAL: Orleans State updates via RaiseEvent are ASYNC and have delays!
-    // Since GlobalJwtProviderGAgent uses fixed GUID, it's singleton across all silos
-    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new();
-    private static int _cleanupCounter = 0;
     
     // JWT caching and creation control - ALL IN MEMORY for zero-latency access
     // These are NOT stored in Orleans State to avoid any persistence delays
@@ -56,11 +51,8 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     
     // Statistics tracking - ALL IN MEMORY to avoid slow State operations
     private static int _totalTokenRequests = 0;
-    private static int _totalDeduplicationChecks = 0;
-    private static int _preventedDuplicates = 0;
     private static int _successfulTokenCreations = 0;
     private static DateTime? _lastTokenCreation = null;
-    private static DateTime? _lastCleanup = null;
     private static string? _lastError = null;
     
     // Error handling and retry control
@@ -80,7 +72,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     public override async Task<string> GetDescriptionAsync()
     {
         var status = await GetStatusAsync();
-        return $"Global JWT Provider - Tokens: {status.TotalTokenRequests}, Dedupe: {status.TotalDeduplicationChecks}, Prevented: {status.PreventedDuplicates}";
+        return $"Global JWT Provider - Tokens: {status.TotalTokenRequests}, Ready: {status.IsReady}, LastToken: {status.LastTokenCreation}";
     }
 
     public async Task<string?> GetFirebaseAccessTokenAsync()
@@ -222,112 +214,6 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         }
     }
 
-    public async Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false, string? deviceId = null)
-    {
-        if (string.IsNullOrEmpty(pushToken))
-        {
-            _logger.LogWarning("Push token is empty for deduplication check");
-            return false;
-        }
-
-        Interlocked.Increment(ref _totalDeduplicationChecks);
-
-        // Periodically cleanup old records (every 100 calls)
-        if (Interlocked.Increment(ref _cleanupCounter) % 100 == 0)
-        {
-            CleanupOldRecords();
-        }
-
-        var nowUtc = DateTime.UtcNow;
-        var todayUtc = DateOnly.FromDateTime(nowUtc);
-        var currentUtcHour = nowUtc.Hour;
-        
-        if (isRetryPush)
-        {
-            // Retry pushes are always allowed - they don't interfere with normal daily pushes
-            _logger.LogDebug("Retry push allowed for timezone {TimeZone}", timeZoneId);
-            return true;
-        }
-
-        // DEVICE-BASED DAILY DEDUPLICATION: One push per device per day
-        // 
-        // New requirements:
-        // 1. Same deviceId only receives push once per day at 8AM (regardless of timezone changes)
-        // 2. 15PM retry pushes are allowed (bypass deduplication)
-        // 3. No timezone switching - once pushed on a UTC date, no more pushes that day
-        
-        var deviceKey = !string.IsNullOrEmpty(deviceId) ? $"device:{deviceId}:{todayUtc:yyyy-MM-dd}" : null;
-        var tokenKey = $"token:{pushToken}:{todayUtc:yyyy-MM-dd}"; // Fallback for devices without deviceId
-        
-        // PRIORITY-BASED DEDUPLICATION: Use deviceId if available, fallback to pushToken
-        if (!string.IsNullOrEmpty(deviceId))
-        {
-            // PRIMARY: DeviceId-based deduplication when available
-            var deviceAdded = _lastPushDates.TryAdd(deviceKey!, todayUtc);
-            if (!deviceAdded)
-            {
-                _logger.LogInformation("Push BLOCKED - device already received daily push: deviceId {DeviceId}, date {Date}, pushToken {TokenPrefix}", 
-                    deviceId, todayUtc.ToString("yyyy-MM-dd"), 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-                
-                Interlocked.Increment(ref _preventedDuplicates);
-                return false;
-            }
-            
-            // Device check passed - allow push
-            _logger.LogInformation("Push CLAIMED - daily push reserved: deviceId {DeviceId}, date {Date}, pushToken {TokenPrefix}", 
-                deviceId, todayUtc.ToString("yyyy-MM-dd"),
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...");
-            return true;
-        }
-        else
-        {
-            // FALLBACK: PushToken-based deduplication when deviceId is not available
-            var tokenAdded = _lastPushDates.TryAdd(tokenKey, todayUtc);
-            if (!tokenAdded)
-            {
-                _logger.LogInformation("Push BLOCKED - pushToken already received daily push: pushToken {TokenPrefix}, date {Date}", 
-                    pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", todayUtc.ToString("yyyy-MM-dd"));
-                
-                Interlocked.Increment(ref _preventedDuplicates);
-                return false;
-            }
-            
-            // Token check passed
-            _logger.LogInformation("Push CLAIMED - daily push reserved: pushToken {TokenPrefix}, date {Date}",
-                pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", todayUtc.ToString("yyyy-MM-dd"));
-            return true;
-        }
-    }
-
-    public async Task MarkPushSentAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true)
-    {
-        if (string.IsNullOrEmpty(pushToken))
-        {
-            return;
-        }
-
-        // For retry pushes, no deduplication tracking needed
-        if (isRetryPush)
-        {
-            _logger.LogDebug("Retry push sent confirmation - no tracking needed");
-            return;
-        }
-
-        // Simple confirmation logging - deduplication is already handled in CanSendPushAsync
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        
-        if (isFirstContent)
-        {
-            _logger.LogDebug("First content sent for date {Date}", today.ToString("yyyy-MM-dd"));
-        }
-        else
-        {
-            _logger.LogDebug("Second content sent for date {Date}", today.ToString("yyyy-MM-dd"));
-        }
-
-        await Task.CompletedTask;
-    }
 
     public async Task<GlobalJwtProviderStatus> GetStatusAsync()
     {
@@ -337,11 +223,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             HasCachedToken = !string.IsNullOrEmpty(_cachedJwtToken),
             TokenExpiry = _tokenExpiry != DateTime.MinValue ? _tokenExpiry : null,
             TotalTokenRequests = _totalTokenRequests,
-            TotalDeduplicationChecks = _totalDeduplicationChecks,
-            PreventedDuplicates = _preventedDuplicates,
-            TrackedPushTokens = _lastPushDates.Count,
             LastTokenCreation = _lastTokenCreation,
-            LastCleanup = _lastCleanup,
             LastError = _lastError
         };
     }
@@ -651,39 +533,5 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         }
     }
 
-    /// <summary>
-    /// Cleanup old push records to prevent memory leaks
-    /// </summary>
-    private void CleanupOldRecords()
-    {
-        try
-        {
-            var cutoffDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7));
-            var keysToRemove = _lastPushDates
-                .Where(kvp => kvp.Value < cutoffDate)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            var removedCount = 0;
-            foreach (var key in keysToRemove)
-            {
-                if (_lastPushDates.TryRemove(key, out _))
-                {
-                    removedCount++;
-                }
-            }
-
-            if (removedCount > 0)
-            {
-                _logger.LogDebug("Cleaned up {RemovedCount} old push records", removedCount);
-            }
-
-            _lastCleanup = DateTime.UtcNow;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error during push records cleanup: {ErrorMessage}", ex.Message);
-        }
-    }
 }
 

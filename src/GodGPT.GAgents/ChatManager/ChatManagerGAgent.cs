@@ -1697,6 +1697,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         
+        // 📊 Log all user devices for debugging (triggered by push processing)
+        await LogAllUserDevicesAsync($"PUSH_{(isRetryPush ? "RETRY" : "MORNING")}_{targetDate:yyyy-MM-dd}");
+        
         // Check if any message has been read for today - if so, skip all pushes
         // Exception: bypass this check when explicitly requested (e.g., test mode main push)
         if (!bypassReadStatusCheck)
@@ -1781,30 +1784,62 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var successCount = 0;
         var failureCount = 0;
         
-        // CRITICAL: Check UTC-based deduplication for each device
-        // Only devices that haven't received push at current UTC hour will be eligible
+        // 🎯 Redis-based deduplication for push notifications
         var eligibleDevices = new List<UserDeviceInfo>();
-        foreach (var device in enabledDevices)
+        var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
+        var date = DateOnly.FromDateTime(targetDate);
+        
+        if (deduplicationService == null)
         {
-            // Check if this device can receive push at current UTC time point - use deviceId for deduplication
-            var canReceivePush = await globalJwtProvider.CanSendPushAsync(device.PushToken, timeZoneId, isRetryPush, device.DeviceId);
-            if (canReceivePush)
+            Logger.LogWarning("IPushDeduplicationService not available, proceeding without deduplication");
+            eligibleDevices = enabledDevices; // Fallback: no deduplication
+        }
+        else
+        {
+            foreach (var device in enabledDevices)
             {
-                eligibleDevices.Add(device);
-                Logger.LogInformation("Device ELIGIBLE for push: DeviceId {DeviceId}, PushToken {TokenPrefix}, User {UserId}", 
-                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)) + "...", State.UserId);
-            }
-            else
-            {
-                Logger.LogInformation("Device BLOCKED - already received push at this UTC hour: DeviceId {DeviceId}, PushToken {TokenPrefix}, User {UserId}", 
-                    device.DeviceId, device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)) + "...", State.UserId);
+                bool canSend;
+                
+                if (isTestPush)
+                {
+                    canSend = true; // Test pushes skip deduplication
+                    Logger.LogInformation("Device ELIGIBLE (test): {DeviceId} in {TimeZone}", device.DeviceId, timeZoneId);
+                }
+                else if (isRetryPush)
+                {
+                    // Check State: if already read today, skip retry push entirely
+                    if (!bypassReadStatusCheck && State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead)
+                    {
+                        canSend = false;
+                        Logger.LogInformation("Device BLOCKED (retry, already read): {DeviceId} in {TimeZone}, read on {DateKey}", 
+                            device.DeviceId, timeZoneId, dateKey);
+                    }
+                    else
+                    {
+                        canSend = await deduplicationService.TryClaimRetryPushAsync(device.DeviceId, date, timeZoneId);
+                        Logger.LogInformation("Device {Status} (retry): {DeviceId} in {TimeZone}", 
+                            canSend ? "ELIGIBLE" : "BLOCKED", device.DeviceId, timeZoneId);
+                    }
+                }
+                else
+                {
+                    canSend = await deduplicationService.TryClaimMorningPushAsync(device.DeviceId, date, timeZoneId);
+                    Logger.LogInformation("Device {Status} (morning): {DeviceId} in {TimeZone}", 
+                        canSend ? "ELIGIBLE" : "BLOCKED", device.DeviceId, timeZoneId);
+                }
+                
+                if (canSend)
+                {
+                    eligibleDevices.Add(device);
+                }
             }
         }
         
         if (eligibleDevices.Count == 0)
         {
-            Logger.LogInformation("No eligible devices for daily push after sequence deduplication - User {UserId}, TimeZone {TimeZone}, Original devices: {OriginalCount}", 
-                State.UserId, timeZoneId, enabledDevices.Count);
+            Logger.LogInformation("No eligible devices for daily push after Redis deduplication - User {UserId}, TimeZone {TimeZone}, " +
+                "Original devices: {OriginalCount}, PushType: {PushType}", 
+                State.UserId, timeZoneId, enabledDevices.Count, isRetryPush ? "retry" : "morning");
             return;
         }
         
@@ -1908,17 +1943,143 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
     {
-
-        
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         var isRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var readStatus) && readStatus;
         
         return !isRead && State.UserDevices.Values.Any(d => d.PushEnabled);
     }
+    
+    public async Task<object> GetPushDebugInfoAsync(string deviceId, DateOnly date, string timeZoneId)
+    {
+        var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
+        var readKey = date.ToString("yyyy-MM-dd");
+        
+        // Get Redis deduplication status
+        PushDeduplicationStatus? redisStatus = null;
+        if (deduplicationService != null)
+        {
+            try
+            {
+                redisStatus = await deduplicationService.GetStatusAsync(deviceId, date, timeZoneId);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Failed to get Redis deduplication status for device {DeviceId}", deviceId);
+            }
+        }
+        
+        // Get State information
+        var stateInfo = new
+        {
+            IsRead = State.DailyPushReadStatus.TryGetValue(readKey, out var isRead) && isRead,
+            ReadKey = readKey,
+            HasDevice = State.UserDevices.ContainsKey(deviceId),
+            DeviceInfo = State.UserDevices.TryGetValue(deviceId, out var device) ? new
+            {
+                DeviceId = device.DeviceId,
+                PushToken = !string.IsNullOrEmpty(device.PushToken) 
+                    ? device.PushToken.Substring(0, Math.Min(12, device.PushToken.Length)) + "..." 
+                    : "EMPTY",
+                PushEnabled = device.PushEnabled,
+                TimeZoneId = device.TimeZoneId,
+                Language = device.PushLanguage,
+                RegisteredAt = device.RegisteredAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                LastTokenUpdate = device.LastTokenUpdate.ToString("yyyy-MM-dd HH:mm:ss")
+            } : null
+        };
+        
+        return new
+        {
+            UserId = State.UserId,
+            DeviceId = deviceId,
+            Date = date.ToString("yyyy-MM-dd"),
+            TimeZoneId = timeZoneId,
+            Redis = redisStatus != null ? (object)new
+            {
+                MorningSent = redisStatus.MorningSent,
+                RetrySent = redisStatus.RetrySent,
+                MorningKey = redisStatus.MorningKey,
+                RetryKey = redisStatus.RetryKey,
+                MorningSentTime = redisStatus.MorningSentTime?.ToString("yyyy-MM-dd HH:mm:ss"),
+                RetrySentTime = redisStatus.RetrySentTime?.ToString("yyyy-MM-dd HH:mm:ss")
+            } : new { Error = "Redis service not available" },
+            State = stateInfo,
+            Timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")
+        };
+    }
 
     public async Task<List<UserDeviceInfo>> GetAllUserDevicesAsync()
     {
         return State.UserDevices.Values.ToList();
+    }
+
+    /// <summary>
+    /// Log detailed information for all devices registered under this user
+    /// Provides comprehensive debugging information for push troubleshooting
+    /// </summary>
+    public async Task LogAllUserDevicesAsync(string context = "DEBUG")
+    {
+        try
+        {
+            var allDevices = State.UserDevices.Values.ToList();
+            var enabledDevicesCount = allDevices.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
+            var disabledDevicesCount = allDevices.Count(d => !d.PushEnabled);
+            var emptyTokenCount = allDevices.Count(d => string.IsNullOrEmpty(d.PushToken));
+            
+            // Group devices by timezone for better organization
+            var devicesByTimezone = allDevices.GroupBy(d => d.TimeZoneId).ToDictionary(g => g.Key, g => g.ToList());
+            
+            // Log summary
+            Logger.LogInformation("👤 User {UserId} Device Summary [{Context}]: " +
+                "Total={TotalDevices}, Enabled={EnabledDevices}, Disabled={DisabledDevices}, EmptyToken={EmptyTokens}, " +
+                "Timezones={TimezoneCount}",
+                State.UserId, context, allDevices.Count, enabledDevicesCount, disabledDevicesCount, 
+                emptyTokenCount, devicesByTimezone.Count);
+            
+            // Log detailed device information by timezone
+            if (allDevices.Count > 0)
+            {
+                var deviceDetails = allDevices.Select(device => new
+                {
+                    UserId = State.UserId.ToString(),
+                    DeviceId = device.DeviceId,
+                    PushToken = !string.IsNullOrEmpty(device.PushToken) 
+                        ? device.PushToken.Substring(0, Math.Min(12, device.PushToken.Length)) + "..." 
+                        : "EMPTY",
+                    PushEnabled = device.PushEnabled,
+                    TimeZoneId = device.TimeZoneId,
+                    Language = device.PushLanguage,
+                    RegisteredAt = device.RegisteredAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                    LastTokenUpdate = device.LastTokenUpdate.ToString("yyyy-MM-dd HH:mm:ss")
+                }).ToList();
+                
+                var deviceDetailsJson = System.Text.Json.JsonSerializer.Serialize(deviceDetails, new JsonSerializerOptions 
+                { 
+                    WriteIndented = false,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+                
+                Logger.LogInformation("📱 User {UserId} All Devices [{Context}]: {DeviceDetails}",
+                    State.UserId, context, deviceDetailsJson);
+                
+                // Log timezone distribution
+                foreach (var (timeZoneId, devices) in devicesByTimezone)
+                {
+                    var enabledInTz = devices.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
+                    Logger.LogInformation("🌍 User {UserId} Timezone {TimeZone} [{Context}]: " +
+                        "{DeviceCount} devices, {EnabledCount} enabled",
+                        State.UserId, timeZoneId, context, devices.Count, enabledInTz);
+                }
+            }
+            else
+            {
+                Logger.LogInformation("📱 User {UserId} has no registered devices [{Context}]", State.UserId, context);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to log user device details for user {UserId} [{Context}]", State.UserId, context);
+        }
     }
 
     public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
@@ -2056,18 +2217,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 return false;
             }
 
-            // Check deduplication only if not bypassed
-            if (!isTestPush && !skipDeduplicationCheck)
-            {
-                // Check global deduplication
-                var canSend = await globalJwtProvider.CanSendPushAsync(pushToken, timeZoneId, isRetryPush);
-                if (!canSend)
-                {
-                    Logger.LogInformation("Push blocked by global deduplication: token {TokenPrefix}, timezone {TimeZone}", 
-                        pushToken.Substring(0, Math.Min(8, pushToken.Length)) + "...", timeZoneId);
-                    return false;
-                }
-            }
+            // Deduplication removed - all pushes are allowed
 
             // Get JWT access token from global provider
             var accessToken = await globalJwtProvider.GetFirebaseAccessTokenAsync();
@@ -2148,11 +2298,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 Logger.LogDebug("Push notification sent successfully: {ResponseContent}", responseContent);
                 
-                // Mark push as sent for deduplication (unless it's a test push or deduplication was skipped)
-                if (!isTestPush && !skipDeduplicationCheck)
-                {
-                    await globalJwtProvider.MarkPushSentAsync(pushToken, timeZoneId, isRetryPush, isFirstContent);
-                }
+                // Deduplication removed - no need to mark push as sent
                 
                 return true;
             }

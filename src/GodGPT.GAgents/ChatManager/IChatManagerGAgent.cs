@@ -89,6 +89,23 @@ public interface IChatManagerGAgent : IGAgent
     Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate);
     
     /// <summary>
+    /// Get push debug information for a specific device (for troubleshooting)
+    /// </summary>
+    [ReadOnly]
+    Task<object> GetPushDebugInfoAsync(string deviceId, DateOnly date, string timeZoneId);
+    
+    /// <summary>
+    /// Get all user devices for debugging purposes
+    /// </summary>
+    [ReadOnly]
+    Task<List<UserDeviceInfo>> GetAllUserDevicesAsync();
+    
+    /// <summary>
+    /// Log detailed information for all devices registered under this user
+    /// </summary>
+    Task LogAllUserDevicesAsync(string context = "DEBUG");
+    
+    /// <summary>
     /// Check if user has enabled devices in specific timezone (performance optimization)
     /// </summary>
     Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId);
