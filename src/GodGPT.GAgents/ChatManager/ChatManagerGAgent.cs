@@ -1693,9 +1693,46 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
     }
 
+    /// <summary>
+    /// Clean up expired daily push read status to prevent memory accumulation
+    /// Keeps only current day and previous day's read status
+    /// </summary>
+    private async Task CleanupExpiredReadStatusAsync(DateTime currentDate)
+    {
+        try
+        {
+            var currentDateKey = currentDate.ToString("yyyy-MM-dd");
+            var yesterdayDateKey = currentDate.AddDays(-1).ToString("yyyy-MM-dd");
+            
+            var keysToRemove = State.DailyPushReadStatus.Keys
+                .Where(key => key != currentDateKey && key != yesterdayDateKey)
+                .ToList();
+            
+            if (keysToRemove.Count > 0)
+            {
+                foreach (var key in keysToRemove)
+                {
+                    State.DailyPushReadStatus.Remove(key);
+                }
+                
+                Logger.LogInformation("🧹 Cleaned up {Count} expired read status entries for user {UserId} (kept: {Current}, {Yesterday})", 
+                    keysToRemove.Count, State.UserId, currentDateKey, yesterdayDateKey);
+                
+                await ConfirmEvents();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to cleanup expired read status for user {UserId}", State.UserId);
+        }
+    }
+
     public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
+        
+        // 🧹 Clean up expired read status (keep only today and yesterday)
+        await CleanupExpiredReadStatusAsync(targetDate);
         
         // 📊 Log all user devices for debugging (triggered by push processing)
         await LogAllUserDevicesAsync($"PUSH_{(isRetryPush ? "RETRY" : "MORNING")}_{targetDate:yyyy-MM-dd}");
