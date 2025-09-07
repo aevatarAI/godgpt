@@ -62,10 +62,16 @@ public class GodGPTGAgentModule : AbpModule
         context.Services.AddSingleton<DailyPushContentService>();
         
         // Register Redis connection for push deduplication
-        // Connection string should be configured in appsettings.json under "ConnectionStrings:Redis"
+        // Compatible with Station's Redis configuration format: "Redis:Configuration"
+        // Fallback to "ConnectionStrings:Redis" for standalone deployment
         context.Services.AddSingleton<IConnectionMultiplexer>(provider =>
         {
-            var connectionString = configuration.GetConnectionString("Redis") ?? "localhost:6379";
+            var redisConfig = configuration["Redis:Configuration"] ?? 
+                             configuration.GetConnectionString("Redis") ?? 
+                             "localhost:6379";
+            
+            // Ensure port is included (Station config might be just "127.0.0.1")
+            var connectionString = redisConfig.Contains(":") ? redisConfig : $"{redisConfig}:6379";
             var options = ConfigurationOptions.Parse(connectionString);
             
             // Configure Redis options for production resilience
