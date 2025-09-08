@@ -1778,10 +1778,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // even if it has different pushTokens (e.g., after user switching)
         var enabledDevices = enabledDevicesRaw
             .GroupBy(d => d.DeviceId)  // 🔧 Primary deduplication by deviceId
-            .Select(deviceGroup => deviceGroup
-                .GroupBy(d => d.PushToken)  // 🔧 Secondary deduplication by pushToken
-                .Select(tokenGroup => tokenGroup.OrderByDescending(d => d.LastTokenUpdate).First())
-                .OrderByDescending(d => d.LastTokenUpdate).First()) // Keep latest token for the device
+            .Select(deviceGroup => deviceGroup.OrderByDescending(d => d.LastTokenUpdate).First()) // Keep latest record for the device
             .ToList();
             
         var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
