@@ -116,15 +116,6 @@ public interface IChatManagerGAgent : IGAgent
     /// </summary>
     Task ClearPushStatusForTestingAsync(string deviceId, DateOnly date, string timeZoneId);
 
-    /// <summary>
-    /// Enable testing mode for push deduplication (allows multiple tests per day)
-    /// </summary>
-    void EnableTestingMode(string? testingSuffix = null);
-    
-    /// <summary>
-    /// Disable testing mode for push deduplication (return to normal operation)
-    /// </summary>
-    void DisableTestingMode();
     
     /// <summary>
     /// Get device status for query API
