@@ -2479,8 +2479,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         if (errorCode == "UNREGISTERED" || errorCode == "INVALID_ARGUMENT")
                         {
                             Logger.LogWarning(
-                                "❌ Push token is invalid and should be removed - Token: {TokenPrefix}..., ErrorCode: {ErrorCode}",
+                                "❌ Push token is invalid - initiating automatic device cleanup. Token: {TokenPrefix}..., ErrorCode: {ErrorCode}",
                                 pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, errorCode);
+                            
+                            // 🎯 自动清理失效设备
+                            await MarkDeviceTokenAsInvalidAsync(pushToken, errorCode);
                         }
 
                         return false; // ❌ Actual failure despite 200 status
@@ -2524,8 +2527,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 if (responseContent.Contains("UNREGISTERED") || responseContent.Contains("INVALID_ARGUMENT"))
                 {
                     Logger.LogWarning(
-                        "❌ Token is invalid and should be removed - Token: {TokenPrefix}..., Status: {StatusCode}",
+                        "❌ Token is invalid - initiating automatic device cleanup. Token: {TokenPrefix}..., Status: {StatusCode}",
                         pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, response.StatusCode);
+                    
+                    // 🎯 自动清理失效设备
+                    var errorCode = responseContent.Contains("UNREGISTERED") ? "UNREGISTERED" : "INVALID_ARGUMENT";
+                    await MarkDeviceTokenAsInvalidAsync(pushToken, errorCode);
                 }
 
                 return false;
@@ -2703,10 +2710,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Logger.LogInformation("🧹 No V2 devices to clear for user {UserId}", State.UserId);
             return 0;
         }
-        
+
         var deviceCount = State.UserDevicesV2.Count;
         var tokenCount = State.TokenToDeviceMapV2.Count;
-        
+
         // Clear all V2 device data
         RaiseEvent(new CleanupDevicesV2EventLog
         {
@@ -2720,13 +2727,322 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 ["timestamp"] = DateTime.UtcNow.ToString("O")
             }
         });
-        
+
         await ConfirmEvents();
-        
-        Logger.LogWarning("🧹 Cleared ALL V2 device data for user {UserId}: {DeviceCount} devices, {TokenCount} tokens", 
+
+        Logger.LogWarning("🧹 Cleared ALL V2 device data for user {UserId}: {DeviceCount} devices, {TokenCount} tokens",
             State.UserId, deviceCount, tokenCount);
-            
+
         return deviceCount;
+    }
+
+    // === Coordinated Push Methods ===
+
+    /// <summary>
+    /// Get devices for coordinated push (called by DailyPushCoordinatorGAgent)
+    /// Returns device information without executing push
+    /// </summary>
+    public async Task<List<UserDeviceInfo>> GetDevicesForCoordinatedPushAsync(string timeZoneId, DateTime targetDate)
+    {
+        try
+        {
+            // Use unified device source (V2 + V1 fallback)
+            var allDevices = await GetUnifiedDevicesAsync();
+            
+            // Filter devices for the specified timezone and enabled status
+            var targetDevices = allDevices
+                .Where(d => d.TimeZoneId == timeZoneId && d.PushEnabled)
+                .ToList();
+
+            Logger.LogDebug("📋 Collected {DeviceCount} devices for coordinated push in {TimeZone} for user {UserId}", 
+                targetDevices.Count, timeZoneId, State.UserId);
+
+            return targetDevices;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to get devices for coordinated push - User: {UserId}, TimeZone: {TimeZone}", 
+                State.UserId, timeZoneId);
+            return new List<UserDeviceInfo>();
+        }
+    }
+
+    /// <summary>
+    /// Execute coordinated push for a specific device (called by coordinator after device selection)
+    /// Uses existing Redis deduplication logic
+    /// </summary>
+    public async Task<bool> ExecuteCoordinatedPushAsync(UserDeviceInfo device, DateTime targetDate, List<DailyNotificationContent> contents, bool isRetryPush = false, bool isTestPush = false)
+    {
+        try
+        {
+            Logger.LogInformation("🎯 Executing coordinated push for device {DeviceId}, User: {UserId}, Retry: {IsRetry}, Test: {IsTest}", 
+                device.DeviceId, State.UserId, isRetryPush, isTestPush);
+
+            // Use existing Redis deduplication logic
+            var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
+            var date = DateOnly.FromDateTime(targetDate);
+            
+            bool canSend = true; // Default for test pushes
+
+            if (!isTestPush && deduplicationService != null)
+            {
+                if (isRetryPush)
+                {
+                    // Check State: if already read today, skip retry push entirely
+                    var dateKey = date.ToString("yyyy-MM-dd");
+                    if (State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead)
+                    {
+                        Logger.LogInformation("📖 Device {DeviceId} already read - skipping retry push", device.DeviceId);
+                        return false;
+                    }
+                    
+                    canSend = await deduplicationService.TryClaimRetryPushAsync(device.DeviceId, date, device.TimeZoneId);
+                }
+                else
+                {
+                    canSend = await deduplicationService.TryClaimMorningPushAsync(device.DeviceId, date, device.TimeZoneId);
+                }
+                
+                Logger.LogInformation("🔑 Redis deduplication result for {DeviceId}: {CanSend}", device.DeviceId, canSend);
+            }
+
+            if (!canSend)
+            {
+                Logger.LogInformation("❌ Coordinated push blocked by deduplication for device {DeviceId}", device.DeviceId);
+                return false;
+            }
+
+            // Execute the actual push using existing logic
+            var success = await SendCoordinatedPushNotificationAsync(device, contents, targetDate, isRetryPush, isTestPush);
+            
+            if (success)
+            {
+                Logger.LogInformation("✅ Coordinated push completed successfully for device {DeviceId}", device.DeviceId);
+            }
+            else
+            {
+                Logger.LogWarning("❌ Coordinated push failed for device {DeviceId}", device.DeviceId);
+                
+                // Release Redis claim if push failed
+                if (!isTestPush && deduplicationService != null && canSend)
+                {
+                    await deduplicationService.ReleasePushClaimAsync(device.DeviceId, date, device.TimeZoneId, isRetryPush);
+                    Logger.LogInformation("🔄 Released Redis claim for failed push - Device: {DeviceId}", device.DeviceId);
+                }
+            }
+
+            return success;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Exception in coordinated push execution - Device: {DeviceId}, User: {UserId}", 
+                device.DeviceId, State.UserId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Send coordinated push notification using existing Firebase logic
+    /// </summary>
+    private async Task<bool> SendCoordinatedPushNotificationAsync(UserDeviceInfo device, List<DailyNotificationContent> contents, DateTime targetDate, bool isRetryPush, bool isTestPush)
+    {
+        try
+        {
+            // Get Global JWT Provider and Firebase project configuration
+            var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
+            var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+            
+            if (firebaseService == null)
+            {
+                Logger.LogError("FirebaseService not available for coordinated push");
+                return false;
+            }
+
+            var projectId = firebaseService.ProjectId;
+            if (string.IsNullOrEmpty(projectId))
+            {
+                Logger.LogError("Firebase ProjectId not configured for coordinated push");
+                return false;
+            }
+
+            var successCount = 0;
+            var totalContents = contents.Count;
+
+            // Send each content as a separate push notification
+            for (int i = 0; i < contents.Count; i++)
+            {
+                var content = contents[i];
+                var isFirstContent = i == 0;
+
+                try
+                {
+                    var pushData = new Dictionary<string, object>
+                    {
+                        ["type"] = isRetryPush ? "dailyRetry" : "daily",
+                        ["contentId"] = content.ContentId,
+                        ["contentIndex"] = i,
+                        ["totalContents"] = totalContents,
+                        ["isTestPush"] = isTestPush,
+                        ["targetDate"] = targetDate.ToString("yyyy-MM-dd"),
+                        ["deviceId"] = device.DeviceId
+                    };
+
+                    var success = await SendDirectPushNotificationAsync(
+                        globalJwtProvider,
+                        projectId,
+                        device.PushToken,
+                        content.Title,
+                        content.Content,
+                        pushData,
+                        device.TimeZoneId,
+                        isRetryPush,
+                        isFirstContent,
+                        isTestPush,
+                        skipDeduplicationCheck: true // Already handled by coordinator
+                    );
+
+                    if (success)
+                    {
+                        successCount++;
+                        Logger.LogDebug("✅ Coordinated push content {ContentIndex}/{TotalContents} sent successfully - Device: {DeviceId}", 
+                            i + 1, totalContents, device.DeviceId);
+                    }
+                    else
+                    {
+                        Logger.LogWarning("❌ Coordinated push content {ContentIndex}/{TotalContents} failed - Device: {DeviceId}", 
+                            i + 1, totalContents, device.DeviceId);
+                        
+                        // Check if this was a token failure and mark device for cleanup
+                        await CheckAndMarkDeviceForCleanupAsync(device.PushToken, "PUSH_FAILED");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Exception sending coordinated push content {ContentIndex}/{TotalContents} - Device: {DeviceId}", 
+                        i + 1, totalContents, device.DeviceId);
+                }
+            }
+
+            var allSuccessful = successCount == totalContents;
+            Logger.LogInformation("📊 Coordinated push summary - Device: {DeviceId}, Success: {SuccessCount}/{TotalContents}, AllSuccessful: {AllSuccessful}", 
+                device.DeviceId, successCount, totalContents, allSuccessful);
+
+            return allSuccessful;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Exception in SendCoordinatedPushNotificationAsync - Device: {DeviceId}", device.DeviceId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Check if device should be marked for cleanup based on push failures
+    /// </summary>
+    private async Task CheckAndMarkDeviceForCleanupAsync(string pushToken, string failureReason)
+    {
+        try
+        {
+            // For coordinated push, call the automatic cleanup
+            await MarkDeviceTokenAsInvalidAsync(pushToken, failureReason);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Exception in CheckAndMarkDeviceForCleanupAsync - Token: {TokenPrefix}...", 
+                pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken);
+        }
+    }
+
+    /// <summary>
+    /// Mark device token as invalid and remove the device automatically
+    /// Called when FCM returns UNREGISTERED or INVALID_ARGUMENT errors
+    /// </summary>
+    private async Task MarkDeviceTokenAsInvalidAsync(string pushToken, string errorCode)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(pushToken))
+            {
+                Logger.LogWarning("Cannot mark device for cleanup: pushToken is null or empty");
+                return;
+            }
+
+            var devicesToRemove = new List<string>();
+            var cleanupDetails = new Dictionary<string, string>
+            {
+                ["error_code"] = errorCode,
+                ["token_prefix"] = pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken,
+                ["cleanup_trigger"] = "fcm_token_invalid",
+                ["timestamp"] = DateTime.UtcNow.ToString("O")
+            };
+
+            // Check V1 devices
+            var v1DevicesToRemove = State.UserDevices.Values
+                .Where(d => d.PushToken == pushToken)
+                .Select(d => d.DeviceId)
+                .ToList();
+
+            if (v1DevicesToRemove.Any())
+            {
+                devicesToRemove.AddRange(v1DevicesToRemove);
+                cleanupDetails["v1_devices"] = string.Join(",", v1DevicesToRemove);
+                
+                Logger.LogInformation("🧹 Marking {Count} V1 devices for cleanup due to invalid token - Devices: {DeviceIds}, Error: {ErrorCode}", 
+                    v1DevicesToRemove.Count, string.Join(",", v1DevicesToRemove), errorCode);
+
+                // Remove V1 devices
+                RaiseEvent(new CleanExpiredDevicesEventLog
+                {
+                    DeviceIdsToRemove = v1DevicesToRemove,
+                    CleanupTime = DateTime.UtcNow,
+                    CleanupReason = $"fcm_token_invalid_{errorCode}",
+                    RemovedCount = v1DevicesToRemove.Count
+                });
+            }
+
+            // Check V2 devices
+            var v2DevicesToRemove = State.UserDevicesV2.Values
+                .Where(d => d.PushToken == pushToken)
+                .Select(d => d.DeviceId)
+                .ToList();
+
+            if (v2DevicesToRemove.Any())
+            {
+                devicesToRemove.AddRange(v2DevicesToRemove);
+                cleanupDetails["v2_devices"] = string.Join(",", v2DevicesToRemove);
+                
+                Logger.LogInformation("🧹 Marking {Count} V2 devices for cleanup due to invalid token - Devices: {DeviceIds}, Error: {ErrorCode}", 
+                    v2DevicesToRemove.Count, string.Join(",", v2DevicesToRemove), errorCode);
+
+                // Remove V2 devices  
+                RaiseEvent(new CleanupDevicesV2EventLog
+                {
+                    DeviceIdsToRemove = v2DevicesToRemove,
+                    RemovedCount = v2DevicesToRemove.Count,
+                    CleanupReason = $"fcm_token_invalid_{errorCode}",
+                    CleanupDetails = cleanupDetails
+                });
+            }
+
+            if (devicesToRemove.Any())
+            {
+                await ConfirmEvents();
+                Logger.LogWarning("🗑️ Automatically removed {Count} devices with invalid pushToken - Error: {ErrorCode}, Token: {TokenPrefix}..., DeviceIds: {DeviceIds}",
+                    devicesToRemove.Count, errorCode, 
+                    pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken,
+                    string.Join(",", devicesToRemove));
+            }
+            else
+            {
+                Logger.LogDebug("🔍 No devices found with invalid token {TokenPrefix}... for cleanup", 
+                    pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Exception in MarkDeviceTokenAsInvalidAsync - Token: {TokenPrefix}..., Error: {ErrorCode}", 
+                pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, errorCode);
+        }
     }
     
     /// <summary>
