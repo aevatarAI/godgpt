@@ -2695,12 +2695,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     /// Clear all V2 device data for testing purposes
     /// WARNING: This will permanently delete all V2 device registrations
     /// </summary>
-    public async Task ClearAllV2DevicesAsync()
+    /// <returns>Number of devices cleared</returns>
+    public async Task<int> ClearAllV2DevicesAsync()
     {
         if (State.UserDevicesV2.Count == 0)
         {
             Logger.LogInformation("🧹 No V2 devices to clear for user {UserId}", State.UserId);
-            return;
+            return 0;
         }
         
         var deviceCount = State.UserDevicesV2.Count;
@@ -2724,6 +2725,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         
         Logger.LogWarning("🧹 Cleared ALL V2 device data for user {UserId}: {DeviceCount} devices, {TokenCount} tokens", 
             State.UserId, deviceCount, tokenCount);
+            
+        return deviceCount;
     }
     
     /// <summary>

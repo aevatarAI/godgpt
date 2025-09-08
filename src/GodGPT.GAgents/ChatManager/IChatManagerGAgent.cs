@@ -126,6 +126,7 @@ public interface IChatManagerGAgent : IGAgent
     /// Clear all V2 device data for testing purposes
     /// WARNING: This will permanently delete all V2 device registrations
     /// </summary>
-    Task ClearAllV2DevicesAsync();
+    /// <returns>Number of devices cleared</returns>
+    Task<int> ClearAllV2DevicesAsync();
     
 }
