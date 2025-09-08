@@ -449,4 +449,184 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
     }
 
     #endregion
+
+    #region Additional Test Scenarios
+
+    [Fact]
+    public async Task UpdateUserInfoCollectionAsync_Should_Update_Existing_Field_Successfully()
+    {
+        // Arrange
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        
+        // First update: Save only name information
+        var firstUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "John",
+                LastName = "Doe"
+            }
+        };
+
+        // Second update: Update the same field with new values
+        var secondUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Female",
+                FirstName = "Jane",
+                LastName = "Smith"
+            }
+        };
+
+        // Act
+        var firstResult = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(firstUpdate);
+        var secondResult = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(secondUpdate);
+        var finalResult = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
+
+        // Assert
+        firstResult.Success.ShouldBeTrue();
+        secondResult.Success.ShouldBeTrue();
+        
+        finalResult.ShouldNotBeNull();
+        finalResult.NameInfo.ShouldNotBeNull();
+        finalResult.NameInfo.Gender.ShouldBe("Female"); // Should be updated value
+        finalResult.NameInfo.FirstName.ShouldBe("Jane"); // Should be updated value
+        finalResult.NameInfo.LastName.ShouldBe("Smith"); // Should be updated value
+
+        _testOutputHelper.WriteLine("Field update test passed successfully");
+    }
+
+    [Fact]
+    public async Task UpdateUserInfoCollectionAsync_Should_Reject_Invalid_Data()
+    {
+        // Arrange
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        
+        // Test case 1: Missing required name fields
+        var invalidNameUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "", // Empty first name
+                LastName = "Doe"
+            }
+        };
+
+        // Test case 2: Invalid birth date values
+        var invalidBirthDateUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "John",
+                LastName = "Doe"
+            },
+            BirthDateInfo = new UserBirthDateInfoDto
+            {
+                Day = 35, // Invalid day (should be 1-31)
+                Month = 6,
+                Year = 1990
+            }
+        };
+
+        // Test case 3: Invalid birth time values
+        var invalidBirthTimeUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "John",
+                LastName = "Doe"
+            },
+            BirthTimeInfo = new UserBirthTimeInfoDto
+            {
+                Hour = 25, // Invalid hour (should be 0-23)
+                Minute = 30
+            }
+        };
+
+        // Test case 4: Invalid seeking interests (empty list)
+        var invalidSeekingInterestsUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "John",
+                LastName = "Doe"
+            },
+            SeekingInterests = new List<string>() // Empty list
+        };
+
+        // Test case 5: Invalid source channels (empty list)
+        var invalidSourceChannelsUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "John",
+                LastName = "Doe"
+            },
+            SourceChannels = new List<string>() // Empty list
+        };
+
+        // Test case 6: Invalid seeking interests (not from allowed options)
+        var invalidSeekingInterestsOptionsUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "John",
+                LastName = "Doe"
+            },
+            SeekingInterests = new List<string> { "Invalid Interest", "Another Invalid" }
+        };
+
+        // Test case 7: Invalid source channels (not from allowed options)
+        var invalidSourceChannelsOptionsUpdate = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "John",
+                LastName = "Doe"
+            },
+            SourceChannels = new List<string> { "Invalid Channel", "Another Invalid" }
+        };
+
+        // Act & Assert
+        var result1 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidNameUpdate);
+        result1.Success.ShouldBeFalse();
+        result1.Message.ShouldContain("Gender, FirstName, and LastName are required");
+
+        var result2 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidBirthDateUpdate);
+        result2.Success.ShouldBeFalse();
+        result2.Message.ShouldContain("Invalid birthDate values");
+
+        var result3 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidBirthTimeUpdate);
+        result3.Success.ShouldBeFalse();
+        result3.Message.ShouldContain("Hour must be between 0 and 23");
+
+        var result4 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSeekingInterestsUpdate);
+        result4.Success.ShouldBeFalse();
+        result4.Message.ShouldContain("At least one seeking interest is required");
+
+        var result5 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSourceChannelsUpdate);
+        result5.Success.ShouldBeFalse();
+        result5.Message.ShouldContain("At least one source channel is required");
+
+        var result6 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSeekingInterestsOptionsUpdate);
+        result6.Success.ShouldBeFalse();
+        result6.Message.ShouldContain("Invalid seeking interests");
+
+        var result7 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSourceChannelsOptionsUpdate);
+        result7.Success.ShouldBeFalse();
+        result7.Message.ShouldContain("Invalid source channels");
+
+        _testOutputHelper.WriteLine("Invalid data validation test passed successfully");
+    }
+
+    #endregion
 }
