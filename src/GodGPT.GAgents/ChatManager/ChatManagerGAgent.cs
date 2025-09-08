@@ -1,8 +1,10 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
@@ -1727,12 +1729,24 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
     }
 
+    // Concurrent protection for daily push processing per user
+    private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _pushSemaphores = new();
+    
     public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
     {
-        var dateKey = targetDate.ToString("yyyy-MM-dd");
+        // 🔒 Acquire user-level semaphore to prevent concurrent push processing
+        var userSemaphore = _pushSemaphores.GetOrAdd(State.UserId, _ => new SemaphoreSlim(1, 1));
         
-        // 🧹 Clean up expired read status (keep only today and yesterday)
-        await CleanupExpiredReadStatusAsync(targetDate);
+        await userSemaphore.WaitAsync();
+        try
+        {
+            var dateKey = targetDate.ToString("yyyy-MM-dd");
+            
+            Logger.LogDebug("🔒 Acquired push semaphore for user {UserId}, timezone {TimeZone}, pushType: {PushType}", 
+                State.UserId, timeZoneId, isRetryPush ? "retry" : "morning");
+            
+            // 🧹 Clean up expired read status (keep only today and yesterday)
+            await CleanupExpiredReadStatusAsync(targetDate);
         
         // 📊 Log all user devices for debugging (triggered by push processing)
         await LogAllUserDevicesAsync($"PUSH_{(isRetryPush ? "RETRY" : "MORNING")}_{targetDate:yyyy-MM-dd}");
@@ -1973,6 +1987,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         
         Logger.LogInformation("ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
             State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
+        }
+        finally
+        {
+            userSemaphore.Release();
+            Logger.LogDebug("🔓 Released push semaphore for user {UserId}, timezone {TimeZone}", 
+                State.UserId, timeZoneId);
+        }
     }
 
     public async Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate)
