@@ -1688,7 +1688,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         // 🔄 Use unified V2 interface to check all devices (V1 + V2)
         var allDevicesV2 = await GetAllDevicesV2Async();
-        return allDevicesV2.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
+        var enabledDevicesInTimezone = allDevicesV2.Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId).ToList();
+        
+        Logger.LogDebug("HasEnabledDeviceInTimezoneAsync: TimeZone={TimeZone}, TotalDevices={Total}, EnabledInTimezone={Enabled}, DeviceIds=[{DeviceIds}]",
+            timeZoneId, allDevicesV2.Count, enabledDevicesInTimezone.Count, 
+            string.Join(", ", enabledDevicesInTimezone.Select(d => d.DeviceId)));
+        
+        return enabledDevicesInTimezone.Any();
     }
 
     /// <summary>
@@ -2119,7 +2125,15 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         var isRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var readStatus) && readStatus;
         
-        return !isRead && State.UserDevices.Values.Any(d => d.PushEnabled);
+        // 🔄 Use unified V2 interface for consistency with HasEnabledDeviceInTimezoneAsync
+        var allDevicesV2 = await GetAllDevicesV2Async();
+        var hasEnabledDevices = allDevicesV2.Any(d => d.PushEnabled);
+        var shouldSend = !isRead && hasEnabledDevices;
+        
+        Logger.LogDebug("ShouldSendAfternoonRetryAsync: DateKey={DateKey}, IsRead={IsRead}, HasEnabledDevices={HasEnabledDevices}, ShouldSend={ShouldSend}, ReadStatusEntries={ReadEntries}, TotalDevicesV2={TotalDevices}",
+            dateKey, isRead, hasEnabledDevices, shouldSend, State.DailyPushReadStatus.Count, allDevicesV2.Count);
+        
+        return shouldSend;
     }
     
     public async Task<object> GetPushDebugInfoAsync(string deviceId, DateOnly date, string timeZoneId)
@@ -2882,5 +2896,5 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Logger.LogWarning("⚠️ IPushDeduplicationService not available for clearing push status");
         }
     }
-    
+
 }
