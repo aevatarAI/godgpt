@@ -1,4 +1,6 @@
 
+using Aevatar.Application.Grains.UserInfo.Enums;
+
 namespace Aevatar.Application.Grains.UserInfo.Dtos;
 
 /// <summary>
@@ -78,8 +80,8 @@ public class UpdateUserInfoCollectionDto
     [Id(2)] public UserLocationInfoDto LocationInfo { get; set; }
     [Id(3)] public UserBirthDateInfoDto BirthDateInfo { get; set; }
     [Id(4)] public UserBirthTimeInfoDto BirthTimeInfo { get; set; }
-    [Id(5)] public List<string> SeekingInterests { get; set; }
-    [Id(6)] public List<string> SourceChannels { get; set; }
+    [Id(5)] public List<SeekingInterestEnum> SeekingInterests { get; set; }
+    [Id(6)] public List<SourceChannelEnum> SourceChannels { get; set; }
 }
 
 /// <summary>
