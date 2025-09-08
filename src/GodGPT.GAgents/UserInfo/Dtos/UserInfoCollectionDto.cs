@@ -116,3 +116,35 @@ public class UserInfoDisplayDto
     [Id(10)] public List<string> SeekingInterests { get; set; }
     [Id(11)] public List<string> SourceChannels { get; set; }
 }
+
+/// <summary>
+/// Response DTO for user info options
+/// </summary>
+[GenerateSerializer]
+public class UserInfoOptionsResponseDto
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public List<SeekingInterestOptionDto> SeekingInterestOptions { get; set; } = new();
+    [Id(3)] public List<SourceChannelOptionDto> SourceChannelOptions { get; set; } = new();
+}
+
+/// <summary>
+/// DTO for seeking interest option
+/// </summary>
+[GenerateSerializer]
+public class SeekingInterestOptionDto
+{
+    [Id(0)] public int Code { get; set; }
+    [Id(1)] public string Text { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// DTO for source channel option
+/// </summary>
+[GenerateSerializer]
+public class SourceChannelOptionDto
+{
+    [Id(0)] public int Code { get; set; }
+    [Id(1)] public string Text { get; set; } = string.Empty;
+}

@@ -1,5 +1,6 @@
 using Aevatar.Application.Grains.UserInfo.Enums;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using Aevatar.Application.Grains.UserInfo.Dtos;
 
 namespace Aevatar.Application.Grains.UserInfo.Helpers;
 
@@ -153,5 +154,39 @@ public static class UserInfoLocalizationHelper
     {
         var validCodes = Enum.GetValues<SourceChannelEnum>().Select(x => (int)x).ToHashSet();
         return codes.All(code => validCodes.Contains(code));
+    }
+
+    /// <summary>
+    /// Get all seeking interest options with localized text
+    /// </summary>
+    public static List<SeekingInterestOptionDto> GetSeekingInterestEnumOptions(GodGPTLanguage language)
+    {
+        var options = new List<SeekingInterestOptionDto>();
+        foreach (SeekingInterestEnum interest in Enum.GetValues<SeekingInterestEnum>())
+        {
+            options.Add(new SeekingInterestOptionDto
+            {
+                Code = (int)interest,
+                Text = GetSeekingInterestText(interest, language)
+            });
+        }
+        return options;
+    }
+
+    /// <summary>
+    /// Get all source channel options with localized text
+    /// </summary>
+    public static List<SourceChannelOptionDto> GetSourceChannelEnumOptions(GodGPTLanguage language)
+    {
+        var options = new List<SourceChannelOptionDto>();
+        foreach (SourceChannelEnum channel in Enum.GetValues<SourceChannelEnum>())
+        {
+            options.Add(new SourceChannelOptionDto
+            {
+                Code = (int)channel,
+                Text = GetSourceChannelText(channel, language)
+            });
+        }
+        return options;
     }
 }

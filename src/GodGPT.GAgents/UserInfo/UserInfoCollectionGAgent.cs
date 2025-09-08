@@ -30,6 +30,11 @@ public interface IUserInfoCollectionGAgent : IGAgent
     /// Clear all user info collection data
     /// </summary>
     Task ClearAllAsync();
+    
+    /// <summary>
+    /// Get user info options (seeking interests and source channels) based on language
+    /// </summary>
+    Task<UserInfoOptionsResponseDto> GetUserInfoOptionsAsync(GodGPTLanguage language);
 }
 
 [GAgent(nameof(UserInfoCollectionGAgent))]
@@ -298,6 +303,22 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         await ConfirmEvents();
         
         _logger.LogInformation("[UserInfoCollectionGAgent][ClearAllAsync] Successfully cleared all user info collection data");
+    }
+    
+    public async Task<UserInfoOptionsResponseDto> GetUserInfoOptionsAsync(GodGPTLanguage language)
+    {
+        _logger.LogInformation("[UserInfoCollectionGAgent][GetUserInfoOptionsAsync] Getting user info options");
+        
+        var seekingInterestOptions = UserInfoLocalizationHelper.GetSeekingInterestEnumOptions(language);
+        var sourceChannelOptions = UserInfoLocalizationHelper.GetSourceChannelEnumOptions(language);
+        
+        return new UserInfoOptionsResponseDto
+        {
+            Success = true,
+            Message = "Options retrieved successfully",
+            SeekingInterestOptions = seekingInterestOptions,
+            SourceChannelOptions = sourceChannelOptions
+        };
     }
 
     /// <summary>
