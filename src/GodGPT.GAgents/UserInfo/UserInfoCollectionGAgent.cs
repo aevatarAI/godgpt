@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.Application.Grains.UserInfo.Dtos;
+using Aevatar.Application.Grains.UserInfo.Enums;
 using Aevatar.Application.Grains.UserInfo.SEvents;
 using Aevatar.Application.Grains.UserInfo.Helpers;
 using Microsoft.Extensions.Logging;
@@ -141,44 +142,80 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             }
         }
         
-        // Validate seeking interests
-        if (updateDto.SeekingInterests == null || updateDto.SeekingInterests.Count == 0)
+        
+        // Validate seeking interests - reject empty lists but allow null/not provided
+        if (updateDto.SeekingInterests != null && updateDto.SeekingInterests.Count == 0)
         {
-            if (!State.IsInitialized)
+            return new UserInfoCollectionResponseDto
             {
-                return new UserInfoCollectionResponseDto
-                {
-                    Success = false,
-                    Message = "At least one seeking interest is required",
-                    Data = ConvertStateToDto()
-                };
-            }
+                Success = false,
+                Message = "At least one seeking interest is required",
+                Data = ConvertStateToDto()
+            };
         }
         
-        // Validate source channels
-        if (updateDto.SourceChannels == null || updateDto.SourceChannels.Count == 0)
+        // Validate source channels - reject empty lists but allow null/not provided
+        if (updateDto.SourceChannels != null && updateDto.SourceChannels.Count == 0)
         {
-            if (!State.IsInitialized)
+            return new UserInfoCollectionResponseDto
             {
-                return new UserInfoCollectionResponseDto
-                {
-                    Success = false,
-                    Message = "At least one source channel is required",
-                    Data = ConvertStateToDto()
-                };
-            }
+                Success = false,
+                Message = "At least one source channel is required",
+                Data = ConvertStateToDto()
+            };
         }
-        
+
         // Convert enums to localized text and codes
-        var seekingInterestsCode = updateDto.SeekingInterests.Select(x => (int)x).Distinct().OrderBy(x => x).ToList();
-        var seekingInterests = updateDto.SeekingInterests
-            .Select(interest => UserInfoLocalizationHelper.GetSeekingInterestText(interest, language))
-            .ToList();
+        // Validate enum values
+        if (updateDto.SeekingInterests != null && updateDto.SeekingInterests.Count > 0)
+        {
+            var invalidSeekingInterests = updateDto.SeekingInterests.Where(x => !Enum.IsDefined(typeof(SeekingInterestEnum), x)).ToList();
+            if (invalidSeekingInterests.Count > 0)
+            {
+                return new UserInfoCollectionResponseDto
+                {
+                    Success = false,
+                    Message = "Invalid seeking interests",
+                    Data = ConvertStateToDto()
+                };
+            }
+        }
         
-        var sourceChannelsCode = updateDto.SourceChannels.Select(x => (int)x).Distinct().OrderBy(x => x).ToList();
-        var sourceChannels = updateDto.SourceChannels
-            .Select(channel => UserInfoLocalizationHelper.GetSourceChannelText(channel, language))
-            .ToList();
+        if (updateDto.SourceChannels != null && updateDto.SourceChannels.Count > 0)
+        {
+            var invalidSourceChannels = updateDto.SourceChannels.Where(x => !Enum.IsDefined(typeof(SourceChannelEnum), x)).ToList();
+            if (invalidSourceChannels.Count > 0)
+            {
+                return new UserInfoCollectionResponseDto
+                {
+                    Success = false,
+                    Message = "Invalid source channels",
+                    Data = ConvertStateToDto()
+                };
+            }
+        }
+
+        List<int> seekingInterestsCode = null;
+        List<string> seekingInterests = null;
+        
+        if (updateDto.SeekingInterests != null && updateDto.SeekingInterests.Count > 0)
+        {
+            seekingInterestsCode = updateDto.SeekingInterests.Select(x => (int)x).Distinct().OrderBy(x => x).ToList();
+            seekingInterests = updateDto.SeekingInterests
+                .Select(interest => UserInfoLocalizationHelper.GetSeekingInterestText(interest, language))
+                .ToList();
+        }
+        
+        List<int> sourceChannelsCode = null;
+        List<string> sourceChannels = null;
+        
+        if (updateDto.SourceChannels != null && updateDto.SourceChannels.Count > 0)
+        {
+            sourceChannelsCode = updateDto.SourceChannels.Select(x => (int)x).Distinct().OrderBy(x => x).ToList();
+            sourceChannels = updateDto.SourceChannels
+                .Select(channel => UserInfoLocalizationHelper.GetSourceChannelText(channel, language))
+                .ToList();
+        }
         
         var now = DateTime.UtcNow;
         

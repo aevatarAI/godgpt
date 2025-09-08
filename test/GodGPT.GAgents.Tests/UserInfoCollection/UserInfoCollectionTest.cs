@@ -1,5 +1,6 @@
 using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Application.Grains.UserInfo.Dtos;
+using Aevatar.Application.Grains.UserInfo.Enums;
 using Aevatar.Application.Grains.Tests;
 using Shouldly;
 using Xunit.Abstractions;
@@ -60,8 +61,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Hour = 14,
                 Minute = 30
             },
-            SeekingInterests = new List<string> { "Companionship", "Self-discovery" },
-            SourceChannels = new List<string> { "App Store / Play Store", "Social media" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.Companionship, SeekingInterestEnum.SelfDiscovery },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.AppStorePlayStore, SourceChannelEnum.SocialMedia }
         };
 
         // Act
@@ -139,8 +140,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Hour = 9,
                 Minute = 15
             },
-            SeekingInterests = new List<string> { "Spiritual growth", "Career guidance" },
-            SourceChannels = new List<string> { "Search engine", "Friend referral" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.SpiritualGrowth, SeekingInterestEnum.CareerGuidance },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.SearchEngine, SourceChannelEnum.FriendReferral }
         };
 
         // Act
@@ -215,8 +216,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Hour = 14,
                 Minute = 30
             },
-            SeekingInterests = new List<string> { "Companionship" },
-            SourceChannels = new List<string> { "App Store / Play Store" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.Companionship },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.AppStorePlayStore }
         };
 
         // Act
@@ -321,8 +322,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Hour = 16
                 // Minute is null
             },
-            SeekingInterests = new List<string> { "Love & relationships" },
-            SourceChannels = new List<string> { "Event / conference" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.LoveAndRelationships },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.EventConference }
         };
 
         // Act
@@ -383,8 +384,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Month = 8,
                 Year = 1992
             },
-            SeekingInterests = new List<string> { "Daily fortune telling", "Career guidance" },
-            SourceChannels = new List<string> { "Advertisement", "Other" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.DailyFortuneTelling, SeekingInterestEnum.CareerGuidance },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.Advertisement, SourceChannelEnum.Other }
         };
 
         // Act
@@ -458,8 +459,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Month = 4,
                 Year = 1988
             },
-            SeekingInterests = new List<string> { "Self-discovery" },
-            SourceChannels = new List<string> { "Social media" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.SelfDiscovery },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.SocialMedia }
         };
 
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(initialUpdateDto);
@@ -555,13 +556,14 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         // Test 4: Empty seeking interests
         var invalidSeekingInterestsDto = new UpdateUserInfoCollectionDto
         {
-            SeekingInterests = new List<string>() // Empty list
+            SeekingInterests = new List<SeekingInterestEnum>() // Empty list
         };
 
         // Test 5: Empty source channels
         var invalidSourceChannelsDto = new UpdateUserInfoCollectionDto
         {
-            SourceChannels = new List<string>() // Empty list
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.Companionship },
+            SourceChannels = new List<SourceChannelEnum>() // Empty list
         };
 
         // Act & Assert
@@ -620,8 +622,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Hour = 11,
                 Minute = 45
             },
-            SeekingInterests = new List<string> { "Spiritual growth", "Love & relationships" },
-            SourceChannels = new List<string> { "Search engine", "Friend referral" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.SpiritualGrowth, SeekingInterestEnum.LoveAndRelationships },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.SearchEngine, SourceChannelEnum.FriendReferral }
         };
 
         // First, save data
@@ -661,8 +663,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 FirstName = "John",
                 LastName = "Doe"
             },
-            SeekingInterests = new List<string> { "Companionship", "Self-discovery", "Spiritual growth" },
-            SourceChannels = new List<string> { "App Store / Play Store", "Social media", "Search engine" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.Companionship, SeekingInterestEnum.SelfDiscovery, SeekingInterestEnum.SpiritualGrowth },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.AppStorePlayStore, SourceChannelEnum.SocialMedia, SourceChannelEnum.SearchEngine }
         };
 
         // Act
@@ -709,8 +711,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 FirstName = "小美",
                 LastName = "王"
             },
-            SeekingInterests = new List<string> { "夥伴關係", "自我探索", "靈性成長" },
-            SourceChannels = new List<string> { "App Store／Play 商店", "社群媒體", "搜尋引擎" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.Companionship, SeekingInterestEnum.SelfDiscovery, SeekingInterestEnum.SpiritualGrowth },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.AppStorePlayStore, SourceChannelEnum.SocialMedia, SourceChannelEnum.SearchEngine }
         };
 
         // Act
@@ -757,8 +759,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 FirstName = "Carlos",
                 LastName = "Rodriguez"
             },
-            SeekingInterests = new List<string> { "Compañía", "Autodescubrimiento", "Crecimiento espiritual" },
-            SourceChannels = new List<string> { "Tienda de Aplicaciones / Tienda Play", "Redes sociales", "Motor de búsqueda" }
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.Companionship, SeekingInterestEnum.SelfDiscovery, SeekingInterestEnum.SpiritualGrowth },
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.AppStorePlayStore, SourceChannelEnum.SocialMedia, SourceChannelEnum.SearchEngine }
         };
 
         // Act
@@ -805,8 +807,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 FirstName = "John",
                 LastName = "Doe"
             },
-            SeekingInterests = new List<string> { "Invalid Interest" }, // Invalid option
-            SourceChannels = new List<string> { "App Store / Play Store" }
+            SeekingInterests = new List<SeekingInterestEnum> { (SeekingInterestEnum)999 }, // Invalid option
+            SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.AppStorePlayStore }
         };
 
         // Act
