@@ -2819,13 +2819,23 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
     
     /// <summary>
-    /// Enable testing mode for push deduplication (allows multiple tests per day)
+    /// Enable testing mode for push deduplication with manual suffix control
+    /// Requires explicit suffix to prevent accidental auto-generation
     /// </summary>
-    public void EnableTestingMode(string? testingSuffix = null)
+    public void EnableTestingMode(string testingSuffix)
     {
         PushDeduplicationService.SetTestingMode(testingSuffix);
-        var suffix = testingSuffix ?? $"test_{DateTime.Now:HHmmss}";
-        Logger.LogInformation("🧪 Testing mode enabled with suffix: {TestingSuffix}", suffix);
+        Logger.LogInformation("🧪 Testing mode enabled with manual suffix: {TestingSuffix}", testingSuffix);
+    }
+    
+    /// <summary>
+    /// Enable testing mode with version-based suffix for deployment control
+    /// Recommended for release testing: "v1.2.3", "release_2025_01"
+    /// </summary>
+    public void EnableTestingModeForVersion(string version)
+    {
+        PushDeduplicationService.SetTestingModeForVersion(version);
+        Logger.LogInformation("🧪 Testing mode enabled for version: v{Version}", version);
     }
     
     /// <summary>

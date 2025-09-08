@@ -240,12 +240,27 @@ public class PushDeduplicationService : IPushDeduplicationService
     }
     
     /// <summary>
-    /// Set testing mode with a unique suffix to enable multiple tests per day
-    /// Call this before testing to avoid key conflicts
+    /// Set testing mode with a manual suffix to enable controlled testing
+    /// Requires explicit suffix to prevent accidental auto-generation
     /// </summary>
-    public static void SetTestingMode(string? testingSuffix = null)
+    public static void SetTestingMode(string testingSuffix)
     {
-        _testingSuffix = testingSuffix ?? $"test_{DateTime.Now:HHmmss}";
+        if (string.IsNullOrWhiteSpace(testingSuffix))
+            throw new ArgumentException("Testing suffix must be explicitly provided for manual control", nameof(testingSuffix));
+            
+        _testingSuffix = testingSuffix;
+    }
+    
+    /// <summary>
+    /// Set testing mode with version-based suffix for deployment control
+    /// Recommended format: "v{version}" or "release_{version}"
+    /// </summary>
+    public static void SetTestingModeForVersion(string version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+            throw new ArgumentException("Version must be provided", nameof(version));
+            
+        _testingSuffix = $"v{version}";
     }
     
     /// <summary>
