@@ -466,6 +466,8 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             CreatedAt = State.CreatedAt,
             UpdatedAt = State.LastUpdated,
             IsInitialized = State.IsInitialized,
+            SeekingInterestsCode = State.SeekingInterestsCode?? new List<int>(),
+            SourceChannelsCode = State.SourceChannelsCode??  new List<int>(),
             IsCompleted = IsCollectionCompleted()
         };
     }

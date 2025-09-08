@@ -18,6 +18,10 @@ public class UserInfoCollectionDto
     [Id(8)] public DateTime UpdatedAt { get; set; }
     [Id(9)] public bool IsCompleted { get; set; }
     [Id(10)] public bool IsInitialized { get; set; }
+    [Id(11)] public List<int> SeekingInterestsCode { get; set; } = new List<int>();
+    
+    // Source channels codes (Step 7) - Enum values for statistics
+    [Id(12)] public List<int> SourceChannelsCode { get; set; } = new List<int>();
 
 }
 
