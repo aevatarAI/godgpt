@@ -1686,7 +1686,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
     {
-        return State.UserDevices.Values.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
+        // 🔄 Use unified V2 interface to check all devices (V1 + V2)
+        var allDevicesV2 = await GetAllDevicesV2Async();
+        return allDevicesV2.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
     }
 
     /// <summary>
@@ -1848,8 +1850,20 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         
         // Only process devices in the specified timezone with pushToken deduplication
-        var enabledDevicesRaw = State.UserDevices.Values
+        // 🔄 Use unified V2 interface to get all devices (V1 + migrated V2)
+        var allDevicesV2 = await GetAllDevicesV2Async();
+        var enabledDevicesRaw = allDevicesV2
             .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
+            .Select(v2Device => new UserDeviceInfo 
+            {
+                DeviceId = v2Device.DeviceId,
+                PushToken = v2Device.PushToken,
+                TimeZoneId = v2Device.TimeZoneId,
+                PushLanguage = v2Device.PushLanguage,
+                PushEnabled = v2Device.PushEnabled,
+                RegisteredAt = v2Device.RegisteredAt,
+                LastTokenUpdate = v2Device.LastTokenUpdate
+            })
             .ToList();
             
         // 🎯 CRITICAL FIX: Deduplicate by deviceId first, then by pushToken
@@ -2180,25 +2194,31 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         try
         {
-            var allDevices = State.UserDevices.Values.ToList();
-            var enabledDevicesCount = allDevices.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
-            var disabledDevicesCount = allDevices.Count(d => !d.PushEnabled);
-            var emptyTokenCount = allDevices.Count(d => string.IsNullOrEmpty(d.PushToken));
+            // 🔄 Get unified device list (V1 + migrated V2)
+            var allDevicesV2 = await GetAllDevicesV2Async();
+            var v1DevicesCount = State.UserDevices.Count;
+            var v2DevicesCount = State.UserDevicesV2.Count;
+            var migratedCount = State.MigratedDeviceIds.Count;
+            
+            var enabledDevicesCount = allDevicesV2.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
+            var disabledDevicesCount = allDevicesV2.Count(d => !d.PushEnabled);
+            var emptyTokenCount = allDevicesV2.Count(d => string.IsNullOrEmpty(d.PushToken));
             
             // Group devices by timezone for better organization
-            var devicesByTimezone = allDevices.GroupBy(d => d.TimeZoneId).ToDictionary(g => g.Key, g => g.ToList());
+            var devicesByTimezone = allDevicesV2.GroupBy(d => d.TimeZoneId).ToDictionary(g => g.Key, g => g.ToList());
             
-            // Log summary
+            // Log summary with V1/V2 breakdown
             Logger.LogInformation("👤 User {UserId} Device Summary [{Context}]: " +
-                "Total={TotalDevices}, Enabled={EnabledDevices}, Disabled={DisabledDevices}, EmptyToken={EmptyTokens}, " +
+                "Total={TotalDevices} (V1={V1Count}, V2={V2Count}, Migrated={MigratedCount}), " +
+                "Enabled={EnabledDevices}, Disabled={DisabledDevices}, EmptyToken={EmptyTokens}, " +
                 "Timezones={TimezoneCount}",
-                State.UserId, context, allDevices.Count, enabledDevicesCount, disabledDevicesCount, 
-                emptyTokenCount, devicesByTimezone.Count);
+                State.UserId, context, allDevicesV2.Count, v1DevicesCount, v2DevicesCount, migratedCount, 
+                enabledDevicesCount, disabledDevicesCount, emptyTokenCount, devicesByTimezone.Count);
             
             // Log detailed device information by timezone
-            if (allDevices.Count > 0)
+            if (allDevicesV2.Count > 0)
             {
-                var deviceDetails = allDevices.Select(device => new
+                var deviceDetails = allDevicesV2.Select(device => new
                 {
                     UserId = State.UserId.ToString(),
                     DeviceId = device.DeviceId,
