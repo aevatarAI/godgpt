@@ -2876,10 +2876,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
                 try
                 {
+                    // Get localized content based on device language preference
+                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
+                    
                     var pushData = new Dictionary<string, object>
                     {
                         ["type"] = isRetryPush ? "dailyRetry" : "daily",
-                        ["contentId"] = content.ContentId,
+                        ["contentId"] = content.Id,
                         ["contentIndex"] = i,
                         ["totalContents"] = totalContents,
                         ["isTestPush"] = isTestPush,
@@ -2891,8 +2894,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         globalJwtProvider,
                         projectId,
                         device.PushToken,
-                        content.Title,
-                        content.Content,
+                        localizedContent.Title,
+                        localizedContent.Content,
                         pushData,
                         device.TimeZoneId,
                         isRetryPush,
