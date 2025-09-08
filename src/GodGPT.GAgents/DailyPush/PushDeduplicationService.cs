@@ -18,8 +18,9 @@ public class PushDeduplicationService : IPushDeduplicationService
     private const string MORNING_KEY_PREFIX = "godgpt:push:morning";
     private const string RETRY_KEY_PREFIX = "godgpt:push:retry";
     
-    // Testing support: Optional suffix to enable multiple tests per day
-    private static string? _testingSuffix = null;
+    // Testing suffix for deployment control - modify this value before each release testing
+    // Set to null for production, set to any string for testing (e.g., "v1.2.3", "test_round_2")
+    private static readonly string? TESTING_SUFFIX = null; // TODO: Change this for testing, reset to null for production
     
     // TTL for Redis keys (24 hours for daily push deduplication)
     private static readonly TimeSpan KEY_TTL = TimeSpan.FromHours(24);
@@ -226,7 +227,7 @@ public class PushDeduplicationService : IPushDeduplicationService
     private static string BuildMorningKey(string deviceId, DateOnly date, string timeZoneId)
     {
         var baseKey = $"{MORNING_KEY_PREFIX}:{deviceId}:{date:yyyy-MM-dd}:{timeZoneId}";
-        return string.IsNullOrEmpty(_testingSuffix) ? baseKey : $"{baseKey}:{_testingSuffix}";
+        return string.IsNullOrEmpty(TESTING_SUFFIX) ? baseKey : $"{baseKey}:{TESTING_SUFFIX}";
     }
     
     /// <summary>
@@ -236,38 +237,7 @@ public class PushDeduplicationService : IPushDeduplicationService
     private static string BuildRetryKey(string deviceId, DateOnly date, string timeZoneId)
     {
         var baseKey = $"{RETRY_KEY_PREFIX}:{deviceId}:{date:yyyy-MM-dd}:{timeZoneId}";
-        return string.IsNullOrEmpty(_testingSuffix) ? baseKey : $"{baseKey}:{_testingSuffix}";
+        return string.IsNullOrEmpty(TESTING_SUFFIX) ? baseKey : $"{baseKey}:{TESTING_SUFFIX}";
     }
     
-    /// <summary>
-    /// Set testing mode with a manual suffix to enable controlled testing
-    /// Requires explicit suffix to prevent accidental auto-generation
-    /// </summary>
-    public static void SetTestingMode(string testingSuffix)
-    {
-        if (string.IsNullOrWhiteSpace(testingSuffix))
-            throw new ArgumentException("Testing suffix must be explicitly provided for manual control", nameof(testingSuffix));
-            
-        _testingSuffix = testingSuffix;
-    }
-    
-    /// <summary>
-    /// Set testing mode with version-based suffix for deployment control
-    /// Recommended format: "v{version}" or "release_{version}"
-    /// </summary>
-    public static void SetTestingModeForVersion(string version)
-    {
-        if (string.IsNullOrWhiteSpace(version))
-            throw new ArgumentException("Version must be provided", nameof(version));
-            
-        _testingSuffix = $"v{version}";
-    }
-    
-    /// <summary>
-    /// Disable testing mode and return to normal operation
-    /// </summary>
-    public static void DisableTestingMode()
-    {
-        _testingSuffix = null;
-    }
 }

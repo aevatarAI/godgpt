@@ -116,21 +116,6 @@ public interface IChatManagerGAgent : IGAgent
     /// </summary>
     Task ClearPushStatusForTestingAsync(string deviceId, DateOnly date, string timeZoneId);
 
-    /// <summary>
-    /// Enable testing mode for push deduplication with manual suffix control
-    /// Requires explicit suffix to prevent accidental auto-generation
-    /// </summary>
-    void EnableTestingMode(string testingSuffix);
-    
-    /// <summary>
-    /// Enable testing mode with version-based suffix for deployment control
-    /// </summary>
-    void EnableTestingModeForVersion(string version);
-    
-    /// <summary>
-    /// Disable testing mode for push deduplication (return to normal operation)
-    /// </summary>
-    void DisableTestingMode();
     
     /// <summary>
     /// Get device status for query API
