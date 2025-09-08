@@ -2475,16 +2475,81 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
             if (response.IsSuccessStatusCode)
             {
-                Logger.LogDebug("Push notification sent successfully: {ResponseContent}", responseContent);
-                
-                // Deduplication removed - no need to mark push as sent
-                
-                return true;
+                // ✅ CRITICAL FIX: Parse FCM response to check for actual success/failure
+                // HTTP 200 doesn't guarantee push success - FCM may return errors in response body
+                try
+                {
+                    using var jsonDocument = JsonDocument.Parse(responseContent);
+                    var root = jsonDocument.RootElement;
+
+                    // Check if FCM returned an error despite 200 status
+                    if (root.TryGetProperty("error", out var errorElement))
+                    {
+                        var errorCode = errorElement.TryGetProperty("code", out var codeElement)
+                            ? codeElement.GetString()
+                            : "UNKNOWN";
+                        var errorMessage = errorElement.TryGetProperty("message", out var msgElement)
+                            ? msgElement.GetString()
+                            : "Unknown error";
+
+                        Logger.LogError(
+                            "🚨 FCM returned error despite 200 status - Code: {ErrorCode}, Message: {ErrorMessage}, Token: {TokenPrefix}..., Title: '{Title}'",
+                            errorCode, errorMessage, 
+                            pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
+
+                        // Handle specific FCM errors for token cleanup
+                        if (errorCode == "UNREGISTERED" || errorCode == "INVALID_ARGUMENT")
+                        {
+                            Logger.LogWarning(
+                                "❌ Push token is invalid and should be removed - Token: {TokenPrefix}..., ErrorCode: {ErrorCode}",
+                                pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, errorCode);
+                        }
+
+                        return false; // ❌ Actual failure despite 200 status
+                    }
+
+                    // Check for success indicator (message name in response)
+                    if (root.TryGetProperty("name", out var nameElement))
+                    {
+                        var messageName = nameElement.GetString();
+                        Logger.LogInformation(
+                            "✅ Push notification sent successfully - Message: {MessageName}, Token: {TokenPrefix}..., Title: '{Title}'",
+                            messageName, 
+                            pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
+                        return true; // ✅ Confirmed success
+                    }
+
+                    // Unexpected response format with 200 status
+                    Logger.LogWarning(
+                        "⚠️ FCM returned 200 but unexpected response format: {ResponseContent}, Token: {TokenPrefix}..., Title: '{Title}'",
+                        responseContent, 
+                        pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
+                    return false; // Treat unexpected format as failure
+                }
+                catch (System.Text.Json.JsonException ex)
+                {
+                    Logger.LogError(ex, "Failed to parse FCM response JSON: {ResponseContent}", responseContent);
+                    // For unparseable responses with 200 status, assume success for backward compatibility
+                    Logger.LogInformation(
+                        "⚠️ Push assumed successful due to 200 status (unparseable response) - Token: {TokenPrefix}..., Title: '{Title}'",
+                        pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
+                    return true;
+                }
             }
             else
             {
-                Logger.LogWarning("Push notification failed: {StatusCode} - {ResponseContent}", 
-                    response.StatusCode, responseContent);
+                Logger.LogError("❌ FCM request failed with status {StatusCode}: {ResponseContent}, Token: {TokenPrefix}..., Title: '{Title}'", 
+                    response.StatusCode, responseContent,
+                    pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
+
+                // Handle specific FCM v1 errors for token cleanup
+                if (responseContent.Contains("UNREGISTERED") || responseContent.Contains("INVALID_ARGUMENT"))
+                {
+                    Logger.LogWarning(
+                        "❌ Token is invalid and should be removed - Token: {TokenPrefix}..., Status: {StatusCode}",
+                        pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, response.StatusCode);
+                }
+
                 return false;
             }
         }
