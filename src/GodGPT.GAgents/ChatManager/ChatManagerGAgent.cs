@@ -1272,35 +1272,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     state.TokenToDeviceMapV2[registerDeviceV2Event.DeviceInfo.PushToken] = registerDeviceV2Event.DeviceId;
                 }
                 
-                // Mark as migrated if this is a migration
-                if (registerDeviceV2Event.IsMigration)
-                {
-                    state.MigratedDeviceIds.Add(registerDeviceV2Event.DeviceId);
-                }
+                // ✅ V2-only: No migration tracking needed
                 break;
                 
-            case MigrateDeviceToV2EventLog migrateEvent:
-                // Add new V2 device
-                state.UserDevicesV2[migrateEvent.DeviceId] = migrateEvent.NewDeviceInfo;
-                if (!string.IsNullOrEmpty(migrateEvent.NewDeviceInfo.PushToken))
-                {
-                    state.TokenToDeviceMapV2[migrateEvent.NewDeviceInfo.PushToken] = migrateEvent.DeviceId;
-                }
-                
-                // Remove from V1 structure
-                if (state.UserDevices.ContainsKey(migrateEvent.DeviceId))
-                {
-                    var oldDevice = state.UserDevices[migrateEvent.DeviceId];
-                    if (!string.IsNullOrEmpty(oldDevice.PushToken))
-                    {
-                        state.TokenToDeviceMap.Remove(oldDevice.PushToken);
-                    }
-                    state.UserDevices.Remove(migrateEvent.DeviceId);
-                }
-                
-                // Mark as migrated
-                state.MigratedDeviceIds.Add(migrateEvent.DeviceId);
-                break;
+            // ✅ V2-only: Migration events removed - V1 and V2 are completely separate
                 
             case CleanupDevicesV2EventLog cleanDevicesV2Event:
                 // Remove V2 devices specified in the cleanup event
@@ -1319,8 +1294,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         // Remove device from V2 user devices
                         state.UserDevicesV2.Remove(deviceIdToRemove);
                         
-                        // Remove from migration tracking
-                        state.MigratedDeviceIds.Remove(deviceIdToRemove);
+                        // ✅ V2-only: No migration tracking needed
                     }
                 }
                 
@@ -1686,9 +1660,15 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
     {
-        // 🔄 Use unified V2 interface to check all devices (V1 + V2)
-        var allDevicesV2 = await GetAllDevicesV2Async();
-        return allDevicesV2.Any(d => d.PushEnabled && d.TimeZoneId == timeZoneId);
+        // 🔄 Use unified interface to check all devices (V2 + V1)
+        var allDevices = await GetUnifiedDevicesAsync();
+        var enabledDevicesInTimezone = allDevices.Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId).ToList();
+        
+        Logger.LogDebug("HasEnabledDeviceInTimezoneAsync: TimeZone={TimeZone}, TotalDevices={Total}, EnabledInTimezone={Enabled}, DeviceIds=[{DeviceIds}]",
+            timeZoneId, allDevices.Count, enabledDevicesInTimezone.Count, 
+            string.Join(", ", enabledDevicesInTimezone.Select(d => d.DeviceId)));
+        
+        return enabledDevicesInTimezone.Any();
     }
 
     /// <summary>
@@ -1850,31 +1830,21 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         
         // Only process devices in the specified timezone with pushToken deduplication
-        // 🔄 Use unified V2 interface to get all devices (V1 + migrated V2)
-        var allDevicesV2 = await GetAllDevicesV2Async();
-        var enabledDevicesRaw = allDevicesV2
+        // 🔄 Use unified interface to get all devices (V2 prioritized, V1 fallback)
+        var enabledDevicesRaw = await GetUnifiedDevicesAsync();
+        var enabledDevicesFiltered = enabledDevicesRaw
             .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
-            .Select(v2Device => new UserDeviceInfo 
-            {
-                DeviceId = v2Device.DeviceId,
-                PushToken = v2Device.PushToken,
-                TimeZoneId = v2Device.TimeZoneId,
-                PushLanguage = v2Device.PushLanguage,
-                PushEnabled = v2Device.PushEnabled,
-                RegisteredAt = v2Device.RegisteredAt,
-                LastTokenUpdate = v2Device.LastTokenUpdate
-            })
             .ToList();
             
         // 🎯 CRITICAL FIX: Deduplicate by deviceId first, then by pushToken
         // This prevents the same physical device from being processed multiple times
         // even if it has different pushTokens (e.g., after user switching)
-        var enabledDevices = enabledDevicesRaw
+        var enabledDevices = enabledDevicesFiltered
             .GroupBy(d => d.DeviceId)  // 🔧 Primary deduplication by deviceId
             .Select(deviceGroup => deviceGroup.OrderByDescending(d => d.LastTokenUpdate).First()) // Keep latest record for the device
             .ToList();
             
-        var duplicateCount = enabledDevicesRaw.Count - enabledDevices.Count;
+        var duplicateCount = enabledDevicesFiltered.Count - enabledDevices.Count;
         if (duplicateCount > 0)
         {
             Logger.LogDebug("Device deduplication: removed {DuplicateCount} duplicate devices (by deviceId + pushToken)", duplicateCount);
@@ -2058,7 +2028,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
                     return false;
                 }
-                });
+            });
                 
                 var contentResults = await Task.WhenAll(contentTasks);
                 var deviceSuccessCount = contentResults.Count(r => r);
@@ -2119,7 +2089,15 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         var isRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var readStatus) && readStatus;
         
-        return !isRead && State.UserDevices.Values.Any(d => d.PushEnabled);
+        // 🔄 Use unified interface for consistency with HasEnabledDeviceInTimezoneAsync
+        var allDevices = await GetUnifiedDevicesAsync();
+        var hasEnabledDevices = allDevices.Any(d => d.PushEnabled);
+        var shouldSend = !isRead && hasEnabledDevices;
+        
+        Logger.LogDebug("ShouldSendAfternoonRetryAsync: DateKey={DateKey}, IsRead={IsRead}, HasEnabledDevices={HasEnabledDevices}, ShouldSend={ShouldSend}, ReadStatusEntries={ReadEntries}, TotalDevices={TotalDevices}",
+            dateKey, isRead, hasEnabledDevices, shouldSend, State.DailyPushReadStatus.Count, allDevices.Count);
+        
+        return shouldSend;
     }
     
     public async Task<object> GetPushDebugInfoAsync(string deviceId, DateOnly date, string timeZoneId)
@@ -2198,7 +2176,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var allDevicesV2 = await GetAllDevicesV2Async();
             var v1DevicesCount = State.UserDevices.Count;
             var v2DevicesCount = State.UserDevicesV2.Count;
-            var migratedCount = State.MigratedDeviceIds.Count;
+            // ✅ V2-only: No migration tracking needed
             
             var enabledDevicesCount = allDevicesV2.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
             var disabledDevicesCount = allDevicesV2.Count(d => !d.PushEnabled);
@@ -2209,10 +2187,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             
             // Log summary with V1/V2 breakdown
             Logger.LogInformation("👤 User {UserId} Device Summary [{Context}]: " +
-                "Total={TotalDevices} (V1={V1Count}, V2={V2Count}, Migrated={MigratedCount}), " +
+                "Total={TotalDevices} (V1={V1Count}, V2={V2Count}), " +
                 "Enabled={EnabledDevices}, Disabled={DisabledDevices}, EmptyToken={EmptyTokens}, " +
                 "Timezones={TimezoneCount}",
-                State.UserId, context, allDevicesV2.Count, v1DevicesCount, v2DevicesCount, migratedCount, 
+                State.UserId, context, allDevicesV2.Count, v1DevicesCount, v2DevicesCount, 
                 enabledDevicesCount, disabledDevicesCount, emptyTokenCount, devicesByTimezone.Count);
             
             // Log detailed device information by timezone
@@ -2585,15 +2563,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     public async Task<bool> RegisterOrUpdateDeviceV2Async(string deviceId, string pushToken, string timeZoneId, 
         bool? pushEnabled, string pushLanguage, string? platform = null, string? appVersion = null)
     {
-        var isNewDevice = !State.UserDevicesV2.ContainsKey(deviceId) && !State.MigratedDeviceIds.Contains(deviceId);
+        var isNewDevice = !State.UserDevicesV2.ContainsKey(deviceId);
         var now = DateTime.UtcNow;
         
-        // Check if device exists in V1 structure and migrate if needed
-        if (!isNewDevice && State.UserDevices.ContainsKey(deviceId) && !State.MigratedDeviceIds.Contains(deviceId))
-        {
-            await MigrateDeviceToV2Async(deviceId);
-        }
-        
+        // 🔄 V2 ONLY: No migration from V1, V2 uses completely new data
         var deviceInfo = isNewDevice ? new UserDeviceInfoV2() : 
             new UserDeviceInfoV2
             {
@@ -2698,58 +2671,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return true;
     }
 
-    /// <summary>
-    /// Migrate a device from V1 to V2 structure
-    /// </summary>
-    private async Task MigrateDeviceToV2Async(string deviceId)
-    {
-        if (!State.UserDevices.ContainsKey(deviceId) || State.MigratedDeviceIds.Contains(deviceId))
-        {
-            return; // Already migrated or doesn't exist
-        }
-        
-        var v1Device = State.UserDevices[deviceId];
-        var now = DateTime.UtcNow;
-        
-        var v2Device = new UserDeviceInfoV2
-        {
-            DeviceId = v1Device.DeviceId,
-            UserId = State.UserId,
-            PushToken = v1Device.PushToken,
-            TimeZoneId = v1Device.TimeZoneId,
-            PushLanguage = v1Device.PushLanguage,
-            PushEnabled = v1Device.PushEnabled,
-            RegisteredAt = v1Device.RegisteredAt,
-            LastTokenUpdate = v1Device.LastTokenUpdate,
-            LastActiveAt = now, // Set to current time during migration
-            Platform = "", // Unknown for migrated devices
-            AppVersion = "", // Unknown for migrated devices
-            Status = DeviceStatus.Active,
-            StructureVersion = 2,
-            PushTokenHistory = new List<HistoricalPushToken>(), // Empty for migrated devices
-            LastSuccessfulPush = null, // Unknown for migrated devices
-            ConsecutiveFailures = 0, // Reset during migration
-            Metadata = new Dictionary<string, string>
-            {
-                ["migrated_from"] = "v1",
-                ["migration_time"] = now.ToString("O")
-            }
-        };
-        
-        // Raise migration event
-        RaiseEvent(new MigrateDeviceToV2EventLog
-        {
-            DeviceId = deviceId,
-            OldDeviceInfo = v1Device,
-            NewDeviceInfo = v2Device,
-            MigrationTime = now
-        });
-        
-        await ConfirmEvents();
-        
-        Logger.LogInformation("🔄 Device migrated to V2: DeviceId={DeviceId}, UserId={UserId}", 
-            deviceId, State.UserId);
-    }
 
     /// <summary>
     /// Get unified device list (V2 + migrated V1 devices)
@@ -2757,26 +2678,83 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     /// </summary>
     public async Task<List<UserDeviceInfoV2>> GetAllDevicesV2Async()
     {
-        var allDevices = new List<UserDeviceInfoV2>();
-        
-        // Add all V2 devices
-        allDevices.AddRange(State.UserDevicesV2.Values);
-        
-        // Auto-migrate V1 devices that haven't been migrated yet
-        var v1DevicesToMigrate = State.UserDevices.Keys
-            .Where(deviceId => !State.MigratedDeviceIds.Contains(deviceId))
-            .ToList();
-            
-        foreach (var deviceId in v1DevicesToMigrate)
+        // ✅ SIMPLIFIED: V2 devices only - no migration logic
+        // V1 and V2 are completely separate data sources
+        return State.UserDevicesV2.Values.ToList();
+    }
+    
+    /// <summary>
+    /// Get all V1 devices (legacy data)
+    /// </summary>
+    public async Task<List<UserDeviceInfo>> GetAllDevicesV1Async()
+    {
+        return State.UserDevices.Values.ToList();
+    }
+    
+    /// <summary>
+    /// Clear all V2 device data for testing purposes
+    /// WARNING: This will permanently delete all V2 device registrations
+    /// </summary>
+    public async Task ClearAllV2DevicesAsync()
+    {
+        if (State.UserDevicesV2.Count == 0)
         {
-            await MigrateDeviceToV2Async(deviceId);
-            if (State.UserDevicesV2.ContainsKey(deviceId))
-            {
-                allDevices.Add(State.UserDevicesV2[deviceId]);
-            }
+            Logger.LogInformation("🧹 No V2 devices to clear for user {UserId}", State.UserId);
+            return;
         }
         
-        return allDevices;
+        var deviceCount = State.UserDevicesV2.Count;
+        var tokenCount = State.TokenToDeviceMapV2.Count;
+        
+        // Clear all V2 device data
+        RaiseEvent(new CleanupDevicesV2EventLog
+        {
+            DeviceIdsToRemove = State.UserDevicesV2.Keys.ToList(),
+            RemovedCount = deviceCount,
+            CleanupReason = "manual_v2_clear",
+            CleanupDetails = new Dictionary<string, string>
+            {
+                ["tokens_cleared"] = tokenCount.ToString(),
+                ["trigger"] = "ClearAllV2DevicesAsync",
+                ["timestamp"] = DateTime.UtcNow.ToString("O")
+            }
+        });
+        
+        await ConfirmEvents();
+        
+        Logger.LogWarning("🧹 Cleared ALL V2 device data for user {UserId}: {DeviceCount} devices, {TokenCount} tokens", 
+            State.UserId, deviceCount, tokenCount);
+    }
+    
+    /// <summary>
+    /// Get unified device list for compatibility - prioritize V2, fallback to V1
+    /// Used for transition period where both V1 and V2 data exist
+    /// </summary>
+    public async Task<List<UserDeviceInfo>> GetUnifiedDevicesAsync()
+    {
+        var unifiedDevices = new List<UserDeviceInfo>();
+        
+        // 1. Add V2 devices (convert to V1 format for compatibility)
+        var v2Devices = State.UserDevicesV2.Values.Select(v2 => new UserDeviceInfo
+        {
+            DeviceId = v2.DeviceId,
+            PushToken = v2.PushToken,
+            TimeZoneId = v2.TimeZoneId,
+            PushLanguage = v2.PushLanguage,
+            PushEnabled = v2.PushEnabled,
+            RegisteredAt = v2.RegisteredAt,
+            LastTokenUpdate = v2.LastTokenUpdate
+        }).ToList();
+        unifiedDevices.AddRange(v2Devices);
+        
+        // 2. Add V1 devices that don't exist in V2 (by deviceId)
+        var v2DeviceIds = State.UserDevicesV2.Keys.ToHashSet();
+        var v1OnlyDevices = State.UserDevices.Values
+            .Where(v1 => !v2DeviceIds.Contains(v1.DeviceId))
+            .ToList();
+        unifiedDevices.AddRange(v1OnlyDevices);
+        
+        return unifiedDevices;
     }
 
     /// <summary>
@@ -2882,5 +2860,5 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Logger.LogWarning("⚠️ IPushDeduplicationService not available for clearing push status");
         }
     }
-    
+
 }

@@ -122,4 +122,10 @@ public interface IChatManagerGAgent : IGAgent
     /// </summary>
     Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
     
+    /// <summary>
+    /// Clear all V2 device data for testing purposes
+    /// WARNING: This will permanently delete all V2 device registrations
+    /// </summary>
+    Task ClearAllV2DevicesAsync();
+    
 }
