@@ -3,6 +3,7 @@ using Aevatar.Application.Grains.UserInfo.Dtos;
 using Aevatar.Application.Grains.Tests;
 using Shouldly;
 using Xunit.Abstractions;
+using Aevatar.Core;
 
 namespace Aevatar.Application.Grains.Tests.UserInfoCollection;
 
@@ -32,6 +33,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
     [Fact]
     public async Task UpdateUserInfoCollectionAsync_Should_Save_All_Data_Successfully()
     {
+        RequestContext.Set("GodGPTLanguage","English");
         // Arrange
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
         var updateDto = new UpdateUserInfoCollectionDto
@@ -58,8 +60,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Hour = 14,
                 Minute = 30
             },
-            SeekingInterests = new List<string> { "陪伴", "自我发现", "每日占星" },
-            SourceChannels = new List<string> { "App Store", "Social media" }
+            SeekingInterests = new List<string> { "Companionship", "Self-discovery" },
+            SourceChannels = new List<string> { "App Store / Play Store", "Social media" }
         };
 
         // Act
@@ -85,17 +87,32 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         result.Data.BirthTimeInfo.Hour.ShouldBe(14);
         result.Data.BirthTimeInfo.Minute.ShouldBe(30);
         result.Data.SeekingInterests.ShouldNotBeNull();
-        result.Data.SeekingInterests.Count.ShouldBe(3);
+        result.Data.SeekingInterests.Count.ShouldBe(2);
+        result.Data.SeekingInterests.ShouldContain("Companionship");
+        result.Data.SeekingInterests.ShouldContain("Self-discovery");
         result.Data.SourceChannels.ShouldNotBeNull();
         result.Data.SourceChannels.Count.ShouldBe(2);
+        result.Data.SourceChannels.ShouldContain("App Store / Play Store");
+        result.Data.SourceChannels.ShouldContain("Social media");
+        result.Data.IsInitialized.ShouldBeTrue();
         result.Data.IsCompleted.ShouldBeTrue();
-
-        _testOutputHelper.WriteLine("Full data collection test passed successfully");
+        
+        // Verify code fields are populated correctly
+        result.Data.SeekingInterestsCode.ShouldNotBeNull();
+        result.Data.SeekingInterestsCode.Count.ShouldBe(2);
+        result.Data.SeekingInterestsCode.ShouldContain(0); // Companionship
+        result.Data.SeekingInterestsCode.ShouldContain(1); // Self-discovery
+        result.Data.SourceChannelsCode.ShouldNotBeNull();
+        result.Data.SourceChannelsCode.Count.ShouldBe(2);
+        result.Data.SourceChannelsCode.ShouldContain(0); // App Store / Play Store
+        result.Data.SourceChannelsCode.ShouldContain(1); // Social media
     }
 
     [Fact]
     public async Task GetUserInfoCollectionAsync_Should_Return_Complete_Data_After_Full_Update()
     {
+        RequestContext.Set("GodGPTLanguage","English");
+
         // Arrange
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
         var updateDto = new UpdateUserInfoCollectionDto
@@ -122,8 +139,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Hour = 9,
                 Minute = 15
             },
-            SeekingInterests = new List<string> { "精神成长", "爱情与关系" },
-            SourceChannels = new List<string> { "Friend referral", "Event/conference" }
+            SeekingInterests = new List<string> { "Spiritual growth", "Career guidance" },
+            SourceChannels = new List<string> { "Search engine", "Friend referral" }
         };
 
         // Act
@@ -146,16 +163,32 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         result.BirthTimeInfo.ShouldNotBeNull();
         result.BirthTimeInfo.Hour.ShouldBe(9);
         result.BirthTimeInfo.Minute.ShouldBe(15);
+        result.SeekingInterests.ShouldNotBeNull();
         result.SeekingInterests.Count.ShouldBe(2);
+        result.SeekingInterests.ShouldContain("Spiritual growth");
+        result.SeekingInterests.ShouldContain("Career guidance");
+        result.SourceChannels.ShouldNotBeNull();
         result.SourceChannels.Count.ShouldBe(2);
+        result.SourceChannels.ShouldContain("Search engine");
+        result.SourceChannels.ShouldContain("Friend referral");
+        result.IsInitialized.ShouldBeTrue();
         result.IsCompleted.ShouldBeTrue();
-
-        _testOutputHelper.WriteLine("Get complete data test passed successfully");
+        
+        // Verify code fields
+        result.SeekingInterestsCode.ShouldNotBeNull();
+        result.SeekingInterestsCode.Count.ShouldBe(2);
+        result.SeekingInterestsCode.ShouldContain(2); // Spiritual growth
+        result.SeekingInterestsCode.ShouldContain(5); // Career guidance
+        result.SourceChannelsCode.ShouldNotBeNull();
+        result.SourceChannelsCode.Count.ShouldBe(2);
+        result.SourceChannelsCode.ShouldContain(2); // Search engine
+        result.SourceChannelsCode.ShouldContain(3); // Friend referral
     }
 
     [Fact]
     public async Task GetUserInfoDisplayAsync_Should_Format_Data_Correctly_For_Display()
     {
+        RequestContext.Set("GodGPTLanguage","English");
         // Arrange
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
         var updateDto = new UpdateUserInfoCollectionDto
@@ -163,27 +196,27 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
             NameInfo = new UserNameInfoDto
             {
                 Gender = "Male",
-                FirstName = "Alex",
-                LastName = "Johnson"
+                FirstName = "John",
+                LastName = "Doe"
             },
             LocationInfo = new UserLocationInfoDto
             {
-                Country = "United Kingdom",
-                City = "London"
+                Country = "United States",
+                City = "New York"
             },
             BirthDateInfo = new UserBirthDateInfoDto
             {
-                Day = 3,
-                Month = 8,
-                Year = 1992
+                Day = 15,
+                Month = 6,
+                Year = 1990
             },
             BirthTimeInfo = new UserBirthTimeInfoDto
             {
-                Hour = 16,
-                Minute = 45
+                Hour = 14,
+                Minute = 30
             },
-            SeekingInterests = new List<string> { "职业指导", "每日占星" },
-            SourceChannels = new List<string> { "Search engine", "Advertisement" }
+            SeekingInterests = new List<string> { "Companionship" },
+            SourceChannels = new List<string> { "App Store / Play Store" }
         };
 
         // Act
@@ -192,20 +225,22 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
 
         // Assert
         result.ShouldNotBeNull();
-        result.FirstName.ShouldBe("Alex");
-        result.LastName.ShouldBe("Johnson");
+        result.FirstName.ShouldBe("John");
+        result.LastName.ShouldBe("Doe");
         result.Gender.ShouldBe("Male");
-        result.Day.ShouldBe(3);
-        result.Month.ShouldBe(8);
-        result.Year.ShouldBe(1992);
-        result.Hour.ShouldBe(16);
-        result.Minute.ShouldBe(45);
-        result.Country.ShouldBe("United Kingdom");
-        result.City.ShouldBe("London");
-        result.SeekingInterests.Count.ShouldBe(2);
-        result.SourceChannels.Count.ShouldBe(2);
-
-        _testOutputHelper.WriteLine("Display formatting test passed successfully");
+        result.Day.ShouldBe(15);
+        result.Month.ShouldBe(6);
+        result.Year.ShouldBe(1990);
+        result.Hour.ShouldBe(14);
+        result.Minute.ShouldBe(30);
+        result.Country.ShouldBe("United States");
+        result.City.ShouldBe("New York");
+        result.SeekingInterests.ShouldNotBeNull();
+        result.SeekingInterests.Count.ShouldBe(1);
+        result.SeekingInterests.ShouldContain("Companionship");
+        result.SourceChannels.ShouldNotBeNull();
+        result.SourceChannels.Count.ShouldBe(1);
+        result.SourceChannels.ShouldContain("App Store / Play Store");
     }
 
     #endregion
@@ -215,6 +250,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
     [Fact]
     public async Task UpdateUserInfoCollectionAsync_Should_Save_Partial_Data_Successfully()
     {
+        RequestContext.Set("GodGPTLanguage","English");
         // Arrange
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
         var updateDto = new UpdateUserInfoCollectionDto
@@ -222,21 +258,9 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
             NameInfo = new UserNameInfoDto
             {
                 Gender = "Female",
-                FirstName = "Sarah",
-                LastName = "Wilson"
-            },
-            LocationInfo = new UserLocationInfoDto
-            {
-                Country = "Australia",
-                City = "Sydney"
-            },
-            BirthDateInfo = new UserBirthDateInfoDto
-            {
-                Day = 10,
-                Month = 3,
-                Year = 1988
+                FirstName = "Alice",
+                LastName = "Johnson"
             }
-            // Note: BirthTimeInfo, SeekingInterests, and SourceChannels are not provided
         };
 
         // Act
@@ -248,31 +272,174 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         result.Data.ShouldNotBeNull();
         result.Data.NameInfo.ShouldNotBeNull();
         result.Data.NameInfo.Gender.ShouldBe("Female");
-        result.Data.NameInfo.FirstName.ShouldBe("Sarah");
-        result.Data.NameInfo.LastName.ShouldBe("Wilson");
-        result.Data.LocationInfo.ShouldNotBeNull();
-        result.Data.LocationInfo.Country.ShouldBe("Australia");
-        result.Data.LocationInfo.City.ShouldBe("Sydney");
-        result.Data.BirthDateInfo.ShouldNotBeNull();
-        result.Data.BirthDateInfo.Day.ShouldBe(10);
-        result.Data.BirthDateInfo.Month.ShouldBe(3);
-        result.Data.BirthDateInfo.Year.ShouldBe(1988);
-        result.Data.BirthTimeInfo.ShouldBeNull(); // Not provided
+        result.Data.NameInfo.FirstName.ShouldBe("Alice");
+        result.Data.NameInfo.LastName.ShouldBe("Johnson");
+        result.Data.LocationInfo.ShouldBeNull();
+        result.Data.BirthDateInfo.ShouldBeNull();
+        result.Data.BirthTimeInfo.ShouldBeNull();
         result.Data.SeekingInterests.ShouldNotBeNull();
-        result.Data.SeekingInterests.Count.ShouldBe(0); // Empty list
+        result.Data.SeekingInterests.Count.ShouldBe(0);
         result.Data.SourceChannels.ShouldNotBeNull();
-        result.Data.SourceChannels.Count.ShouldBe(0); // Empty list
-        result.Data.IsCompleted.ShouldBeFalse(); // Not all required fields provided
-
-        _testOutputHelper.WriteLine("Partial data collection test passed successfully");
+        result.Data.SourceChannels.Count.ShouldBe(0);
+        result.Data.IsInitialized.ShouldBeTrue();
+        result.Data.IsCompleted.ShouldBeFalse();
+        
+        // Verify code fields are empty for partial data
+        result.Data.SeekingInterestsCode.ShouldNotBeNull();
+        result.Data.SeekingInterestsCode.Count.ShouldBe(0);
+        result.Data.SourceChannelsCode.ShouldNotBeNull();
+        result.Data.SourceChannelsCode.Count.ShouldBe(0);
     }
 
     [Fact]
     public async Task UpdateUserInfoCollectionAsync_Should_Handle_Birth_Time_Without_Minute()
     {
+        RequestContext.Set("GodGPTLanguage","English");
         // Arrange
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
         var updateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "Bob",
+                LastName = "Wilson"
+            },
+            LocationInfo = new UserLocationInfoDto
+            {
+                Country = "United Kingdom",
+                City = "London"
+            },
+            BirthDateInfo = new UserBirthDateInfoDto
+            {
+                Day = 10,
+                Month = 3,
+                Year = 1995
+            },
+            BirthTimeInfo = new UserBirthTimeInfoDto
+            {
+                Hour = 16
+                // Minute is null
+            },
+            SeekingInterests = new List<string> { "Love & relationships" },
+            SourceChannels = new List<string> { "Event / conference" }
+        };
+
+        // Act
+        var result = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Success.ShouldBeTrue();
+        result.Data.ShouldNotBeNull();
+        result.Data.BirthTimeInfo.ShouldNotBeNull();
+        result.Data.BirthTimeInfo.Hour.ShouldBe(16);
+        result.Data.BirthTimeInfo.Minute.ShouldBeNull();
+        result.Data.IsCompleted.ShouldBeTrue();
+        
+        // Verify code fields
+        result.Data.SeekingInterestsCode.ShouldNotBeNull();
+        result.Data.SeekingInterestsCode.Count.ShouldBe(1);
+        result.Data.SeekingInterestsCode.ShouldContain(3); // Love & relationships
+        result.Data.SourceChannelsCode.ShouldNotBeNull();
+        result.Data.SourceChannelsCode.Count.ShouldBe(1);
+        result.Data.SourceChannelsCode.ShouldContain(4); // Event / conference
+    }
+
+    [Fact]
+    public async Task UpdateUserInfoCollectionAsync_Should_Update_Sequentially()
+    {
+        RequestContext.Set("GodGPTLanguage","English");
+        // Arrange
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+
+        // First update - name only
+        var nameUpdateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Female",
+                FirstName = "Sarah",
+                LastName = "Davis"
+            }
+        };
+
+        // Second update - location
+        var locationUpdateDto = new UpdateUserInfoCollectionDto
+        {
+            LocationInfo = new UserLocationInfoDto
+            {
+                Country = "Australia",
+                City = "Sydney"
+            }
+        };
+
+        // Third update - birth date and interests
+        var birthDateUpdateDto = new UpdateUserInfoCollectionDto
+        {
+            BirthDateInfo = new UserBirthDateInfoDto
+            {
+                Day = 5,
+                Month = 8,
+                Year = 1992
+            },
+            SeekingInterests = new List<string> { "Daily fortune telling", "Career guidance" },
+            SourceChannels = new List<string> { "Advertisement", "Other" }
+        };
+
+        // Act
+        var result1 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(nameUpdateDto);
+        var result2 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(locationUpdateDto);
+        var result3 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(birthDateUpdateDto);
+
+        // Assert
+        result1.Success.ShouldBeTrue();
+        result2.Success.ShouldBeTrue();
+        result3.Success.ShouldBeTrue();
+
+        var finalResult = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
+        finalResult.ShouldNotBeNull();
+        finalResult.NameInfo.ShouldNotBeNull();
+        finalResult.NameInfo.Gender.ShouldBe("Female");
+        finalResult.NameInfo.FirstName.ShouldBe("Sarah");
+        finalResult.NameInfo.LastName.ShouldBe("Davis");
+        finalResult.LocationInfo.ShouldNotBeNull();
+        finalResult.LocationInfo.Country.ShouldBe("Australia");
+        finalResult.LocationInfo.City.ShouldBe("Sydney");
+        finalResult.BirthDateInfo.ShouldNotBeNull();
+        finalResult.BirthDateInfo.Day.ShouldBe(5);
+        finalResult.BirthDateInfo.Month.ShouldBe(8);
+        finalResult.BirthDateInfo.Year.ShouldBe(1992);
+        finalResult.SeekingInterests.ShouldNotBeNull();
+        finalResult.SeekingInterests.Count.ShouldBe(2);
+        finalResult.SeekingInterests.ShouldContain("Daily fortune telling");
+        finalResult.SeekingInterests.ShouldContain("Career guidance");
+        finalResult.SourceChannels.ShouldNotBeNull();
+        finalResult.SourceChannels.Count.ShouldBe(2);
+        finalResult.SourceChannels.ShouldContain("Advertisement");
+        finalResult.SourceChannels.ShouldContain("Other");
+        finalResult.IsCompleted.ShouldBeTrue();
+        
+        // Verify code fields
+        finalResult.SeekingInterestsCode.ShouldNotBeNull();
+        finalResult.SeekingInterestsCode.Count.ShouldBe(2);
+        finalResult.SeekingInterestsCode.ShouldContain(4); // Daily fortune telling
+        finalResult.SeekingInterestsCode.ShouldContain(5); // Career guidance
+        finalResult.SourceChannelsCode.ShouldNotBeNull();
+        finalResult.SourceChannelsCode.Count.ShouldBe(2);
+        finalResult.SourceChannelsCode.ShouldContain(5); // Advertisement
+        finalResult.SourceChannelsCode.ShouldContain(6); // Other
+    }
+
+    [Fact]
+    public async Task UpdateUserInfoCollectionAsync_Should_Update_Existing_Field_Successfully()
+    {
+        RequestContext.Set("GodGPTLanguage","English");
+        // Arrange
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        
+        // First, save complete data
+        var initialUpdateDto = new UpdateUserInfoCollectionDto
         {
             NameInfo = new UserNameInfoDto
             {
@@ -287,113 +454,136 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
             },
             BirthDateInfo = new UserBirthDateInfoDto
             {
-                Day = 25,
-                Month = 11,
-                Year = 1995
+                Day = 20,
+                Month = 4,
+                Year = 1988
             },
-            BirthTimeInfo = new UserBirthTimeInfoDto
+            SeekingInterests = new List<string> { "Self-discovery" },
+            SourceChannels = new List<string> { "Social media" }
+        };
+
+        await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(initialUpdateDto);
+
+        // Then, update only the name
+        var nameUpdateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
             {
-                Hour = 20
-                // Minute is not provided
-            },
-            SeekingInterests = new List<string> { "陪伴" },
-            SourceChannels = new List<string> { "Other" }
+                Gender = "Male",
+                FirstName = "Michael",
+                LastName = "Brown"
+            }
         };
 
         // Act
-        var result = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+        var result = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(nameUpdateDto);
 
         // Assert
         result.ShouldNotBeNull();
         result.Success.ShouldBeTrue();
-        result.Data.BirthTimeInfo.ShouldNotBeNull();
-        result.Data.BirthTimeInfo.Hour.ShouldBe(20);
-        result.Data.BirthTimeInfo.Minute.ShouldBeNull();
-
-        // Test display formatting - should show N/A when only hour is provided
-        var displayResult = await userInfoCollectionGAgent.GetUserInfoDisplayAsync();
-        displayResult.ShouldNotBeNull();
-        displayResult.Hour.ShouldBe(20);
-        displayResult.Minute.ShouldBeNull();
-
-        _testOutputHelper.WriteLine("Birth time without minute test passed successfully");
+        
+        var finalResult = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
+        finalResult.ShouldNotBeNull();
+        finalResult.NameInfo.ShouldNotBeNull();
+        finalResult.NameInfo.FirstName.ShouldBe("Michael"); // Updated
+        finalResult.NameInfo.LastName.ShouldBe("Brown");
+        finalResult.LocationInfo.ShouldNotBeNull();
+        finalResult.LocationInfo.Country.ShouldBe("Germany"); // Should remain unchanged
+        finalResult.LocationInfo.City.ShouldBe("Berlin");
+        finalResult.BirthDateInfo.ShouldNotBeNull();
+        finalResult.BirthDateInfo.Day.ShouldBe(20); // Should remain unchanged
+        finalResult.SeekingInterests.ShouldNotBeNull();
+        finalResult.SeekingInterests.Count.ShouldBe(1);
+        finalResult.SeekingInterests.ShouldContain("Self-discovery"); // Should remain unchanged
+        finalResult.SourceChannels.ShouldNotBeNull();
+        finalResult.SourceChannels.Count.ShouldBe(1);
+        finalResult.SourceChannels.ShouldContain("Social media"); // Should remain unchanged
+        finalResult.IsCompleted.ShouldBeTrue();
+        
+        // Verify code fields remain unchanged
+        finalResult.SeekingInterestsCode.ShouldNotBeNull();
+        finalResult.SeekingInterestsCode.Count.ShouldBe(1);
+        finalResult.SeekingInterestsCode.ShouldContain(1); // Self-discovery
+        finalResult.SourceChannelsCode.ShouldNotBeNull();
+        finalResult.SourceChannelsCode.Count.ShouldBe(1);
+        finalResult.SourceChannelsCode.ShouldContain(1); // Social media
     }
 
+    #endregion
+
+    #region Validation Tests
+
     [Fact]
-    public async Task UpdateUserInfoCollectionAsync_Should_Handle_Sequential_Updates()
+    public async Task UpdateUserInfoCollectionAsync_Should_Reject_Invalid_Data()
     {
+        RequestContext.Set("GodGPTLanguage","English");
         // Arrange
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
 
-        // First update: Name and Location only
-        var firstUpdate = new UpdateUserInfoCollectionDto
+        // Test 1: Empty name fields
+        var invalidNameDto = new UpdateUserInfoCollectionDto
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Female",
-                FirstName = "Emma",
-                LastName = "Davis"
-            },
-            LocationInfo = new UserLocationInfoDto
-            {
-                Country = "France",
-                City = "Paris"
+                Gender = "", // Empty
+                FirstName = "John",
+                LastName = "Doe"
             }
         };
 
-        // Second update: Birth date and time
-        var secondUpdate = new UpdateUserInfoCollectionDto
+        // Test 2: Invalid birth date
+        var invalidBirthDateDto = new UpdateUserInfoCollectionDto
         {
             BirthDateInfo = new UserBirthDateInfoDto
             {
-                Day = 7,
-                Month = 4,
-                Year = 1993
-            },
-            BirthTimeInfo = new UserBirthTimeInfoDto
-            {
-                Hour = 11,
-                Minute = 20
+                Day = 32, // Invalid day
+                Month = 6,
+                Year = 1990
             }
         };
 
-        // Third update: Interests and sources
-        var thirdUpdate = new UpdateUserInfoCollectionDto
+        // Test 3: Invalid birth time
+        var invalidBirthTimeDto = new UpdateUserInfoCollectionDto
         {
-            SeekingInterests = new List<string> { "自我发现", "精神成长", "爱情与关系" },
-            SourceChannels = new List<string> { "App Store", "Social media", "Friend referral" }
+            BirthTimeInfo = new UserBirthTimeInfoDto
+            {
+                Hour = 25, // Invalid hour
+                Minute = 30
+            }
         };
 
-        // Act
-        var firstResult = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(firstUpdate);
-        var secondResult = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(secondUpdate);
-        var thirdResult = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(thirdUpdate);
-        var finalResult = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
+        // Test 4: Empty seeking interests
+        var invalidSeekingInterestsDto = new UpdateUserInfoCollectionDto
+        {
+            SeekingInterests = new List<string>() // Empty list
+        };
 
-        // Assert
-        firstResult.Success.ShouldBeTrue();
-        secondResult.Success.ShouldBeTrue();
-        thirdResult.Success.ShouldBeTrue();
-        
-        finalResult.ShouldNotBeNull();
-        finalResult.NameInfo.ShouldNotBeNull();
-        finalResult.NameInfo.FirstName.ShouldBe("Emma");
-        finalResult.NameInfo.LastName.ShouldBe("Davis");
-        finalResult.LocationInfo.ShouldNotBeNull();
-        finalResult.LocationInfo.Country.ShouldBe("France");
-        finalResult.LocationInfo.City.ShouldBe("Paris");
-        finalResult.BirthDateInfo.ShouldNotBeNull();
-        finalResult.BirthDateInfo.Day.ShouldBe(7);
-        finalResult.BirthDateInfo.Month.ShouldBe(4);
-        finalResult.BirthDateInfo.Year.ShouldBe(1993);
-        finalResult.BirthTimeInfo.ShouldNotBeNull();
-        finalResult.BirthTimeInfo.Hour.ShouldBe(11);
-        finalResult.BirthTimeInfo.Minute.ShouldBe(20);
-        finalResult.SeekingInterests.Count.ShouldBe(3);
-        finalResult.SourceChannels.Count.ShouldBe(3);
-        finalResult.IsCompleted.ShouldBeTrue();
+        // Test 5: Empty source channels
+        var invalidSourceChannelsDto = new UpdateUserInfoCollectionDto
+        {
+            SourceChannels = new List<string>() // Empty list
+        };
 
-        _testOutputHelper.WriteLine("Sequential updates test passed successfully");
+        // Act & Assert
+        var result1 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidNameDto);
+        result1.Success.ShouldBeFalse();
+        result1.Message.ShouldContain("Gender, FirstName, and LastName are required");
+
+        var result2 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidBirthDateDto);
+        result2.Success.ShouldBeFalse();
+        result2.Message.ShouldContain("Invalid birthDate values");
+
+        var result3 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidBirthTimeDto);
+        result3.Success.ShouldBeFalse();
+        result3.Message.ShouldContain("Hour must be between 0 and 23");
+
+        var result4 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSeekingInterestsDto);
+        result4.Success.ShouldBeFalse();
+        result4.Message.ShouldContain("At least one seeking interest is required");
+
+        var result5 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSourceChannelsDto);
+        result5.Success.ShouldBeFalse();
+        result5.Message.ShouldContain("At least one source channel is required");
     }
 
     #endregion
@@ -403,137 +593,211 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
     [Fact]
     public async Task ClearAllAsync_Should_Reset_All_Data_Successfully()
     {
+        RequestContext.Set("GodGPTLanguage","English");
         // Arrange
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
         var updateDto = new UpdateUserInfoCollectionDto
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
-                FirstName = "Test",
-                LastName = "User"
+                Gender = "Female",
+                FirstName = "Emma",
+                LastName = "Taylor"
             },
             LocationInfo = new UserLocationInfoDto
             {
-                Country = "Test Country",
-                City = "Test City"
+                Country = "France",
+                City = "Paris"
             },
             BirthDateInfo = new UserBirthDateInfoDto
             {
-                Day = 1,
-                Month = 1,
-                Year = 2000
+                Day = 12,
+                Month = 9,
+                Year = 1993
             },
             BirthTimeInfo = new UserBirthTimeInfoDto
             {
-                Hour = 12,
-                Minute = 0
+                Hour = 11,
+                Minute = 45
             },
-            SeekingInterests = new List<string> { "陪伴" },
-            SourceChannels = new List<string> { "App Store" }
+            SeekingInterests = new List<string> { "Spiritual growth", "Love & relationships" },
+            SourceChannels = new List<string> { "Search engine", "Friend referral" }
         };
 
-        // Act
+        // First, save data
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
         var beforeClear = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
         beforeClear.ShouldNotBeNull();
         beforeClear.IsInitialized.ShouldBeTrue();
 
+        // Act
         await userInfoCollectionGAgent.ClearAllAsync();
-        var afterClear = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
 
         // Assert
+        var afterClear = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
         afterClear.ShouldBeNull(); // Should return null when not initialized
 
-        _testOutputHelper.WriteLine("Clear all data test passed successfully");
+        // Try to get display data - should also return null
+        var displayData = await userInfoCollectionGAgent.GetUserInfoDisplayAsync();
+        displayData.ShouldBeNull();
     }
 
     #endregion
 
-    #region Additional Test Scenarios
+    #region Multi-language Tests
 
     [Fact]
-    public async Task UpdateUserInfoCollectionAsync_Should_Update_Existing_Field_Successfully()
+    public async Task UpdateUserInfoCollectionAsync_Should_Work_With_English_Language()
     {
+        RequestContext.Set("GodGPTLanguage","English");
         // Arrange
+        RequestContext.Set("GodGPTLanguage", "English");
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
-        
-        // First update: Save only name information
-        var firstUpdate = new UpdateUserInfoCollectionDto
+        var updateDto = new UpdateUserInfoCollectionDto
         {
             NameInfo = new UserNameInfoDto
             {
                 Gender = "Male",
                 FirstName = "John",
                 LastName = "Doe"
-            }
+            },
+            SeekingInterests = new List<string> { "Companionship", "Self-discovery", "Spiritual growth" },
+            SourceChannels = new List<string> { "App Store / Play Store", "Social media", "Search engine" }
         };
 
-        // Second update: Update the same field with new values
-        var secondUpdate = new UpdateUserInfoCollectionDto
+        // Act
+        var result = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Success.ShouldBeTrue();
+        result.Data.SeekingInterests.ShouldNotBeNull();
+        result.Data.SeekingInterests.Count.ShouldBe(3);
+        result.Data.SeekingInterests.ShouldContain("Companionship");
+        result.Data.SeekingInterests.ShouldContain("Self-discovery");
+        result.Data.SeekingInterests.ShouldContain("Spiritual growth");
+        result.Data.SourceChannels.ShouldNotBeNull();
+        result.Data.SourceChannels.Count.ShouldBe(3);
+        result.Data.SourceChannels.ShouldContain("App Store / Play Store");
+        result.Data.SourceChannels.ShouldContain("Social media");
+        result.Data.SourceChannels.ShouldContain("Search engine");
+        
+        // Verify code fields
+        result.Data.SeekingInterestsCode.ShouldNotBeNull();
+        result.Data.SeekingInterestsCode.Count.ShouldBe(3);
+        result.Data.SeekingInterestsCode.ShouldContain(0); // Companionship
+        result.Data.SeekingInterestsCode.ShouldContain(1); // Self-discovery
+        result.Data.SeekingInterestsCode.ShouldContain(2); // Spiritual growth
+        result.Data.SourceChannelsCode.ShouldNotBeNull();
+        result.Data.SourceChannelsCode.Count.ShouldBe(3);
+        result.Data.SourceChannelsCode.ShouldContain(0); // App Store / Play Store
+        result.Data.SourceChannelsCode.ShouldContain(1); // Social media
+        result.Data.SourceChannelsCode.ShouldContain(2); // Search engine
+    }
+
+    [Fact]
+    public async Task UpdateUserInfoCollectionAsync_Should_Work_With_Traditional_Chinese_Language()
+    {
+        // Arrange
+        RequestContext.Set("GodGPTLanguage", "TraditionalChinese");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var updateDto = new UpdateUserInfoCollectionDto
         {
             NameInfo = new UserNameInfoDto
             {
                 Gender = "Female",
-                FirstName = "Jane",
-                LastName = "Smith"
-            }
+                FirstName = "小美",
+                LastName = "王"
+            },
+            SeekingInterests = new List<string> { "夥伴關係", "自我探索", "靈性成長" },
+            SourceChannels = new List<string> { "App Store／Play 商店", "社群媒體", "搜尋引擎" }
         };
 
         // Act
-        var firstResult = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(firstUpdate);
-        var secondResult = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(secondUpdate);
-        var finalResult = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
+        var result = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Assert
-        firstResult.Success.ShouldBeTrue();
-        secondResult.Success.ShouldBeTrue();
+        result.ShouldNotBeNull();
+        result.Success.ShouldBeTrue();
+        result.Data.SeekingInterests.ShouldNotBeNull();
+        result.Data.SeekingInterests.Count.ShouldBe(3);
+        result.Data.SeekingInterests.ShouldContain("夥伴關係");
+        result.Data.SeekingInterests.ShouldContain("自我探索");
+        result.Data.SeekingInterests.ShouldContain("靈性成長");
+        result.Data.SourceChannels.ShouldNotBeNull();
+        result.Data.SourceChannels.Count.ShouldBe(3);
+        result.Data.SourceChannels.ShouldContain("App Store／Play 商店");
+        result.Data.SourceChannels.ShouldContain("社群媒體");
+        result.Data.SourceChannels.ShouldContain("搜尋引擎");
         
-        finalResult.ShouldNotBeNull();
-        finalResult.NameInfo.ShouldNotBeNull();
-        finalResult.NameInfo.Gender.ShouldBe("Female"); // Should be updated value
-        finalResult.NameInfo.FirstName.ShouldBe("Jane"); // Should be updated value
-        finalResult.NameInfo.LastName.ShouldBe("Smith"); // Should be updated value
-
-        _testOutputHelper.WriteLine("Field update test passed successfully");
+        // Verify code fields (should be same as English)
+        result.Data.SeekingInterestsCode.ShouldNotBeNull();
+        result.Data.SeekingInterestsCode.Count.ShouldBe(3);
+        result.Data.SeekingInterestsCode.ShouldContain(0); // 夥伴關係
+        result.Data.SeekingInterestsCode.ShouldContain(1); // 自我探索
+        result.Data.SeekingInterestsCode.ShouldContain(2); // 靈性成長
+        result.Data.SourceChannelsCode.ShouldNotBeNull();
+        result.Data.SourceChannelsCode.Count.ShouldBe(3);
+        result.Data.SourceChannelsCode.ShouldContain(0); // App Store／Play 商店
+        result.Data.SourceChannelsCode.ShouldContain(1); // 社群媒體
+        result.Data.SourceChannelsCode.ShouldContain(2); // 搜尋引擎
     }
 
     [Fact]
-    public async Task UpdateUserInfoCollectionAsync_Should_Reject_Invalid_Data()
+    public async Task UpdateUserInfoCollectionAsync_Should_Work_With_Spanish_Language()
     {
         // Arrange
+        RequestContext.Set("GodGPTLanguage", "Spanish");
         var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var updateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = "Male",
+                FirstName = "Carlos",
+                LastName = "Rodriguez"
+            },
+            SeekingInterests = new List<string> { "Compañía", "Autodescubrimiento", "Crecimiento espiritual" },
+            SourceChannels = new List<string> { "Tienda de Aplicaciones / Tienda Play", "Redes sociales", "Motor de búsqueda" }
+        };
+
+        // Act
+        var result = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Success.ShouldBeTrue();
+        result.Data.SeekingInterests.ShouldNotBeNull();
+        result.Data.SeekingInterests.Count.ShouldBe(3);
+        result.Data.SeekingInterests.ShouldContain("Compañía");
+        result.Data.SeekingInterests.ShouldContain("Autodescubrimiento");
+        result.Data.SeekingInterests.ShouldContain("Crecimiento espiritual");
+        result.Data.SourceChannels.ShouldNotBeNull();
+        result.Data.SourceChannels.Count.ShouldBe(3);
+        result.Data.SourceChannels.ShouldContain("Tienda de Aplicaciones / Tienda Play");
+        result.Data.SourceChannels.ShouldContain("Redes sociales");
+        result.Data.SourceChannels.ShouldContain("Motor de búsqueda");
         
-        // Test case 1: Missing required name fields
-        var invalidNameUpdate = new UpdateUserInfoCollectionDto
-        {
-            NameInfo = new UserNameInfoDto
-            {
-                Gender = "Male",
-                FirstName = "", // Empty first name
-                LastName = "Doe"
-            }
-        };
+        // Verify code fields (should be same as English)
+        result.Data.SeekingInterestsCode.ShouldNotBeNull();
+        result.Data.SeekingInterestsCode.Count.ShouldBe(3);
+        result.Data.SeekingInterestsCode.ShouldContain(0); // Compañía
+        result.Data.SeekingInterestsCode.ShouldContain(1); // Autodescubrimiento
+        result.Data.SeekingInterestsCode.ShouldContain(2); // Crecimiento espiritual
+        result.Data.SourceChannelsCode.ShouldNotBeNull();
+        result.Data.SourceChannelsCode.Count.ShouldBe(3);
+        result.Data.SourceChannelsCode.ShouldContain(0); // Tiendas de aplicaciones
+        result.Data.SourceChannelsCode.ShouldContain(1); // Redes sociales
+        result.Data.SourceChannelsCode.ShouldContain(2); // Motor de búsqueda
+    }
 
-        // Test case 2: Invalid birth date values
-        var invalidBirthDateUpdate = new UpdateUserInfoCollectionDto
-        {
-            NameInfo = new UserNameInfoDto
-            {
-                Gender = "Male",
-                FirstName = "John",
-                LastName = "Doe"
-            },
-            BirthDateInfo = new UserBirthDateInfoDto
-            {
-                Day = 35, // Invalid day (should be 1-31)
-                Month = 6,
-                Year = 1990
-            }
-        };
-
-        // Test case 3: Invalid birth time values
-        var invalidBirthTimeUpdate = new UpdateUserInfoCollectionDto
+    [Fact]
+    public async Task UpdateUserInfoCollectionAsync_Should_Reject_Invalid_Language_Options()
+    {
+        // Arrange
+        RequestContext.Set("GodGPTLanguage", "English");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var updateDto = new UpdateUserInfoCollectionDto
         {
             NameInfo = new UserNameInfoDto
             {
@@ -541,91 +805,17 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 FirstName = "John",
                 LastName = "Doe"
             },
-            BirthTimeInfo = new UserBirthTimeInfoDto
-            {
-                Hour = 25, // Invalid hour (should be 0-23)
-                Minute = 30
-            }
+            SeekingInterests = new List<string> { "Invalid Interest" }, // Invalid option
+            SourceChannels = new List<string> { "App Store / Play Store" }
         };
 
-        // Test case 4: Invalid seeking interests (empty list)
-        var invalidSeekingInterestsUpdate = new UpdateUserInfoCollectionDto
-        {
-            NameInfo = new UserNameInfoDto
-            {
-                Gender = "Male",
-                FirstName = "John",
-                LastName = "Doe"
-            },
-            SeekingInterests = new List<string>() // Empty list
-        };
+        // Act
+        var result = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
-        // Test case 5: Invalid source channels (empty list)
-        var invalidSourceChannelsUpdate = new UpdateUserInfoCollectionDto
-        {
-            NameInfo = new UserNameInfoDto
-            {
-                Gender = "Male",
-                FirstName = "John",
-                LastName = "Doe"
-            },
-            SourceChannels = new List<string>() // Empty list
-        };
-
-        // Test case 6: Invalid seeking interests (not from allowed options)
-        var invalidSeekingInterestsOptionsUpdate = new UpdateUserInfoCollectionDto
-        {
-            NameInfo = new UserNameInfoDto
-            {
-                Gender = "Male",
-                FirstName = "John",
-                LastName = "Doe"
-            },
-            SeekingInterests = new List<string> { "Invalid Interest", "Another Invalid" }
-        };
-
-        // Test case 7: Invalid source channels (not from allowed options)
-        var invalidSourceChannelsOptionsUpdate = new UpdateUserInfoCollectionDto
-        {
-            NameInfo = new UserNameInfoDto
-            {
-                Gender = "Male",
-                FirstName = "John",
-                LastName = "Doe"
-            },
-            SourceChannels = new List<string> { "Invalid Channel", "Another Invalid" }
-        };
-
-        // Act & Assert
-        var result1 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidNameUpdate);
-        result1.Success.ShouldBeFalse();
-        result1.Message.ShouldContain("Gender, FirstName, and LastName are required");
-
-        var result2 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidBirthDateUpdate);
-        result2.Success.ShouldBeFalse();
-        result2.Message.ShouldContain("Invalid birthDate values");
-
-        var result3 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidBirthTimeUpdate);
-        result3.Success.ShouldBeFalse();
-        result3.Message.ShouldContain("Hour must be between 0 and 23");
-
-        var result4 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSeekingInterestsUpdate);
-        result4.Success.ShouldBeFalse();
-        result4.Message.ShouldContain("At least one seeking interest is required");
-
-        var result5 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSourceChannelsUpdate);
-        result5.Success.ShouldBeFalse();
-        result5.Message.ShouldContain("At least one source channel is required");
-
-        var result6 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSeekingInterestsOptionsUpdate);
-        result6.Success.ShouldBeFalse();
-        result6.Message.ShouldContain("Invalid seeking interests");
-
-        var result7 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidSourceChannelsOptionsUpdate);
-        result7.Success.ShouldBeFalse();
-        result7.Message.ShouldContain("Invalid source channels");
-
-        _testOutputHelper.WriteLine("Invalid data validation test passed successfully");
+        // Assert
+        result.ShouldNotBeNull();
+        result.Success.ShouldBeFalse();
+        result.Message.ShouldContain("Invalid seeking interests");
     }
 
     #endregion

@@ -85,7 +85,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         { "其他", 6 },
         
         // Spanish
-        { "App Store / Play Store", 0 },
+        { "Tienda de Aplicaciones / Tienda Play", 0 },
         { "Redes sociales", 1 },
         { "Motor de búsqueda", 2 },
         { "Recomendación de amigo", 3 },
@@ -120,7 +120,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
     };
     private static readonly List<string> SourceChannelOptionsES = new List<string>
     {
-        "App Store / Play Store", "Redes sociales", "Motor de búsqueda", "Recomendación de amigo", 
+        "Tienda de Aplicaciones / Tienda Play", "Redes sociales", "Motor de búsqueda", "Recomendación de amigo", 
         "Evento / conferencia", "Publicidad", "Otro"
     };
     
