@@ -50,16 +50,17 @@ public interface IGlobalJwtProviderGAgent : IGAgent
 /// <summary>
 /// Status information for GlobalJwtProviderGAgent
 /// </summary>
+[GenerateSerializer]
 public class GlobalJwtProviderStatus
 {
-    public bool IsReady { get; set; }
-    public bool HasCachedToken { get; set; }
-    public DateTime? TokenExpiry { get; set; }
-    public int TotalTokenRequests { get; set; }
-    public int TotalDeduplicationChecks { get; set; }
-    public int PreventedDuplicates { get; set; }
-    public int TrackedPushTokens { get; set; }
-    public DateTime? LastTokenCreation { get; set; }
-    public DateTime? LastCleanup { get; set; }
-    public string? LastError { get; set; }
+    [Id(0)] public bool IsReady { get; set; }
+    [Id(1)] public bool HasCachedToken { get; set; }
+    [Id(2)] public DateTime? TokenExpiry { get; set; }
+    [Id(3)] public int TotalTokenRequests { get; set; }
+    [Id(4)] public int TotalDeduplicationChecks { get; set; }
+    [Id(5)] public int PreventedDuplicates { get; set; }
+    [Id(6)] public int TrackedPushTokens { get; set; }
+    [Id(7)] public DateTime? LastTokenCreation { get; set; }
+    [Id(8)] public DateTime? LastCleanup { get; set; }
+    [Id(9)] public string? LastError { get; set; }
 }
