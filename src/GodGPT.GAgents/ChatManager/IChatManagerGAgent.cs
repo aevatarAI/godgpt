@@ -109,6 +109,22 @@ public interface IChatManagerGAgent : IGAgent
     /// Check if user has enabled devices in specific timezone (performance optimization)
     /// </summary>
     Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId);
+
+    /// <summary>
+    /// Clear push deduplication status for testing purposes
+    /// Removes Redis keys for specified device/date/timezone
+    /// </summary>
+    Task ClearPushStatusForTestingAsync(string deviceId, DateOnly date, string timeZoneId);
+
+    /// <summary>
+    /// Enable testing mode for push deduplication (allows multiple tests per day)
+    /// </summary>
+    void EnableTestingMode(string? testingSuffix = null);
+    
+    /// <summary>
+    /// Disable testing mode for push deduplication (return to normal operation)
+    /// </summary>
+    void DisableTestingMode();
     
     /// <summary>
     /// Get device status for query API

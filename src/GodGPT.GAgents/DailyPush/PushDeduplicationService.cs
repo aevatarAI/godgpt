@@ -18,6 +18,9 @@ public class PushDeduplicationService : IPushDeduplicationService
     private const string MORNING_KEY_PREFIX = "godgpt:push:morning";
     private const string RETRY_KEY_PREFIX = "godgpt:push:retry";
     
+    // Testing support: Optional suffix to enable multiple tests per day
+    private static string? _testingSuffix = null;
+    
     // TTL for Redis keys (24 hours for daily push deduplication)
     private static readonly TimeSpan KEY_TTL = TimeSpan.FromHours(24);
     
@@ -222,7 +225,8 @@ public class PushDeduplicationService : IPushDeduplicationService
     /// </summary>
     private static string BuildMorningKey(string deviceId, DateOnly date, string timeZoneId)
     {
-        return $"{MORNING_KEY_PREFIX}:{deviceId}:{date:yyyy-MM-dd}:{timeZoneId}";
+        var baseKey = $"{MORNING_KEY_PREFIX}:{deviceId}:{date:yyyy-MM-dd}:{timeZoneId}";
+        return string.IsNullOrEmpty(_testingSuffix) ? baseKey : $"{baseKey}:{_testingSuffix}";
     }
     
     /// <summary>
@@ -231,6 +235,24 @@ public class PushDeduplicationService : IPushDeduplicationService
     /// </summary>
     private static string BuildRetryKey(string deviceId, DateOnly date, string timeZoneId)
     {
-        return $"{RETRY_KEY_PREFIX}:{deviceId}:{date:yyyy-MM-dd}:{timeZoneId}";
+        var baseKey = $"{RETRY_KEY_PREFIX}:{deviceId}:{date:yyyy-MM-dd}:{timeZoneId}";
+        return string.IsNullOrEmpty(_testingSuffix) ? baseKey : $"{baseKey}:{_testingSuffix}";
+    }
+    
+    /// <summary>
+    /// Set testing mode with a unique suffix to enable multiple tests per day
+    /// Call this before testing to avoid key conflicts
+    /// </summary>
+    public static void SetTestingMode(string? testingSuffix = null)
+    {
+        _testingSuffix = testingSuffix ?? $"test_{DateTime.Now:HHmmss}";
+    }
+    
+    /// <summary>
+    /// Disable testing mode and return to normal operation
+    /// </summary>
+    public static void DisableTestingMode()
+    {
+        _testingSuffix = null;
     }
 }

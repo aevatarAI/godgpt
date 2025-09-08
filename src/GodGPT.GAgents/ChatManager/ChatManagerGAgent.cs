@@ -2777,4 +2777,43 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 devicesToRemove.Count, System.Text.Json.JsonSerializer.Serialize(cleanupDetails));
         }
     }
+
+    /// <summary>
+    /// Clear push deduplication status for testing purposes
+    /// Removes Redis keys for specified device/date/timezone
+    /// </summary>
+    public async Task ClearPushStatusForTestingAsync(string deviceId, DateOnly date, string timeZoneId)
+    {
+        var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
+        
+        if (deduplicationService != null)
+        {
+            await deduplicationService.ResetDevicePushStatusAsync(deviceId, date, timeZoneId);
+            Logger.LogInformation("🧪 Testing: Cleared push status for device {DeviceId} on {Date} in {TimeZone}", 
+                deviceId, date, timeZoneId);
+        }
+        else
+        {
+            Logger.LogWarning("⚠️ IPushDeduplicationService not available for clearing push status");
+        }
+    }
+    
+    /// <summary>
+    /// Enable testing mode for push deduplication (allows multiple tests per day)
+    /// </summary>
+    public void EnableTestingMode(string? testingSuffix = null)
+    {
+        PushDeduplicationService.SetTestingMode(testingSuffix);
+        var suffix = testingSuffix ?? $"test_{DateTime.Now:HHmmss}";
+        Logger.LogInformation("🧪 Testing mode enabled with suffix: {TestingSuffix}", suffix);
+    }
+    
+    /// <summary>
+    /// Disable testing mode for push deduplication (return to normal operation)
+    /// </summary>
+    public void DisableTestingMode()
+    {
+        PushDeduplicationService.DisableTestingMode();
+        Logger.LogInformation("🧪 Testing mode disabled, returning to normal operation");
+    }
 }
