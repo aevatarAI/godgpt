@@ -28,9 +28,15 @@ public class UserInfoCollectionGAgentState : StateBase
     [Id(12)] public int? Hour { get; set; }
     [Id(13)] public int? Minute { get; set; }
     
-    // Seeking interests (Step 6)
+    // Seeking interests (Step 6) - Original text values
     [Id(14)] public List<string> SeekingInterests { get; set; } = new List<string>();
     
-    // Source channels (Step 7)
+    // Source channels (Step 7) - Original text values
     [Id(15)] public List<string> SourceChannels { get; set; } = new List<string>();
+    
+    // Seeking interests codes (Step 6) - Enum values for statistics
+    [Id(16)] public List<int> SeekingInterestsCode { get; set; } = new List<int>();
+    
+    // Source channels codes (Step 7) - Enum values for statistics
+    [Id(17)] public List<int> SourceChannelsCode { get; set; } = new List<int>();
 }

@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.Application.Grains.UserInfo.Dtos;
@@ -33,18 +34,96 @@ public interface IUserInfoCollectionGAgent : IGAgent
 public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState, UserInfoCollectionLogEvent>, IUserInfoCollectionGAgent
 {
     private readonly ILogger<UserInfoCollectionGAgent> _logger;
-    // Constants for seeking interests options
-    private static readonly List<string> SeekingInterestOptions = new List<string>
+    
+    // Constants for seeking interests options with fixed codes
+    private static readonly Dictionary<string, int> SeekingInterestCodes = new Dictionary<string, int>
     {
-        "陪伴", "自我发现", "每日占星", "精神成长", "爱情与关系", "职业指导"
+        // English
+        { "Companionship", 0 },
+        { "Self-discovery", 1 },
+        { "Spiritual growth", 2 },
+        { "Love & relationships", 3 },
+        { "Daily fortune telling", 4 },
+        { "Career guidance", 5 },
+        
+        // Traditional Chinese
+        { "夥伴關係", 0 },
+        { "自我探索", 1 },
+        { "靈性成長", 2 },
+        { "愛情與人際", 3 },
+        { "每日運勢占卜", 4 },
+        { "職涯指引", 5 },
+        
+        // Spanish
+        { "Compañía", 0 },
+        { "Autodescubrimiento", 1 },
+        { "Crecimiento espiritual", 2 },
+        { "Amor y relaciones", 3 },
+        { "Horóscopo diario", 4 },
+        { "Orientación profesional", 5 }
     };
     
-    // Constants for source channel options
-    private static readonly List<string> SourceChannelOptions = new List<string>
+    // Constants for source channel options with fixed codes
+    private static readonly Dictionary<string, int> SourceChannelCodes = new Dictionary<string, int>
     {
-        "App Store", "Social media", "Search engine", "Friend referral", 
-        "Event/conference", "Advertisement", "Other"
+        // English
+        { "App Store / Play Store", 0 },
+        { "Social media", 1 },
+        { "Search engine", 2 },
+        { "Friend referral", 3 },
+        { "Event / conference", 4 },
+        { "Advertisement", 5 },
+        { "Other", 6 },
+        
+        // Traditional Chinese
+        { "App Store／Play 商店", 0 },
+        { "社群媒體", 1 },
+        { "搜尋引擎", 2 },
+        { "朋友推薦", 3 },
+        { "活動／會議", 4 },
+        { "廣告", 5 },
+        { "其他", 6 },
+        
+        // Spanish
+        { "App Store / Play Store", 0 },
+        { "Redes sociales", 1 },
+        { "Motor de búsqueda", 2 },
+        { "Recomendación de amigo", 3 },
+        { "Evento / conferencia", 4 },
+        { "Publicidad", 5 },
+        { "Otro", 6 }
     };
+    
+    // Language-specific option lists for validation
+    private static readonly List<string> SeekingInterestOptionsEN = new List<string>
+    {
+        "Companionship", "Self-discovery", "Spiritual growth", "Love & relationships", "Daily fortune telling", "Career guidance"
+    };
+    private static readonly List<string> SeekingInterestOptionsZHTW = new List<string>
+    {
+        "夥伴關係", "自我探索", "靈性成長", "愛情與人際", "每日運勢占卜", "職涯指引"
+    };
+    private static readonly List<string> SeekingInterestOptionsES = new List<string>
+    {
+        "Compañía", "Autodescubrimiento", "Crecimiento espiritual", "Amor y relaciones", "Horóscopo diario", "Orientación profesional"
+    };
+    
+    private static readonly List<string> SourceChannelOptionsEN = new List<string>
+    {
+        "App Store / Play Store", "Social media", "Search engine", "Friend referral", 
+        "Event / conference", "Advertisement", "Other"
+    };
+    private static readonly List<string> SourceChannelOptionsZHTW = new List<string>
+    {
+        "App Store／Play 商店", "社群媒體", "搜尋引擎", "朋友推薦", 
+        "活動／會議", "廣告", "其他"
+    };
+    private static readonly List<string> SourceChannelOptionsES = new List<string>
+    {
+        "App Store / Play Store", "Redes sociales", "Motor de búsqueda", "Recomendación de amigo", 
+        "Evento / conferencia", "Publicidad", "Otro"
+    };
+    
     public UserInfoCollectionGAgent(ILogger<UserInfoCollectionGAgent> logger)
     {
         _logger = logger;
@@ -60,7 +139,8 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
     public async Task<UserInfoCollectionResponseDto> UpdateUserInfoCollectionAsync(UpdateUserInfoCollectionDto updateDto)
     {
         _logger.LogInformation("[UserInfoCollectionGAgent][UpdateUserInfoCollectionAsync] Updating user info collection");
-        
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+
         // Validate required fields if they are being updated
         if (updateDto.NameInfo != null)
         {
@@ -160,8 +240,12 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                     Data = ConvertStateToDto()
                 };
             }
+            
+            // Get the appropriate seeking interests options based on language
+            var seekingInterestOptions = GetSeekingInterestOptionsByLanguage(language);
+            
             // Validate that all interests are from the allowed options
-            var invalidInterests = updateDto.SeekingInterests.Where(interest => !SeekingInterestOptions.Contains(interest)).ToList();
+            var invalidInterests = updateDto.SeekingInterests.Where(interest => !seekingInterestOptions.Contains(interest)).ToList();
             if (invalidInterests.Any())
             {
                 return new UserInfoCollectionResponseDto
@@ -184,8 +268,12 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                     Data = ConvertStateToDto()
                 };
             }
+            
+            // Get the appropriate source channel options based on language
+            var sourceChannelOptions = GetSourceChannelOptionsByLanguage(language);
+            
             // Validate that all channels are from the allowed options
-            var invalidChannels = updateDto.SourceChannels.Where(channel => !SourceChannelOptions.Contains(channel)).ToList();
+            var invalidChannels = updateDto.SourceChannels.Where(channel => !sourceChannelOptions.Contains(channel)).ToList();
             if (invalidChannels.Any())
             {
                 return new UserInfoCollectionResponseDto
@@ -198,6 +286,30 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         }
         
         var now = DateTime.UtcNow;
+        
+        // Convert seeking interests to codes using fixed mapping
+        var seekingInterestsCode = new List<int>();
+        if (updateDto.SeekingInterests != null)
+        {
+            seekingInterestsCode = updateDto.SeekingInterests
+                .Where(interest => SeekingInterestCodes.ContainsKey(interest))
+                .Select(interest => SeekingInterestCodes[interest])
+                .Distinct() // Remove duplicates
+                .OrderBy(code => code) // Sort for consistency
+                .ToList();
+        }
+        
+        // Convert source channels to codes using fixed mapping
+        var sourceChannelsCode = new List<int>();
+        if (updateDto.SourceChannels != null)
+        {
+            sourceChannelsCode = updateDto.SourceChannels
+                .Where(channel => SourceChannelCodes.ContainsKey(channel))
+                .Select(channel => SourceChannelCodes[channel])
+                .Distinct() // Remove duplicates
+                .OrderBy(code => code) // Sort for consistency
+                .ToList();
+        }
         
         RaiseEvent(new UpdateUserInfoCollectionLogEvent
         {
@@ -213,6 +325,8 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             Minute = updateDto.BirthTimeInfo?.Minute,
             SeekingInterests = updateDto.SeekingInterests,
             SourceChannels = updateDto.SourceChannels,
+            SeekingInterestsCode = seekingInterestsCode,
+            SourceChannelsCode = sourceChannelsCode,
             UpdatedAt = now
         });
         
@@ -287,6 +401,34 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         await ConfirmEvents();
         
         _logger.LogInformation("[UserInfoCollectionGAgent][ClearAllAsync] Successfully cleared all user info collection data");
+    }
+    
+    /// <summary>
+    /// Get seeking interest options based on language
+    /// </summary>
+    private List<string> GetSeekingInterestOptionsByLanguage(GodGPTLanguage language)
+    {
+        return language switch
+        {
+            GodGPTLanguage.English => SeekingInterestOptionsEN,
+            GodGPTLanguage.TraditionalChinese => SeekingInterestOptionsZHTW,
+            GodGPTLanguage.Spanish => SeekingInterestOptionsES,
+            _ => SeekingInterestOptionsEN // Default to English
+        };
+    }
+    
+    /// <summary>
+    /// Get source channel options based on language
+    /// </summary>
+    private List<string> GetSourceChannelOptionsByLanguage(GodGPTLanguage language)
+    {
+        return language switch
+        {
+            GodGPTLanguage.English => SourceChannelOptionsEN,
+            GodGPTLanguage.TraditionalChinese => SourceChannelOptionsZHTW,
+            GodGPTLanguage.Spanish => SourceChannelOptionsES,
+            _ => SourceChannelOptionsEN // Default to English
+        };
     }
     
     /// <summary>
@@ -397,6 +539,14 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 if (updateEvent.SourceChannels != null && updateEvent.SourceChannels.Count > 0) 
                     state.SourceChannels = updateEvent.SourceChannels;
                 
+                // Update seeking interests codes if provided
+                if (updateEvent.SeekingInterestsCode != null && updateEvent.SeekingInterestsCode.Count > 0)
+                    state.SeekingInterestsCode = updateEvent.SeekingInterestsCode;
+                
+                // Update source channels codes if provided
+                if (updateEvent.SourceChannelsCode != null && updateEvent.SourceChannelsCode.Count > 0)
+                    state.SourceChannelsCode = updateEvent.SourceChannelsCode;
+                
                 _logger.LogDebug("[UserInfoCollectionGAgent][GAgentTransitionState] Updated user info collection, isFirstUpdate: {IsFirstUpdate}", isFirstUpdate);
                 break;
                 
@@ -416,6 +566,8 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 state.Minute = null;
                 state.SeekingInterests = new List<string>();
                 state.SourceChannels = new List<string>();
+                state.SeekingInterestsCode = new List<int>();
+                state.SourceChannelsCode = new List<int>();
                 _logger.LogDebug("[UserInfoCollectionGAgent][GAgentTransitionState] Cleared all user info collection data");
                 break;
         }

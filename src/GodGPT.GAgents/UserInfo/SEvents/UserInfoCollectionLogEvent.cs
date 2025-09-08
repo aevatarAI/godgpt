@@ -35,7 +35,11 @@ public class UpdateUserInfoCollectionLogEvent : UserInfoCollectionLogEvent
     [Id(9)] public int? Minute { get; set; }
     [Id(10)] public List<string> SeekingInterests { get; set; }
     [Id(11)] public List<string> SourceChannels { get; set; }
-    [Id(12)] public DateTime UpdatedAt { get; set; }
+    [Id(12)] public List<int> SeekingInterestsCode { get; set; } = new List<int>();
+    
+    // Source channels codes (Step 7) - Enum values for statistics
+    [Id(13)] public List<int> SourceChannelsCode { get; set; } = new List<int>();
+    [Id(14)] public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>
