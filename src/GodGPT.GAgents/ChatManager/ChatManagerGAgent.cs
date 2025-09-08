@@ -1894,94 +1894,133 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         Logger.LogInformation("Proceeding with {EligibleCount} eligible devices for user {UserId}", 
             eligibleDevices.Count, State.UserId);
         
-        // Create separate push notifications for each content to ensure individual callbacks
-        var pushTasks = eligibleDevices.SelectMany((device, deviceIndex) =>
+        // Create device-level push tasks with rollback support
+        var deviceTasks = eligibleDevices.Select(async (device, deviceIndex) =>
         {
-            // Send separate push for each content with staggered delay
-            return contents.Select(async (content, contentIndex) =>
+            var deviceSuccess = false;
+            var deviceFailureCount = 0;
+            
+            try
             {
-                try
+                // 🎯 Add device-level delay to reduce concurrent JWT requests
+                var deviceDelay = Random.Shared.Next(50, 300) + (deviceIndex * 150); // Random + staggered per device
+                if (deviceDelay > 0)
                 {
-                    // 🎯 Add device-level delay to reduce concurrent JWT requests + content delay for FCM conflicts
-                    var deviceDelay = Random.Shared.Next(50, 300) + (deviceIndex * 150); // Random + staggered per device
-                    var contentDelay = contentIndex * 300; // 300ms per content (1st=0ms, 2nd=300ms, etc.)
-                    var totalDelay = deviceDelay + contentDelay;
-                    
-                    if (totalDelay > 0)
+                    await Task.Delay(deviceDelay);
+                }
+                
+                // Process all contents for this device
+                var contentTasks = contents.Select(async (content, contentIndex) =>
+                {
+                    try
                     {
-                        Logger.LogInformation("Applying push delay: DeviceId={DeviceId}, DeviceIndex={DeviceIndex}, ContentIndex={ContentIndex}/{TotalContents}, DeviceDelay={DeviceDelay}ms, ContentDelay={ContentDelay}ms, TotalDelay={TotalDelay}ms", 
-                            device.DeviceId, deviceIndex + 1, contentIndex + 1, contents.Count, deviceDelay, contentDelay, totalDelay);
-                        await Task.Delay(totalDelay);
+                        var contentDelay = contentIndex * 300; // 300ms per content (1st=0ms, 2nd=300ms, etc.)
+                        if (contentDelay > 0)
+                        {
+                            await Task.Delay(contentDelay);
+                        }
+                        
+                        var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+                        Logger.LogInformation("Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
+                            device.DeviceId, device.PushLanguage, availableLanguages);
+                        
+                        var localizedContent = content.GetLocalizedContent(device.PushLanguage);
+                        
+                        Logger.LogInformation("📬 PUSH ATTEMPT: User {UserId}, DeviceId {DeviceId}, Content {ContentIndex}/{Total}, Title '{Title}', ContentId {ContentId}, PushToken {TokenPrefix}...", 
+                            State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title, content.Id, 
+                            device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+                        
+                        // Create unique data payload for each content
+                        var messageId = Guid.NewGuid();
+                        var pushData = new Dictionary<string, object>
+                        {
+                            ["message_id"] = messageId.ToString(),
+                            ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
+                            ["date"] = dateKey,
+                            ["content_id"] = content.Id, // Single content ID for this push
+                            ["content_index"] = contentIndex + 1, // Which content this is (1, 2, etc.)
+                            ["device_id"] = device.DeviceId,
+                            ["total_contents"] = contents.Count,
+                            ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
+                            ["is_retry"] = isRetryPush, // Add retry push identification
+                            ["is_test_push"] = isTestPush // Add test push identification for manual triggers
+                        };
+                        
+                        // Use new global JWT architecture with direct HTTP push
+                        // Skip deduplication since device already passed UTC-based pre-check
+                        var success = await SendDirectPushNotificationAsync(
+                            globalJwtProvider,
+                            projectId,
+                            device.PushToken,
+                            localizedContent.Title,
+                            localizedContent.Content,
+                            pushData,
+                            timeZoneId,
+                            isRetryPush,
+                            contentIndex == 0, // isFirstContent - first content=true, subsequent=false
+                            false, // isTestPush
+                            true); // skipDeduplicationCheck - device already passed UTC-based pre-check
+                        
+                        if (success)
+                        {
+                            Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                                device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
+                            return true;
+                        }
+                        else
+                        {
+                            Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                                device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
+                            return false;
+                        }
                     }
-                    
-                    var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
-                    Logger.LogInformation("Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
-                        device.DeviceId, device.PushLanguage, availableLanguages);
-                    
-                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
-                    
-                    Logger.LogInformation("📬 PUSH ATTEMPT: User {UserId}, DeviceId {DeviceId}, Content {ContentIndex}/{Total}, Title '{Title}', ContentId {ContentId}, PushToken {TokenPrefix}...", 
-                        State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title, content.Id, 
-                        device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
-                    
-                    // Create unique data payload for each content
-                    var messageId = Guid.NewGuid();
-                    var pushData = new Dictionary<string, object>
+                    catch (Exception ex)
                     {
-                        ["message_id"] = messageId.ToString(),
-                        ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
-                        ["date"] = dateKey,
-                        ["content_id"] = content.Id, // Single content ID for this push
-                        ["content_index"] = contentIndex + 1, // Which content this is (1, 2, etc.)
-                        ["device_id"] = device.DeviceId,
-                        ["total_contents"] = contents.Count,
-                        ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
-                        ["is_retry"] = isRetryPush, // Add retry push identification
-                        ["is_test_push"] = isTestPush // Add test push identification for manual triggers
-                    };
-                    
-                    // Use new global JWT architecture with direct HTTP push
-                    // Skip deduplication since device already passed UTC-based pre-check
-                    var success = await SendDirectPushNotificationAsync(
-                        globalJwtProvider,
-                        projectId,
-                        device.PushToken,
-                        localizedContent.Title,
-                        localizedContent.Content,
-                        pushData,
-                        timeZoneId,
-                        isRetryPush,
-                        contentIndex == 0, // isFirstContent - first content=true, subsequent=false
-                        false, // isTestPush
-                        true); // skipDeduplicationCheck - device already passed UTC-based pre-check
-                    
-                    if (success)
-                    {
-                        Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                            device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
-                        return true;
-                    }
-                    else
-                    {
-                        Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                            device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
+                        Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
                         return false;
                     }
-                }
-                catch (Exception ex)
+                });
+                
+                var contentResults = await Task.WhenAll(contentTasks);
+                var deviceSuccessCount = contentResults.Count(r => r);
+                deviceFailureCount = contentResults.Count(r => !r);
+                
+                // Consider device successful if at least one content was sent successfully
+                deviceSuccess = deviceSuccessCount > 0;
+                
+                Logger.LogInformation("Device push summary: DeviceId={DeviceId}, Success={DeviceSuccess}, " +
+                    "ContentSuccessCount={SuccessCount}, ContentFailureCount={FailureCount}", 
+                    device.DeviceId, deviceSuccess, deviceSuccessCount, deviceFailureCount);
+                
+                return contentResults;
+            }
+            finally
+            {
+                // 🔄 Rollback Redis claim if ALL pushes for this device failed
+                if (!deviceSuccess && deduplicationService != null)
                 {
-                    Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
-                    return false;
+                    try
+                    {
+                        await deduplicationService.ReleasePushClaimAsync(device.DeviceId, date, timeZoneId, isRetryPush);
+                        Logger.LogInformation("🔄 Released Redis claim for failed device: {DeviceId} (all {ContentCount} pushes failed)", 
+                            device.DeviceId, contents.Count);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogError(ex, "Failed to release Redis claim for device {DeviceId}", device.DeviceId);
+                    }
                 }
-            });
+            }
         });
         
-        // Execute all push tasks concurrently
-        var totalPushTasks = pushTasks.Count();
+        // Flatten device results to individual push results for compatibility
+        var allDeviceResults = await Task.WhenAll(deviceTasks);
+        var results = allDeviceResults.SelectMany(results => results).ToArray();
+        
+        var totalPushTasks = results.Length;
         Logger.LogInformation("ProcessDailyPushAsync: Executing {TotalPushTasks} push tasks for {DeviceCount} devices × {ContentCount} contents", 
             totalPushTasks, enabledDevices.Count, contents.Count);
             
-        var results = await Task.WhenAll(pushTasks);
         successCount = results.Count(r => r);
         failureCount = results.Count(r => !r);
         

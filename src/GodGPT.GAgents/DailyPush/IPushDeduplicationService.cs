@@ -45,6 +45,16 @@ public interface IPushDeduplicationService
     /// <param name="date">Push date</param>
     /// <param name="timeZoneId">Target timezone</param>
     Task ResetDevicePushStatusAsync(string deviceId, DateOnly date, string timeZoneId);
+    
+    /// <summary>
+    /// Release (rollback) a claimed push slot if the actual push failed
+    /// This ensures failed pushes don't permanently block other attempts
+    /// </summary>
+    /// <param name="deviceId">Device ID</param>
+    /// <param name="date">Push date</param>
+    /// <param name="timeZoneId">Target timezone</param>
+    /// <param name="isRetryPush">Whether this was a retry push claim to release</param>
+    Task ReleasePushClaimAsync(string deviceId, DateOnly date, string timeZoneId, bool isRetryPush);
 }
 
 /// <summary>

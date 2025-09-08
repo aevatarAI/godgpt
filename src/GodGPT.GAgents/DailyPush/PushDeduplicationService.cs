@@ -185,6 +185,37 @@ public class PushDeduplicationService : IPushDeduplicationService
         }
     }
     
+    public async Task ReleasePushClaimAsync(string deviceId, DateOnly date, string timeZoneId, bool isRetryPush)
+    {
+        var key = isRetryPush ? BuildRetryKey(deviceId, date, timeZoneId) : BuildMorningKey(deviceId, date, timeZoneId);
+        var pushType = isRetryPush ? "retry" : "morning";
+        
+        try
+        {
+            var deleted = await _redis.KeyDeleteAsync(key);
+            
+            if (deleted)
+            {
+                _logger.LogInformation("🔄 Released {PushType} push claim: {Key} (push failed, allowing retry)", 
+                    pushType, key);
+            }
+            else
+            {
+                _logger.LogWarning("⚠️ Failed to release {PushType} push claim: {Key} (key not found)", 
+                    pushType, key);
+            }
+        }
+        catch (RedisException ex)
+        {
+            _logger.LogWarning("Redis error in ReleasePushClaimAsync for {PushType}: {Error}", pushType, ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error in ReleasePushClaimAsync for {PushType} push: {DeviceId}", 
+                pushType, deviceId);
+        }
+    }
+    
     /// <summary>
     /// Build Redis key for morning push
     /// Format: "godgpt:push:morning:{deviceId}:{yyyy-MM-dd}:{timeZoneId}"
