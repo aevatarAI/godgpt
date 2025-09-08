@@ -2692,6 +2692,41 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
     
     /// <summary>
+    /// Clear all V2 device data for testing purposes
+    /// WARNING: This will permanently delete all V2 device registrations
+    /// </summary>
+    public async Task ClearAllV2DevicesAsync()
+    {
+        if (State.UserDevicesV2.Count == 0)
+        {
+            Logger.LogInformation("🧹 No V2 devices to clear for user {UserId}", State.UserId);
+            return;
+        }
+        
+        var deviceCount = State.UserDevicesV2.Count;
+        var tokenCount = State.TokenToDeviceMapV2.Count;
+        
+        // Clear all V2 device data
+        RaiseEvent(new CleanupDevicesV2EventLog
+        {
+            DeviceIdsToRemove = State.UserDevicesV2.Keys.ToList(),
+            RemovedCount = deviceCount,
+            CleanupReason = "manual_v2_clear",
+            CleanupDetails = new Dictionary<string, string>
+            {
+                ["tokens_cleared"] = tokenCount.ToString(),
+                ["trigger"] = "ClearAllV2DevicesAsync",
+                ["timestamp"] = DateTime.UtcNow.ToString("O")
+            }
+        });
+        
+        await ConfirmEvents();
+        
+        Logger.LogWarning("🧹 Cleared ALL V2 device data for user {UserId}: {DeviceCount} devices, {TokenCount} tokens", 
+            State.UserId, deviceCount, tokenCount);
+    }
+    
+    /// <summary>
     /// Get unified device list for compatibility - prioritize V2, fallback to V1
     /// Used for transition period where both V1 and V2 data exist
     /// </summary>
