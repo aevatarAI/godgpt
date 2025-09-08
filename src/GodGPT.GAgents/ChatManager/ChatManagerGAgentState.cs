@@ -38,6 +38,28 @@ public class ChatManagerGAgentState : AIGAgentStateBase
     /// </summary>
     [Id(15)] public Dictionary<string, bool> DailyPushReadStatus { get; set; } = new();
 
+    // === Enhanced Device Management (V2) ===
+    /// <summary>
+    /// Enhanced user devices for daily push notifications V2 (key: deviceId)
+    /// Replaces UserDevices for new registrations and updates
+    /// </summary>
+    [Id(16)] public Dictionary<string, UserDeviceInfoV2> UserDevicesV2 { get; set; } = new();
+
+    /// <summary>
+    /// Enhanced mapping from pushToken to deviceId for V2 structure
+    /// </summary>
+    [Id(17)] public Dictionary<string, string> TokenToDeviceMapV2 { get; set; } = new();
+
+    /// <summary>
+    /// Migration status tracking: which deviceIds have been migrated to V2
+    /// </summary>
+    [Id(18)] public HashSet<string> MigratedDeviceIds { get; set; } = new();
+
+    /// <summary>
+    /// Data structure version for state migration tracking
+    /// </summary>
+    [Id(19)] public int StateVersion { get; set; } = 1;
+
     public SessionInfo? GetSession(Guid sessionId)
     {
         return SessionInfoList.FirstOrDefault(f=>f.SessionId == sessionId);

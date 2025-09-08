@@ -1262,6 +1262,71 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 Logger.LogDebug("🧹 Device cleanup completed: removed {RemovedCount} devices, reason: {CleanupReason}", 
                     cleanDevicesEvent.RemovedCount, cleanDevicesEvent.CleanupReason);
                 break;
+            
+            // === V2 Device Management Events ===
+            case RegisterOrUpdateDeviceV2EventLog registerDeviceV2Event:
+                // Update V2 device info and token mapping
+                state.UserDevicesV2[registerDeviceV2Event.DeviceId] = registerDeviceV2Event.DeviceInfo;
+                if (!string.IsNullOrEmpty(registerDeviceV2Event.DeviceInfo.PushToken))
+                {
+                    state.TokenToDeviceMapV2[registerDeviceV2Event.DeviceInfo.PushToken] = registerDeviceV2Event.DeviceId;
+                }
+                
+                // Mark as migrated if this is a migration
+                if (registerDeviceV2Event.IsMigration)
+                {
+                    state.MigratedDeviceIds.Add(registerDeviceV2Event.DeviceId);
+                }
+                break;
+                
+            case MigrateDeviceToV2EventLog migrateEvent:
+                // Add new V2 device
+                state.UserDevicesV2[migrateEvent.DeviceId] = migrateEvent.NewDeviceInfo;
+                if (!string.IsNullOrEmpty(migrateEvent.NewDeviceInfo.PushToken))
+                {
+                    state.TokenToDeviceMapV2[migrateEvent.NewDeviceInfo.PushToken] = migrateEvent.DeviceId;
+                }
+                
+                // Remove from V1 structure
+                if (state.UserDevices.ContainsKey(migrateEvent.DeviceId))
+                {
+                    var oldDevice = state.UserDevices[migrateEvent.DeviceId];
+                    if (!string.IsNullOrEmpty(oldDevice.PushToken))
+                    {
+                        state.TokenToDeviceMap.Remove(oldDevice.PushToken);
+                    }
+                    state.UserDevices.Remove(migrateEvent.DeviceId);
+                }
+                
+                // Mark as migrated
+                state.MigratedDeviceIds.Add(migrateEvent.DeviceId);
+                break;
+                
+            case CleanupDevicesV2EventLog cleanDevicesV2Event:
+                // Remove V2 devices specified in the cleanup event
+                foreach (var deviceIdToRemove in cleanDevicesV2Event.DeviceIdsToRemove)
+                {
+                    if (state.UserDevicesV2.ContainsKey(deviceIdToRemove))
+                    {
+                        var deviceToRemove = state.UserDevicesV2[deviceIdToRemove];
+                        
+                        // Remove token mapping if exists
+                        if (!string.IsNullOrEmpty(deviceToRemove.PushToken))
+                        {
+                            state.TokenToDeviceMapV2.Remove(deviceToRemove.PushToken);
+                        }
+                        
+                        // Remove device from V2 user devices
+                        state.UserDevicesV2.Remove(deviceIdToRemove);
+                        
+                        // Remove from migration tracking
+                        state.MigratedDeviceIds.Remove(deviceIdToRemove);
+                    }
+                }
+                
+                Logger.LogDebug("🧹 V2 Device cleanup completed: removed {RemovedCount} devices, reason: {CleanupReason}", 
+                    cleanDevicesV2Event.RemovedCount, cleanDevicesV2Event.CleanupReason);
+                break;
 
         }   
     }
@@ -1739,8 +1804,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         
         await userSemaphore.WaitAsync();
         try
-        {
-            var dateKey = targetDate.ToString("yyyy-MM-dd");
+    {
+        var dateKey = targetDate.ToString("yyyy-MM-dd");
             
             Logger.LogDebug("🔒 Acquired push semaphore for user {UserId}, timezone {TimeZone}, pushType: {PushType}", 
                 State.UserId, timeZoneId, isRetryPush ? "retry" : "morning");
@@ -1918,29 +1983,29 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         if (contentDelay > 0)
                         {
                             await Task.Delay(contentDelay);
-                        }
-                        
-                        var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+                    }
+                    
+                    var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
                         Logger.LogInformation("Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
-                            device.DeviceId, device.PushLanguage, availableLanguages);
-                        
-                        var localizedContent = content.GetLocalizedContent(device.PushLanguage);
-                        
+                        device.DeviceId, device.PushLanguage, availableLanguages);
+                    
+                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
+                    
                         Logger.LogInformation("📬 PUSH ATTEMPT: User {UserId}, DeviceId {DeviceId}, Content {ContentIndex}/{Total}, Title '{Title}', ContentId {ContentId}, PushToken {TokenPrefix}...", 
                             State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title, content.Id, 
                             device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
-                        
-                        // Create unique data payload for each content
-                        var messageId = Guid.NewGuid();
-                        var pushData = new Dictionary<string, object>
-                        {
-                            ["message_id"] = messageId.ToString(),
+                    
+                    // Create unique data payload for each content
+                    var messageId = Guid.NewGuid();
+                    var pushData = new Dictionary<string, object>
+                    {
+                        ["message_id"] = messageId.ToString(),
                             ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
-                            ["date"] = dateKey,
-                            ["content_id"] = content.Id, // Single content ID for this push
+                        ["date"] = dateKey,
+                        ["content_id"] = content.Id, // Single content ID for this push
                             ["content_index"] = contentIndex + 1, // Which content this is (1, 2, etc.)
-                            ["device_id"] = device.DeviceId,
-                            ["total_contents"] = contents.Count,
+                        ["device_id"] = device.DeviceId,
+                        ["total_contents"] = contents.Count,
                             ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
                             ["is_retry"] = isRetryPush, // Add retry push identification
                             ["is_test_push"] = isTestPush // Add test push identification for manual triggers
@@ -1951,34 +2016,34 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         var success = await SendDirectPushNotificationAsync(
                             globalJwtProvider,
                             projectId,
-                            device.PushToken,
-                            localizedContent.Title,
-                            localizedContent.Content,
+                        device.PushToken,
+                        localizedContent.Title,
+                        localizedContent.Content,
                             pushData,
                             timeZoneId,
                             isRetryPush,
                             contentIndex == 0, // isFirstContent - first content=true, subsequent=false
                             false, // isTestPush
                             true); // skipDeduplicationCheck - device already passed UTC-based pre-check
-                        
-                        if (success)
-                        {
-                            Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                                device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
-                            return true;
-                        }
-                        else
-                        {
-                            Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                                device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
-                            return false;
-                        }
-                    }
-                    catch (Exception ex)
+                    
+                    if (success)
                     {
-                        Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
+                        Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                                device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
+                        return true;
+                    }
+                    else
+                    {
+                        Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
+                                device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
                         return false;
                     }
+                }
+                catch (Exception ex)
+                {
+                        Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
+                    return false;
+                }
                 });
                 
                 var contentResults = await Task.WhenAll(contentTasks);
@@ -2424,5 +2489,292 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             }
         }
         return dataPayload;
+    }
+
+    // === Enhanced Device Management V2 Methods ===
+
+    /// <summary>
+    /// Register or update device using V2 structure (enhanced version)
+    /// All new device registrations should use this method
+    /// </summary>
+    public async Task<bool> RegisterOrUpdateDeviceV2Async(string deviceId, string pushToken, string timeZoneId, 
+        bool? pushEnabled, string pushLanguage, string? platform = null, string? appVersion = null)
+    {
+        var isNewDevice = !State.UserDevicesV2.ContainsKey(deviceId) && !State.MigratedDeviceIds.Contains(deviceId);
+        var now = DateTime.UtcNow;
+        
+        // Check if device exists in V1 structure and migrate if needed
+        if (!isNewDevice && State.UserDevices.ContainsKey(deviceId) && !State.MigratedDeviceIds.Contains(deviceId))
+        {
+            await MigrateDeviceToV2Async(deviceId);
+        }
+        
+        var deviceInfo = isNewDevice ? new UserDeviceInfoV2() : 
+            new UserDeviceInfoV2
+            {
+                DeviceId = State.UserDevicesV2[deviceId].DeviceId,
+                UserId = State.UserDevicesV2[deviceId].UserId,
+                PushToken = State.UserDevicesV2[deviceId].PushToken,
+                TimeZoneId = State.UserDevicesV2[deviceId].TimeZoneId,
+                PushLanguage = State.UserDevicesV2[deviceId].PushLanguage,
+                PushEnabled = State.UserDevicesV2[deviceId].PushEnabled,
+                RegisteredAt = State.UserDevicesV2[deviceId].RegisteredAt,
+                LastTokenUpdate = State.UserDevicesV2[deviceId].LastTokenUpdate,
+                LastActiveAt = State.UserDevicesV2[deviceId].LastActiveAt,
+                Platform = State.UserDevicesV2[deviceId].Platform,
+                AppVersion = State.UserDevicesV2[deviceId].AppVersion,
+                Status = State.UserDevicesV2[deviceId].Status,
+                PushTokenHistory = State.UserDevicesV2[deviceId].PushTokenHistory,
+                LastSuccessfulPush = State.UserDevicesV2[deviceId].LastSuccessfulPush,
+                ConsecutiveFailures = State.UserDevicesV2[deviceId].ConsecutiveFailures,
+                Metadata = State.UserDevicesV2[deviceId].Metadata,
+                StructureVersion = 2
+            };
+        
+        // Store old values for cleanup and change detection
+        var oldPushToken = deviceInfo.PushToken;
+        var tokenChanged = oldPushToken != pushToken;
+        
+        // Update device information
+        deviceInfo.DeviceId = deviceId;
+        deviceInfo.UserId = State.UserId;
+        deviceInfo.PushToken = pushToken;
+        deviceInfo.TimeZoneId = timeZoneId;
+        deviceInfo.PushLanguage = pushLanguage;
+        deviceInfo.LastActiveAt = now;
+        deviceInfo.Status = DeviceStatus.Active;
+        deviceInfo.ConsecutiveFailures = 0; // Reset on successful registration
+        
+        if (pushEnabled.HasValue)
+        {
+            deviceInfo.PushEnabled = pushEnabled.Value;
+        }
+        
+        if (!string.IsNullOrEmpty(platform))
+        {
+            deviceInfo.Platform = platform;
+        }
+        
+        if (!string.IsNullOrEmpty(appVersion))
+        {
+            deviceInfo.AppVersion = appVersion;
+        }
+        
+        // Set timestamps
+        if (isNewDevice)
+        {
+            deviceInfo.RegisteredAt = now;
+            deviceInfo.LastTokenUpdate = now;
+        }
+        else if (tokenChanged)
+        {
+            deviceInfo.LastTokenUpdate = now;
+            
+            // Add old token to history
+            if (!string.IsNullOrEmpty(oldPushToken))
+            {
+                deviceInfo.PushTokenHistory.Add(new HistoricalPushToken
+                {
+                    Token = oldPushToken,
+                    UsedFrom = deviceInfo.LastTokenUpdate,
+                    UsedUntil = now,
+                    ReplacementReason = "token_refresh"
+                });
+                
+                // Keep only recent history (last 5 tokens)
+                if (deviceInfo.PushTokenHistory.Count > 5)
+                {
+                    deviceInfo.PushTokenHistory = deviceInfo.PushTokenHistory
+                        .OrderByDescending(h => h.UsedUntil ?? DateTime.MaxValue)
+                        .Take(5)
+                        .ToList();
+                }
+            }
+        }
+        
+        // Raise V2 event
+        RaiseEvent(new RegisterOrUpdateDeviceV2EventLog
+        {
+            DeviceId = deviceId,
+            DeviceInfo = deviceInfo,
+            IsNewDevice = isNewDevice,
+            OldPushToken = tokenChanged ? oldPushToken : null,
+            IsMigration = false
+        });
+        
+        await ConfirmEvents();
+        
+        Logger.LogInformation("📱 V2 Device {Action}: DeviceId={DeviceId}, PushToken={TokenPrefix}..., " +
+            "TimeZone={TimeZone}, Language={Language}, Enabled={Enabled}, Platform={Platform}",
+            isNewDevice ? "registered" : "updated", deviceId, 
+            pushToken.Substring(0, Math.Min(8, pushToken.Length)), 
+            timeZoneId, pushLanguage, deviceInfo.PushEnabled, platform ?? "unknown");
+        
+        return true;
+    }
+
+    /// <summary>
+    /// Migrate a device from V1 to V2 structure
+    /// </summary>
+    private async Task MigrateDeviceToV2Async(string deviceId)
+    {
+        if (!State.UserDevices.ContainsKey(deviceId) || State.MigratedDeviceIds.Contains(deviceId))
+        {
+            return; // Already migrated or doesn't exist
+        }
+        
+        var v1Device = State.UserDevices[deviceId];
+        var now = DateTime.UtcNow;
+        
+        var v2Device = new UserDeviceInfoV2
+        {
+            DeviceId = v1Device.DeviceId,
+            UserId = State.UserId,
+            PushToken = v1Device.PushToken,
+            TimeZoneId = v1Device.TimeZoneId,
+            PushLanguage = v1Device.PushLanguage,
+            PushEnabled = v1Device.PushEnabled,
+            RegisteredAt = v1Device.RegisteredAt,
+            LastTokenUpdate = v1Device.LastTokenUpdate,
+            LastActiveAt = now, // Set to current time during migration
+            Platform = "", // Unknown for migrated devices
+            AppVersion = "", // Unknown for migrated devices
+            Status = DeviceStatus.Active,
+            StructureVersion = 2,
+            PushTokenHistory = new List<HistoricalPushToken>(), // Empty for migrated devices
+            LastSuccessfulPush = null, // Unknown for migrated devices
+            ConsecutiveFailures = 0, // Reset during migration
+            Metadata = new Dictionary<string, string>
+            {
+                ["migrated_from"] = "v1",
+                ["migration_time"] = now.ToString("O")
+            }
+        };
+        
+        // Raise migration event
+        RaiseEvent(new MigrateDeviceToV2EventLog
+        {
+            DeviceId = deviceId,
+            OldDeviceInfo = v1Device,
+            NewDeviceInfo = v2Device,
+            MigrationTime = now
+        });
+        
+        await ConfirmEvents();
+        
+        Logger.LogInformation("🔄 Device migrated to V2: DeviceId={DeviceId}, UserId={UserId}", 
+            deviceId, State.UserId);
+    }
+
+    /// <summary>
+    /// Get unified device list (V2 + migrated V1 devices)
+    /// This method provides a unified view for push processing
+    /// </summary>
+    public async Task<List<UserDeviceInfoV2>> GetAllDevicesV2Async()
+    {
+        var allDevices = new List<UserDeviceInfoV2>();
+        
+        // Add all V2 devices
+        allDevices.AddRange(State.UserDevicesV2.Values);
+        
+        // Auto-migrate V1 devices that haven't been migrated yet
+        var v1DevicesToMigrate = State.UserDevices.Keys
+            .Where(deviceId => !State.MigratedDeviceIds.Contains(deviceId))
+            .ToList();
+            
+        foreach (var deviceId in v1DevicesToMigrate)
+        {
+            await MigrateDeviceToV2Async(deviceId);
+            if (State.UserDevicesV2.ContainsKey(deviceId))
+            {
+                allDevices.Add(State.UserDevicesV2[deviceId]);
+            }
+        }
+        
+        return allDevices;
+    }
+
+    /// <summary>
+    /// Enhanced cleanup for V2 devices with smart criteria
+    /// </summary>
+    public async Task CleanupDevicesV2Async()
+    {
+        var now = DateTime.UtcNow;
+        var thirtyDaysAgo = now.AddDays(-30);
+        var sevenDaysAgo = now.AddDays(-7);
+        var threeDaysAgo = now.AddDays(-3);
+        
+        var devicesToRemove = new List<string>();
+        var cleanupDetails = new Dictionary<string, string>();
+        
+        // 1. Remove devices with consecutive push failures (token likely invalid)
+        var failedDevices = State.UserDevicesV2.Values
+            .Where(d => d.ConsecutiveFailures >= 5 && d.LastActiveAt <= threeDaysAgo)
+            .Select(d => d.DeviceId)
+            .ToList();
+        devicesToRemove.AddRange(failedDevices);
+        if (failedDevices.Any())
+        {
+            cleanupDetails["consecutive_failures"] = string.Join(",", failedDevices);
+        }
+        
+        // 2. Remove very old devices (30+ days inactive)
+        var expiredDevices = State.UserDevicesV2.Values
+            .Where(d => d.LastActiveAt <= thirtyDaysAgo)
+            .Select(d => d.DeviceId)
+            .ToList();
+        devicesToRemove.AddRange(expiredDevices);
+        if (expiredDevices.Any())
+        {
+            cleanupDetails["expired"] = string.Join(",", expiredDevices);
+        }
+        
+        // 3. Remove devices marked for cleanup
+        var pendingCleanupDevices = State.UserDevicesV2.Values
+            .Where(d => d.Status == DeviceStatus.PendingCleanup)
+            .Select(d => d.DeviceId)
+            .ToList();
+        devicesToRemove.AddRange(pendingCleanupDevices);
+        if (pendingCleanupDevices.Any())
+        {
+            cleanupDetails["pending_cleanup"] = string.Join(",", pendingCleanupDevices);
+        }
+        
+        // 4. Handle duplicates: same deviceId, keep the most recent one
+        var duplicateGroups = State.UserDevicesV2.Values
+            .GroupBy(d => d.DeviceId)
+            .Where(g => g.Count() > 1)
+            .ToList();
+            
+        foreach (var group in duplicateGroups)
+        {
+            var devicesToKeep = group.OrderByDescending(d => d.LastActiveAt).Skip(1);
+            var duplicateIds = devicesToKeep.Select(d => d.DeviceId).ToList();
+            devicesToRemove.AddRange(duplicateIds);
+            if (duplicateIds.Any())
+            {
+                cleanupDetails["duplicates"] = string.Join(",", duplicateIds);
+            }
+        }
+        
+        // Remove duplicates from the removal list
+        devicesToRemove = devicesToRemove.Distinct().ToList();
+        
+        if (devicesToRemove.Any())
+        {
+            RaiseEvent(new CleanupDevicesV2EventLog
+            {
+                DeviceIdsToRemove = devicesToRemove,
+                RemovedCount = devicesToRemove.Count,
+                CleanupReason = "enhanced_criteria",
+                CleanupDetails = cleanupDetails,
+                CleanupTime = now
+            });
+            
+            await ConfirmEvents();
+            
+            Logger.LogInformation("🧹 V2 Enhanced device cleanup: removed {Count} devices. Details: {Details}",
+                devicesToRemove.Count, System.Text.Json.JsonSerializer.Serialize(cleanupDetails));
+        }
     }
 }
