@@ -129,4 +129,19 @@ public interface IChatManagerGAgent : IGAgent
     /// <returns>Number of devices cleared</returns>
     Task<int> ClearAllV2DevicesAsync();
     
+    // === Coordinated Push Methods ===
+    
+    /// <summary>
+    /// Get devices for coordinated push (called by DailyPushCoordinatorGAgent)
+    /// Returns device information without executing push
+    /// </summary>
+    [ReadOnly]
+    Task<List<UserDeviceInfo>> GetDevicesForCoordinatedPushAsync(string timeZoneId, DateTime targetDate);
+    
+    /// <summary>
+    /// Execute coordinated push for a specific device (called by coordinator after device selection)
+    /// Uses existing Redis deduplication logic
+    /// </summary>
+    Task<bool> ExecuteCoordinatedPushAsync(UserDeviceInfo device, DateTime targetDate, List<DailyNotificationContent> contents, bool isRetryPush = false, bool isTestPush = false);
+    
 }
