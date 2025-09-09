@@ -1,10 +1,12 @@
 using System.ComponentModel;
+using Orleans;
 
 namespace Aevatar.Application.Grains.UserInfo.Enums;
 
 /// <summary>
 /// Seeking interest options with fixed codes
 /// </summary>
+[GenerateSerializer]
 public enum SeekingInterestEnum
 {
     [Description("Companionship")]
@@ -29,6 +31,7 @@ public enum SeekingInterestEnum
 /// <summary>
 /// Source channel options with fixed codes
 /// </summary>
+[GenerateSerializer]
 public enum SourceChannelEnum
 {
     [Description("App Store / Play Store")]
