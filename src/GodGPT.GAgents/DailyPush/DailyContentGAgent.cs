@@ -426,6 +426,11 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
         return State.TimezoneGuidMappings.TryGetValue(timezoneGuid, out var timezoneId) ? timezoneId : null;
     }
 
+    public async Task<Dictionary<Guid, string>> GetAllTimezoneMappingsAsync()
+    {
+        return new Dictionary<Guid, string>(State.TimezoneGuidMappings);
+    }
+
     /// <summary>
     /// Pre-register common timezone mappings to prevent orphaned DailyPushCoordinatorGAgent grains
     /// This solves the chicken-egg problem where auto-activated grains can't find their timezone
