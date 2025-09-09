@@ -15,12 +15,15 @@ public interface IUserPaymentGrain : IGrainWithGuidKey
     Task<PaymentDetailsDto> GetPaymentDetailsAsync();
     Task<GrainResultDto<PaymentDetailsDto>> InitializePaymentAsync(UserPaymentState paymentState);
     Task<GrainResultDto<PaymentDetailsDto>> UpdateUserIdAsync(Guid newUserId);
+    Task<List<DiscountDetails>> GetDiscountDetailsViaInvoiceAsync(string invoiceId);
 }
 
 public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
 {
     private readonly ILogger<UserBillingGrain> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
+    
+    private readonly IStripeClient _client; 
 
     public UserPaymentGrain(
         ILogger<UserBillingGrain> logger, 
@@ -28,6 +31,9 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
     {
         _logger = logger;
         _stripeOptions = stripeOptions;
+        
+        StripeConfiguration.ApiKey = _stripeOptions.CurrentValue.SecretKey;
+        _client ??= new StripeClient(_stripeOptions.CurrentValue.SecretKey);
     }
 
     public async Task<GrainResultDto<PaymentDetailsDto>> ProcessPaymentCallbackAsync(string jsonPayload, string stripeSignature)
@@ -39,6 +45,8 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                 stripeSignature,
                 _stripeOptions.CurrentValue.WebhookSecret
             );
+            //Debug
+            //var stripeEvent = EventUtility.ParseEvent(jsonPayload);
             
             _logger.LogDebug("[PaymentGAgent][ProcessPaymentCallbackAsync] Processing Stripe webhook event, {0}, {1}", stripeEvent.Type, stripeEvent.Id);
             
@@ -49,7 +57,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                 case EventTypes.CheckoutSessionCompleted: 
                     resultDto = await ProcessCheckoutSessionCompletedAsync(stripeEvent);
                     break;
-                case "invoice.paid":
+                case EventTypes.InvoicePaid:
                     resultDto = await ProcessInvoicePaidAsync(stripeEvent);
                     break;
                 //invoice.payment_failed
@@ -134,7 +142,8 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         
         State.Id = this.GetPrimaryKey();
         State.PriceId = priceId;
-        State.Amount = session.AmountTotal.HasValue ? (decimal)session.AmountTotal.Value / 100 : 0;
+        State.Amount = session.AmountSubtotal.HasValue ? (decimal)session.AmountSubtotal.Value / 100 : 0;
+        State.AmountNetTotal = session.AmountTotal.HasValue ? (decimal)session.AmountTotal.Value / 100 : 0;
         State.Currency = session.Currency?.ToUpper() ?? "USD";
         State.PaymentType = session.Mode == PaymentMode.SUBSCRIPTION 
             ? PaymentType.Subscription 
@@ -156,7 +165,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         State.SessionId = session.Id;
         State.OrderId = orderId;
         State.LastUpdated = DateTime.UtcNow;
-        
+
         await WriteStateAsync();
 
         _logger.LogInformation("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Recorded payment {PaymentId} for session {SessionId}", 
@@ -274,7 +283,10 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                 InvoiceId = State.InvoiceId,
                 Status = State.Status,
                 CreatedAt = State.CreatedAt,
-                CompletedAt = State.CompletedAt
+                CompletedAt = State.CompletedAt,
+                Amount = State.Amount,
+                AmountNetTotal = State.AmountNetTotal,
+                Discounts = State.Discounts
             });
             State.CreatedAt = default;
             
@@ -293,11 +305,14 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         var userId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "internal_user_id");
         var orderId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "order_id");
         var priceId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "price_id");
-        _logger.LogInformation("[PaymentGAgent][ProcessInvoicePaidAsync] Processing paid invoice {InvoiceId}", invoice.Id);
+        _logger.LogDebug("[PaymentGAgent][ProcessInvoicePaidAsync] Processing paid invoice {InvoiceId}", invoice.Id);
+        var discountDetailsList = await GetDiscountDetailsViaInvoiceAsync(invoice.Id);
+        _logger.LogDebug("[PaymentGAgent][ProcessInvoicePaidAsync] Get discount completed {InvoiceId}, {DiscountCount}", invoice.Id, discountDetailsList.Count);
 
         State.Id = this.GetPrimaryKey();
         State.UserId = Guid.Parse(userId);
         State.PriceId = priceId;
+        State.AmountNetTotal = ((decimal)invoice.Total) / 100;
         if (canUpdateStatus)
         {
             State.Status = PaymentStatus.Completed;
@@ -311,7 +326,8 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         State.InvoiceId = invoice.Id;
         State.OrderId = orderId;
         State.LastUpdated = DateTime.UtcNow;
-        
+        State.Discounts = discountDetailsList;
+
         await WriteStateAsync();
         _logger.LogInformation("[UserBillingGrain][ProcessInvoicePaidAsync] Recorded payment {PaymentId} for invoice {InvoiceId}", 
             State.Id, invoice.Id);
@@ -557,5 +573,37 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                 Message = $"Failed to update user ID: {ex.Message}"
             };
         }
+    }
+
+    private async Task<Invoice> GetInvoiceViaInvoiceIdAsync(string invoiceId)
+    {
+        var invoiceService = new InvoiceService(_client);
+        var invoice = await invoiceService.GetAsync(invoiceId, new InvoiceGetOptions
+        {
+            Expand = new List<string> { "discounts", "discounts.promotion_code"}
+        });
+        return invoice;
+    }
+    
+    public async Task<List<DiscountDetails>> GetDiscountDetailsViaInvoiceAsync(string invoiceId)
+    {
+        var invoice = await GetInvoiceViaInvoiceIdAsync(invoiceId);
+        var discountDetailsList = new List<DiscountDetails>();
+        if (invoice.Discounts.IsNullOrEmpty())
+        {
+            return discountDetailsList;
+        }
+
+        discountDetailsList.AddRange(invoice.Discounts.Select(discount => new DiscountDetails
+        {
+            DiscountId = discount.Id,
+            CouponId = discount.Coupon?.Id ?? string.Empty,
+            CouponName = discount.Coupon?.Name ?? string.Empty,
+            AmountOff = discount.Coupon?.AmountOff,
+            PercentOff = discount.Coupon?.PercentOff,
+            PromotionCodeId = discount.PromotionCodeId,
+            PromotionCode = discount.PromotionCode?.Code ?? string.Empty
+        }));
+        return discountDetailsList;
     }
 }
