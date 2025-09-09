@@ -68,7 +68,12 @@ public interface IChatManagerGAgent : IGAgent
     
     // === Daily Push Notification Methods ===
     
-    // ❌ V1 INTERFACE REMOVED: Use RegisterOrUpdateDeviceV2Async instead
+    /// <summary>
+    /// Register or update device using V2 structure (enhanced version)
+    /// All new device registrations should use this method
+    /// </summary>
+    Task<bool> RegisterOrUpdateDeviceV2Async(string deviceId, string pushToken, string timeZoneId, 
+        bool? pushEnabled, string pushLanguage, string? platform = null, string? appVersion = null);
     
     /// <summary>
     /// Mark daily push as read for today
@@ -91,7 +96,11 @@ public interface IChatManagerGAgent : IGAgent
     [ReadOnly]
     Task<object> GetPushDebugInfoAsync(string deviceId, DateOnly date, string timeZoneId);
     
-    // ❌ V1 METHOD REMOVED: Use GetAllDevicesV2Async instead
+    /// <summary>
+    /// Get all V2 devices for this user
+    /// </summary>
+    [ReadOnly]
+    Task<List<UserDeviceInfoV2>> GetAllDevicesV2Async();
     
     /// <summary>
     /// Log detailed information for all devices registered under this user
