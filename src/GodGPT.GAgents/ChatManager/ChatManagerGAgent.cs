@@ -3053,14 +3053,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
     
     /// <summary>
-    /// Get unified device list for compatibility - prioritize V2, fallback to V1
-    /// Used for transition period where both V1 and V2 data exist
+    /// Get V2 devices in V1 format for compatibility
+    /// ⚠️ V1 SUPPORT REMOVED: Only V2 devices are used, no fallback
     /// </summary>
     public async Task<List<UserDeviceInfo>> GetUnifiedDevicesAsync()
     {
-        var unifiedDevices = new List<UserDeviceInfo>();
-        
-        // 1. Add V2 devices (convert to V1 format for compatibility)
+        // 🔥 V2 ONLY: Convert V2 devices to V1 format for compatibility
         var v2Devices = State.UserDevicesV2.Values.Select(v2 => new UserDeviceInfo
         {
             DeviceId = v2.DeviceId,
@@ -3071,16 +3069,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             RegisteredAt = v2.RegisteredAt,
             LastTokenUpdate = v2.LastTokenUpdate
         }).ToList();
-        unifiedDevices.AddRange(v2Devices);
         
-        // 2. Add V1 devices that don't exist in V2 (by deviceId)
-        var v2DeviceIds = State.UserDevicesV2.Keys.ToHashSet();
-        var v1OnlyDevices = State.UserDevices.Values
-            .Where(v1 => !v2DeviceIds.Contains(v1.DeviceId))
-            .ToList();
-        unifiedDevices.AddRange(v1OnlyDevices);
+        Logger.LogDebug("GetUnifiedDevicesAsync: Using V2-only devices. Count: {DeviceCount}", v2Devices.Count);
         
-        return unifiedDevices;
+        return v2Devices;
     }
 
     /// <summary>
