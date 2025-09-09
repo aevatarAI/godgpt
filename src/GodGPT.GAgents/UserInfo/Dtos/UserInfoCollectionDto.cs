@@ -33,7 +33,7 @@ public class UserInfoCollectionDto
 [GenerateSerializer]
 public class UserNameInfoDto
 {
-    [Id(0)] public string Gender { get; set; } // Required, single selection
+    [Id(0)] public int Gender { get; set; } // Required, single selection
     [Id(1)] public string FirstName { get; set; } // Required
     [Id(2)] public string LastName { get; set; } // Required
 }
@@ -103,7 +103,7 @@ public class UserInfoDisplayDto
 {
     [Id(0)] public string FirstName { get; set; }
     [Id(1)] public string LastName { get; set; }
-    [Id(2)] public string Gender { get; set; }
+    [Id(2)] public int Gender { get; set; }
     [Id(3)] public int Day { get; set; }
     [Id(4)] public int Month { get; set; }
     [Id(5)] public int Year { get; set; }

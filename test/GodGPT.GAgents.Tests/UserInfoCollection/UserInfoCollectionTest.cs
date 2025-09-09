@@ -1,10 +1,8 @@
 using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Application.Grains.UserInfo.Dtos;
 using Aevatar.Application.Grains.UserInfo.Enums;
-using Aevatar.Application.Grains.Tests;
 using Shouldly;
 using Xunit.Abstractions;
-using Aevatar.Core;
 
 namespace Aevatar.Application.Grains.Tests.UserInfoCollection;
 
@@ -41,7 +39,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
+                Gender = 1,
                 FirstName = "John",
                 LastName = "Doe"
             },
@@ -74,7 +72,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         result.Message.ShouldBe("User info collection updated successfully");
         result.Data.ShouldNotBeNull();
         result.Data.NameInfo.ShouldNotBeNull();
-        result.Data.NameInfo.Gender.ShouldBe("Male");
+        result.Data.NameInfo.Gender.ShouldBe(1);
         result.Data.NameInfo.FirstName.ShouldBe("John");
         result.Data.NameInfo.LastName.ShouldBe("Doe");
         result.Data.LocationInfo.ShouldNotBeNull();
@@ -120,7 +118,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Female",
+                Gender = 2,
                 FirstName = "Jane",
                 LastName = "Smith"
             },
@@ -151,7 +149,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         // Assert
         result.ShouldNotBeNull();
         result.NameInfo.ShouldNotBeNull();
-        result.NameInfo.Gender.ShouldBe("Female");
+        result.NameInfo.Gender.ShouldBe(2);
         result.NameInfo.FirstName.ShouldBe("Jane");
         result.NameInfo.LastName.ShouldBe("Smith");
         result.LocationInfo.ShouldNotBeNull();
@@ -196,7 +194,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
+                Gender = 1,
                 FirstName = "John",
                 LastName = "Doe"
             },
@@ -228,7 +226,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         result.ShouldNotBeNull();
         result.FirstName.ShouldBe("John");
         result.LastName.ShouldBe("Doe");
-        result.Gender.ShouldBe("Male");
+        result.Gender.ShouldBe(1);
         result.Day.ShouldBe(15);
         result.Month.ShouldBe(6);
         result.Year.ShouldBe(1990);
@@ -258,7 +256,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Female",
+                Gender = 2,
                 FirstName = "Alice",
                 LastName = "Johnson"
             }
@@ -272,7 +270,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         result.Success.ShouldBeTrue();
         result.Data.ShouldNotBeNull();
         result.Data.NameInfo.ShouldNotBeNull();
-        result.Data.NameInfo.Gender.ShouldBe("Female");
+        result.Data.NameInfo.Gender.ShouldBe(2);
         result.Data.NameInfo.FirstName.ShouldBe("Alice");
         result.Data.NameInfo.LastName.ShouldBe("Johnson");
         result.Data.LocationInfo.ShouldBeNull();
@@ -302,7 +300,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
+                Gender = 1,
                 FirstName = "Bob",
                 LastName = "Wilson"
             },
@@ -359,7 +357,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Female",
+                Gender = 2,
                 FirstName = "Sarah",
                 LastName = "Davis"
             }
@@ -401,7 +399,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         var finalResult = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
         finalResult.ShouldNotBeNull();
         finalResult.NameInfo.ShouldNotBeNull();
-        finalResult.NameInfo.Gender.ShouldBe("Female");
+        finalResult.NameInfo.Gender.ShouldBe(2);
         finalResult.NameInfo.FirstName.ShouldBe("Sarah");
         finalResult.NameInfo.LastName.ShouldBe("Davis");
         finalResult.LocationInfo.ShouldNotBeNull();
@@ -444,7 +442,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
+                Gender = 1,
                 FirstName = "Mike",
                 LastName = "Brown"
             },
@@ -470,7 +468,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
+                Gender = 1,
                 FirstName = "Michael",
                 LastName = "Brown"
             }
@@ -526,7 +524,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "", // Empty
+                Gender = 0, // Empty
                 FirstName = "John",
                 LastName = "Doe"
             }
@@ -602,7 +600,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Female",
+                Gender = 2,
                 FirstName = "Emma",
                 LastName = "Taylor"
             },
@@ -659,7 +657,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
+                Gender = 1,
                 FirstName = "John",
                 LastName = "Doe"
             },
@@ -707,7 +705,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Female",
+                Gender = 2,
                 FirstName = "小美",
                 LastName = "王"
             },
@@ -755,7 +753,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
+                Gender = 1,
                 FirstName = "Carlos",
                 LastName = "Rodriguez"
             },
@@ -803,7 +801,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         {
             NameInfo = new UserNameInfoDto
             {
-                Gender = "Male",
+                Gender = 1,
                 FirstName = "John",
                 LastName = "Doe"
             },

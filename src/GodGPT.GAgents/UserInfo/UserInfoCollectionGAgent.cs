@@ -62,7 +62,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         // Validate required fields if they are being updated
         if (updateDto.NameInfo != null)
         {
-            if (string.IsNullOrWhiteSpace(updateDto.NameInfo.Gender) || 
+            if ((updateDto.NameInfo.Gender != 1 &&  updateDto.NameInfo.Gender != 2) || 
                 string.IsNullOrWhiteSpace(updateDto.NameInfo.FirstName) || 
                 string.IsNullOrWhiteSpace(updateDto.NameInfo.LastName))
             {
@@ -282,7 +282,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         {
             FirstName = State.FirstName,
             LastName = State.LastName,
-            Gender = State.Gender ?? "N/A",
+            Gender = State.Gender,
             Day = State.Day,
             Month = State.Month,
             Year = State.Year,
@@ -368,7 +368,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
     /// </summary>
     private bool IsCollectionCompleted()
     {
-        return !string.IsNullOrWhiteSpace(State.Gender) &&
+        return State.Gender !=0 &&
                !string.IsNullOrWhiteSpace(State.FirstName) &&
                !string.IsNullOrWhiteSpace(State.LastName) &&
                !string.IsNullOrWhiteSpace(State.Country) &&
@@ -405,7 +405,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 state.LastUpdated = updateEvent.UpdatedAt;
                 
                 // Update name information if provided and not empty
-                if (!string.IsNullOrWhiteSpace(updateEvent.Gender)) state.Gender = updateEvent.Gender;
+                if (updateEvent.Gender.HasValue && updateEvent.Gender !=0 ) state.Gender = updateEvent.Gender.Value;
                 if (!string.IsNullOrWhiteSpace(updateEvent.FirstName)) state.FirstName = updateEvent.FirstName;
                 if (!string.IsNullOrWhiteSpace(updateEvent.LastName)) state.LastName = updateEvent.LastName;
                 
@@ -447,7 +447,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 state.IsInitialized = false;
                 state.CreatedAt = default;
                 state.LastUpdated = default;
-                state.Gender = null;
+                state.Gender = 0;
                 state.FirstName = null;
                 state.LastName = null;
                 state.Country = null;

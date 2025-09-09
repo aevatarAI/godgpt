@@ -21,9 +21,10 @@ public class GetUserInfoOptionsAsyncTest : AevatarOrleansTestBase<AevatarGodGPTT
         // Arrange
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(Guid.NewGuid());
         var language = GodGPTLanguage.English;
+        RequestContext.Set("GodGPTLanguage",language.ToString());
 
         // Act
-        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync(language);
+        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -50,9 +51,10 @@ public class GetUserInfoOptionsAsyncTest : AevatarOrleansTestBase<AevatarGodGPTT
         // Arrange
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(Guid.NewGuid());
         var language = GodGPTLanguage.TraditionalChinese;
+        RequestContext.Set("GodGPTLanguage",language.ToString());
 
         // Act
-        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync(language);
+        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -79,9 +81,10 @@ public class GetUserInfoOptionsAsyncTest : AevatarOrleansTestBase<AevatarGodGPTT
         // Arrange
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(Guid.NewGuid());
         var language = GodGPTLanguage.Spanish;
+        RequestContext.Set("GodGPTLanguage",language.ToString());
 
         // Act
-        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync(language);
+        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -108,9 +111,10 @@ public class GetUserInfoOptionsAsyncTest : AevatarOrleansTestBase<AevatarGodGPTT
         // Arrange
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(Guid.NewGuid());
         var language = GodGPTLanguage.English;
+        RequestContext.Set("GodGPTLanguage",language.ToString());
 
         // Act
-        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync(language);
+        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -145,9 +149,10 @@ public class GetUserInfoOptionsAsyncTest : AevatarOrleansTestBase<AevatarGodGPTT
         // Arrange
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(Guid.NewGuid());
         var language = (GodGPTLanguage)999; // Invalid/unsupported language
+        RequestContext.Set("GodGPTLanguage",language.ToString());
 
         // Act
-        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync(language);
+        var result = await userInfoCollectionGAgent.GetUserInfoOptionsAsync();
 
         // Assert
         result.ShouldNotBeNull();

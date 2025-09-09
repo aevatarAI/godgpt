@@ -11,7 +11,7 @@ public class UserInfoCollectionGAgentState : StateBase
     [Id(3)] public DateTime LastUpdated { get; set; }
     
     // Name information (Step 2)
-    [Id(4)] public string Gender { get; set; }
+    [Id(4)] public int Gender { get; set; } //1:male 2:female
     [Id(5)] public string FirstName { get; set; }
     [Id(6)] public string LastName { get; set; }
     

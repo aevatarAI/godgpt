@@ -23,7 +23,7 @@ public class InitializeUserInfoCollectionLogEvent : UserInfoCollectionLogEvent
 [GenerateSerializer]
 public class UpdateUserInfoCollectionLogEvent : UserInfoCollectionLogEvent
 {
-    [Id(0)] public string Gender { get; set; }
+    [Id(0)] public int? Gender { get; set; }
     [Id(1)] public string FirstName { get; set; }
     [Id(2)] public string LastName { get; set; }
     [Id(3)] public string Country { get; set; }
