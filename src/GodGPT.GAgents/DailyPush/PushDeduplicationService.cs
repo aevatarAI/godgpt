@@ -20,7 +20,7 @@ public class PushDeduplicationService : IPushDeduplicationService
     
     // Testing suffix for deployment control - modify this value before each release testing
     // Set to null for production, set to any string for testing (e.g., "v1.2.3", "test_round_2")
-    private static readonly string? TESTING_SUFFIX = null; // Production mode: using standard Redis keys
+    private static readonly string? TESTING_SUFFIX = "timezone_index_fix_v2"; // Testing timezone index fix for V2 devices
     
     // TTL for Redis keys (24 hours for daily push deduplication)
     private static readonly TimeSpan KEY_TTL = TimeSpan.FromHours(24);

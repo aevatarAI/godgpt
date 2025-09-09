@@ -1224,6 +1224,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 state.MaxShareCount = initializeNewUserStatusLogEvent.MaxShareCount;
                 break;
             case RegisterOrUpdateDeviceEventLog registerDeviceEvent:
+                // V1 compatibility: Keep V1 state but don't use in logic
                 // Remove old token mapping if token changed
                 if (!string.IsNullOrEmpty(registerDeviceEvent.OldPushToken))
                 {
@@ -1552,20 +1553,20 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // 1. Find devices to remove based on age and status
         var devicesToRemove = new List<string>();
 
-        // Collect expired devices (30+ days old)
-        var expiredDevices = State.UserDevices.Values
+        // 🔥 V2-ONLY: Collect expired devices (30+ days old) from V2 structure
+        var expiredDevices = State.UserDevicesV2.Values
             .Where(d => d.LastTokenUpdate <= thirtyDaysAgo)
             .Select(d => d.DeviceId)
             .ToList();
 
-        // Collect long-disabled devices (7+ days disabled)
-        var disabledDevices = State.UserDevices.Values
+        // 🔥 V2-ONLY: Collect long-disabled devices (7+ days disabled) from V2 structure
+        var disabledDevices = State.UserDevicesV2.Values
             .Where(d => !d.PushEnabled && d.LastTokenUpdate <= sevenDaysAgo)
             .Select(d => d.DeviceId)
             .ToList();
 
-        // 2. Handle duplicates: same deviceId, keep the most recent one
-        var duplicateGroups = State.UserDevices.Values
+        // 🔥 V2-ONLY: Handle duplicates in V2 structure: same deviceId, keep the most recent one
+        var duplicateGroups = State.UserDevicesV2.Values
             .GroupBy(d => d.DeviceId)
             .Where(g => g.Count() > 1)
             .ToList();
@@ -1634,9 +1635,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 
                 Logger.LogInformation("🧹 Cleaned up {Count} expired read status entries for user {UserId} (kept: {Current}, {Yesterday})", 
                     keysToRemove.Count, State.UserId, currentDateKey, yesterdayDateKey);
-                
-                await ConfirmEvents();
-            }
+            
+            await ConfirmEvents();
+        }
         }
         catch (Exception ex)
         {
@@ -1646,12 +1647,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     // Concurrent protection for daily push processing per user
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _pushSemaphores = new();
-    
+
     public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
     {
         // 🔒 Acquire user-level semaphore to prevent concurrent push processing
         var userSemaphore = _pushSemaphores.GetOrAdd(State.UserId, _ => new SemaphoreSlim(1, 1));
-        
+
         await userSemaphore.WaitAsync();
         try
     {
@@ -1673,8 +1674,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
             if (hasAnyReadToday)
             {
-                // Get device info for logging
-                var devicesInTimezone = State.UserDevices.Values
+                // 🔥 V2-ONLY: Get device info for logging from V2 structure
+                var devicesInTimezone = State.UserDevicesV2.Values
                     .Where(d => d.TimeZoneId == timeZoneId)
                     .Select(d => new { 
                         DeviceId = d.DeviceId, 
@@ -1723,8 +1724,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             
         if (enabledDevices.Count == 0)
         {
-            Logger.LogWarning("No enabled devices for daily push - User {UserId}, TimeZone {TimeZone}, Total devices: {TotalDevices}", 
-                State.UserId, timeZoneId, State.UserDevices.Count);
+            Logger.LogWarning("No enabled devices for daily push - User {UserId}, TimeZone {TimeZone}, Total V2 devices: {TotalDevices}", 
+                State.UserId, timeZoneId, State.UserDevicesV2.Count);
             return;
         }
         
@@ -1992,18 +1993,20 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             IsRead = State.DailyPushReadStatus.TryGetValue(readKey, out var isRead) && isRead,
             ReadKey = readKey,
-            HasDevice = State.UserDevices.ContainsKey(deviceId),
-            DeviceInfo = State.UserDevices.TryGetValue(deviceId, out var device) ? new
+            HasDevice = State.UserDevicesV2.ContainsKey(deviceId),
+            DeviceInfo = State.UserDevicesV2.TryGetValue(deviceId, out var deviceV2) ? new
             {
-                DeviceId = device.DeviceId,
-                PushToken = !string.IsNullOrEmpty(device.PushToken) 
-                    ? device.PushToken.Substring(0, Math.Min(12, device.PushToken.Length)) + "..." 
+                DeviceId = deviceV2.DeviceId,
+                PushToken = !string.IsNullOrEmpty(deviceV2.PushToken) 
+                    ? deviceV2.PushToken.Substring(0, Math.Min(12, deviceV2.PushToken.Length)) + "..." 
                     : "EMPTY",
-                PushEnabled = device.PushEnabled,
-                TimeZoneId = device.TimeZoneId,
-                Language = device.PushLanguage,
-                RegisteredAt = device.RegisteredAt.ToString("yyyy-MM-dd HH:mm:ss"),
-                LastTokenUpdate = device.LastTokenUpdate.ToString("yyyy-MM-dd HH:mm:ss")
+                PushEnabled = deviceV2.PushEnabled,
+                TimeZoneId = deviceV2.TimeZoneId,
+                Language = deviceV2.PushLanguage,
+                RegisteredAt = deviceV2.RegisteredAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                LastTokenUpdate = deviceV2.LastTokenUpdate.ToString("yyyy-MM-dd HH:mm:ss"),
+                Platform = deviceV2.Platform,
+                Status = deviceV2.Status
             } : null
         };
         
@@ -2039,7 +2042,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             // 🔄 Get unified device list (V1 + migrated V2)
             var allDevicesV2 = await GetAllDevicesV2Async();
-            var v1DevicesCount = State.UserDevices.Count;
+            var v1DevicesCount = 0; // V1 devices no longer used in logic
             var v2DevicesCount = State.UserDevicesV2.Count;
             // ✅ V2-only: No migration tracking needed
             
@@ -2467,7 +2470,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         
         // Store old values for cleanup and change detection
         var oldPushToken = deviceInfo.PushToken;
+        var oldTimeZone = isNewDevice ? null : deviceInfo.TimeZoneId;
         var tokenChanged = oldPushToken != pushToken;
+        var timeZoneChanged = oldTimeZone != timeZoneId;
         
         // Update device information
         deviceInfo.DeviceId = deviceId;
@@ -2538,6 +2543,15 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         
         await ConfirmEvents();
         
+        // 🎯 CRITICAL: Update timezone index for V2 devices  
+        // This ensures the user appears in PushSubscriberIndexGAgent for coordinated push
+        if (isNewDevice || timeZoneChanged)
+        {
+            await UpdateTimezoneIndexAsync(oldTimeZone, timeZoneId);
+            Logger.LogInformation("🌍 V2 Device timezone index updated: User {UserId} from {OldTZ} to {NewTZ}", 
+                State.UserId, oldTimeZone ?? "none", timeZoneId);
+        }
+        
         Logger.LogInformation("📱 V2 Device {Action}: DeviceId={DeviceId}, PushToken={TokenPrefix}..., " +
             "TimeZone={TimeZone}, Language={Language}, Enabled={Enabled}, Platform={Platform}",
             isNewDevice ? "registered" : "updated", deviceId, 
@@ -2560,11 +2574,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
     
     /// <summary>
-    /// Get all V1 devices (legacy data)
+    /// Get all V1 devices (legacy data) - DEPRECATED: Use GetAllDevicesV2Async()
     /// </summary>
     public async Task<List<UserDeviceInfo>> GetAllDevicesV1Async()
     {
-        return State.UserDevices.Values.ToList();
+        // 🔥 V1 devices no longer used in logic - return empty list
+        return new List<UserDeviceInfo>();
     }
     
     /// <summary>
@@ -2848,29 +2863,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 ["timestamp"] = DateTime.UtcNow.ToString("O")
             };
 
-            // Check V1 devices
-            var v1DevicesToRemove = State.UserDevices.Values
-                .Where(d => d.PushToken == pushToken)
-                .Select(d => d.DeviceId)
-                .ToList();
-
-            if (v1DevicesToRemove.Any())
-            {
-                devicesToRemove.AddRange(v1DevicesToRemove);
-                cleanupDetails["v1_devices"] = string.Join(",", v1DevicesToRemove);
-                
-                Logger.LogInformation("🧹 Marking {Count} V1 devices for cleanup due to invalid token - Devices: {DeviceIds}, Error: {ErrorCode}", 
-                    v1DevicesToRemove.Count, string.Join(",", v1DevicesToRemove), errorCode);
-
-                // Remove V1 devices
-                RaiseEvent(new CleanExpiredDevicesEventLog
-                {
-                    DeviceIdsToRemove = v1DevicesToRemove,
-                    CleanupTime = DateTime.UtcNow,
-                    CleanupReason = $"fcm_token_invalid_{errorCode}",
-                    RemovedCount = v1DevicesToRemove.Count
-                });
-            }
+            // 🔥 V1 devices no longer used in logic - skip V1 token cleanup
 
             // Check V2 devices
             var v2DevicesToRemove = State.UserDevicesV2.Values
