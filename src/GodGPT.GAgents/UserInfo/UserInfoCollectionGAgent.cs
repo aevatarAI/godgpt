@@ -56,7 +56,8 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
 
     public async Task<UserInfoCollectionResponseDto> UpdateUserInfoCollectionAsync(UpdateUserInfoCollectionDto updateDto)
     {
-        _logger.LogInformation("[UserInfoCollectionGAgent][UpdateUserInfoCollectionAsync] Updating user info collection");
+        var userId = this.GetPrimaryKey();
+        _logger.LogInformation("[UserInfoCollectionGAgent][UpdateUserInfoCollectionAsync] Updating user info collection userId:{userId}",userId);
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
 
         // Validate required fields if they are being updated
@@ -226,7 +227,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         
         RaiseEvent(new UpdateUserInfoCollectionLogEvent
         {
-            UserId = this.GetPrimaryKey(),
+            UserId = userId,
             Gender = updateDto.NameInfo?.Gender,
             FirstName = updateDto.NameInfo?.FirstName,
             LastName = updateDto.NameInfo?.LastName,
@@ -442,7 +443,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 if (updateEvent.SourceChannelsCode != null && updateEvent.SourceChannelsCode.Count > 0)
                     state.SourceChannelsCode = updateEvent.SourceChannelsCode;
                 
-                _logger.LogDebug("[UserInfoCollectionGAgent][GAgentTransitionState] Updated user info collection, isFirstUpdate: {IsFirstUpdate}", isFirstUpdate);
+                _logger.LogDebug("[UserInfoCollectionGAgent][GAgentTransitionState] Updated user info collection,userId:{userId} isFirstUpdate: {IsFirstUpdate}", updateEvent.UserId,isFirstUpdate);
                 break;
                 
             case ClearUserInfoCollectionLogEvent clearEvent:
