@@ -40,6 +40,8 @@ public class UpdateUserInfoCollectionLogEvent : UserInfoCollectionLogEvent
     // Source channels codes (Step 7) - Enum values for statistics
     [Id(13)] public List<int> SourceChannelsCode { get; set; } = new List<int>();
     [Id(14)] public DateTime UpdatedAt { get; set; }
+    [Id(15)] public Guid UserId { get; set; }
+
 }
 
 /// <summary>

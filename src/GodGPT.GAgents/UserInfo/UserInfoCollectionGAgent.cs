@@ -226,6 +226,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         
         RaiseEvent(new UpdateUserInfoCollectionLogEvent
         {
+            UserId = this.GetPrimaryKey(),
             Gender = updateDto.NameInfo?.Gender,
             FirstName = updateDto.NameInfo?.FirstName,
             LastName = updateDto.NameInfo?.LastName,
@@ -400,6 +401,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 if (isFirstUpdate)
                 {
                     state.IsInitialized = true;
+                    state.UserId = updateEvent.UserId;
                     state.CreatedAt = updateEvent.UpdatedAt;
                 }
                 state.LastUpdated = updateEvent.UpdatedAt;
@@ -444,6 +446,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 break;
                 
             case ClearUserInfoCollectionLogEvent clearEvent:
+                state.UserId = Guid.Empty;
                 state.IsInitialized = false;
                 state.CreatedAt = default;
                 state.LastUpdated = default;
