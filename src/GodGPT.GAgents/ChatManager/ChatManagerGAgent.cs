@@ -1480,153 +1480,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     // === Daily Push Notification Methods ===
 
-    public async Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage)
-    {
-        var isNewDevice = !State.UserDevices.ContainsKey(deviceId);
-        var deviceInfo = isNewDevice ? new UserDeviceInfo() : 
-            new UserDeviceInfo
-            {
-                DeviceId = State.UserDevices[deviceId].DeviceId,
-                PushToken = State.UserDevices[deviceId].PushToken,
-                TimeZoneId = State.UserDevices[deviceId].TimeZoneId,
-                PushLanguage = State.UserDevices[deviceId].PushLanguage,
-                PushEnabled = State.UserDevices[deviceId].PushEnabled,
-                RegisteredAt = State.UserDevices[deviceId].RegisteredAt,
-                LastTokenUpdate = State.UserDevices[deviceId].LastTokenUpdate
-            };
-        
-        // Store old values for cleanup and change detection
-        var oldPushToken = deviceInfo.PushToken;
-        var oldTimeZone = deviceInfo.TimeZoneId;
-        var oldPushEnabled = deviceInfo.PushEnabled;
-        var oldPushLanguage = deviceInfo.PushLanguage;
-        
-        // Update device information
-        deviceInfo.DeviceId = deviceId;
-        var hasTokenChanged = false;
-        if (!string.IsNullOrEmpty(pushToken) && pushToken != oldPushToken)
-        {
-            deviceInfo.PushToken = pushToken;
-            deviceInfo.LastTokenUpdate = DateTime.UtcNow;
-            hasTokenChanged = true;
-        }
-        var hasTimeZoneChanged = false;
-        if (!string.IsNullOrEmpty(timeZoneId) && timeZoneId != oldTimeZone)
-        {
-            deviceInfo.TimeZoneId = timeZoneId;
-            hasTimeZoneChanged = true;
-        }
-        // Always ensure device has a valid timezone - default to UTC if empty
-        if (string.IsNullOrEmpty(deviceInfo.TimeZoneId))
-        {
-            deviceInfo.TimeZoneId = "UTC";
-            Logger.LogWarning("Device {DeviceId} has empty timezone, defaulting to UTC", deviceId);
-        }
-        var hasLanguageChanged = false;
-        if (!string.IsNullOrEmpty(pushLanguage) && pushLanguage != oldPushLanguage)
-        {
-            deviceInfo.PushLanguage = pushLanguage;
-            hasLanguageChanged = true;
-            Logger.LogInformation("💾 Device language updated: DeviceId={DeviceId}, PushLanguage={PushLanguage}", 
-                deviceId, pushLanguage);
-        }
-        var hasPushEnabledChanged = false;
-        if (pushEnabled.HasValue && pushEnabled.Value != oldPushEnabled)
-        {
-            deviceInfo.PushEnabled = pushEnabled.Value;
-            hasPushEnabledChanged = true;
-        }
-        
-        if (isNewDevice)
-        {
-            deviceInfo.RegisteredAt = DateTime.UtcNow;
-        }
-        
-        // Check if there are any actual changes
-        var hasAnyChanges = hasTokenChanged || hasTimeZoneChanged || hasLanguageChanged || hasPushEnabledChanged;
-        
-        // Only raise event and update state when there are actual changes or it's a new device
-        if (isNewDevice || hasAnyChanges)
-        {
-        // Use event-driven state update
-        RaiseEvent(new RegisterOrUpdateDeviceEventLog
-        {
-            DeviceId = deviceId,
-            DeviceInfo = deviceInfo,
-            IsNewDevice = isNewDevice,
-            OldPushToken = (!string.IsNullOrEmpty(oldPushToken) && oldPushToken != deviceInfo.PushToken) ? oldPushToken : null
-        });
-        
-        await ConfirmEvents();
-        }
-        
-        // Synchronize timezone index when:
-        // 1. Timezone changed
-        // 2. Push enabled status changed from false to true
-        // 3. New device with push enabled
-        var newTimeZone = deviceInfo.TimeZoneId;
-        var newPushEnabled = deviceInfo.PushEnabled;
-        
-        var shouldUpdateIndex = false;
-        var reason = "";
-        
-        if (!string.IsNullOrEmpty(newTimeZone) && oldTimeZone != newTimeZone)
-        {
-            // Timezone changed - update both old and new timezone indexes
-            await UpdateTimezoneIndexAsync(oldTimeZone, newTimeZone);
-            shouldUpdateIndex = false; // Already handled above
-            reason = "timezone changed";
-        }
-        else if (newPushEnabled && (!oldPushEnabled || isNewDevice))
-        {
-            // Push enabled for new device or re-enabled for existing device
-            shouldUpdateIndex = true;
-            reason = isNewDevice ? "new device with push enabled" : "push re-enabled";
-        }
-        else if (!newPushEnabled && oldPushEnabled)
-        {
-            // Push disabled - remove from timezone index
-            if (!string.IsNullOrEmpty(newTimeZone))
-            {
-                var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
-                await indexGAgent.InitializeAsync(newTimeZone);
-                await indexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
-                Logger.LogInformation("Removed user {UserId} from timezone index {TimeZone} - push disabled", 
-                    State.UserId, newTimeZone);
-            }
-            shouldUpdateIndex = false;
-            reason = "push disabled";
-        }
-        
-        if (shouldUpdateIndex && !string.IsNullOrEmpty(newTimeZone))
-        {
-            // Add user to timezone index (ensure they're indexed for push delivery)
-            var indexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
-            await indexGAgent.InitializeAsync(newTimeZone);
-            await indexGAgent.AddUserToTimezoneAsync(State.UserId);
-            Logger.LogInformation("Added user {UserId} to timezone index {TimeZone} - {Reason}", 
-                State.UserId, newTimeZone, reason);
-        }
-        
-        // Only log device updates when there are actual changes or it's a new device
-        if (isNewDevice || hasAnyChanges)
-        {
-        Logger.LogInformation($"Device {(isNewDevice ? "registered" : "updated")}: {deviceId}");
-        }
-
-        // 🧹 Periodic device cleanup (every 15 device registrations/updates)
-        if (State.UserDevices.Count > 0 && State.UserDevices.Count % 15 == 0)
-        {
-            await CleanupExpiredDevicesAsync();
-        }
-
-        return isNewDevice;
-    }
+    // ❌ V1 INTERFACE REMOVED: Use RegisterOrUpdateDeviceV2Async instead
 
     public async Task MarkPushAsReadAsync(string deviceId)
     {
-        // Check if device exists for this user
-        if (State.UserDevices.ContainsKey(deviceId))
+        // ✅ V2 ONLY: Check if device exists in V2 structure
+        if (State.UserDevicesV2.ContainsKey(deviceId))
         {
             var dateKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
             
@@ -1639,23 +1498,32 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             
             await ConfirmEvents();
             
-            Logger.LogInformation($"Marked daily push as read for device: {deviceId} on {dateKey}");
+            Logger.LogInformation($"Marked daily push as read for V2 device: {deviceId} on {dateKey}");
         }
         else
         {
-            Logger.LogWarning($"Device not found for provided deviceId: {deviceId}");
+            Logger.LogWarning($"V2 Device not found for provided deviceId: {deviceId}");
         }
     }
 
     public async Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId)
     {
-        // 🧹 Auto-cleanup devices periodically (every 20 requests)
-        if (State.UserDevices.Count > 0 && State.UserDevices.Count % 20 == 0)
+        // ✅ V2 ONLY: Convert V2 to V1 format for compatibility
+        if (State.UserDevicesV2.TryGetValue(deviceId, out var deviceV2))
         {
-            await CleanupExpiredDevicesAsync();
+            return new UserDeviceInfo
+            {
+                DeviceId = deviceV2.DeviceId,
+                PushToken = deviceV2.PushToken,
+                TimeZoneId = deviceV2.TimeZoneId,
+                PushLanguage = deviceV2.PushLanguage,
+                PushEnabled = deviceV2.PushEnabled,
+                RegisteredAt = deviceV2.RegisteredAt,
+                LastTokenUpdate = deviceV2.LastTokenUpdate
+            };
         }
-
-        return State.UserDevices.TryGetValue(deviceId, out var device) ? device : new UserDeviceInfo{ PushEnabled = true };
+        
+        return new UserDeviceInfo { PushEnabled = true }; // Default for non-existent devices
     }
 
     public async Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId)
@@ -2159,10 +2027,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         };
     }
 
-    public async Task<List<UserDeviceInfo>> GetAllUserDevicesAsync()
-    {
-        return State.UserDevices.Values.ToList();
-    }
+    // ❌ V1 METHOD REMOVED: Use GetAllDevicesV2Async or GetUnifiedDevicesAsync instead
 
     /// <summary>
     /// Log detailed information for all devices registered under this user
@@ -3053,8 +2918,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
     
     /// <summary>
-    /// Get V2 devices in V1 format for compatibility
-    /// ⚠️ V1 SUPPORT REMOVED: Only V2 devices are used, no fallback
+    /// Get V2 devices in V1 format for compatibility - V2 ONLY
+    /// ❌ V1 FALLBACK REMOVED: Pure V2 architecture
     /// </summary>
     public async Task<List<UserDeviceInfo>> GetUnifiedDevicesAsync()
     {
@@ -3070,7 +2935,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             LastTokenUpdate = v2.LastTokenUpdate
         }).ToList();
         
-        Logger.LogDebug("GetUnifiedDevicesAsync: Using V2-only devices. Count: {DeviceCount}", v2Devices.Count);
+        Logger.LogDebug("GetUnifiedDevicesAsync: V2-only devices. Count: {DeviceCount}", v2Devices.Count);
         
         return v2Devices;
     }
