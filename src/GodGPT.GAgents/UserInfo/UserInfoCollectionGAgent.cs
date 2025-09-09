@@ -405,6 +405,12 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                     state.UserId = updateEvent.UserId;
                     state.CreatedAt = updateEvent.UpdatedAt;
                 }
+
+                if (state.UserId == null || state.UserId == Guid.Empty)
+                {
+                    state.UserId = updateEvent.UserId;
+                }
+
                 state.LastUpdated = updateEvent.UpdatedAt;
                 
                 // Update name information if provided and not empty
