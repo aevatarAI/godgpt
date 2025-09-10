@@ -118,6 +118,22 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     {
         try
         {
+            var dateKey = targetDate.ToString("yyyy-MM-dd");
+            
+            // 🎯 Check if content has already been selected for this date (same-day cache)
+            if (State.DailySelectedContentCache.TryGetValue(dateKey, out var cachedContentIds))
+            {
+                _logger.LogInformation("🔄 Returning cached content selection for {Date}: [{ContentIds}] (ensuring same-day consistency)", 
+                    dateKey, string.Join(", ", cachedContentIds));
+                    
+                // Return cached content (filter out any inactive contents)
+                return cachedContentIds
+                    .Select(id => State.Contents.TryGetValue(id, out var content) ? content : null)
+                    .Where(c => c != null && c.IsActive)
+                    .Cast<DailyNotificationContent>()
+                    .ToList();
+            }
+            
             var activeContents = State.Contents.Values.Where(c => c.IsActive).ToList();
             if (activeContents.Count == 0)
             {
@@ -179,16 +195,23 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                     selected.LocalizedContents.TryGetValue("en", out var enContent) ? enContent.Title : "N/A");
             }
 
+            // 🎯 Cache the selection result for same-day consistency
+            var selectedContentIds = selectedContents.Select(c => c.Id).ToList();
+            State.DailySelectedContentCache[dateKey] = selectedContentIds;
+            
+            // 🧹 Clean old cache entries (called from State.MarkContentAsUsed via ContentSelectionEventLog)
+            
             // Raise selection event
             RaiseEvent(new ContentSelectionEventLog
             {
                 SelectionDate = targetDate,
-                SelectedContentIds = selectedContents.Select(c => c.Id).ToList(),
+                SelectedContentIds = selectedContentIds,
                 Count = selectedContents.Count
             });
 
             await ConfirmEvents();
-            _logger.LogInformation($"Selected {selectedContents.Count} contents for date {targetDate:yyyy-MM-dd}");
+            _logger.LogInformation("✅ Selected and cached {Count} contents for date {Date}: [{ContentIds}]", 
+                selectedContents.Count, targetDate.ToString("yyyy-MM-dd"), string.Join(", ", selectedContentIds));
             return selectedContents;
         }
         catch (Exception ex)
@@ -424,6 +447,11 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     public async Task<string?> GetTimezoneFromGuidAsync(Guid timezoneGuid)
     {
         return State.TimezoneGuidMappings.TryGetValue(timezoneGuid, out var timezoneId) ? timezoneId : null;
+    }
+
+    public async Task<Dictionary<Guid, string>> GetAllTimezoneMappingsAsync()
+    {
+        return new Dictionary<Guid, string>(State.TimezoneGuidMappings);
     }
 
     /// <summary>

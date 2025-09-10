@@ -48,6 +48,11 @@ public interface IDailyContentGAgent : IGAgent, IGrainWithGuidKey
     /// Get timezone ID from GUID (for reverse lookup)
     /// </summary>
     Task<string?> GetTimezoneFromGuidAsync(Guid timezoneGuid);
+    
+    /// <summary>
+    /// Get all registered timezone mappings (for global operations)
+    /// </summary>
+    Task<Dictionary<Guid, string>> GetAllTimezoneMappingsAsync();
 }
 
 /// <summary>
