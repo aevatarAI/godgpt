@@ -52,7 +52,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     private const string FormattedDate = "yyyy-MM-dd";
     const string SessionVersion = "1.0.0";
     private readonly ILocalizationService _localizationService;
-
+    
     public ChatGAgentManager(ILocalizationService localizationService)
     {
         _localizationService = localizationService;
@@ -1130,7 +1130,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             case CreateSessionInfoEventLog @createSessionInfo:
                 if (state.SessionInfoList.IsNullOrEmpty() && state.RegisteredAtUtc == null)
                 {
-                    state.RegisteredAtUtc = @createSessionInfo.EventTime;
+                    state.RegisteredAtUtc = DateTime.UtcNow;
                 }
                 state.SessionInfoList.Add(new SessionInfo()
                 {
@@ -2499,43 +2499,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
     
     
-    /// <summary>
-    /// Clear all V2 device data for testing purposes
-    /// WARNING: This will permanently delete all V2 device registrations
-    /// </summary>
-    /// <returns>Number of devices cleared</returns>
-    public async Task<int> ClearAllV2DevicesAsync()
-    {
-        if (State.UserDevicesV2.Count == 0)
-        {
-            Logger.LogInformation("🧹 No V2 devices to clear for user {UserId}", State.UserId);
-            return 0;
-        }
-
-        var deviceCount = State.UserDevicesV2.Count;
-        var tokenCount = State.TokenToDeviceMapV2.Count;
-
-        // Clear all V2 device data
-        RaiseEvent(new CleanupDevicesV2EventLog
-        {
-            DeviceIdsToRemove = State.UserDevicesV2.Keys.ToList(),
-            RemovedCount = deviceCount,
-            CleanupReason = "manual_v2_clear",
-            CleanupDetails = new Dictionary<string, string>
-            {
-                ["tokens_cleared"] = tokenCount.ToString(),
-                ["trigger"] = "ClearAllV2DevicesAsync",
-                ["timestamp"] = DateTime.UtcNow.ToString("O")
-            }
-        });
-
-        await ConfirmEvents();
-
-        Logger.LogWarning("🧹 Cleared ALL V2 device data for user {UserId}: {DeviceCount} devices, {TokenCount} tokens",
-            State.UserId, deviceCount, tokenCount);
-
-        return deviceCount;
-    }
 
     // === Coordinated Push Methods ===
 
@@ -2934,24 +2897,5 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
     }
 
-    /// <summary>
-    /// Clear push deduplication status for testing purposes
-    /// Removes Redis keys for specified device/date/timezone
-    /// </summary>
-    public async Task ClearPushStatusForTestingAsync(string deviceId, DateOnly date, string timeZoneId)
-    {
-        var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
-        
-        if (deduplicationService != null)
-        {
-            await deduplicationService.ResetDevicePushStatusAsync(deviceId, date, timeZoneId);
-            Logger.LogInformation("🧪 Testing: Cleared push status for device {DeviceId} on {Date} in {TimeZone}", 
-                deviceId, date, timeZoneId);
-        }
-        else
-        {
-            Logger.LogWarning("⚠️ IPushDeduplicationService not available for clearing push status");
-        }
-    }
 
 }
