@@ -92,7 +92,14 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 {
                     state.MarkContentAsUsed(selectionEvent.SelectionDate, contentId);
                 }
+                break;
 
+            case UpdateDailyContentCacheEventLog cacheEvent:
+                state.DailySelectedContentCache[cacheEvent.DateKey] = cacheEvent.SelectedContentIds;
+                break;
+
+            case UpdateTimezoneGuidMappingEventLog mappingEvent:
+                state.TimezoneGuidMappings[mappingEvent.TimezoneGuid] = mappingEvent.TimezoneId;
                 break;
 
             case ImportContentsEventLog importEvent:
@@ -197,7 +204,13 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
 
             // 🎯 Cache the selection result for same-day consistency
             var selectedContentIds = selectedContents.Select(c => c.Id).ToList();
-            State.DailySelectedContentCache[dateKey] = selectedContentIds;
+            
+            // ✅ Use Event Sourcing for cache update
+            RaiseEvent(new UpdateDailyContentCacheEventLog
+            {
+                DateKey = dateKey,
+                SelectedContentIds = selectedContentIds
+            });
             
             // 🧹 Clean old cache entries (called from State.MarkContentAsUsed via ContentSelectionEventLog)
             
@@ -437,8 +450,14 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     {
         if (!State.TimezoneGuidMappings.ContainsKey(timezoneGuid))
         {
-            State.TimezoneGuidMappings[timezoneGuid] = timezoneId;
+            // ✅ Use Event Sourcing for timezone mapping
+            RaiseEvent(new UpdateTimezoneGuidMappingEventLog
+            {
+                TimezoneGuid = timezoneGuid,
+                TimezoneId = timezoneId
+            });
             await ConfirmEvents();
+            
             _logger.LogInformation("Registered timezone GUID mapping: {Guid} -> {TimezoneId}", timezoneGuid,
                 timezoneId);
         }
@@ -479,7 +498,12 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
             var timezoneGuid = DailyPushConstants.TimezoneToGuid(timezone);
             if (!State.TimezoneGuidMappings.ContainsKey(timezoneGuid))
             {
-                State.TimezoneGuidMappings[timezoneGuid] = timezone;
+                // ✅ Use Event Sourcing for timezone mapping
+                RaiseEvent(new UpdateTimezoneGuidMappingEventLog
+                {
+                    TimezoneGuid = timezoneGuid,
+                    TimezoneId = timezone
+                });
                 registeredCount++;
                 _logger.LogDebug("Pre-registered timezone mapping: {Guid} -> {TimezoneId}", timezoneGuid, timezone);
             }

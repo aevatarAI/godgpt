@@ -55,6 +55,26 @@ public class ContentSelectionEventLog : DailyPushLogEvent
 }
 
 /// <summary>
+/// Daily content cache update event
+/// </summary>
+[GenerateSerializer]
+public class UpdateDailyContentCacheEventLog : DailyPushLogEvent
+{
+    [Id(0)] public string DateKey { get; set; } = "";
+    [Id(1)] public List<string> SelectedContentIds { get; set; } = new();
+}
+
+/// <summary>
+/// Timezone GUID mapping update event
+/// </summary>
+[GenerateSerializer] 
+public class UpdateTimezoneGuidMappingEventLog : DailyPushLogEvent
+{
+    [Id(0)] public Guid TimezoneGuid { get; set; }
+    [Id(1)] public string TimezoneId { get; set; } = "";
+}
+
+/// <summary>
 /// Content import event
 /// </summary>
 [GenerateSerializer]
