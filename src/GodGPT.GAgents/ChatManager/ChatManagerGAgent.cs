@@ -1639,7 +1639,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             
             await ConfirmEvents();
         }
-        }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Failed to cleanup expired read status for user {UserId}", State.UserId);
