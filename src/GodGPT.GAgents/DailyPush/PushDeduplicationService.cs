@@ -18,11 +18,7 @@ public class PushDeduplicationService : IPushDeduplicationService
     private const string MORNING_KEY_PREFIX = "godgpt:push:morning";
     private const string RETRY_KEY_PREFIX = "godgpt:push:retry";
     
-    // Testing suffix for deployment control - modify this value before each release testing
-    // Set to null for production, set to any string for testing (e.g., "v1.2.3", "test_round_2")
-    // ⚠️ CRITICAL: Once deployed to production, DO NOT change this value mid-day!
-    // Changing suffix breaks same-day deduplication and causes content inconsistency
-    private static readonly string? TESTING_SUFFIX = null; // Production mode - stable Redis keys
+    private static readonly string? TESTING_SUFFIX = null;
     
     // TTL for Redis keys (24 hours for daily push deduplication)
     private static readonly TimeSpan KEY_TTL = TimeSpan.FromHours(24);
