@@ -55,6 +55,23 @@ public interface IPushDeduplicationService
     /// <param name="timeZoneId">Target timezone</param>
     /// <param name="isRetryPush">Whether this was a retry push claim to release</param>
     Task ReleasePushClaimAsync(string deviceId, DateOnly date, string timeZoneId, bool isRetryPush);
+    
+    /// <summary>
+    /// Mark device as read for a specific date (device-level read status)
+    /// Uses Redis to store device-level read status across all users
+    /// </summary>
+    /// <param name="deviceId">Device ID</param>
+    /// <param name="date">Read date</param>
+    /// <returns>True if successfully marked as read</returns>
+    Task<bool> MarkDeviceAsReadAsync(string deviceId, DateOnly date);
+    
+    /// <summary>
+    /// Check if device has been read for a specific date (device-level read status)
+    /// </summary>
+    /// <param name="deviceId">Device ID</param>
+    /// <param name="date">Date to check</param>
+    /// <returns>True if device has been read for this date</returns>
+    Task<bool> IsDeviceReadAsync(string deviceId, DateOnly date);
 }
 
 /// <summary>

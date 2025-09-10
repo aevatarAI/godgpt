@@ -5,6 +5,7 @@ using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using Microsoft.Extensions.DependencyInjection;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
@@ -32,6 +33,7 @@ using GodGPT.GAgents.DailyPush.Options;
 using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.Configuration;
 using Json.Schema.Generation;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
@@ -1489,8 +1491,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         if (State.UserDevicesV2.ContainsKey(deviceId))
         {
             var dateKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            var date = DateOnly.FromDateTime(DateTime.UtcNow);
             
-            // Use event-driven state update
+            // 1. Record user-level read status (existing logic)
             RaiseEvent(new MarkDailyPushReadEventLog
             {
                 DateKey = dateKey,
@@ -1499,7 +1502,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             
             await ConfirmEvents();
             
-            Logger.LogInformation($"Marked daily push as read for V2 device: {deviceId} on {dateKey}");
+            // 2. Record device-level read status in Redis (new logic)
+            var deduplicationService = ServiceProvider.GetRequiredService<IPushDeduplicationService>();
+            var deviceReadSuccess = await deduplicationService.MarkDeviceAsReadAsync(deviceId, date);
+            
+            if (deviceReadSuccess)
+            {
+                Logger.LogInformation($"Marked daily push as read for V2 device: {deviceId} on {dateKey} (user-level + device-level)");
+            }
+            else
+            {
+                Logger.LogWarning($"Failed to mark device-level read status for device: {deviceId} on {dateKey}");
+            }
         }
         else
         {
@@ -1771,12 +1785,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 }
                 else if (isRetryPush)
                 {
-                    // Check State: if already read today, skip retry push entirely
-                    if (!bypassReadStatusCheck && State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead)
+                    // Check both user-level and device-level read status
+                    var userRead = !bypassReadStatusCheck && State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+                    var deviceRead = false;
+                    
+                    if (!bypassReadStatusCheck && !userRead)
+                    {
+                        // Only check device-level read status if user-level is not read
+                        deviceRead = await deduplicationService.IsDeviceReadAsync(device.DeviceId, date);
+                    }
+                    
+                    if (userRead || deviceRead)
                     {
                         canSend = false;
-                        Logger.LogInformation("Device BLOCKED (retry, already read): {DeviceId} in {TimeZone}, read on {DateKey}", 
-                            device.DeviceId, timeZoneId, dateKey);
+                        var readType = userRead ? "user-level" : "device-level";
+                        Logger.LogInformation("Device BLOCKED (retry, already read - {ReadType}): {DeviceId} in {TimeZone}, read on {DateKey}", 
+                            readType, device.DeviceId, timeZoneId, dateKey);
                     }
                     else
                     {
@@ -2551,11 +2575,21 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 if (isRetryPush)
                 {
-                    // Check State: if already read today, skip retry push entirely
+                    // Check both user-level and device-level read status
                     var dateKey = date.ToString("yyyy-MM-dd");
-                    if (State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead)
+                    var userRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+                    var deviceRead = false;
+                    
+                    if (!userRead)
                     {
-                        Logger.LogInformation("📖 Device {DeviceId} already read - skipping retry push", device.DeviceId);
+                        // Only check device-level read status if user-level is not read
+                        deviceRead = await deduplicationService.IsDeviceReadAsync(device.DeviceId, date);
+                    }
+                    
+                    if (userRead || deviceRead)
+                    {
+                        var readType = userRead ? "user-level" : "device-level";
+                        Logger.LogInformation("📖 Device {DeviceId} already read ({ReadType}) - skipping retry push", device.DeviceId, readType);
                         return false;
                     }
                     
