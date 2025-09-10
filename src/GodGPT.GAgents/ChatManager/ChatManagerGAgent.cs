@@ -1130,7 +1130,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             case CreateSessionInfoEventLog @createSessionInfo:
                 if (state.SessionInfoList.IsNullOrEmpty() && state.RegisteredAtUtc == null)
                 {
-                    state.RegisteredAtUtc = DateTime.UtcNow;
+                    state.RegisteredAtUtc = @createSessionInfo.EventTime;
                 }
                 state.SessionInfoList.Add(new SessionInfo()
                 {
@@ -1635,6 +1635,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 
                 Logger.LogInformation("🧹 Cleaned up {Count} expired read status entries for user {UserId} (kept: {Current}, {Yesterday})", 
                     keysToRemove.Count, State.UserId, currentDateKey, yesterdayDateKey);
+            }
             
             await ConfirmEvents();
         }
@@ -1657,15 +1658,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         try
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
-            
+        
             Logger.LogDebug("🔒 Acquired push semaphore for user {UserId}, timezone {TimeZone}, pushType: {PushType}", 
                 State.UserId, timeZoneId, isRetryPush ? "retry" : "morning");
             
             // 🧹 Clean up expired read status (keep only today and yesterday)
             await CleanupExpiredReadStatusAsync(targetDate);
         
-        // 📊 Log all user devices for debugging (triggered by push processing)
-        await LogAllUserDevicesAsync($"PUSH_{(isRetryPush ? "RETRY" : "MORNING")}_{targetDate:yyyy-MM-dd}");
         
         // Check if any message has been read for today - if so, skip all pushes
         // Exception: bypass this check when explicitly requested (e.g., test mode main push)
@@ -2032,80 +2031,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     // ❌ V1 METHOD REMOVED: Use GetAllDevicesV2Async or GetUnifiedDevicesAsync instead
 
-    /// <summary>
-    /// Log detailed information for all devices registered under this user
-    /// Provides comprehensive debugging information for push troubleshooting
-    /// </summary>
-    public async Task LogAllUserDevicesAsync(string context = "DEBUG")
-    {
-        try
-        {
-            // 🔄 Get unified device list (V1 + migrated V2)
-            var allDevicesV2 = await GetAllDevicesV2Async();
-            var v1DevicesCount = 0; // V1 devices no longer used in logic
-            var v2DevicesCount = State.UserDevicesV2.Count;
-            // ✅ V2-only: No migration tracking needed
-            
-            var enabledDevicesCount = allDevicesV2.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
-            var disabledDevicesCount = allDevicesV2.Count(d => !d.PushEnabled);
-            var emptyTokenCount = allDevicesV2.Count(d => string.IsNullOrEmpty(d.PushToken));
-            
-            // Group devices by timezone for better organization
-            var devicesByTimezone = allDevicesV2.GroupBy(d => d.TimeZoneId).ToDictionary(g => g.Key, g => g.ToList());
-            
-            // Log summary with V1/V2 breakdown
-            Logger.LogInformation("👤 User {UserId} Device Summary [{Context}]: " +
-                "Total={TotalDevices} (V1={V1Count}, V2={V2Count}), " +
-                "Enabled={EnabledDevices}, Disabled={DisabledDevices}, EmptyToken={EmptyTokens}, " +
-                "Timezones={TimezoneCount}",
-                State.UserId, context, allDevicesV2.Count, v1DevicesCount, v2DevicesCount, 
-                enabledDevicesCount, disabledDevicesCount, emptyTokenCount, devicesByTimezone.Count);
-            
-            // Log detailed device information by timezone
-            if (allDevicesV2.Count > 0)
-            {
-                var deviceDetails = allDevicesV2.Select(device => new
-                {
-                    UserId = State.UserId.ToString(),
-                    DeviceId = device.DeviceId,
-                    PushToken = !string.IsNullOrEmpty(device.PushToken) 
-                        ? device.PushToken.Substring(0, Math.Min(12, device.PushToken.Length)) + "..." 
-                        : "EMPTY",
-                    PushEnabled = device.PushEnabled,
-                    TimeZoneId = device.TimeZoneId,
-                    Language = device.PushLanguage,
-                    RegisteredAt = device.RegisteredAt.ToString("yyyy-MM-dd HH:mm:ss"),
-                    LastTokenUpdate = device.LastTokenUpdate.ToString("yyyy-MM-dd HH:mm:ss")
-                }).ToList();
-                
-                var deviceDetailsJson = System.Text.Json.JsonSerializer.Serialize(deviceDetails, new JsonSerializerOptions 
-                { 
-                    WriteIndented = false,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
-                
-                Logger.LogInformation("📱 User {UserId} All Devices [{Context}]: {DeviceDetails}",
-                    State.UserId, context, deviceDetailsJson);
-                
-                // Log timezone distribution
-                foreach (var (timeZoneId, devices) in devicesByTimezone)
-                {
-                    var enabledInTz = devices.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
-                    Logger.LogInformation("🌍 User {UserId} Timezone {TimeZone} [{Context}]: " +
-                        "{DeviceCount} devices, {EnabledCount} enabled",
-                        State.UserId, timeZoneId, context, devices.Count, enabledInTz);
-                }
-            }
-            else
-            {
-                Logger.LogInformation("📱 User {UserId} has no registered devices [{Context}]", State.UserId, context);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to log user device details for user {UserId} [{Context}]", State.UserId, context);
-        }
-    }
 
     public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
     {
@@ -2573,14 +2498,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         return State.UserDevicesV2.Values.ToList();
     }
     
-    /// <summary>
-    /// Get all V1 devices (legacy data) - DEPRECATED: Use GetAllDevicesV2Async()
-    /// </summary>
-    public async Task<List<UserDeviceInfo>> GetAllDevicesV1Async()
-    {
-        // 🔥 V1 devices no longer used in logic - return empty list
-        return new List<UserDeviceInfo>();
-    }
     
     /// <summary>
     /// Clear all V2 device data for testing purposes

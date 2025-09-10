@@ -67,21 +67,21 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
         {
             case AddContentEventLog addEvent:
                 state.Contents[addEvent.Content.Id] = addEvent.Content;
-                state.LastRefresh = DateTime.UtcNow;
+                state.LastRefresh = addEvent.UpdateTime;
                 break;
 
             case UpdateContentEventLog updateEvent:
                 if (state.Contents.ContainsKey(updateEvent.ContentId))
                 {
                     state.Contents[updateEvent.ContentId] = updateEvent.Content;
-                    state.LastRefresh = DateTime.UtcNow;
+                    state.LastRefresh = updateEvent.UpdateTime;
                 }
 
                 break;
 
             case RemoveContentEventLog removeEvent:
                 state.Contents.Remove(removeEvent.ContentId);
-                state.LastRefresh = DateTime.UtcNow;
+                state.LastRefresh = removeEvent.UpdateTime;
                 break;
 
             case ContentSelectionEventLog selectionEvent:

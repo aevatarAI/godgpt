@@ -45,13 +45,13 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
             case AddUserToTimezoneEventLog addEvent:
                 state.ActiveUsers.Add(addEvent.UserId);
                 state.ActiveUserCount = state.ActiveUsers.Count;
-                state.LastUpdated = DateTime.UtcNow;
+                state.LastUpdated = addEvent.UpdateTime;
                 break;
 
             case RemoveUserFromTimezoneEventLog removeEvent:
                 state.ActiveUsers.Remove(removeEvent.UserId);
                 state.ActiveUserCount = state.ActiveUsers.Count;
-                state.LastUpdated = DateTime.UtcNow;
+                state.LastUpdated = removeEvent.UpdateTime;
                 break;
 
             case BatchUpdateUsersEventLog batchEvent:
@@ -68,7 +68,7 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
                 }
 
                 state.ActiveUserCount = state.ActiveUsers.Count;
-                state.LastUpdated = DateTime.UtcNow;
+                state.LastUpdated = batchEvent.UpdateTime;
                 break;
 
             default:

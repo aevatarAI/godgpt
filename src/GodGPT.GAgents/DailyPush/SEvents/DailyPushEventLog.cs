@@ -22,6 +22,7 @@ public class DailyPushLogEvent : StateLogEventBase<DailyPushLogEvent>
 public class AddContentEventLog : DailyPushLogEvent
 {
     [Id(0)] public DailyNotificationContent Content { get; set; } = null!;
+    [Id(1)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -32,6 +33,7 @@ public class UpdateContentEventLog : DailyPushLogEvent
 {
     [Id(0)] public string ContentId { get; set; } = "";
     [Id(1)] public DailyNotificationContent Content { get; set; } = null!;
+    [Id(2)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -41,6 +43,7 @@ public class UpdateContentEventLog : DailyPushLogEvent
 public class RemoveContentEventLog : DailyPushLogEvent
 {
     [Id(0)] public string ContentId { get; set; } = "";
+    [Id(1)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -103,6 +106,7 @@ public class AddUserToTimezoneEventLog : DailyPushLogEvent
 {
     [Id(0)] public Guid UserId { get; set; }
     [Id(1)] public string TimeZoneId { get; set; } = "";
+    [Id(2)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -113,6 +117,7 @@ public class RemoveUserFromTimezoneEventLog : DailyPushLogEvent
 {
     [Id(0)] public Guid UserId { get; set; }
     [Id(1)] public string TimeZoneId { get; set; } = "";
+    [Id(2)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -123,6 +128,7 @@ public class BatchUpdateUsersEventLog : DailyPushLogEvent
 {
     [Id(0)] public List<TimezoneUpdateRequest> Updates { get; set; } = new();
     [Id(1)] public int UpdatedCount { get; set; }
+    [Id(2)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>

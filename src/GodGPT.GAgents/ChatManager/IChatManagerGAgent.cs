@@ -105,7 +105,6 @@ public interface IChatManagerGAgent : IGAgent
     /// <summary>
     /// Log detailed information for all devices registered under this user
     /// </summary>
-    Task LogAllUserDevicesAsync(string context = "DEBUG");
     
     /// <summary>
     /// Check if user has enabled devices in specific timezone (performance optimization)
