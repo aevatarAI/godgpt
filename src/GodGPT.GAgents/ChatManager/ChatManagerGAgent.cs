@@ -2319,8 +2319,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             using var response = await httpClient.SendAsync(request);
             var responseContent = await response.Content.ReadAsStringAsync();
 
-            // 📱 Log FCM response for debugging
-            Logger.LogDebug("📱 FCM Response: {StatusCode} - Body: {ResponseContent}", 
+            // 📱 Log FCM response for debugging (Information level for visibility)
+            Logger.LogInformation("📱 FCM Response: {StatusCode} - Body: {ResponseContent}", 
                 response.StatusCode, responseContent);
 
             if (response.IsSuccessStatusCode)
