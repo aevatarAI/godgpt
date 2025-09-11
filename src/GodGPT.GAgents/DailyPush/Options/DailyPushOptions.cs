@@ -24,6 +24,13 @@ public class DailyPushOptions
     public Guid ReminderTargetId { get; set; } = Guid.Empty;
     
     /// <summary>
+    /// Global push notification switch
+    /// When false, all push notifications are disabled regardless of other settings
+    /// Default: false (disabled)
+    /// </summary>
+    public bool PushEnabled { get; set; } = false;
+    
+    /// <summary>
     /// File paths configuration
     /// </summary>
     public FilePathsOptions FilePaths { get; set; } = new();

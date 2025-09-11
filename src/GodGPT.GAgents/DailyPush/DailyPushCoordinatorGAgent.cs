@@ -472,9 +472,18 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     {
         var now = DateTime.UtcNow;
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
+        var pushEnabled = _options.CurrentValue.PushEnabled;
 
         try
         {
+            // Global push switch check - if disabled, skip all push operations
+            if (!pushEnabled)
+            {
+                _logger.LogInformation("Push notifications disabled globally. Skipping {ReminderName} for {TimeZone}",
+                    reminderName, _timeZoneId);
+                return;
+            }
+
             // Version control check - only authorized instances should execute
             if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
             {
