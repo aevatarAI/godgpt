@@ -1875,7 +1875,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     var pushData = new Dictionary<string, object>
                     {
                         ["message_id"] = messageId.ToString(),
-                            ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
+                            ["type"] = (int)DailyPushConstants.PushType.DailyPush,
                         ["date"] = dateKey,
                         ["content_id"] = content.Id, // Single content ID for this push
                             ["content_index"] = contentIndex + 1, // Which content this is (1, 2, etc.)
@@ -2678,7 +2678,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     
                     var pushData = new Dictionary<string, object>
                     {
-                        ["type"] = isRetryPush ? "dailyRetry" : "daily",
+                        ["type"] = (int)DailyPushConstants.PushType.DailyPush,
                         ["contentId"] = content.Id,
                         ["contentIndex"] = i,
                         ["totalContents"] = totalContents,
