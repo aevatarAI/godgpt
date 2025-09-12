@@ -1846,7 +1846,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var deviceTasks = eligibleDevices.Select(async (device, deviceIndex) =>
         {
             var deviceSuccess = false;
-            var deviceFailureCount = 0;
             
             try
             {
@@ -1857,17 +1856,20 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     await Task.Delay(deviceDelay);
                 }
                 
-                // Process all contents for this device
-                var contentTasks = contents.Select(async (content, contentIndex) =>
+                // Send only one content based on push type: first for morning, second for afternoon retry
+                var contentIndex = isRetryPush ? 1 : 0;
+                var content = contents.ElementAtOrDefault(contentIndex);
+                
+                if (content == null)
+                {
+                    Logger.LogWarning("No content available for {PushType} push - Device: {DeviceId}", 
+                        isRetryPush ? "afternoon retry" : "morning", device.DeviceId);
+                    deviceSuccess = false;
+                }
+                else
                 {
                     try
                     {
-                        var contentDelay = contentIndex * 300; // 300ms per content (1st=0ms, 2nd=300ms, etc.)
-                        if (contentDelay > 0)
-                        {
-                            await Task.Delay(contentDelay);
-                    }
-                    
                     var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
                         Logger.LogInformation("Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
                         device.DeviceId, device.PushLanguage, availableLanguages);
@@ -1878,22 +1880,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                             State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title, content.Id, 
                             device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
                     
-                    // Create unique data payload for each content
+                        // Create unique data payload for this content
                     var messageId = Guid.NewGuid();
                     var pushData = new Dictionary<string, object>
                     {
                         ["message_id"] = messageId.ToString(),
                             ["type"] = (int)DailyPushConstants.PushType.DailyPush,
                         ["date"] = dateKey,
-                        ["content_id"] = content.Id, // Single content ID for this push
-                            ["content_index"] = contentIndex + 1, // Which content this is (1, 2, etc.)
+                            ["content_id"] = content.Id,
+                            ["content_index"] = contentIndex + 1,
                         ["device_id"] = device.DeviceId,
                         ["total_contents"] = contents.Count,
-                            ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
-                            ["is_retry"] = isRetryPush, // Add retry push identification
-                            ["is_test_push"] = isTestPush // Add test push identification for manual triggers
+                            ["timezone"] = timeZoneId,
+                            ["is_retry"] = isRetryPush,
+                            ["is_test_push"] = isTestPush
                         };
-                        
+                            
                         // Use new global JWT architecture with direct HTTP push
                         // Skip deduplication since device already passed UTC-based pre-check
                         var success = await SendDirectPushNotificationAsync(
@@ -1905,42 +1907,34 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                             pushData,
                             timeZoneId,
                             isRetryPush,
-                            contentIndex == 0, // isFirstContent - first content=true, subsequent=false
+                            contentIndex == 0, // isFirstContent
                             false, // isTestPush
-                            true); // skipDeduplicationCheck - device already passed UTC-based pre-check
+                            true); // skipDeduplicationCheck
                     
                     if (success)
                     {
                         Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
                                 device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
-                        return true;
+                            deviceSuccess = true;
                     }
                     else
                     {
                         Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
                                 device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
-                        return false;
+                            deviceSuccess = false;
                     }
                 }
                 catch (Exception ex)
                 {
                         Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
-                    return false;
+                        deviceSuccess = false;
+                    }
                 }
-            });
                 
-                var contentResults = await Task.WhenAll(contentTasks);
-                var deviceSuccessCount = contentResults.Count(r => r);
-                deviceFailureCount = contentResults.Count(r => !r);
+                Logger.LogInformation("Device push summary: DeviceId={DeviceId}, Success={DeviceSuccess}", 
+                    device.DeviceId, deviceSuccess);
                 
-                // Consider device successful if at least one content was sent successfully
-                deviceSuccess = deviceSuccessCount > 0;
-                
-                Logger.LogInformation("Device push summary: DeviceId={DeviceId}, Success={DeviceSuccess}, " +
-                    "ContentSuccessCount={SuccessCount}, ContentFailureCount={FailureCount}", 
-                    device.DeviceId, deviceSuccess, deviceSuccessCount, deviceFailureCount);
-                
-                return contentResults;
+                return new[] { deviceSuccess };
             }
             finally
             {
@@ -2681,67 +2675,73 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var successCount = 0;
             var totalContents = contents.Count;
 
-            // Send each content as a separate push notification
-            for (int i = 0; i < contents.Count; i++)
+            // Send only the first content for morning push, second content for afternoon retry
+            var contentToSend = isRetryPush ? contents.Skip(1).FirstOrDefault() : contents.FirstOrDefault();
+            
+            if (contentToSend == null)
             {
-                var content = contents[i];
-                var isFirstContent = i == 0;
-
-                try
-                {
-                    // Get localized content based on device language preference
-                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
-                    
-                    var pushData = new Dictionary<string, object>
-                    {
-                        ["type"] = (int)DailyPushConstants.PushType.DailyPush,
-                        ["contentId"] = content.Id,
-                        ["contentIndex"] = i,
-                        ["totalContents"] = totalContents,
-                        ["isTestPush"] = isTestPush,
-                        ["targetDate"] = targetDate.ToString("yyyy-MM-dd"),
-                        ["deviceId"] = device.DeviceId
-                    };
-
-                    var success = await SendDirectPushNotificationAsync(
-                        globalJwtProvider,
-                        projectId,
-                        device.PushToken,
-                        localizedContent.Title,
-                        localizedContent.Content,
-                        pushData,
-                        device.TimeZoneId,
-                        isRetryPush,
-                        isFirstContent,
-                        isTestPush,
-                        skipDeduplicationCheck: true // Already handled by coordinator
-                    );
-
-                    if (success)
-                    {
-                        successCount++;
-                        Logger.LogDebug("✅ Coordinated push content {ContentIndex}/{TotalContents} sent successfully - Device: {DeviceId}", 
-                            i + 1, totalContents, device.DeviceId);
-                    }
-                    else
-                    {
-                        Logger.LogWarning("❌ Coordinated push content {ContentIndex}/{TotalContents} failed - Device: {DeviceId}", 
-                            i + 1, totalContents, device.DeviceId);
-                        
-                        // Check if this was a token failure and mark device for cleanup
-                        await CheckAndMarkDeviceForCleanupAsync(device.PushToken, "PUSH_FAILED");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "Exception sending coordinated push content {ContentIndex}/{TotalContents} - Device: {DeviceId}", 
-                        i + 1, totalContents, device.DeviceId);
-                }
+                Logger.LogWarning("No content available for {PushType} push - Device: {DeviceId}", 
+                    isRetryPush ? "afternoon retry" : "morning", device.DeviceId);
+                return false;
             }
 
-            var allSuccessful = successCount == totalContents;
-            Logger.LogInformation("📊 Coordinated push summary - Device: {DeviceId}, Success: {SuccessCount}/{TotalContents}, AllSuccessful: {AllSuccessful}", 
-                device.DeviceId, successCount, totalContents, allSuccessful);
+            // Send the selected content
+            var contentIndex = isRetryPush ? 1 : 0;
+
+            try
+            {
+                // Get localized content based on device language preference
+                var localizedContent = contentToSend.GetLocalizedContent(device.PushLanguage);
+                
+                var pushData = new Dictionary<string, object>
+                {
+                    ["type"] = (int)DailyPushConstants.PushType.DailyPush,
+                    ["contentId"] = contentToSend.Id,
+                    ["contentIndex"] = contentIndex,
+                    ["totalContents"] = totalContents,
+                    ["isTestPush"] = isTestPush,
+                    ["targetDate"] = targetDate.ToString("yyyy-MM-dd"),
+                    ["deviceId"] = device.DeviceId
+                };
+
+                var success = await SendDirectPushNotificationAsync(
+                    globalJwtProvider,
+                    projectId,
+                    device.PushToken,
+                    localizedContent.Title,
+                    localizedContent.Content,
+                    pushData,
+                    device.TimeZoneId,
+                    isRetryPush,
+                    contentIndex == 0, // isFirstContent
+                    isTestPush,
+                    skipDeduplicationCheck: true // Already handled by coordinator
+                );
+
+                if (success)
+                {
+                    successCount++;
+                    Logger.LogDebug("✅ Coordinated push content {ContentIndex}/{TotalContents} sent successfully - Device: {DeviceId}", 
+                        contentIndex + 1, totalContents, device.DeviceId);
+                }
+                else
+                {
+                    Logger.LogWarning("❌ Coordinated push content {ContentIndex}/{TotalContents} failed - Device: {DeviceId}", 
+                        contentIndex + 1, totalContents, device.DeviceId);
+                    
+                    // Check if this was a token failure and mark device for cleanup
+                    await CheckAndMarkDeviceForCleanupAsync(device.PushToken, "PUSH_FAILED");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Exception sending coordinated push content {ContentIndex}/{TotalContents} - Device: {DeviceId}", 
+                    contentIndex + 1, totalContents, device.DeviceId);
+            }
+
+            var allSuccessful = successCount == 1; // Only one content sent
+            Logger.LogInformation("📊 Coordinated push summary - Device: {DeviceId}, Success: {SuccessCount}/1, AllSuccessful: {AllSuccessful}", 
+                device.DeviceId, successCount, allSuccessful);
 
             return allSuccessful;
         }
