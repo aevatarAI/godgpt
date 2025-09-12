@@ -31,6 +31,14 @@ public class DailyPushOptions
     public bool PushEnabled { get; set; } = false;
     
     /// <summary>
+    /// Device registration and read status switch
+    /// When false, device registration and read status APIs return success with mock data
+    /// but skip actual business logic processing
+    /// Default: false (disabled)
+    /// </summary>
+    public bool DeviceRegistrationEnabled { get; set; } = false;
+    
+    /// <summary>
     /// File paths configuration
     /// </summary>
     public FilePathsOptions FilePaths { get; set; } = new();

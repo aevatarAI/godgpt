@@ -54,7 +54,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     private const string FormattedDate = "yyyy-MM-dd";
     const string SessionVersion = "1.0.0";
     private readonly ILocalizationService _localizationService;
-    
+
     public ChatGAgentManager(ILocalizationService localizationService)
     {
         _localizationService = localizationService;
@@ -1487,6 +1487,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task MarkPushAsReadAsync(string deviceId)
     {
+        // Check device registration switch
+        var options = ServiceProvider.GetService(typeof(IOptionsMonitor<DailyPushOptions>)) as IOptionsMonitor<DailyPushOptions>;
+        if (options != null && !options.CurrentValue.DeviceRegistrationEnabled)
+        {
+            Logger.LogInformation("Mark read disabled - returning mock success for device {DeviceId}", deviceId);
+            return; // Return success but skip actual read status update
+        }
+        
         // ✅ V2 ONLY: Check if device exists in V2 structure
         if (State.UserDevicesV2.ContainsKey(deviceId))
         {
@@ -2390,6 +2398,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     public async Task<bool> RegisterOrUpdateDeviceV2Async(string deviceId, string pushToken, string timeZoneId, 
         bool? pushEnabled, string pushLanguage, string? platform = null, string? appVersion = null)
     {
+        // Check device registration switch
+        var options = ServiceProvider.GetService(typeof(IOptionsMonitor<DailyPushOptions>)) as IOptionsMonitor<DailyPushOptions>;
+        if (options != null && !options.CurrentValue.DeviceRegistrationEnabled)
+        {
+            Logger.LogInformation("Device registration disabled - returning mock success for device {DeviceId}", deviceId);
+            return true; // Return success but skip actual registration
+        }
+        
         var isNewDevice = !State.UserDevicesV2.ContainsKey(deviceId);
         var now = DateTime.UtcNow;
         
