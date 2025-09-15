@@ -46,6 +46,13 @@ public class DailyContentGAgentState : StateBase
     public Dictionary<Guid, string> TimezoneGuidMappings { get; set; } = new();
 
     /// <summary>
+    /// Daily selected content cache to ensure consistency across multiple calls on the same day
+    /// Key: "yyyy-MM-dd", Value: List of selected content IDs for that date
+    /// </summary>
+    [Id(6)]
+    public Dictionary<string, List<string>> DailySelectedContentCache { get; set; } = new();
+
+    /// <summary>
     /// Get content IDs used on specific date
     /// </summary>
     public HashSet<string> GetUsedContentIds(DateTime date)
@@ -90,6 +97,21 @@ public class DailyContentGAgentState : StateBase
         foreach (var key in keysToRemove)
         {
             DailyUsageHistory.Remove(key);
+        }
+        
+        // 🧹 Also clean old selection cache (keep only last 7 days)
+        var cacheKeysToRemove = new List<string>();
+        foreach (var key in DailySelectedContentCache.Keys)
+        {
+            if (DateTime.TryParse(key, out var date) && date < cutoffDate)
+            {
+                cacheKeysToRemove.Add(key);
+            }
+        }
+
+        foreach (var key in cacheKeysToRemove)
+        {
+            DailySelectedContentCache.Remove(key);
         }
     }
 }

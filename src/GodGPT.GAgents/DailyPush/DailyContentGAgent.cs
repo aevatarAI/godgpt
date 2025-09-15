@@ -67,21 +67,21 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
         {
             case AddContentEventLog addEvent:
                 state.Contents[addEvent.Content.Id] = addEvent.Content;
-                state.LastRefresh = DateTime.UtcNow;
+                state.LastRefresh = addEvent.UpdateTime;
                 break;
 
             case UpdateContentEventLog updateEvent:
                 if (state.Contents.ContainsKey(updateEvent.ContentId))
                 {
                     state.Contents[updateEvent.ContentId] = updateEvent.Content;
-                    state.LastRefresh = DateTime.UtcNow;
+                    state.LastRefresh = updateEvent.UpdateTime;
                 }
 
                 break;
 
             case RemoveContentEventLog removeEvent:
                 state.Contents.Remove(removeEvent.ContentId);
-                state.LastRefresh = DateTime.UtcNow;
+                state.LastRefresh = removeEvent.UpdateTime;
                 break;
 
             case ContentSelectionEventLog selectionEvent:
@@ -92,7 +92,14 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                 {
                     state.MarkContentAsUsed(selectionEvent.SelectionDate, contentId);
                 }
+                break;
 
+            case UpdateDailyContentCacheEventLog cacheEvent:
+                state.DailySelectedContentCache[cacheEvent.DateKey] = cacheEvent.SelectedContentIds;
+                break;
+
+            case UpdateTimezoneGuidMappingEventLog mappingEvent:
+                state.TimezoneGuidMappings[mappingEvent.TimezoneGuid] = mappingEvent.TimezoneId;
                 break;
 
             case ImportContentsEventLog importEvent:
@@ -118,6 +125,22 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     {
         try
         {
+            var dateKey = targetDate.ToString("yyyy-MM-dd");
+            
+            // 🎯 Check if content has already been selected for this date (same-day cache)
+            if (State.DailySelectedContentCache.TryGetValue(dateKey, out var cachedContentIds))
+            {
+                _logger.LogInformation("🔄 Returning cached content selection for {Date}: [{ContentIds}] (ensuring same-day consistency)", 
+                    dateKey, string.Join(", ", cachedContentIds));
+                    
+                // Return cached content (filter out any inactive contents)
+                return cachedContentIds
+                    .Select(id => State.Contents.TryGetValue(id, out var content) ? content : null)
+                    .Where(c => c != null && c.IsActive)
+                    .Cast<DailyNotificationContent>()
+                    .ToList();
+            }
+            
             var activeContents = State.Contents.Values.Where(c => c.IsActive).ToList();
             if (activeContents.Count == 0)
             {
@@ -179,16 +202,29 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
                     selected.LocalizedContents.TryGetValue("en", out var enContent) ? enContent.Title : "N/A");
             }
 
+            // 🎯 Cache the selection result for same-day consistency
+            var selectedContentIds = selectedContents.Select(c => c.Id).ToList();
+            
+            // ✅ Use Event Sourcing for cache update
+            RaiseEvent(new UpdateDailyContentCacheEventLog
+            {
+                DateKey = dateKey,
+                SelectedContentIds = selectedContentIds
+            });
+            
+            // 🧹 Clean old cache entries (called from State.MarkContentAsUsed via ContentSelectionEventLog)
+            
             // Raise selection event
             RaiseEvent(new ContentSelectionEventLog
             {
                 SelectionDate = targetDate,
-                SelectedContentIds = selectedContents.Select(c => c.Id).ToList(),
+                SelectedContentIds = selectedContentIds,
                 Count = selectedContents.Count
             });
 
             await ConfirmEvents();
-            _logger.LogInformation($"Selected {selectedContents.Count} contents for date {targetDate:yyyy-MM-dd}");
+            _logger.LogInformation("✅ Selected and cached {Count} contents for date {Date}: [{ContentIds}]", 
+                selectedContents.Count, targetDate.ToString("yyyy-MM-dd"), string.Join(", ", selectedContentIds));
             return selectedContents;
         }
         catch (Exception ex)
@@ -414,8 +450,14 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     {
         if (!State.TimezoneGuidMappings.ContainsKey(timezoneGuid))
         {
-            State.TimezoneGuidMappings[timezoneGuid] = timezoneId;
+            // ✅ Use Event Sourcing for timezone mapping
+            RaiseEvent(new UpdateTimezoneGuidMappingEventLog
+            {
+                TimezoneGuid = timezoneGuid,
+                TimezoneId = timezoneId
+            });
             await ConfirmEvents();
+            
             _logger.LogInformation("Registered timezone GUID mapping: {Guid} -> {TimezoneId}", timezoneGuid,
                 timezoneId);
         }
@@ -424,6 +466,11 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
     public async Task<string?> GetTimezoneFromGuidAsync(Guid timezoneGuid)
     {
         return State.TimezoneGuidMappings.TryGetValue(timezoneGuid, out var timezoneId) ? timezoneId : null;
+    }
+
+    public async Task<Dictionary<Guid, string>> GetAllTimezoneMappingsAsync()
+    {
+        return new Dictionary<Guid, string>(State.TimezoneGuidMappings);
     }
 
     /// <summary>
@@ -451,7 +498,12 @@ public class DailyContentGAgent : GAgentBase<DailyContentGAgentState, DailyPushL
             var timezoneGuid = DailyPushConstants.TimezoneToGuid(timezone);
             if (!State.TimezoneGuidMappings.ContainsKey(timezoneGuid))
             {
-                State.TimezoneGuidMappings[timezoneGuid] = timezone;
+                // ✅ Use Event Sourcing for timezone mapping
+                RaiseEvent(new UpdateTimezoneGuidMappingEventLog
+                {
+                    TimezoneGuid = timezoneGuid,
+                    TimezoneId = timezone
+                });
                 registeredCount++;
                 _logger.LogDebug("Pre-registered timezone mapping: {Guid} -> {TimezoneId}", timezoneGuid, timezone);
             }

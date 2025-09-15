@@ -28,6 +28,7 @@
         <PackageReference Include="Stripe.net" />
         <PackageReference Include="Google.Apis.AndroidPublisher.v3" />
         <PackageReference Include="Aevatar.SignalR" />
+        <PackageReference Include="StackExchange.Redis" />
     </ItemGroup>
 
     <ItemGroup>

@@ -2,7 +2,6 @@ using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.AIGAgent.Dtos;
-using Aevatar.Application.Grains.Tests.Core;
 using Newtonsoft.Json;
 using Shouldly;
 using Xunit;
