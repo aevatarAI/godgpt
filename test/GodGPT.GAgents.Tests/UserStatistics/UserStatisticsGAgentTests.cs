@@ -33,11 +33,12 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             var platform = "iOS";
             var deviceId = "device_001";
             
-            var result = await userStatisticsGAgent.RecordAppRatingAsync(platform, deviceId);
+            var result = await userStatisticsGAgent.RecordAppRatingAsync(userId, platform, deviceId);
             result.ShouldNotBeNull();
             result.Platform.ShouldBe(platform);
             result.DeviceId.ShouldBe(deviceId);
@@ -64,11 +65,12 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
             var deviceId = "device_002";
             
             // First rating
-            var firstRating = await userStatisticsGAgent.RecordAppRatingAsync(platform, deviceId);
+            var userId = Guid.NewGuid();
+            var firstRating = await userStatisticsGAgent.RecordAppRatingAsync(userId, platform, deviceId);
             await Task.Delay(100); // Small delay to ensure different timestamps
             
             // Second rating
-            var secondRating = await userStatisticsGAgent.RecordAppRatingAsync(platform, deviceId);
+            var secondRating = await userStatisticsGAgent.RecordAppRatingAsync(userId, platform, deviceId);
             
             firstRating.RatingCount.ShouldBe(1);
             secondRating.RatingCount.ShouldBe(2);
@@ -89,14 +91,15 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             var platform1 = "iOS";
             var platform2 = "Android";
             var deviceId1 = "device_ios_001";
             var deviceId2 = "device_android_001";
             
-            var rating1 = await userStatisticsGAgent.RecordAppRatingAsync(platform1, deviceId1);
-            var rating2 = await userStatisticsGAgent.RecordAppRatingAsync(platform2, deviceId2);
+            var rating1 = await userStatisticsGAgent.RecordAppRatingAsync(userId, platform1, deviceId1);
+            var rating2 = await userStatisticsGAgent.RecordAppRatingAsync(userId, platform2, deviceId2);
             
             rating1.DeviceId.ShouldBe(deviceId1);
             rating1.Platform.ShouldBe(platform1);
@@ -124,11 +127,12 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             var platform = "iOS";
             var emptyDeviceId = "";
             
-            var result = await userStatisticsGAgent.RecordAppRatingAsync(platform, emptyDeviceId);
+            var result = await userStatisticsGAgent.RecordAppRatingAsync(userId, platform, emptyDeviceId);
             
             result.ShouldNotBeNull();
             result.Platform.ShouldBeNullOrEmpty();
@@ -243,12 +247,13 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             var platform = "iOS";
             var deviceId = "interval_test_device";
             
             // Record first rating
-            await userStatisticsGAgent.RecordAppRatingAsync(platform, deviceId);
+            await userStatisticsGAgent.RecordAppRatingAsync(userId, platform, deviceId);
 
             await Task.Delay(10000);
             
@@ -277,6 +282,7 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             var platform1 = "iOS";
             var platform2 = "Android";
@@ -284,8 +290,8 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
             var deviceId2 = "filter_device_002";
             
             // Record ratings for both devices
-            await userStatisticsGAgent.RecordAppRatingAsync(platform1, deviceId1);
-            await userStatisticsGAgent.RecordAppRatingAsync(platform2, deviceId2);
+            await userStatisticsGAgent.RecordAppRatingAsync(userId, platform1, deviceId1);
+            await userStatisticsGAgent.RecordAppRatingAsync(userId, platform2, deviceId2);
             
             // Get all records
             var allRecords = await userStatisticsGAgent.GetAppRatingRecordsAsync();
@@ -311,6 +317,7 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             var platforms = new[] { "iOS", "Android", "Web" };
             var deviceIds = new[] { "stats_device_001", "stats_device_002", "stats_device_003" };
@@ -318,13 +325,13 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
             // Record ratings for multiple platforms and devices
             for (int i = 0; i < platforms.Length; i++)
             {
-                await userStatisticsGAgent.RecordAppRatingAsync(platforms[i], deviceIds[i]);
+                await userStatisticsGAgent.RecordAppRatingAsync(userId, platforms[i], deviceIds[i]);
                 
                 // Record multiple ratings for some devices
                 if (i < 2)
                 {
                     await Task.Delay(100);
-                    await userStatisticsGAgent.RecordAppRatingAsync(platforms[i], deviceIds[i]);
+                    await userStatisticsGAgent.RecordAppRatingAsync(userId, platforms[i], deviceIds[i]);
                 }
             }
             
@@ -362,11 +369,12 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             string nullPlatform = null;
             var deviceId = "null_platform_device";
             
-            var result = await userStatisticsGAgent.RecordAppRatingAsync(nullPlatform, deviceId);
+            var result = await userStatisticsGAgent.RecordAppRatingAsync(userId, nullPlatform, deviceId);
             
             result.ShouldNotBeNull();
             result.DeviceId.ShouldBe(deviceId);
@@ -387,11 +395,12 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             var platform = "iOS";
             var deviceId = "CaseTest_Device_001";
             
-            await userStatisticsGAgent.RecordAppRatingAsync(platform, deviceId);
+            await userStatisticsGAgent.RecordAppRatingAsync(userId, platform, deviceId);
             
             // Query with different case
             var records = await userStatisticsGAgent.GetAppRatingRecordsAsync(deviceId.ToLowerInvariant());
@@ -417,6 +426,7 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
     {
         try
         {
+            var userId = Guid.NewGuid();
             var userStatisticsGAgent = await CreateTestUserStatisticsGAgentAsync();
             var platform = "iOS";
             var deviceCount = 50;
@@ -427,7 +437,7 @@ public class UserStatisticsGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTes
             for (int i = 0; i < deviceCount; i++)
             {
                 var deviceId = $"perf_device_{i:D3}";
-                await userStatisticsGAgent.RecordAppRatingAsync(platform, deviceId);
+                await userStatisticsGAgent.RecordAppRatingAsync(userId, platform, deviceId);
             }
             
             var endTime = DateTime.UtcNow;

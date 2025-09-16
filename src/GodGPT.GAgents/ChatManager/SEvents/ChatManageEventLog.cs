@@ -1,5 +1,6 @@
 using Aevatar.Core.Abstractions;
 using GodGPT.GAgents.SpeechChat;
+using GodGPT.GAgents.DailyPush;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
@@ -137,4 +138,56 @@ public class MarkDailyPushReadEventLog : ChatManageEventLog
 {
     [Id(0)] public string DateKey { get; set; } = "";
     [Id(1)] public DateTime ReadTime { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Clean expired and duplicate devices for daily push notifications
+/// </summary>
+[GenerateSerializer]
+public class CleanExpiredDevicesEventLog : ChatManageEventLog
+{
+    [Id(0)] public List<string> DeviceIdsToRemove { get; set; } = new();
+    [Id(1)] public DateTime CleanupTime { get; set; } = DateTime.UtcNow;
+    [Id(2)] public string CleanupReason { get; set; } = "";
+    [Id(3)] public int RemovedCount { get; set; }
+}
+
+// === Enhanced Device Management V2 Events ===
+
+/// <summary>
+/// Register or update device for daily push notifications (V2)
+/// </summary>
+[GenerateSerializer]
+public class RegisterOrUpdateDeviceV2EventLog : ChatManageEventLog
+{
+    [Id(0)] public string DeviceId { get; set; } = "";
+    [Id(1)] public UserDeviceInfoV2 DeviceInfo { get; set; } = null!;
+    [Id(2)] public bool IsNewDevice { get; set; }
+    [Id(3)] public string? OldPushToken { get; set; }
+    [Id(4)] public bool IsMigration { get; set; } = false; // Track if this is a V1->V2 migration
+}
+
+/// <summary>
+/// Migrate device from V1 to V2 structure
+/// </summary>
+[GenerateSerializer]
+public class MigrateDeviceToV2EventLog : ChatManageEventLog
+{
+    [Id(0)] public string DeviceId { get; set; } = "";
+    [Id(1)] public UserDeviceInfo OldDeviceInfo { get; set; } = null!;
+    [Id(2)] public UserDeviceInfoV2 NewDeviceInfo { get; set; } = null!;
+    [Id(3)] public DateTime MigrationTime { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>
+/// Cleanup V2 devices based on enhanced criteria
+/// </summary>
+[GenerateSerializer]
+public class CleanupDevicesV2EventLog : ChatManageEventLog
+{
+    [Id(0)] public List<string> DeviceIdsToRemove { get; set; } = new();
+    [Id(1)] public int RemovedCount { get; set; }
+    [Id(2)] public string CleanupReason { get; set; } = ""; // "expired", "token_expired", "consecutive_failures", "status_cleanup"
+    [Id(3)] public Dictionary<string, string> CleanupDetails { get; set; } = new(); // Additional cleanup metadata
+    [Id(4)] public DateTime CleanupTime { get; set; } = DateTime.UtcNow;
 }

@@ -1,13 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Aevatar.Core.Abstractions;
 using Aevatar.Core;
-using Microsoft.Extensions.Logging;
-using Orleans;
-using Orleans.Providers;
+using Aevatar.Core.Abstractions;
 using GodGPT.GAgents.DailyPush.SEvents;
+using Microsoft.Extensions.Logging;
+using Orleans.Providers;
 
 namespace GodGPT.GAgents.DailyPush;
 
@@ -17,10 +12,11 @@ namespace GodGPT.GAgents.DailyPush;
 [StorageProvider(ProviderName = "PubSubStore")]
 [LogConsistencyProvider(ProviderName = "LogStorage")]
 [GAgent(nameof(PushSubscriberIndexGAgent))]
-public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, DailyPushLogEvent>, IPushSubscriberIndexGAgent
+public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, DailyPushLogEvent>,
+    IPushSubscriberIndexGAgent
 {
     private readonly ILogger<PushSubscriberIndexGAgent> _logger;
-    
+
     public PushSubscriberIndexGAgent(ILogger<PushSubscriberIndexGAgent> logger)
     {
         _logger = logger;
@@ -36,7 +32,8 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
         _logger.LogInformation("PushSubscriberIndexGAgent activated");
     }
 
-    protected override void GAgentTransitionState(PushSubscriberIndexState state, StateLogEventBase<DailyPushLogEvent> @event)
+    protected override void GAgentTransitionState(PushSubscriberIndexState state,
+        StateLogEventBase<DailyPushLogEvent> @event)
     {
         switch (@event)
         {
@@ -44,19 +41,19 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
                 state.TimeZoneId = initEvent.TimeZoneId;
                 state.LastUpdated = initEvent.InitTime;
                 break;
-                
+
             case AddUserToTimezoneEventLog addEvent:
                 state.ActiveUsers.Add(addEvent.UserId);
                 state.ActiveUserCount = state.ActiveUsers.Count;
-                state.LastUpdated = DateTime.UtcNow;
+                state.LastUpdated = addEvent.UpdateTime;
                 break;
-                
+
             case RemoveUserFromTimezoneEventLog removeEvent:
                 state.ActiveUsers.Remove(removeEvent.UserId);
                 state.ActiveUserCount = state.ActiveUsers.Count;
-                state.LastUpdated = DateTime.UtcNow;
+                state.LastUpdated = removeEvent.UpdateTime;
                 break;
-                
+
             case BatchUpdateUsersEventLog batchEvent:
                 foreach (var update in batchEvent.Updates)
                 {
@@ -69,10 +66,11 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
                         state.ActiveUsers.Remove(update.UserId);
                     }
                 }
+
                 state.ActiveUserCount = state.ActiveUsers.Count;
-                state.LastUpdated = DateTime.UtcNow;
+                state.LastUpdated = batchEvent.UpdateTime;
                 break;
-                
+
             default:
                 _logger.LogDebug($"Unhandled event type: {@event.GetType().Name}");
                 break;
@@ -86,7 +84,7 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
             TimeZoneId = timeZoneId,
             InitTime = DateTime.UtcNow
         });
-        
+
         await ConfirmEvents();
         _logger.LogInformation($"Initialized timezone index for: {timeZoneId}");
     }
@@ -98,7 +96,7 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
             UserId = userId,
             TimeZoneId = State.TimeZoneId
         });
-        
+
         await ConfirmEvents();
         _logger.LogInformation($"Added user {userId} to timezone {State.TimeZoneId}");
     }
@@ -110,7 +108,7 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
             UserId = userId,
             TimeZoneId = State.TimeZoneId
         });
-        
+
         await ConfirmEvents();
         _logger.LogInformation($"Removed user {userId} from timezone {State.TimeZoneId}");
     }
@@ -142,20 +140,28 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
 
     public async Task RefreshUserIndexAsync()
     {
-        // TODO: This would typically involve:
+        // 🧹 Lightweight cleanup: Only log current status for monitoring
+        var currentCount = State.ActiveUsers.Count;
+        
+        // TODO: Future enhancement could involve:
         // 1. Querying all ChatManagerGAgents to find users with devices in this timezone
         // 2. Updating the ActiveUsers set based on current device states
         // 3. Removing users who no longer have enabled devices in this timezone
-        
-        // For now, just update timestamp
+        // 
+        // Current approach: Passive cleanup via natural user activity
+        // - Users are added when they register/update devices
+        // - Cleanup happens naturally when users update their timezone or device status
+        // - HashSet prevents duplicates automatically
+
         RaiseEvent(new InitializeTimezoneIndexEventLog
         {
             TimeZoneId = State.TimeZoneId,
             InitTime = DateTime.UtcNow
         });
-        
+
         await ConfirmEvents();
-        _logger.LogInformation($"Refreshed user index for timezone {State.TimeZoneId} (placeholder implementation)");
+        _logger.LogInformation("📊 Timezone index status: {TimeZone} has {UserCount} active users", 
+            State.TimeZoneId, currentCount);
     }
 
     public async Task<bool> HasActiveDeviceInTimezoneAsync(Guid userId)
@@ -173,10 +179,10 @@ public class PushSubscriberIndexGAgent : GAgentBase<PushSubscriberIndexState, Da
                 Updates = validUpdates,
                 UpdatedCount = validUpdates.Count
             });
-            
+
             await ConfirmEvents();
         }
-        
+
         _logger.LogInformation($"Batch updated {validUpdates.Count} users in timezone {State.TimeZoneId}");
     }
 }

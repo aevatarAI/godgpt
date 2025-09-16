@@ -45,7 +45,7 @@ public class DailyPushContentService
         _logger = logger;
         _options = options;
         
-        _logger.LogDebug("🚀 Initializing DailyPushContentService...");
+        _logger.LogDebug("Initializing DailyPushContentService...");
         _logger.LogDebug("📁 Configured CSV Path: {CsvPath}", options.CurrentValue.FilePaths.CsvDictionaryPath);
     }
     
@@ -73,7 +73,6 @@ public class DailyPushContentService
         
         return language switch
         {
-            GodGPTLanguage.CN => (selectedContent.TitleZhSc, selectedContent.ContentZhSc), // Simplified Chinese
             GodGPTLanguage.TraditionalChinese => (selectedContent.TitleZh, selectedContent.ContentZh), // Traditional Chinese
             GodGPTLanguage.Spanish => (selectedContent.TitleEs, selectedContent.ContentEs), // Spanish
             GodGPTLanguage.English => (selectedContent.TitleEn, selectedContent.ContentEn), // English
@@ -98,7 +97,6 @@ public class DailyPushContentService
         
         return language switch
         {
-            GodGPTLanguage.CN => (content.TitleZhSc, content.ContentZhSc), // Simplified Chinese
             GodGPTLanguage.TraditionalChinese => (content.TitleZh, content.ContentZh), // Traditional Chinese
             GodGPTLanguage.Spanish => (content.TitleEs, content.ContentEs), // Spanish
             GodGPTLanguage.English => (content.TitleEn, content.ContentEn), // English
@@ -156,11 +154,11 @@ public class DailyPushContentService
                 {
                     if (_contents.Count == 0)
                     {
-                        _logger.LogDebug("📋 Content cache is empty, loading CSV for first time");
+                        _logger.LogDebug("Content cache is empty, loading CSV for first time");
                     }
                     else
                     {
-                        _logger.LogDebug("🕐 Content cache expired (Age: {CacheAge}, Expiry: {CacheExpiry}), reloading CSV", 
+                        _logger.LogDebug("Content cache expired (Age: {CacheAge}, Expiry: {CacheExpiry}), reloading CSV", 
                             cacheAge, _cacheExpiry);
                     }
                     
@@ -229,7 +227,7 @@ public class DailyPushContentService
             // Log header for debugging
             if (lines.Length > 0)
             {
-                _logger.LogDebug("📋 CSV header: {Header}", lines[0]);
+                _logger.LogDebug("CSV header: {Header}", lines[0]);
             }
             
             // Load content into temporary list to avoid intermediate empty state
@@ -379,7 +377,6 @@ public class DailyPushContentService
     {
         return language switch
         {
-            GodGPTLanguage.CN => ("每日提醒", "今天也要保持正念，专注当下。"), // Simplified Chinese
             GodGPTLanguage.TraditionalChinese => ("每日提醒", "今天也要保持正念，專注當下。"), // Traditional Chinese
             GodGPTLanguage.Spanish => ("Recordatorio Diario", "Mantén la atención plena y concéntrate en el presente."), // Spanish
             GodGPTLanguage.English => ("Daily Reminder", "Stay mindful and focus on the present moment."), // English

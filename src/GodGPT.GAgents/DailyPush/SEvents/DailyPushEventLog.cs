@@ -22,6 +22,7 @@ public class DailyPushLogEvent : StateLogEventBase<DailyPushLogEvent>
 public class AddContentEventLog : DailyPushLogEvent
 {
     [Id(0)] public DailyNotificationContent Content { get; set; } = null!;
+    [Id(1)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -32,6 +33,7 @@ public class UpdateContentEventLog : DailyPushLogEvent
 {
     [Id(0)] public string ContentId { get; set; } = "";
     [Id(1)] public DailyNotificationContent Content { get; set; } = null!;
+    [Id(2)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -41,6 +43,7 @@ public class UpdateContentEventLog : DailyPushLogEvent
 public class RemoveContentEventLog : DailyPushLogEvent
 {
     [Id(0)] public string ContentId { get; set; } = "";
+    [Id(1)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -52,6 +55,26 @@ public class ContentSelectionEventLog : DailyPushLogEvent
     [Id(0)] public DateTime SelectionDate { get; set; }
     [Id(1)] public List<string> SelectedContentIds { get; set; } = new();
     [Id(2)] public int Count { get; set; }
+}
+
+/// <summary>
+/// Daily content cache update event
+/// </summary>
+[GenerateSerializer]
+public class UpdateDailyContentCacheEventLog : DailyPushLogEvent
+{
+    [Id(0)] public string DateKey { get; set; } = "";
+    [Id(1)] public List<string> SelectedContentIds { get; set; } = new();
+}
+
+/// <summary>
+/// Timezone GUID mapping update event
+/// </summary>
+[GenerateSerializer] 
+public class UpdateTimezoneGuidMappingEventLog : DailyPushLogEvent
+{
+    [Id(0)] public Guid TimezoneGuid { get; set; }
+    [Id(1)] public string TimezoneId { get; set; } = "";
 }
 
 /// <summary>
@@ -83,6 +106,7 @@ public class AddUserToTimezoneEventLog : DailyPushLogEvent
 {
     [Id(0)] public Guid UserId { get; set; }
     [Id(1)] public string TimeZoneId { get; set; } = "";
+    [Id(2)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -93,6 +117,7 @@ public class RemoveUserFromTimezoneEventLog : DailyPushLogEvent
 {
     [Id(0)] public Guid UserId { get; set; }
     [Id(1)] public string TimeZoneId { get; set; } = "";
+    [Id(2)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -103,6 +128,7 @@ public class BatchUpdateUsersEventLog : DailyPushLogEvent
 {
     [Id(0)] public List<TimezoneUpdateRequest> Updates { get; set; } = new();
     [Id(1)] public int UpdatedCount { get; set; }
+    [Id(2)] public DateTime UpdateTime { get; set; } = DateTime.UtcNow;
 }
 
 /// <summary>
@@ -221,6 +247,19 @@ public class TestModeStateEventLog : DailyPushLogEvent
     [Id(3)] public DateTime ChangeTime { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>
+/// Configuration change tracking event
+/// </summary>
+[GenerateSerializer]
+public class ConfigurationChangeEventLog : DailyPushLogEvent
+{
+    [Id(0)] public TimeSpan? OldMorningTime { get; set; }
+    [Id(1)] public TimeSpan? NewMorningTime { get; set; }
+    [Id(2)] public TimeSpan? OldAfternoonTime { get; set; }
+    [Id(3)] public TimeSpan? NewAfternoonTime { get; set; }
+    [Id(4)] public DateTime ChangeTime { get; set; } = DateTime.UtcNow;
+}
+
 // === Chat Manager Daily Push Events ===
 
 /// <summary>
@@ -276,4 +315,61 @@ public class TestRoundCompletedEventLog : DailyPushLogEvent
 {
     [Id(0)] public int CompletedRound { get; set; }
     [Id(1)] public DateTime CompletionTime { get; set; } = DateTime.UtcNow;
+}
+
+// === Firebase Token Provider Events ===
+
+/// <summary>
+/// Token creation success event
+/// </summary>
+[GenerateSerializer]
+public class TokenCreationSuccessEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime CreationTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public DateTime TokenExpiry { get; set; }
+    [Id(2)] public int AttemptNumber { get; set; }
+}
+
+/// <summary>
+/// Token creation failure event
+/// </summary>
+[GenerateSerializer]
+public class TokenCreationFailureEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime FailureTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public string ErrorMessage { get; set; } = "";
+    [Id(2)] public string ErrorType { get; set; } = "";
+    [Id(3)] public int AttemptNumber { get; set; }
+}
+
+/// <summary>
+/// Token cache cleared event
+/// </summary>
+[GenerateSerializer]
+public class TokenCacheClearedEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime ClearTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public string Reason { get; set; } = "";
+}
+
+/// <summary>
+/// Token provider activation event
+/// </summary>
+[GenerateSerializer]
+public class TokenProviderActivationEventLog : DailyPushLogEvent
+{
+    [Id(0)] public DateTime ActivationTime { get; set; } = DateTime.UtcNow;
+    [Id(1)] public long ChatManagerId { get; set; }
+}
+
+/// <summary>
+/// Duplicate push prevention event - logged when a duplicate push is prevented by global deduplication
+/// </summary>
+[GenerateSerializer]
+public class DuplicatePreventionEventLog : DailyPushLogEvent
+{
+    [Id(0)] public string PushTokenPrefix { get; set; } = "";
+    [Id(1)] public string TimeZone { get; set; } = "";
+    [Id(2)] public DateTime PreventionDate { get; set; }
+    [Id(3)] public DateTime PreventionTime { get; set; } = DateTime.UtcNow;
 }

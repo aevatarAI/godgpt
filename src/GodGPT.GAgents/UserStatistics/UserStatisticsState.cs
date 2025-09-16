@@ -17,6 +17,7 @@ public class UserStatisticsState : StateBase
     /// Value: App rating information
     /// </summary>
     [Id(2)] public Dictionary<string, AppRatingInfo> AppRatings { get; set; } = new();
+    [Id(3)] public bool IsRealUser { get; set; } = true;
 }
 
 /// <summary>

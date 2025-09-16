@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
 using Aevatar.Application.Grains.Common.Constants;
 
 namespace Aevatar.Application.Grains.ChatManager.UserBilling;
@@ -39,6 +40,8 @@ public class PaymentSummary
     [Id(18)] public List<UserBillingInvoiceDetail> InvoiceDetails { get; set; } = new List<UserBillingInvoiceDetail>();
     [Id(19)] public string AppStoreEnvironment { get; set; }
     [Id(20)] public string MembershipLevel { get; set; }
+    //Total after discounts and taxes.
+    [Id(21)] public decimal? AmountNetTotal { get; set; }
 }
 
 [GenerateSerializer]
@@ -55,5 +58,8 @@ public class UserBillingInvoiceDetail
     [Id(8)] public decimal? Amount { get; set; }
     [Id(9)] public PlanType PlanType { get; set; }
     [Id(10)] public string PurchaseToken { get; set; }
+    [Id(11)] public string? Currency { get; set; }
+    [Id(12)] public decimal? AmountNetTotal { get; set; }
+    [Id(13)] public List<DiscountDetails>? Discounts { get; set; }
 }
 

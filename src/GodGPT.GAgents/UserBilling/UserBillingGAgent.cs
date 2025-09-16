@@ -386,7 +386,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         { "order_id", orderId }
                     }
                 }
-                : null
+                : null,
+            AllowPromotionCodes = true
         };
 
         if (createCheckoutSessionDto.PaymentMethodTypes != null && createCheckoutSessionDto.PaymentMethodTypes.Any())
@@ -957,6 +958,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 stripeSignature,
                 _stripeOptions.CurrentValue.WebhookSecret
             );
+            //Debug
+            //stripeEvent = EventUtility.ParseEvent(jsonPayload);
         }
         catch (StripeException ex)
         {
@@ -1082,7 +1085,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             var purchaseType = !paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.InvoiceDetails.Count == 1
                 ? PurchaseType.Subscription
                 : PurchaseType.Renewal;
-            _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,productConfig.PriceId, productConfig.Currency, productConfig.Amount);
+            var amount = invoiceDetail.AmountNetTotal ?? invoiceDetail.Amount;
+            amount = amount ?? productConfig.Amount;
+            _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,
+                productConfig.PriceId, invoiceDetail.Currency ?? string.Empty, amount.Value);
             
         } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
@@ -1232,7 +1238,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         return payment;
     }
 
-    public async Task<List<ChatManager.UserBilling.PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
+    public async Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
     {
         _logger.LogInformation(
             "[UserBillingGAgent][GetPaymentHistoryAsync] Getting payment history page {Page} with size {PageSize}",
@@ -1301,27 +1307,49 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             
             if (paymentSummary.InvoiceDetails.IsNullOrEmpty())
             {
+                if (paymentSummary.AmountNetTotal == null)
+                {
+                    paymentSummary.AmountNetTotal = paymentSummary.Amount;
+                }
                 paymentHistories.Add(paymentSummary);
             }
             else
             {
-                paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail => new ChatManager.UserBilling.PaymentSummary
+                paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail =>
                 {
-                    PaymentGrainId = paymentSummary.PaymentGrainId,
-                    OrderId = paymentSummary.OrderId,
-                    PlanType = invoiceDetail.PlanType == PlanType.None ?  paymentSummary.PlanType : invoiceDetail.PlanType,
-                    Amount = invoiceDetail.Amount == null ? paymentSummary.Amount : (decimal) invoiceDetail.Amount,
-                    Currency = paymentSummary.Currency,
-                    CreatedAt = invoiceDetail.CreatedAt,
-                    CompletedAt = invoiceDetail.CompletedAt,
-                    Status = invoiceDetail.Status,
-                    SubscriptionId = paymentSummary.SubscriptionId,
-                    SubscriptionStartDate = invoiceDetail.SubscriptionStartDate,
-                    SubscriptionEndDate = invoiceDetail.SubscriptionEndDate,
-                    UserId = paymentSummary.UserId,
-                    PriceId = invoiceDetail.PriceId.IsNullOrWhiteSpace() ? paymentSummary.PriceId : invoiceDetail.PriceId,
-                    Platform = paymentSummary.Platform,
-                    MembershipLevel = invoiceDetail.MembershipLevel.IsNullOrWhiteSpace() ? paymentSummary.MembershipLevel : invoiceDetail.MembershipLevel
+                    var payment = new ChatManager.UserBilling.PaymentSummary
+                    {
+                        PaymentGrainId = paymentSummary.PaymentGrainId,
+                        OrderId = paymentSummary.OrderId,
+                        PlanType = invoiceDetail.PlanType == PlanType.None
+                            ? paymentSummary.PlanType
+                            : invoiceDetail.PlanType,
+                        Amount = invoiceDetail.Amount == null ? paymentSummary.Amount : (decimal)invoiceDetail.Amount,
+                        Currency = invoiceDetail.Currency == null ? paymentSummary.Currency : invoiceDetail.Currency,
+                        CreatedAt = invoiceDetail.CreatedAt,
+                        CompletedAt = invoiceDetail.CompletedAt,
+                        Status = invoiceDetail.Status,
+                        SubscriptionId = paymentSummary.SubscriptionId,
+                        SubscriptionStartDate = invoiceDetail.SubscriptionStartDate,
+                        SubscriptionEndDate = invoiceDetail.SubscriptionEndDate,
+                        UserId = paymentSummary.UserId,
+                        PriceId = invoiceDetail.PriceId.IsNullOrWhiteSpace()
+                            ? paymentSummary.PriceId
+                            : invoiceDetail.PriceId,
+                        Platform = paymentSummary.Platform,
+                        MembershipLevel = invoiceDetail.MembershipLevel.IsNullOrWhiteSpace()
+                            ? paymentSummary.MembershipLevel
+                            : invoiceDetail.MembershipLevel,
+                        AmountNetTotal = invoiceDetail.AmountNetTotal == null
+                            ? paymentSummary.AmountNetTotal
+                            : invoiceDetail.AmountNetTotal
+                    };
+                    if (payment.AmountNetTotal == null)
+                    {
+                        payment.AmountNetTotal = payment.Amount;
+                    }
+
+                    return payment;
                 }));
             }
         }
@@ -1437,6 +1465,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             existingPaymentSummary.Currency = productConfig.Currency;
             existingPaymentSummary.Status = paymentDetails.Status;
             existingPaymentSummary.SubscriptionId = paymentDetails.SubscriptionId;
+            existingPaymentSummary.AmountNetTotal = paymentDetails.AmountNetTotal;
             await CreateOrUpdateInvoiceDetailAsync(paymentDetails, productConfig, existingPaymentSummary);
             
             RaiseEvent(new UpdatePaymentLogEvent
@@ -1470,7 +1499,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 Currency = productConfig.Currency,
                 CreatedAt = paymentDetails.CreatedAt,
                 Status = paymentDetails.Status,
-                SubscriptionId = paymentDetails.SubscriptionId
+                SubscriptionId = paymentDetails.SubscriptionId,
+                AmountNetTotal = paymentDetails.AmountNetTotal
             };
             await CreateOrUpdateInvoiceDetailAsync(paymentDetails, productConfig, newPaymentSummary);
             await AddPaymentRecordAsync(newPaymentSummary);
@@ -1502,7 +1532,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             {
                 InvoiceId = paymentDetails.InvoiceId,
                 CreatedAt = paymentDetails.CreatedAt,
-                Status = paymentDetails.Status
+                Status = paymentDetails.Status,
+                Amount = productConfig.Amount,
+                Currency = paymentDetails.Currency
             };
             if (paymentDetails.Status == PaymentStatus.Completed)
             {
@@ -1511,7 +1543,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     await CalculateSubscriptionDurationAsync(paymentDetails.UserId, productConfig);
                 invoiceDetail.SubscriptionStartDate = subscriptionStartDate;
                 invoiceDetail.SubscriptionEndDate = subscriptionEndDate;
+                invoiceDetail.AmountNetTotal = paymentDetails.AmountNetTotal;
+                invoiceDetail.Discounts = paymentDetails.Discounts;
             }
+
             paymentSummary.InvoiceDetails.Add(invoiceDetail);
         }
         else
@@ -1520,6 +1555,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             if (paymentDetails.Status == PaymentStatus.Completed)
             {
                 invoiceDetail.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
+                invoiceDetail.AmountNetTotal = paymentDetails.AmountNetTotal;
+                invoiceDetail.Discounts = paymentDetails.Discounts;
             }
             if (paymentDetails.Status == PaymentStatus.Completed && invoiceDetail.SubscriptionStartDate == default)
             {
@@ -2412,7 +2449,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         "[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Subscribed",
                         userId.ToString(), signedTransactionInfo.TransactionId);
                     //Report payment success to Google Analytics for completed payments
-                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Subscription, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
+                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Subscription, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, GetActualApplePrice(signedTransactionInfo.Price));
                     break;
                 case AppStoreNotificationType.DID_RENEW:
                     // Handle successful renewal
@@ -2422,7 +2459,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         userId.ToString(), signedTransactionInfo.TransactionId);
 
                     //Report payment success to Google Analytics for completed payments
-                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
+                    _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, GetActualApplePrice(signedTransactionInfo.Price));
 
                     break;
                 case AppStoreNotificationType.DID_CHANGE_RENEWAL_STATUS:
@@ -2469,7 +2506,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                             _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, User upgraded subscription, effective immediately",
                                 userId.ToString(), signedTransactionInfo.TransactionId);
                             //Report payment success to Google Analytics for completed payments
-                            _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, signedTransactionInfo.Price);
+                            _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, PurchaseType.Renewal, PaymentPlatform.AppStore, signedTransactionInfo.ProductId, signedTransactionInfo.Currency, GetActualApplePrice(signedTransactionInfo.Price));
                             break;
                         case AppStoreNotificationSubtype.DOWNGRADE:
                             _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, User downgraded subscription, effective at next renewal",
@@ -2520,8 +2557,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     {
         // Record payment success event to OpenTelemetry
         PaymentTelemetryMetrics.RecordPaymentSuccess(paymentPlatform.ToString(), purchaseType.ToString(), userId.ToString(), productId, _logger);
-        _logger.LogInformation("[UserBillingGAgent][ReportApplePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}",
-            paymentPlatform, purchaseType, userId, productId);
+        _logger.LogInformation("[UserBillingGAgent][ReportApplePaymentSuccessAsync] Recording payment success telemetry: Platform={Platform}, PurchaseType={PurchaseType}, UserId={UserId}, ProductId={ProductId}, Amount={Amount}",
+            paymentPlatform, purchaseType, userId, productId, amount);
         
         try
         {
@@ -2977,8 +3014,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             Id = paymentGrainId,
             UserId = userId,
             PriceId = appleProduct.ProductId,
-            Amount = appleProduct.Amount,
-            Currency = appleProduct.Currency,
+            Amount = GetActualApplePrice(appleResponse.Price),
+            Currency = appleResponse.Currency,
             PaymentType = PaymentType.Subscription,
             Status = PaymentStatus.Completed,
             Method = PaymentMethod.ApplePay,
@@ -3001,8 +3038,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             PaymentGrainId = paymentGrainId,
             OrderId = appleResponse.OriginalTransactionId,
             PlanType = (PlanType)appleProduct.PlanType,
-            Amount = appleProduct.Amount,
-            Currency = appleProduct.Currency,
+            Amount = GetActualApplePrice(appleResponse.Price),
+            Currency = appleResponse.Currency,
             UserId = userId,
             CreatedAt = purchaseDate,
             CompletedAt = DateTime.UtcNow,
@@ -3027,7 +3064,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = appleResponse.ProductId,
             MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
-            Amount = appleProduct.Amount,
+            Amount = GetActualApplePrice(appleResponse.Price),
+            Currency = appleResponse.Currency,
             PlanType = (PlanType)appleProduct.PlanType
         };
 
@@ -3200,7 +3238,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         existingSubscription.CompletedAt = DateTime.UtcNow;
         existingSubscription.Status = PaymentStatus.Completed;
         existingSubscription.SubscriptionId = transactionInfo.OriginalTransactionId;
-        existingSubscription.PriceId = transactionInfo.ProductId;
         existingSubscription.PlanType = (PlanType)appleProduct.PlanType;
         existingSubscription.MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate);
         existingSubscription.SubscriptionStartDate = subscriptionStartDate;
@@ -3219,7 +3256,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             SubscriptionEndDate = subscriptionEndDate,
             PriceId = transactionInfo.ProductId,
             MembershipLevel = SubscriptionHelper.GetMembershipLevel(appleProduct.IsUltimate),
-            Amount = appleProduct.Amount,
+            Amount = GetActualApplePrice(transactionInfo.Price),
+            Currency = transactionInfo.Currency,
             PlanType = (PlanType)appleProduct.PlanType
         };
         invoiceDetails.Add(invoiceDetail);
@@ -3638,46 +3676,50 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var result = new ActiveSubscriptionStatusDto();
         var now = DateTime.UtcNow;
         
-        _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Starting check with {PaymentCount} payments in history, Current time: {Now}", 
-            State.PaymentHistory?.Count ?? 0, now);
-        
         // Single iteration through payment history for optimal performance
         foreach (var payment in State.PaymentHistory)
         {
-            _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Checking payment: Platform={Platform}, OrderId={OrderId}, Status={Status}, InvoiceCount={InvoiceCount}", 
-                payment.Platform, payment.OrderId, payment.Status, payment.InvoiceDetails?.Count ?? 0);
-            
             // Check if payment has active subscription
             // Active subscription means: has invoice details AND has at least one completed (not cancelled/refunded) and unexpired invoice
             var hasInvoiceDetails = payment.InvoiceDetails != null && payment.InvoiceDetails.Any();
             
             if (!hasInvoiceDetails)
             {
-                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no invoice details, skipping", payment.OrderId);
+                _logger.LogDebug("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no invoice details, skipping", payment.OrderId);
                 continue;
             }
-            
-            // Check each invoice detail
-            bool hasActiveInvoice = false;
-            foreach (var invoice in payment.InvoiceDetails)
+
+            var isActiveSubscription = false;
+            if (payment.Platform == PaymentPlatform.GooglePlay)
             {
-                var isCompleted = invoice.Status == PaymentStatus.Completed;
-                var hasEndDate = invoice.SubscriptionEndDate != null;
-                var isUnexpired = invoice.SubscriptionEndDate > now;
-                
-                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Invoice {InvoiceId}: Status={Status} (Completed={IsCompleted}), EndDate={EndDate} (HasEndDate={HasEndDate}, Unexpired={IsUnexpired})", 
-                    invoice.InvoiceId, invoice.Status, isCompleted, invoice.SubscriptionEndDate, hasEndDate, isUnexpired);
-                
-                if (isCompleted && hasEndDate && isUnexpired)
+                foreach (var invoice in payment.InvoiceDetails)
                 {
-                    hasActiveInvoice = true;
-                    break;
+                    var isCompleted = invoice.Status == PaymentStatus.Completed;
+                    var hasEndDate = invoice.SubscriptionEndDate != null;
+                    var isUnexpired = invoice.SubscriptionEndDate > now;
+                
+                    _logger.LogDebug("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Invoice {InvoiceId}: Status={Status} (Completed={IsCompleted}), EndDate={EndDate} (HasEndDate={HasEndDate}, Unexpired={IsUnexpired})", 
+                        invoice.InvoiceId, invoice.Status, isCompleted, invoice.SubscriptionEndDate, hasEndDate, isUnexpired);
+                
+                    if (isCompleted && hasEndDate && isUnexpired)
+                    {
+                        isActiveSubscription = true;
+                        break;
+                    }
                 }
+            } else if (payment.Platform == PaymentPlatform.AppStore)
+            {
+                isActiveSubscription = payment.InvoiceDetails.LastOrDefault()?.Status == PaymentStatus.Completed;
+            }
+            else
+            {
+                // Check if payment has active subscription (same logic as HasActiveAppleSubscriptionAsync)
+                isActiveSubscription = payment.InvoiceDetails.All(item => item.Status != PaymentStatus.Cancelled);
             }
             
-            if (!hasActiveInvoice)
+            if (!isActiveSubscription)
             {
-                _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no active invoices, skipping", payment.OrderId);
+                _logger.LogDebug("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Payment {OrderId} has no active invoices, skipping", payment.OrderId);
                 continue;
             }
             
@@ -3707,24 +3749,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                                      result.HasActiveStripeSubscription || 
                                      result.HasActiveGooglePlaySubscription;
         
-        _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Apple: {Apple}, Stripe: {Stripe}, GooglePlay: {GooglePlay}, Overall: {Overall}", 
-            result.HasActiveAppleSubscription, result.HasActiveStripeSubscription, result.HasActiveGooglePlaySubscription, result.HasActiveSubscription);
-        
-        // Debug: Also check UserQuotaGAgent status for comparison
-        try
-        {
-            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
-            var premiumSubscription = await userQuotaAgent.GetSubscriptionAsync(false);
-            var ultimateSubscription = await userQuotaAgent.GetSubscriptionAsync(true);
-            
-            _logger.LogInformation("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] UserQuotaGAgent status - Premium: IsActive={PremiumActive}, EndDate={PremiumEnd}, Ultimate: IsActive={UltimateActive}, EndDate={UltimateEnd}", 
-                premiumSubscription.IsActive, premiumSubscription.EndDate, ultimateSubscription.IsActive, ultimateSubscription.EndDate);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][GetActiveSubscriptionStatusAsync] Error checking UserQuotaGAgent status");
-        }
-            
+        _logger.LogDebug("[UserBillingGAgent][GetActiveSubscriptionStatusAsync] {UserId} Apple: {Apple}, Stripe: {Stripe}, GooglePlay: {GooglePlay}, Overall: {Overall}", 
+            this.GetPrimaryKey().ToString(), result.HasActiveAppleSubscription, result.HasActiveStripeSubscription, result.HasActiveGooglePlaySubscription, result.HasActiveSubscription);
+
         return result;
     }
     
@@ -5225,4 +5252,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     }
 
     #endregion
+
+    /// <summary>
+    /// Apple returns price multiplied by 1000, this method divides by 1000 to get the real amount.
+    /// </summary>
+    private static decimal GetActualApplePrice(decimal applePrice)
+    {
+        return applePrice / 1000m;
+    }
 }
