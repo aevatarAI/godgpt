@@ -26,7 +26,7 @@ public static class UserInfoLocalizationHelper
     /// <summary>
     /// Get localized text for source channel based on language
     /// </summary>
-    public static string GetSourceChannelText(SourceChannelEnum channel, GodGPTLanguage language)
+    public static Tuple<string, string> GetSourceChannelText(SourceChannelEnum channel, GodGPTLanguage language)
     {
         return language switch
         {
@@ -54,18 +54,18 @@ public static class UserInfoLocalizationHelper
         };
     }
 
-    private static string GetEnglishSourceChannelText(SourceChannelEnum channel)
+    private static Tuple<string, string> GetEnglishSourceChannelText(SourceChannelEnum channel)
     {
         return channel switch
         {
-            SourceChannelEnum.AppStorePlayStore => "App Store / Play Store",
-            SourceChannelEnum.SocialMedia => "Social media",
-            SourceChannelEnum.SearchEngine => "Search engine",
-            SourceChannelEnum.FriendReferral => "Friend referral",
-            SourceChannelEnum.EventConference => "Event / conference",
-            SourceChannelEnum.Advertisement => "Advertisement",
-            SourceChannelEnum.Other => "Other",
-            _ => "Unknown"
+            SourceChannelEnum.AppStorePlayStore => new ("App Store / Play Store", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
+            SourceChannelEnum.SocialMedia => new ("Social media", ""),
+            SourceChannelEnum.SearchEngine => new ("Search engine", ""),
+            SourceChannelEnum.FriendReferral => new ("Friend referral", ""),
+            SourceChannelEnum.EventConference => new ("Event / conference", ""),
+            SourceChannelEnum.Advertisement => new ("Advertisement", "(online ad, banner, etc.)"),
+            SourceChannelEnum.Other => new ("Other", ""),
+            _ => new ("Unknown", "")
         };
     }
 
@@ -87,18 +87,18 @@ public static class UserInfoLocalizationHelper
         };
     }
 
-    private static string GetTraditionalChineseSourceChannelText(SourceChannelEnum channel)
+    private static Tuple<string, string> GetTraditionalChineseSourceChannelText(SourceChannelEnum channel)
     {
         return channel switch
         {
-            SourceChannelEnum.AppStorePlayStore => "App Store／Play 商店",
-            SourceChannelEnum.SocialMedia => "社群媒體",
-            SourceChannelEnum.SearchEngine => "搜尋引擎",
-            SourceChannelEnum.FriendReferral => "朋友推薦",
-            SourceChannelEnum.EventConference => "活動／會議",
-            SourceChannelEnum.Advertisement => "廣告",
-            SourceChannelEnum.Other => "其他",
-            _ => "未知"
+            SourceChannelEnum.AppStorePlayStore => new ("App Store／Play 商店", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
+            SourceChannelEnum.SocialMedia => new ("社群媒體", ""),
+            SourceChannelEnum.SearchEngine => new ("搜尋引擎", ""),
+            SourceChannelEnum.FriendReferral => new ("朋友推薦", ""),
+            SourceChannelEnum.EventConference => new ("活動／會議", ""),
+            SourceChannelEnum.Advertisement => new ("廣告", "(線上廣告、橫幅等)"),
+            SourceChannelEnum.Other => new ("其他", ""),
+            _ => new ("未知", "")
         };
     }
 
@@ -120,18 +120,18 @@ public static class UserInfoLocalizationHelper
         };
     }
 
-    private static string GetSpanishSourceChannelText(SourceChannelEnum channel)
+    private static Tuple<string, string> GetSpanishSourceChannelText(SourceChannelEnum channel)
     {
         return channel switch
         {
-            SourceChannelEnum.AppStorePlayStore => "Tienda de Aplicaciones / Tienda Play",
-            SourceChannelEnum.SocialMedia => "Redes sociales",
-            SourceChannelEnum.SearchEngine => "Motor de búsqueda",
-            SourceChannelEnum.FriendReferral => "Recomendación de amigo",
-            SourceChannelEnum.EventConference => "Evento / conferencia",
-            SourceChannelEnum.Advertisement => "Publicidad",
-            SourceChannelEnum.Other => "Otro",
-            _ => "Otro"
+            SourceChannelEnum.AppStorePlayStore => new ("Tienda de Aplicaciones / Tienda Play", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
+            SourceChannelEnum.SocialMedia => new ("Redes sociales", ""),
+            SourceChannelEnum.SearchEngine => new ("Motor de búsqueda", ""),
+            SourceChannelEnum.FriendReferral => new ("Recomendación de amigo", ""),
+            SourceChannelEnum.EventConference => new ("Evento / conferencia", ""),
+            SourceChannelEnum.Advertisement => new ("Publicidad", "(Anuncio en línea, banner, etc.)"),
+            SourceChannelEnum.Other => new ("Otro", ""),
+            _ => new ("Otro", "")
         };
     }
 
@@ -181,10 +181,12 @@ public static class UserInfoLocalizationHelper
         var options = new List<SourceChannelOptionDto>();
         foreach (SourceChannelEnum channel in Enum.GetValues<SourceChannelEnum>())
         {
+            var (text, desc) = GetSourceChannelText(channel, language);
             options.Add(new SourceChannelOptionDto
             {
                 Code = (int)channel,
-                Text = GetSourceChannelText(channel, language)
+                Text = text,
+                Desc = desc
             });
         }
         return options;

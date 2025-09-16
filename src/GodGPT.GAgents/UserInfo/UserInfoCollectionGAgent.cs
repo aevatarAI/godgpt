@@ -219,7 +219,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         {
             sourceChannelsCode = updateDto.SourceChannels.Select(x => (int)x).Distinct().OrderBy(x => x).ToList();
             sourceChannels = updateDto.SourceChannels
-                .Select(channel => UserInfoLocalizationHelper.GetSourceChannelText(channel, language))
+                .Select(channel => UserInfoLocalizationHelper.GetSourceChannelText(channel, language).Item1)
                 .ToList();
         }
         
@@ -309,7 +309,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
     
     public async Task<UserInfoOptionsResponseDto> GetUserInfoOptionsAsync()
     {
-        _logger.LogInformation("[UserInfoCollectionGAgent][GetUserInfoOptionsAsync] Getting user info options");
+        _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoOptionsAsync] Getting user info options");
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
 
         var seekingInterestOptions = UserInfoLocalizationHelper.GetSeekingInterestEnumOptions(language);

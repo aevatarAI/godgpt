@@ -147,4 +147,5 @@ public class SourceChannelOptionDto
 {
     [Id(0)] public int Code { get; set; }
     [Id(1)] public string Text { get; set; } = string.Empty;
+    [Id(2)] public string Desc { get; set; } = string.Empty;
 }
