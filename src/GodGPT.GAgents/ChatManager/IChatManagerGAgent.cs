@@ -105,7 +105,6 @@ public interface IChatManagerGAgent : IGAgent
     /// <summary>
     /// Log detailed information for all devices registered under this user
     /// </summary>
-    Task LogAllUserDevicesAsync(string context = "DEBUG");
     
     /// <summary>
     /// Check if user has enabled devices in specific timezone (performance optimization)
@@ -113,23 +112,9 @@ public interface IChatManagerGAgent : IGAgent
     Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId);
 
     /// <summary>
-    /// Clear push deduplication status for testing purposes
-    /// Removes Redis keys for specified device/date/timezone
-    /// </summary>
-    Task ClearPushStatusForTestingAsync(string deviceId, DateOnly date, string timeZoneId);
-
-    
-    /// <summary>
     /// Get device status for query API
     /// </summary>
     Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
-    
-    /// <summary>
-    /// Clear all V2 device data for testing purposes
-    /// WARNING: This will permanently delete all V2 device registrations
-    /// </summary>
-    /// <returns>Number of devices cleared</returns>
-    Task<int> ClearAllV2DevicesAsync();
     
     // === Coordinated Push Methods ===
     

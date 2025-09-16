@@ -4,7 +4,6 @@ using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Agents.ChatManager.ConfigAgent;
@@ -30,14 +29,16 @@ using Aevatar.GAgents.ChatAgent.Dtos;
 using GodGPT.GAgents.DailyPush;
 using GodGPT.GAgents.DailyPush.Options;
 using GodGPT.GAgents.SpeechChat;
-using Microsoft.Extensions.Configuration;
 using Json.Schema.Generation;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
 using Orleans.Providers;
 using Volo.Abp;
+using JsonException = System.Text.Json.JsonException;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace Aevatar.Application.Grains.Agents.ChatManager;
 
@@ -56,25 +57,27 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     public ChatGAgentManager(ILocalizationService localizationService)
     {
         _localizationService = localizationService;
-
     }
+
     public override Task<string> GetDescriptionAsync()
     {
         return Task.FromResult("Chat GAgent Manager");
     }
-    
+
     [EventHandler]
     public async Task HandleEventAsync(RequestStreamGodChatEvent @event)
     {
         string chatId = Guid.NewGuid().ToString();
-        Logger.LogDebug($"[ChatGAgentManager][RequestStreamGodChatEvent] start:{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
+        Logger.LogDebug(
+            $"[ChatGAgentManager][RequestStreamGodChatEvent] start:{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
         var title = "";
         var content = "";
         var isLastChunk = false;
 
         try
         {
-            Logger.LogWarning("RequestStreamGodChatEvent received but streaming method is outdated and not implemented");
+            Logger.LogWarning(
+                "RequestStreamGodChatEvent received but streaming method is outdated and not implemented");
             content = "Streaming method is not available";
         }
         catch (Exception e)
@@ -84,36 +87,37 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         await PublishAsync(new ResponseStreamGodChat()
         {
-            ChatId =chatId,
+            ChatId = chatId,
             Response = content,
             NewTitle = title,
             IsLastChunk = isLastChunk,
             SerialNumber = -1,
             SessionId = @event.SessionId
-            
         });
 
         Logger.LogDebug($"[ChatGAgentManager][RequestStreamGodChatEvent] end:{JsonConvert.SerializeObject(@event)}");
     }
-    
+
     [EventHandler]
     public async Task HandleEventAsync(AIStreamingErrorResponseGEvent @event)
     {
-        Logger.LogDebug($"[ChatGAgentManager][AIStreamingErrorResponseGEvent] start:{JsonConvert.SerializeObject(@event)}");
+        Logger.LogDebug(
+            $"[ChatGAgentManager][AIStreamingErrorResponseGEvent] start:{JsonConvert.SerializeObject(@event)}");
 
         await PublishAsync(new ResponseStreamGodChat()
         {
-            Response = "Your prompt triggered the Silence Directive—activated when universal harmonics or content ethics are at risk. Please modify your prompt and retry — tune its intent, refine its form, and the Oracle may speak.",
+            Response =
+                "Your prompt triggered the Silence Directive—activated when universal harmonics or content ethics are at risk. Please modify your prompt and retry — tune its intent, refine its form, and the Oracle may speak.",
             ChatId = @event.Context.ChatId,
             IsLastChunk = true,
             SerialNumber = -2
         });
-        
-        Logger.LogDebug($"[ChatGAgentManager][AIStreamingErrorResponseGEvent] end:{JsonConvert.SerializeObject(@event)}");
 
+        Logger.LogDebug(
+            $"[ChatGAgentManager][AIStreamingErrorResponseGEvent] end:{JsonConvert.SerializeObject(@event)}");
     }
-    
-    
+
+
     // [EventHandler]
     // public async Task HandleEventAsync(AIOldStreamingResponseGEvent @event)
     // {
@@ -131,7 +135,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     //     Logger.LogDebug($"[ChatGAgentManager][AIStreamingResponseGEvent] end:{JsonConvert.SerializeObject(@event)}");
     //
     // }
-    
+
     public async Task RenameChatTitleAsync(RenameChatTitleEvent @event)
     {
         Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] start:{JsonConvert.SerializeObject(@event)}");
@@ -143,7 +147,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         });
 
         Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] end:{JsonConvert.SerializeObject(@event)}");
-
     }
 
 
@@ -262,7 +265,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     public async Task HandleEventAsync(RequestClearAllEvent @event)
     {
         Logger.LogDebug($"[ChatGAgentManager][RequestClearAllEvent] start:{JsonConvert.SerializeObject(@event)}");
-        
+
         bool success = false;
         try
         {
@@ -281,7 +284,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         Logger.LogDebug($"[ChatGAgentManager][RequestClearAllEvent] end:{JsonConvert.SerializeObject(@event)}");
     }
-    
+
     [EventHandler]
     public async Task HandleEventAsync(RequestSetUserProfileEvent @event)
     {
@@ -324,10 +327,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         Logger.LogDebug($"[ChatGAgentManager][RequestGetUserProfileEvent] end");
     }
 
-    public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null, string? guider = null)
+    public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null,
+        string? guider = null)
     {
         Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Start - UserId: {this.GetPrimaryKey()}");
-        
+
         var configuration = GetConfiguration();
         Stopwatch sw = new Stopwatch();
         sw.Start();
@@ -336,9 +340,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step,time use:{sw.ElapsedMilliseconds}");
         Logger.LogDebug($"[ChatManagerGAgent][RequestCreateGodChatEvent] grainId={godChat.GetGrainId().ToString()}");
-        
+
         sw.Reset();
-        
+
         // Add role-specific prompt if guider is provided
         var sysMessage = string.Empty;
         if (!string.IsNullOrEmpty(guider))
@@ -362,7 +366,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         };
         Logger.LogDebug($"[GodChatGAgent][InitializeAsync] Detail : {JsonConvert.SerializeObject(chatConfigDto)}");
         await godChat.ConfigAsync(chatConfigDto);
-        
+
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
 
@@ -370,13 +374,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         if (userProfile != null)
         {
             Logger.LogDebug("CreateSessionAsync set user profile. session={0}", sessionId);
-            await SetUserProfileAsync(userProfile.Gender, userProfile.BirthDate, userProfile.BirthPlace, userProfile.FullName);
+            await SetUserProfileAsync(userProfile.Gender, userProfile.BirthDate, userProfile.BirthPlace,
+                userProfile.FullName);
             Logger.LogDebug("CreateSessionAsync set GodChat user profile. session={0}", sessionId);
             await godChat.SetUserProfileAsync(userProfile);
         }
-        
+
         sw.Reset();
-        
+
         // Record user activity metrics for retention analysis (before RaiseEvent to ensure proper deduplication)
         await RecordUserActivityMetricsAsync();
         RaiseEvent(new CreateSessionInfoEventLog()
@@ -386,12 +391,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             CreateAt = DateTime.UtcNow,
             Guider = guider // Set the role information for the conversation
         });
-        
+
         var initStopwatch = Stopwatch.StartNew();
         await godChat.InitAsync(this.GetPrimaryKey());
         initStopwatch.Stop();
-        Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] InitAsync completed - Duration: {initStopwatch.ElapsedMilliseconds}ms");
-        
+        Logger.LogDebug(
+            $"[ChatManagerGAgent][CreateSessionAsync] InitAsync completed - Duration: {initStopwatch.ElapsedMilliseconds}ms");
+
         sw.Stop();
         Logger.LogDebug($"CreateSessionAsync - step2,time use:{sw.ElapsedMilliseconds}");
         return godChat.GetPrimaryKey();
@@ -406,16 +412,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         try
         {
             var today = DateTime.UtcNow.Date;
-            
+
             // Check SessionInfoList for the last session's creation time
             var lastSession = State.SessionInfoList?.LastOrDefault();
             if (lastSession != null && lastSession.CreateAt.Date == today)
             {
                 // Today already has session creation, skip duplicate reporting
-                Logger.LogDebug("[GodChatGAgent][RecordUserActivityMetricsAsync] {UserId} User activity metrics already recorded today", this.GetPrimaryKey().ToString());
+                Logger.LogDebug(
+                    "[GodChatGAgent][RecordUserActivityMetricsAsync] {UserId} User activity metrics already recorded today",
+                    this.GetPrimaryKey().ToString());
                 return;
             }
-            
+
             // First session creation today, need to record metrics
             var todayString = today.ToString("yyyy-MM-dd");
             var userRegistrationDate = State.RegisteredAtUtc?.ToString("yyyy-MM-dd") ?? todayString;
@@ -432,8 +440,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 daysSinceRegistration: daysSinceRegistration,
                 membershipLevel: membershipLevel,
                 logger: Logger);
-                
-            Logger.LogInformation("User activity metrics recorded: daysSinceRegistration={DaysSinceRegistration}, membership={MembershipLevel}", 
+
+            Logger.LogInformation(
+                "User activity metrics recorded: daysSinceRegistration={DaysSinceRegistration}, membership={MembershipLevel}",
                 daysSinceRegistration, membershipLevel);
         }
         catch (Exception ex)
@@ -453,7 +462,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         try
         {
             var userQuotaGrain = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
-            
+
             // Check Ultimate subscription first (higher priority)
             var ultimateSubscription = await userQuotaGrain.GetSubscriptionAsync(ultimate: true);
             if (ultimateSubscription.IsActive)
@@ -467,7 +476,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     _ => UserMembershipTier.UltimateMonth // Default fallback for unknown plan types
                 };
             }
-            
+
             // Check Premium subscription
             var premiumSubscription = await userQuotaGrain.GetSubscriptionAsync(ultimate: false);
             if (premiumSubscription.IsActive)
@@ -481,7 +490,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     _ => UserMembershipTier.PremiumMonth // Default fallback for unknown plan types
                 };
             }
-            
+
             // No active subscription
             return UserMembershipTier.Free;
         }
@@ -493,21 +502,19 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
 
 
-
     public async Task<Tuple<string, string>> ChatWithSessionAsync(Guid sessionId, string sysmLLM, string content,
         ExecutionPromptSettings promptSettings = null)
     {
         throw new Exception("The method is outdated");
     }
-    
 
 
     public async Task<List<SessionInfoDto>> GetSessionListAsync()
     {
         // Clean expired sessions (7 days old and empty title)
         var sevenDaysAgo = DateTime.UtcNow.AddDays(-7);
-        var hasExpiredSessions = State.SessionInfoList.Any(s => 
-            s.CreateAt <= sevenDaysAgo && 
+        var hasExpiredSessions = State.SessionInfoList.Any(s =>
+            s.CreateAt <= sevenDaysAgo &&
             string.IsNullOrEmpty(s.Title));
 
         if (hasExpiredSessions)
@@ -521,7 +528,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
 
         var result = new List<SessionInfoDto>();
-        
+
         foreach (var item in State.SessionInfoList)
         {
             var createAt = item.CreateAt;
@@ -529,6 +536,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 createAt = new DateTime(2025, 4, 18);
             }
+
             result.Add(new SessionInfoDto()
             {
                 SessionId = item.SessionId,
@@ -552,14 +560,15 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         // Use the complete keyword for matching (no word splitting)
         var searchKeyword = keyword.Trim().ToLowerInvariant();
-        
+
         // Validate keyword length to prevent performance issues
         if (searchKeyword.Length > 200)
         {
-            Logger.LogWarning($"[ChatGAgentManager][SearchSessionsAsync] Keyword too long: {searchKeyword.Length} chars");
+            Logger.LogWarning(
+                $"[ChatGAgentManager][SearchSessionsAsync] Keyword too long: {searchKeyword.Length} chars");
             return new List<SessionInfoDto>();
         }
-        
+
         var searchResults = new List<(SessionInfoDto dto, int matchScore)>();
 
         // Search through sessions (limit to most recent 1000 for performance)
@@ -594,17 +603,19 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 }
                 catch (Exception contentEx)
                 {
-                    Logger.LogWarning(contentEx, $"[ChatGAgentManager][SearchSessionsAsync] Failed to extract content for session {sessionInfo.SessionId}");
+                    Logger.LogWarning(contentEx,
+                        $"[ChatGAgentManager][SearchSessionsAsync] Failed to extract content for session {sessionInfo.SessionId}");
                     contentPreview = ""; // Continue search without content matching
                 }
-                
+
                 var contentLower = contentPreview.ToLowerInvariant();
 
                 // Check content matching
                 var contentMatchScore = 0;
                 if (!string.IsNullOrEmpty(contentPreview) && contentLower.Contains(searchKeyword))
                 {
-                    contentMatchScore = contentLower == searchKeyword ? 30 : 15; // Complete content match vs partial match
+                    contentMatchScore =
+                        contentLower == searchKeyword ? 30 : 15; // Complete content match vs partial match
                     hasMatch = true;
                 }
 
@@ -634,7 +645,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, $"[ChatGAgentManager][SearchSessionsAsync] Failed to process session {sessionInfo.SessionId}");
+                Logger.LogWarning(ex,
+                    $"[ChatGAgentManager][SearchSessionsAsync] Failed to process session {sessionInfo.SessionId}");
                 // Continue processing other sessions
                 continue;
             }
@@ -648,7 +660,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             .Select(r => r.dto)
             .ToList();
 
-        Logger.LogDebug($"[ChatGAgentManager][SearchSessionsAsync] Found {result.Count} matches for keyword: {keyword}");
+        Logger.LogDebug(
+            $"[ChatGAgentManager][SearchSessionsAsync] Found {result.Count} matches for keyword: {keyword}");
         return result;
     }
 
@@ -668,12 +681,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             // Priority 1: Find user messages with substantial content (>5 chars)
             var userMessage = messages
-                .Where(m => m != null && 
-                           m.ChatRole == ChatRole.User && 
-                           !string.IsNullOrWhiteSpace(m.Content) && 
-                           m.Content.Trim().Length > 5)
+                .Where(m => m != null &&
+                            m.ChatRole == ChatRole.User &&
+                            !string.IsNullOrWhiteSpace(m.Content) &&
+                            m.Content.Trim().Length > 5)
                 .FirstOrDefault();
-                
+
             if (userMessage?.Content != null)
             {
                 string content = userMessage.Content.Trim();
@@ -682,12 +695,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
             // Priority 2: Find assistant messages with substantial content
             var assistantMessage = messages
-                .Where(m => m != null && 
-                           m.ChatRole == ChatRole.Assistant && 
-                           !string.IsNullOrWhiteSpace(m.Content) && 
-                           m.Content.Trim().Length > 5)
+                .Where(m => m != null &&
+                            m.ChatRole == ChatRole.Assistant &&
+                            !string.IsNullOrWhiteSpace(m.Content) &&
+                            m.Content.Trim().Length > 5)
                 .FirstOrDefault();
-                
+
             if (assistantMessage?.Content != null)
             {
                 string content = assistantMessage.Content.Trim();
@@ -698,7 +711,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var anyMessage = messages
                 .Where(m => m != null && !string.IsNullOrWhiteSpace(m.Content))
                 .FirstOrDefault();
-                
+
             if (anyMessage?.Content != null)
             {
                 string content = anyMessage.Content.Trim();
@@ -724,7 +737,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             return string.Empty;
         }
-        
+
         try
         {
             return content.Length <= 60 ? content : content.Substring(0, 60) + "...";
@@ -746,7 +759,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         Logger.LogDebug($"[ChatGAgentManager][GetSessionMessageListAsync] - session:ID {sessionId.ToString()}");
         var sessionInfo = State.GetSession(sessionId);
-        Logger.LogDebug($"[ChatGAgentManager][GetSessionMessageListAsync] - session:ID {JsonConvert.SerializeObject(sessionInfo)}");
+        Logger.LogDebug(
+            $"[ChatGAgentManager][GetSessionMessageListAsync] - session:ID {JsonConvert.SerializeObject(sessionInfo)}");
 
         if (sessionInfo == null)
         {
@@ -761,7 +775,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         Logger.LogDebug($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}");
         var sessionInfo = State.GetSession(sessionId);
-        
+
         if (sessionInfo == null)
         {
             var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
@@ -769,15 +783,19 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 ["SessionId"] = sessionId.ToString()
             };
-            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.InvalidConversation,language, parameters);
-            Logger.LogWarning($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - Session not found: {sessionId} ,language:{language}");
+            var localizedMessage =
+                _localizationService.GetLocalizedException(ExceptionMessageKeys.InvalidConversation, language,
+                    parameters);
+            Logger.LogWarning(
+                $"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - Session not found: {sessionId} ,language:{language}");
             throw new UserFriendlyException(localizedMessage);
         }
 
         var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
         var result = await godChat.GetChatMessageWithMetaAsync();
-        
-        Logger.LogDebug($"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}, returned {result.Count} messages with audio metadata");
+
+        Logger.LogDebug(
+            $"[ChatManagerGAgent][GetSessionMessageListWithMetaAsync] - sessionId: {sessionId}, returned {result.Count} messages with audio metadata");
         return result;
     }
 
@@ -785,10 +803,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         Logger.LogDebug($"[ChatGAgentManager][GetSessionCreationInfoAsync] - session:ID {sessionId.ToString()}");
         var sessionInfo = State.GetSession(sessionId);
-        
+
         if (sessionInfo == null)
         {
-            Logger.LogDebug($"[ChatGAgentManager][GetSessionCreationInfoAsync] - session not found: {sessionId.ToString()}");
+            Logger.LogDebug(
+                $"[ChatGAgentManager][GetSessionCreationInfoAsync] - session not found: {sessionId.ToString()}");
             return null;
         }
 
@@ -807,7 +826,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             return sessionId;
         }
-        
+
         //Do not clear the content of ShareGrain. When querying, first determine whether the Session exists
 
         RaiseEvent(new DeleteSessionEventLog()
@@ -881,6 +900,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Logger.LogWarning("[ChatGAgentManager][SetVoiceLanguageAsync] Invalid user ID");
             throw new UserFriendlyException("Invalid user. Please ensure you are properly logged in.");
         }
+
         // Raise event to update voice language
         RaiseEvent(new SetVoiceLanguageEventLog()
         {
@@ -888,31 +908,33 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         });
 
         await ConfirmEvents();
-        
-        Logger.LogDebug($"[ChatGAgentManager][SetVoiceLanguageAsync] Successfully set voice language to {voiceLanguage} for user {userId}");
+
+        Logger.LogDebug(
+            $"[ChatGAgentManager][SetVoiceLanguageAsync] Successfully set voice language to {voiceLanguage} for user {userId}");
         return userId;
     }
 
     public async Task<UserProfileDto> GetUserProfileAsync()
     {
         Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] userId: {this.GetPrimaryKey().ToString()}");
-        
+
         var invitationGrain = GrainFactory.GetGrain<IInvitationGAgent>(this.GetPrimaryKey());
         await invitationGrain.ProcessScheduledRewardAsync();
-        
+
         // Sync latest subscription status from UserBillingGAgent before getting user profile
         // This ensures Google Pay and other platform subscriptions are up-to-date
         var userBillingGAgent = GrainFactory.GetGrain<IUserBillingGAgent>(this.GetPrimaryKey());
         var activeSubscriptionStatus = await userBillingGAgent.GetActiveSubscriptionStatusAsync();
-        
-        Logger.LogDebug($"[ChatGAgentManager][GetUserProfileAsync] Active subscription status - Apple: {activeSubscriptionStatus.HasActiveAppleSubscription}, Stripe: {activeSubscriptionStatus.HasActiveStripeSubscription}, GooglePlay: {activeSubscriptionStatus.HasActiveGooglePlaySubscription}");
-        
+
+        Logger.LogDebug(
+            $"[ChatGAgentManager][GetUserProfileAsync] Active subscription status - Apple: {activeSubscriptionStatus.HasActiveAppleSubscription}, Stripe: {activeSubscriptionStatus.HasActiveStripeSubscription}, GooglePlay: {activeSubscriptionStatus.HasActiveGooglePlaySubscription}");
+
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
-        
+
         // Check if we need to sync subscription status between UserBillingGAgent and UserQuotaGAgent
         // This is particularly important for Google Pay subscriptions that might not be reflected in UserQuotaGAgent yet
         await SyncSubscriptionStatusIfNeeded(userBillingGAgent, userQuotaGAgent, activeSubscriptionStatus);
-        
+
         var credits = await userQuotaGAgent.GetCreditsAsync();
         var subscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync();
         var ultimateSubscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync(true);
@@ -932,7 +954,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         //     await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
         //     credits.Credits += reward.Credits;
         // }
-        
+
         return new UserProfileDto
         {
             Gender = State.Gender,
@@ -947,19 +969,21 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             VoiceLanguage = State.VoiceLanguage
         };
     }
-    
+
     public async Task<Guid> GenerateChatShareContentAsync(Guid sessionId)
     {
         Logger.LogDebug($"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}");
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         if (State.CurrentShareCount >= State.MaxShareCount)
         {
-            Logger.LogDebug($"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}, Exceed the maximum sharing limit. {State.CurrentShareCount}");
+            Logger.LogDebug(
+                $"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}, Exceed the maximum sharing limit. {State.CurrentShareCount}");
             var parameters = new Dictionary<string, string>
             {
                 ["MaxShareCount"] = State.MaxShareCount.ToString()
             };
-            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.SharesReached,language, parameters);
+            var localizedMessage =
+                _localizationService.GetLocalizedException(ExceptionMessageKeys.SharesReached, language, parameters);
 
             throw new UserFriendlyException(localizedMessage);
         }
@@ -967,11 +991,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var chatMessages = await GetSessionMessageListAsync(sessionId);
         if (chatMessages.IsNullOrEmpty())
         {
-            Logger.LogDebug($"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}, chatMessages is null");
-            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.InvalidSession, language);
+            Logger.LogDebug(
+                $"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}, chatMessages is null");
+            var localizedMessage =
+                _localizationService.GetLocalizedException(ExceptionMessageKeys.InvalidSession, language);
             throw new UserFriendlyException(localizedMessage);
         }
-        
+
         var shareId = Guid.NewGuid();
         var shareLinkGrain = GrainFactory.GetGrain<IShareLinkGrain>(shareId);
         await shareLinkGrain.SaveShareContentAsync(new ShareLinkDto
@@ -980,7 +1006,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             SessionId = sessionId,
             Messages = chatMessages
         });
-        Logger.LogDebug($"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}, save success");
+        Logger.LogDebug(
+            $"[ChatGAgentManager][GenerateChatShareContentAsync] - session: {sessionId.ToString()}, save success");
         RaiseEvent(new GenerateChatShareContentLogEvent
         {
             SessionId = sessionId,
@@ -998,18 +1025,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         if (sessionInfo == null)
         {
-            Logger.LogDebug($"[ChatGAgentManager][GetChatShareContentAsync] - session {sessionId.ToString()}, session not found.");
-            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.ConversationDeleted,language);
+            Logger.LogDebug(
+                $"[ChatGAgentManager][GetChatShareContentAsync] - session {sessionId.ToString()}, session not found.");
+            var localizedMessage =
+                _localizationService.GetLocalizedException(ExceptionMessageKeys.ConversationDeleted, language);
             throw new UserFriendlyException(localizedMessage);
         }
 
         if (sessionInfo.ShareIds.IsNullOrEmpty() || !sessionInfo.ShareIds.Contains(shareId))
         {
-            Logger.LogDebug($"[ChatGAgentManager][GetChatShareContentAsync] - session {sessionId.ToString()}, shareId not found.");
-            var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.ConversationDeleted,language);
+            Logger.LogDebug(
+                $"[ChatGAgentManager][GetChatShareContentAsync] - session {sessionId.ToString()}, shareId not found.");
+            var localizedMessage =
+                _localizationService.GetLocalizedException(ExceptionMessageKeys.ConversationDeleted, language);
             throw new UserFriendlyException(localizedMessage);
         }
-        
+
         var shareLinkGrain = GrainFactory.GetGrain<IShareLinkGrain>(shareId);
         return await shareLinkGrain.GetShareContentAsync();
     }
@@ -1036,10 +1067,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         if (inviterId.Equals(this.GetPrimaryKey().ToString()))
         {
-            Logger.LogWarning($"Invalid invite code,the code belongs to the user themselves. userId:{this.GetPrimaryKey().ToString()} InviteCode:{inviteCode}");
+            Logger.LogWarning(
+                $"Invalid invite code,the code belongs to the user themselves. userId:{this.GetPrimaryKey().ToString()} InviteCode:{inviteCode}");
             return false;
         }
-        
+
         // Step 1: First, check if the current user (invitee) is eligible for the reward.
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
 
@@ -1052,12 +1084,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
             await ConfirmEvents();
         }
-        
+
         bool redeemResult = false;
-        
+
         var registeredAtUtc = State.RegisteredAtUtc;
-        Logger.LogWarning($"State.RegisteredAtUtc {this.GetPrimaryKey().ToString()} {registeredAtUtc?.ToString() ?? "null"}");
-        
+        Logger.LogWarning(
+            $"State.RegisteredAtUtc {this.GetPrimaryKey().ToString()} {registeredAtUtc?.ToString() ?? "null"}");
+
         if (registeredAtUtc == null)
         {
             Logger.LogWarning($"State.RegisteredAtUtc == null userId:{this.GetPrimaryKey().ToString()}");
@@ -1068,15 +1101,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             //show time
             var now = DateTime.UtcNow;
             var minutes = (now - registeredAtUtc.Value).TotalMinutes;
-            Logger.LogWarning($"State.RegisteredAtUtc userId:{this.GetPrimaryKey().ToString()} RegisteredAtUtc={registeredAtUtc.Value} now={now} minutes={minutes}");
+            Logger.LogWarning(
+                $"State.RegisteredAtUtc userId:{this.GetPrimaryKey().ToString()} RegisteredAtUtc={registeredAtUtc.Value} now={now} minutes={minutes}");
             //
-            
-            redeemResult = await userQuotaGAgent.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
+
+            redeemResult =
+                await userQuotaGAgent.RedeemInitialRewardAsync(this.GetPrimaryKey().ToString(), registeredAtUtc.Value);
         }
 
         if (!redeemResult)
         {
-            Logger.LogWarning($"Failed to redeem initial reward for user {this.GetPrimaryKey().ToString()} with code {inviteCode}. Eligibility check failed");
+            Logger.LogWarning(
+                $"Failed to redeem initial reward for user {this.GetPrimaryKey().ToString()} with code {inviteCode}. Eligibility check failed");
             return false;
         }
 
@@ -1086,7 +1122,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         await inviterGrain.ProcessInviteeRegistrationAsync(this.GetPrimaryKey().ToString());
 
         await SetInviterAsync(inviterGuid);
-        
+
         return true;
     }
 
@@ -1097,7 +1133,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             return new UserProfileDto();
         }
-        
+
         var godChat = GrainFactory.GetGrain<IGodChat>(sessionInfo.SessionId);
         var userProfileDto = await godChat.GetUserProfileAsync();
         return userProfileDto ?? new UserProfileDto();
@@ -1132,6 +1168,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 {
                     state.RegisteredAtUtc = DateTime.UtcNow;
                 }
+
                 state.SessionInfoList.Add(new SessionInfo()
                 {
                     SessionId = @createSessionInfo.SessionId,
@@ -1146,15 +1183,16 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 {
                     state.CurrentShareCount -= deleteSession.ShareIds.Count;
                 }
+
                 state.SessionInfoList.RemoveAll(f => f.SessionId == @deleteSessionEventLog.SessionId);
                 break;
             case CleanExpiredSessionsEventLog @cleanExpiredSessionsEventLog:
                 var expiredSessionIds = state.SessionInfoList
-                    .Where(s => s.CreateAt <= @cleanExpiredSessionsEventLog.CleanBefore && 
-                               string.IsNullOrEmpty(s.Title))
+                    .Where(s => s.CreateAt <= @cleanExpiredSessionsEventLog.CleanBefore &&
+                                string.IsNullOrEmpty(s.Title))
                     .Select(s => s.SessionId)
                     .ToList();
-                
+
                 foreach (var expiredSessionId in expiredSessionIds)
                 {
                     var expiredSession = state.GetSession(expiredSessionId);
@@ -1163,14 +1201,16 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         state.CurrentShareCount -= expiredSession.ShareIds.Count;
                     }
                 }
-                
+
                 state.SessionInfoList.RemoveAll(s => expiredSessionIds.Contains(s.SessionId));
                 break;
             case RenameTitleEventLog @renameTitleEventLog:
-                Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] event:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
+                Logger.LogDebug(
+                    $"[ChatGAgentManager][RenameChatTitleEvent] event:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
                 var sessionInfoList = state.SessionInfoList;
                 var sessionInfo = sessionInfoList.First(f => f.SessionId == @renameTitleEventLog.SessionId);
-                Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] event exist:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
+                Logger.LogDebug(
+                    $"[ChatGAgentManager][RenameChatTitleEvent] event exist:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
                 sessionInfo.Title = @renameTitleEventLog.Title;
                 state.SessionInfoList = sessionInfoList;
                 break;
@@ -1198,14 +1238,17 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 var session = state.GetSession(generateChatShareContentLogEvent.SessionId);
                 if (session == null)
                 {
-                    Logger.LogDebug($"[ChatGAgentManager][GenerateChatShareContentLogEvent] session not fuound: {generateChatShareContentLogEvent.SessionId.ToString()}");
+                    Logger.LogDebug(
+                        $"[ChatGAgentManager][GenerateChatShareContentLogEvent] session not fuound: {generateChatShareContentLogEvent.SessionId.ToString()}");
                     break;
                 }
+
                 state.CurrentShareCount += 1;
                 if (session.ShareIds == null)
                 {
                     session.ShareIds = new List<Guid>();
                 }
+
                 session.ShareIds.Add(generateChatShareContentLogEvent.ShareId);
                 break;
             case SetMaxShareCountLogEvent setMaxShareCountLogEvent:
@@ -1221,6 +1264,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 {
                     state.RegisteredAtUtc = initializeNewUserStatusLogEvent.RegisteredAtUtc;
                 }
+
                 state.MaxShareCount = initializeNewUserStatusLogEvent.MaxShareCount;
                 break;
             case RegisterOrUpdateDeviceEventLog registerDeviceEvent:
@@ -1230,13 +1274,14 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 {
                     state.TokenToDeviceMap.Remove(registerDeviceEvent.OldPushToken);
                 }
-                
+
                 // Update device info and token mapping
                 state.UserDevices[registerDeviceEvent.DeviceId] = registerDeviceEvent.DeviceInfo;
                 if (!string.IsNullOrEmpty(registerDeviceEvent.DeviceInfo.PushToken))
                 {
                     state.TokenToDeviceMap[registerDeviceEvent.DeviceInfo.PushToken] = registerDeviceEvent.DeviceId;
                 }
+
                 break;
             case MarkDailyPushReadEventLog markReadEvent:
                 state.DailyPushReadStatus[markReadEvent.DateKey] = true;
@@ -1248,36 +1293,37 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     if (state.UserDevices.ContainsKey(deviceIdToRemove))
                     {
                         var deviceToRemove = state.UserDevices[deviceIdToRemove];
-                        
+
                         // Remove token mapping if exists
                         if (!string.IsNullOrEmpty(deviceToRemove.PushToken))
                         {
                             state.TokenToDeviceMap.Remove(deviceToRemove.PushToken);
                         }
-                        
+
                         // Remove device from user devices
                         state.UserDevices.Remove(deviceIdToRemove);
                     }
                 }
-                
-                Logger.LogDebug("🧹 Device cleanup completed: removed {RemovedCount} devices, reason: {CleanupReason}", 
+
+                Logger.LogDebug("🧹 Device cleanup completed: removed {RemovedCount} devices, reason: {CleanupReason}",
                     cleanDevicesEvent.RemovedCount, cleanDevicesEvent.CleanupReason);
                 break;
-            
+
             // === V2 Device Management Events ===
             case RegisterOrUpdateDeviceV2EventLog registerDeviceV2Event:
                 // Update V2 device info and token mapping
                 state.UserDevicesV2[registerDeviceV2Event.DeviceId] = registerDeviceV2Event.DeviceInfo;
                 if (!string.IsNullOrEmpty(registerDeviceV2Event.DeviceInfo.PushToken))
                 {
-                    state.TokenToDeviceMapV2[registerDeviceV2Event.DeviceInfo.PushToken] = registerDeviceV2Event.DeviceId;
+                    state.TokenToDeviceMapV2[registerDeviceV2Event.DeviceInfo.PushToken] =
+                        registerDeviceV2Event.DeviceId;
                 }
-                
+
                 // ✅ V2-only: No migration tracking needed
                 break;
-                
+
             // ✅ V2-only: Migration events removed - V1 and V2 are completely separate
-                
+
             case CleanupDevicesV2EventLog cleanDevicesV2Event:
                 // Remove V2 devices specified in the cleanup event
                 foreach (var deviceIdToRemove in cleanDevicesV2Event.DeviceIdsToRemove)
@@ -1285,25 +1331,25 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     if (state.UserDevicesV2.ContainsKey(deviceIdToRemove))
                     {
                         var deviceToRemove = state.UserDevicesV2[deviceIdToRemove];
-                        
+
                         // Remove token mapping if exists
                         if (!string.IsNullOrEmpty(deviceToRemove.PushToken))
                         {
                             state.TokenToDeviceMapV2.Remove(deviceToRemove.PushToken);
                         }
-                        
+
                         // Remove device from V2 user devices
                         state.UserDevicesV2.Remove(deviceIdToRemove);
-                        
+
                         // ✅ V2-only: No migration tracking needed
                     }
                 }
-                
-                Logger.LogDebug("🧹 V2 Device cleanup completed: removed {RemovedCount} devices, reason: {CleanupReason}", 
+
+                Logger.LogDebug(
+                    "🧹 V2 Device cleanup completed: removed {RemovedCount} devices, reason: {CleanupReason}",
                     cleanDevicesV2Event.RemovedCount, cleanDevicesV2Event.CleanupReason);
                 break;
-
-        }   
+        }
     }
 
     /// <summary>
@@ -1333,7 +1379,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 IsFirstConversation = true,
                 UserId = userId,
                 RegisteredAtUtc = DateTime.UtcNow,
-                MaxShareCount = 10000 
+                MaxShareCount = 10000
             });
             await ConfirmEvents();
             return true;
@@ -1373,6 +1419,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 MaxShareCount = 10000
             });
         }
+
         await base.OnGAgentActivateAsync(cancellationToken);
     }
 
@@ -1390,9 +1437,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         try
         {
-            var roleOptions = (ServiceProvider.GetService(typeof(IOptionsMonitor<RolePromptOptions>)) as IOptionsMonitor<RolePromptOptions>)?.CurrentValue;
+            var roleOptions =
+                (ServiceProvider.GetService(typeof(IOptionsMonitor<RolePromptOptions>)) as
+                    IOptionsMonitor<RolePromptOptions>)?.CurrentValue;
             var rolePrompt = roleOptions?.RolePrompts.GetValueOrDefault(roleName, string.Empty) ?? string.Empty;
-            
+
             if (!string.IsNullOrEmpty(rolePrompt))
             {
                 Logger.LogDebug($"[ChatGAgentManager][GetRolePrompt] Found role prompt for: {roleName}");
@@ -1401,12 +1450,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 Logger.LogDebug($"[ChatGAgentManager][GetRolePrompt] No role prompt found for: {roleName}");
             }
-            
+
             return rolePrompt;
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "[ChatGAgentManager][GetRolePrompt] Failed to get role prompt for role: {RoleName}", roleName);
+            Logger.LogWarning(ex, "[ChatGAgentManager][GetRolePrompt] Failed to get role prompt for role: {RoleName}",
+                roleName);
             return string.Empty;
         }
     }
@@ -1415,7 +1465,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     /// Sync subscription status between UserBillingGAgent and UserQuotaGAgent if needed
     /// This ensures Google Pay and other platform subscriptions are properly reflected in user quota
     /// </summary>
-    private async Task SyncSubscriptionStatusIfNeeded(IUserBillingGAgent userBillingGAgent, IUserQuotaGAgent userQuotaGAgent, ActiveSubscriptionStatusDto activeSubscriptionStatus)
+    private async Task SyncSubscriptionStatusIfNeeded(IUserBillingGAgent userBillingGAgent,
+        IUserQuotaGAgent userQuotaGAgent, ActiveSubscriptionStatusDto activeSubscriptionStatus)
     {
         try
         {
@@ -1423,37 +1474,44 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var quotaSubscription = await userQuotaGAgent.GetSubscriptionAsync(false);
             var quotaUltimateSubscription = await userQuotaGAgent.GetSubscriptionAsync(true);
 
-            Logger.LogDebug($"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Current quota subscription status - Premium: {quotaSubscription.IsActive}, Ultimate: {quotaUltimateSubscription.IsActive}");
+            Logger.LogDebug(
+                $"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Current quota subscription status - Premium: {quotaSubscription.IsActive}, Ultimate: {quotaUltimateSubscription.IsActive}");
 
             // Check if there's any mismatch between billing and quota status
             bool needsSync = false;
 
             // If billing shows active subscriptions but quota doesn't, we need to sync
-            if (activeSubscriptionStatus.HasActiveSubscription && !quotaSubscription.IsActive && !quotaUltimateSubscription.IsActive)
+            if (activeSubscriptionStatus.HasActiveSubscription && !quotaSubscription.IsActive &&
+                !quotaUltimateSubscription.IsActive)
             {
                 needsSync = true;
-                Logger.LogInformation($"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Subscription status mismatch detected. Billing shows active subscription but quota shows inactive. Syncing...");
+                Logger.LogInformation(
+                    $"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Subscription status mismatch detected. Billing shows active subscription but quota shows inactive. Syncing...");
             }
 
             // Additional check: If Google Play specifically shows active but neither quota subscription is active
-            if (activeSubscriptionStatus.HasActiveGooglePlaySubscription && !quotaSubscription.IsActive && !quotaUltimateSubscription.IsActive)
+            if (activeSubscriptionStatus.HasActiveGooglePlaySubscription && !quotaSubscription.IsActive &&
+                !quotaUltimateSubscription.IsActive)
             {
                 needsSync = true;
-                Logger.LogInformation($"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Google Play subscription detected but not reflected in quota. Syncing...");
+                Logger.LogInformation(
+                    $"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Google Play subscription detected but not reflected in quota. Syncing...");
             }
 
             if (needsSync)
             {
                 // Get latest payment history to sync subscription status
                 var paymentHistory = await userBillingGAgent.GetPaymentHistoryAsync(1, 10); // Get recent payments
-                
-                foreach (var payment in paymentHistory.Where(p => p.Status == PaymentStatus.Completed && p.Platform == PaymentPlatform.GooglePlay))
+
+                foreach (var payment in paymentHistory.Where(p =>
+                             p.Status == PaymentStatus.Completed && p.Platform == PaymentPlatform.GooglePlay))
                 {
-                    Logger.LogInformation($"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Found Google Play payment {payment.PaymentGrainId} with PlanType {payment.PlanType}, syncing to UserQuotaGAgent");
-                    
+                    Logger.LogInformation(
+                        $"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Found Google Play payment {payment.PaymentGrainId} with PlanType {payment.PlanType}, syncing to UserQuotaGAgent");
+
                     // Determine if this is ultimate subscription based on membership level
                     bool isUltimate = payment.MembershipLevel == MembershipLevel.Membership_Level_Ultimate;
-                    
+
                     // Create subscription info to sync
                     var subscriptionToSync = new SubscriptionInfoDto
                     {
@@ -1467,14 +1525,16 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     };
 
                     await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionToSync, isUltimate);
-                    Logger.LogInformation($"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Successfully synced Google Play subscription to UserQuotaGAgent - Ultimate: {isUltimate}");
+                    Logger.LogInformation(
+                        $"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Successfully synced Google Play subscription to UserQuotaGAgent - Ultimate: {isUltimate}");
                     break; // Only sync the most recent active subscription
                 }
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, $"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Error syncing subscription status");
+            Logger.LogError(ex,
+                $"[ChatGAgentManager][SyncSubscriptionStatusIfNeeded] Error syncing subscription status");
             // Don't throw - this is a best-effort sync operation
         }
     }
@@ -1485,21 +1545,43 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     public async Task MarkPushAsReadAsync(string deviceId)
     {
+        // Check device registration switch
+        var options =
+            ServiceProvider.GetService(typeof(IOptionsMonitor<DailyPushOptions>)) as IOptionsMonitor<DailyPushOptions>;
+        if (options != null && !options.CurrentValue.DeviceRegistrationEnabled)
+        {
+            Logger.LogInformation("Mark read disabled - returning mock success for device {DeviceId}", deviceId);
+            return; // Return success but skip actual read status update
+        }
+
         // ✅ V2 ONLY: Check if device exists in V2 structure
         if (State.UserDevicesV2.ContainsKey(deviceId))
         {
             var dateKey = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            
-            // Use event-driven state update
+            var date = DateOnly.FromDateTime(DateTime.UtcNow);
+
+            // 1. Record user-level read status (existing logic)
             RaiseEvent(new MarkDailyPushReadEventLog
             {
                 DateKey = dateKey,
                 ReadTime = DateTime.UtcNow
             });
-            
+
             await ConfirmEvents();
-            
-            Logger.LogInformation($"Marked daily push as read for V2 device: {deviceId} on {dateKey}");
+
+            // 2. Record device-level read status in Redis (new logic)
+            var deduplicationService = ServiceProvider.GetRequiredService<IPushDeduplicationService>();
+            var deviceReadSuccess = await deduplicationService.MarkDeviceAsReadAsync(deviceId, date);
+
+            if (deviceReadSuccess)
+            {
+                Logger.LogInformation(
+                    $"Marked daily push as read for V2 device: {deviceId} on {dateKey} (user-level + device-level)");
+            }
+            else
+            {
+                Logger.LogWarning($"Failed to mark device-level read status for device: {deviceId} on {dateKey}");
+            }
         }
         else
         {
@@ -1523,7 +1605,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 LastTokenUpdate = deviceV2.LastTokenUpdate
             };
         }
-        
+
         return new UserDeviceInfo { PushEnabled = true }; // Default for non-existent devices
     }
 
@@ -1532,11 +1614,12 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // 🔄 Use unified interface to check all devices (V2 + V1)
         var allDevices = await GetUnifiedDevicesAsync();
         var enabledDevicesInTimezone = allDevices.Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId).ToList();
-        
-        Logger.LogDebug("HasEnabledDeviceInTimezoneAsync: TimeZone={TimeZone}, TotalDevices={Total}, EnabledInTimezone={Enabled}, DeviceIds=[{DeviceIds}]",
-            timeZoneId, allDevices.Count, enabledDevicesInTimezone.Count, 
+
+        Logger.LogDebug(
+            "HasEnabledDeviceInTimezoneAsync: TimeZone={TimeZone}, TotalDevices={Total}, EnabledInTimezone={Enabled}, DeviceIds=[{DeviceIds}]",
+            timeZoneId, allDevices.Count, enabledDevicesInTimezone.Count,
             string.Join(", ", enabledDevicesInTimezone.Select(d => d.DeviceId)));
-        
+
         return enabledDevicesInTimezone.Any();
     }
 
@@ -1596,7 +1679,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
             var reasonText = string.Join(", ", cleanupReasons);
 
-            Logger.LogInformation("🧹 Cleaning up {Count} devices for user {UserId}: {Reasons}", 
+            Logger.LogInformation("🧹 Cleaning up {Count} devices for user {UserId}: {Reasons}",
                 devicesToRemove.Count, State.UserId, reasonText);
 
             RaiseEvent(new CleanExpiredDevicesEventLog
@@ -1621,23 +1704,24 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             var currentDateKey = currentDate.ToString("yyyy-MM-dd");
             var yesterdayDateKey = currentDate.AddDays(-1).ToString("yyyy-MM-dd");
-            
+
             var keysToRemove = State.DailyPushReadStatus.Keys
                 .Where(key => key != currentDateKey && key != yesterdayDateKey)
                 .ToList();
-            
+
             if (keysToRemove.Count > 0)
             {
                 foreach (var key in keysToRemove)
                 {
                     State.DailyPushReadStatus.Remove(key);
                 }
-                
-                Logger.LogInformation("🧹 Cleaned up {Count} expired read status entries for user {UserId} (kept: {Current}, {Yesterday})", 
+
+                Logger.LogInformation(
+                    "🧹 Cleaned up {Count} expired read status entries for user {UserId} (kept: {Current}, {Yesterday})",
                     keysToRemove.Count, State.UserId, currentDateKey, yesterdayDateKey);
-            
+            }
+
             await ConfirmEvents();
-        }
         }
         catch (Exception ex)
         {
@@ -1648,307 +1732,339 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     // Concurrent protection for daily push processing per user
     private static readonly ConcurrentDictionary<Guid, SemaphoreSlim> _pushSemaphores = new();
 
-    public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents, string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
+    public async Task ProcessDailyPushAsync(DateTime targetDate, List<DailyNotificationContent> contents,
+        string timeZoneId, bool bypassReadStatusCheck = false, bool isRetryPush = false, bool isTestPush = false)
     {
         // 🔒 Acquire user-level semaphore to prevent concurrent push processing
         var userSemaphore = _pushSemaphores.GetOrAdd(State.UserId, _ => new SemaphoreSlim(1, 1));
 
         await userSemaphore.WaitAsync();
         try
-    {
-        var dateKey = targetDate.ToString("yyyy-MM-dd");
-            
-            Logger.LogDebug("🔒 Acquired push semaphore for user {UserId}, timezone {TimeZone}, pushType: {PushType}", 
+        {
+            var dateKey = targetDate.ToString("yyyy-MM-dd");
+
+            Logger.LogDebug("🔒 Acquired push semaphore for user {UserId}, timezone {TimeZone}, pushType: {PushType}",
                 State.UserId, timeZoneId, isRetryPush ? "retry" : "morning");
-            
+
             // 🧹 Clean up expired read status (keep only today and yesterday)
             await CleanupExpiredReadStatusAsync(targetDate);
-        
-        // 📊 Log all user devices for debugging (triggered by push processing)
-        await LogAllUserDevicesAsync($"PUSH_{(isRetryPush ? "RETRY" : "MORNING")}_{targetDate:yyyy-MM-dd}");
-        
-        // Check if any message has been read for today - if so, skip all pushes
-        // Exception: bypass this check when explicitly requested (e.g., test mode main push)
-        if (!bypassReadStatusCheck)
-        {
-            var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
-            if (hasAnyReadToday)
+
+
+            // Check if any message has been read for today - if so, skip all pushes
+            // Exception: bypass this check when explicitly requested (e.g., test mode main push)
+            if (!bypassReadStatusCheck)
             {
-                // 🔥 V2-ONLY: Get device info for logging from V2 structure
-                var devicesInTimezone = State.UserDevicesV2.Values
-                    .Where(d => d.TimeZoneId == timeZoneId)
-                    .Select(d => new { 
-                        DeviceId = d.DeviceId, 
-                        PushToken = !string.IsNullOrEmpty(d.PushToken) ? d.PushToken.Substring(0, Math.Min(8, d.PushToken.Length)) + "..." : "EMPTY",
-                        PushEnabled = d.PushEnabled 
-                    })
-                    .ToList();
-                
-                var deviceInfo = devicesInTimezone.Any() 
-                    ? string.Join(", ", devicesInTimezone.Select(d => $"DeviceId:{d.DeviceId}|Token:{d.PushToken}|Enabled:{d.PushEnabled}"))
-                    : "No devices in timezone";
-                
-                Logger.LogInformation("At least one daily push already read for {DateKey}, skipping all pushes - UserId: {UserId}, TimeZone: {TimeZone}, Devices: [{DeviceInfo}]", 
-                    dateKey, State.UserId, timeZoneId, deviceInfo);
+                var hasAnyReadToday = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+                if (hasAnyReadToday)
+                {
+                    // 🔥 V2-ONLY: Get device info for logging from V2 structure
+                    var devicesInTimezone = State.UserDevicesV2.Values
+                        .Where(d => d.TimeZoneId == timeZoneId)
+                        .Select(d => new
+                        {
+                            DeviceId = d.DeviceId,
+                            PushToken = !string.IsNullOrEmpty(d.PushToken)
+                                ? d.PushToken.Substring(0, Math.Min(8, d.PushToken.Length)) + "..."
+                                : "EMPTY",
+                            PushEnabled = d.PushEnabled
+                        })
+                        .ToList();
+
+                    var deviceInfo = devicesInTimezone.Any()
+                        ? string.Join(", ",
+                            devicesInTimezone.Select(d =>
+                                $"DeviceId:{d.DeviceId}|Token:{d.PushToken}|Enabled:{d.PushEnabled}"))
+                        : "No devices in timezone";
+
+                    Logger.LogInformation(
+                        "At least one daily push already read for {DateKey}, skipping all pushes - UserId: {UserId}, TimeZone: {TimeZone}, Devices: [{DeviceInfo}]",
+                        dateKey, State.UserId, timeZoneId, deviceInfo);
+                    return;
+                }
+            }
+            else
+            {
+                Logger.LogInformation("Bypassing read status check for daily push on {DateKey}", dateKey);
+            }
+
+            // Only process devices in the specified timezone with pushToken deduplication
+            // 🔄 Use unified interface to get all devices (V2 prioritized, V1 fallback)
+            var enabledDevicesRaw = await GetUnifiedDevicesAsync();
+            var enabledDevicesFiltered = enabledDevicesRaw
+                .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
+                .ToList();
+
+            // 🎯 CRITICAL FIX: Deduplicate by deviceId first, then by pushToken
+            // This prevents the same physical device from being processed multiple times
+            // even if it has different pushTokens (e.g., after user switching)
+            var enabledDevices = enabledDevicesFiltered
+                .GroupBy(d => d.DeviceId) // 🔧 Primary deduplication by deviceId
+                .Select(deviceGroup =>
+                    deviceGroup.OrderByDescending(d => d.LastTokenUpdate).First()) // Keep latest record for the device
+                .ToList();
+
+            var duplicateCount = enabledDevicesFiltered.Count - enabledDevices.Count;
+            if (duplicateCount > 0)
+            {
+                Logger.LogDebug(
+                    "Device deduplication: removed {DuplicateCount} duplicate devices (by deviceId + pushToken)",
+                    duplicateCount);
+            }
+
+            Logger.LogInformation("Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}",
+                enabledDevices.Count, timeZoneId, State.UserId);
+
+            if (enabledDevices.Count == 0)
+            {
+                Logger.LogWarning(
+                    "No enabled devices for daily push - User {UserId}, TimeZone {TimeZone}, Total V2 devices: {TotalDevices}",
+                    State.UserId, timeZoneId, State.UserDevicesV2.Count);
                 return;
             }
-        }
-        else
-        {
-            Logger.LogInformation("Bypassing read status check for daily push on {DateKey}", dateKey);
-        }
-        
-        // Only process devices in the specified timezone with pushToken deduplication
-        // 🔄 Use unified interface to get all devices (V2 prioritized, V1 fallback)
-        var enabledDevicesRaw = await GetUnifiedDevicesAsync();
-        var enabledDevicesFiltered = enabledDevicesRaw
-            .Where(d => d.PushEnabled && d.TimeZoneId == timeZoneId && !string.IsNullOrEmpty(d.PushToken))
-            .ToList();
-            
-        // 🎯 CRITICAL FIX: Deduplicate by deviceId first, then by pushToken
-        // This prevents the same physical device from being processed multiple times
-        // even if it has different pushTokens (e.g., after user switching)
-        var enabledDevices = enabledDevicesFiltered
-            .GroupBy(d => d.DeviceId)  // 🔧 Primary deduplication by deviceId
-            .Select(deviceGroup => deviceGroup.OrderByDescending(d => d.LastTokenUpdate).First()) // Keep latest record for the device
-            .ToList();
-            
-        var duplicateCount = enabledDevicesFiltered.Count - enabledDevices.Count;
-        if (duplicateCount > 0)
-        {
-            Logger.LogDebug("Device deduplication: removed {DuplicateCount} duplicate devices (by deviceId + pushToken)", duplicateCount);
-        }
-        
-        Logger.LogInformation("Found {DeviceCount} enabled devices in timezone {TimeZone} for user {UserId}", 
-            enabledDevices.Count, timeZoneId, State.UserId);
-            
-        if (enabledDevices.Count == 0)
-        {
-            Logger.LogWarning("No enabled devices for daily push - User {UserId}, TimeZone {TimeZone}, Total V2 devices: {TotalDevices}", 
-                State.UserId, timeZoneId, State.UserDevicesV2.Count);
-            return;
-        }
-        
-        // Get Global JWT Provider (new architecture - single instance for entire system)
-        var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
-        
-        // Get Firebase project configuration via FirebaseService
-        var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
-        if (firebaseService == null)
-        {
-            Logger.LogError("FirebaseService not available for push notifications");
-            return;
-        }
-        
-        var projectId = firebaseService.ProjectId;
-        if (string.IsNullOrEmpty(projectId))
-        {
-            Logger.LogError("Firebase ProjectId not configured in FirebaseService for push notifications");
-            return;
-        }
-        
-        var successCount = 0;
-        var failureCount = 0;
-        
-        // 🎯 Redis-based deduplication for push notifications
-        var eligibleDevices = new List<UserDeviceInfo>();
-        var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
-        var date = DateOnly.FromDateTime(targetDate);
-        
-        if (deduplicationService == null)
-        {
-            Logger.LogWarning("IPushDeduplicationService not available, proceeding without deduplication");
-            eligibleDevices = enabledDevices; // Fallback: no deduplication
-        }
-        else
-        {
-            foreach (var device in enabledDevices)
+
+            // Get Global JWT Provider (new architecture - single instance for entire system)
+            var globalJwtProvider =
+                GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
+
+            // Get Firebase project configuration via FirebaseService
+            var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
+            if (firebaseService == null)
             {
-                bool canSend;
-                
-                if (isTestPush)
+                Logger.LogError("FirebaseService not available for push notifications");
+                return;
+            }
+
+            var projectId = firebaseService.ProjectId;
+            if (string.IsNullOrEmpty(projectId))
+            {
+                Logger.LogError("Firebase ProjectId not configured in FirebaseService for push notifications");
+                return;
+            }
+
+            var successCount = 0;
+            var failureCount = 0;
+
+            // 🎯 Redis-based deduplication for push notifications
+            var eligibleDevices = new List<UserDeviceInfo>();
+            var deduplicationService =
+                ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
+            var date = DateOnly.FromDateTime(targetDate);
+
+            if (deduplicationService == null)
+            {
+                Logger.LogWarning("IPushDeduplicationService not available, proceeding without deduplication");
+                eligibleDevices = enabledDevices; // Fallback: no deduplication
+            }
+            else
+            {
+                foreach (var device in enabledDevices)
                 {
-                    canSend = true; // Test pushes skip deduplication
-                    Logger.LogInformation("Device ELIGIBLE (test): {DeviceId} in {TimeZone}", device.DeviceId, timeZoneId);
-                }
-                else if (isRetryPush)
-                {
-                    // Check State: if already read today, skip retry push entirely
-                    if (!bypassReadStatusCheck && State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead)
+                    bool canSend;
+
+                    if (isTestPush)
                     {
-                        canSend = false;
-                        Logger.LogInformation("Device BLOCKED (retry, already read): {DeviceId} in {TimeZone}, read on {DateKey}", 
-                            device.DeviceId, timeZoneId, dateKey);
+                        canSend = true; // Test pushes skip deduplication
+                        Logger.LogInformation("Device ELIGIBLE (test): {DeviceId} in {TimeZone}", device.DeviceId,
+                            timeZoneId);
+                    }
+                    else if (isRetryPush)
+                    {
+                        // Check both user-level and device-level read status
+                        var userRead = !bypassReadStatusCheck &&
+                                       State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+                        var deviceRead = false;
+
+                        if (!bypassReadStatusCheck && !userRead)
+                        {
+                            // Only check device-level read status if user-level is not read
+                            deviceRead = await deduplicationService.IsDeviceReadAsync(device.DeviceId, date);
+                        }
+
+                        if (userRead || deviceRead)
+                        {
+                            canSend = false;
+                            var readType = userRead ? "user-level" : "device-level";
+                            Logger.LogInformation(
+                                "Device BLOCKED (retry, already read - {ReadType}): {DeviceId} in {TimeZone}, read on {DateKey}",
+                                readType, device.DeviceId, timeZoneId, dateKey);
+                        }
+                        else
+                        {
+                            canSend = await deduplicationService.TryClaimRetryPushAsync(device.DeviceId, date,
+                                timeZoneId);
+                            Logger.LogInformation("Device {Status} (retry): {DeviceId} in {TimeZone}",
+                                canSend ? "ELIGIBLE" : "BLOCKED", device.DeviceId, timeZoneId);
+                        }
                     }
                     else
                     {
-                        canSend = await deduplicationService.TryClaimRetryPushAsync(device.DeviceId, date, timeZoneId);
-                        Logger.LogInformation("Device {Status} (retry): {DeviceId} in {TimeZone}", 
+                        canSend = await deduplicationService.TryClaimMorningPushAsync(device.DeviceId, date,
+                            timeZoneId);
+                        Logger.LogInformation("Device {Status} (morning): {DeviceId} in {TimeZone}",
                             canSend ? "ELIGIBLE" : "BLOCKED", device.DeviceId, timeZoneId);
                     }
-                }
-                else
-                {
-                    canSend = await deduplicationService.TryClaimMorningPushAsync(device.DeviceId, date, timeZoneId);
-                    Logger.LogInformation("Device {Status} (morning): {DeviceId} in {TimeZone}", 
-                        canSend ? "ELIGIBLE" : "BLOCKED", device.DeviceId, timeZoneId);
-                }
-                
-                if (canSend)
-                {
-                    eligibleDevices.Add(device);
+
+                    if (canSend)
+                    {
+                        eligibleDevices.Add(device);
+                    }
                 }
             }
-        }
-        
-        if (eligibleDevices.Count == 0)
-        {
-            Logger.LogInformation("No eligible devices for daily push after Redis deduplication - User {UserId}, TimeZone {TimeZone}, " +
-                "Original devices: {OriginalCount}, PushType: {PushType}", 
-                State.UserId, timeZoneId, enabledDevices.Count, isRetryPush ? "retry" : "morning");
-            return;
-        }
-        
-        Logger.LogInformation("Proceeding with {EligibleCount} eligible devices for user {UserId}", 
-            eligibleDevices.Count, State.UserId);
-        
-        // Create device-level push tasks with rollback support
-        var deviceTasks = eligibleDevices.Select(async (device, deviceIndex) =>
-        {
-            var deviceSuccess = false;
-            var deviceFailureCount = 0;
-            
-            try
+
+            if (eligibleDevices.Count == 0)
             {
-                // 🎯 Add device-level delay to reduce concurrent JWT requests
-                var deviceDelay = Random.Shared.Next(50, 300) + (deviceIndex * 150); // Random + staggered per device
-                if (deviceDelay > 0)
+                Logger.LogInformation(
+                    "No eligible devices for daily push after Redis deduplication - User {UserId}, TimeZone {TimeZone}, " +
+                    "Original devices: {OriginalCount}, PushType: {PushType}",
+                    State.UserId, timeZoneId, enabledDevices.Count, isRetryPush ? "retry" : "morning");
+                return;
+            }
+
+            Logger.LogInformation("Proceeding with {EligibleCount} eligible devices for user {UserId}",
+                eligibleDevices.Count, State.UserId);
+
+            // Create device-level push tasks with rollback support
+            var deviceTasks = eligibleDevices.Select(async (device, deviceIndex) =>
+            {
+                var deviceSuccess = false;
+
+                try
                 {
-                    await Task.Delay(deviceDelay);
-                }
-                
-                // Process all contents for this device
-                var contentTasks = contents.Select(async (content, contentIndex) =>
-                {
-                    try
+                    // 🎯 Add device-level delay to reduce concurrent JWT requests
+                    var deviceDelay =
+                        Random.Shared.Next(50, 300) + (deviceIndex * 150); // Random + staggered per device
+                    if (deviceDelay > 0)
                     {
-                        var contentDelay = contentIndex * 300; // 300ms per content (1st=0ms, 2nd=300ms, etc.)
-                        if (contentDelay > 0)
-                        {
-                            await Task.Delay(contentDelay);
+                        await Task.Delay(deviceDelay);
                     }
-                    
-                    var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
-                        Logger.LogInformation("Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]", 
-                        device.DeviceId, device.PushLanguage, availableLanguages);
-                    
-                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
-                    
-                        Logger.LogInformation("📬 PUSH ATTEMPT: User {UserId}, DeviceId {DeviceId}, Content {ContentIndex}/{Total}, Title '{Title}', ContentId {ContentId}, PushToken {TokenPrefix}...", 
-                            State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title, content.Id, 
-                            device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
-                    
-                    // Create unique data payload for each content
-                    var messageId = Guid.NewGuid();
-                    var pushData = new Dictionary<string, object>
+
+                    // Send only one content based on push type: first for morning, second for afternoon retry
+                    var contentIndex = isRetryPush ? 1 : 0;
+                    var content = contents.ElementAtOrDefault(contentIndex);
+
+                    if (content == null)
                     {
-                        ["message_id"] = messageId.ToString(),
-                            ["type"] = isRetryPush ? (int)DailyPushConstants.PushType.AfternoonRetry : (int)DailyPushConstants.PushType.DailyPush,
-                        ["date"] = dateKey,
-                        ["content_id"] = content.Id, // Single content ID for this push
-                            ["content_index"] = contentIndex + 1, // Which content this is (1, 2, etc.)
-                        ["device_id"] = device.DeviceId,
-                        ["total_contents"] = contents.Count,
-                            ["timezone"] = timeZoneId, // Add timezone for timezone-based deduplication
-                            ["is_retry"] = isRetryPush, // Add retry push identification
-                            ["is_test_push"] = isTestPush // Add test push identification for manual triggers
-                        };
-                        
-                        // Use new global JWT architecture with direct HTTP push
-                        // Skip deduplication since device already passed UTC-based pre-check
-                        var success = await SendDirectPushNotificationAsync(
-                            globalJwtProvider,
-                            projectId,
-                        device.PushToken,
-                        localizedContent.Title,
-                        localizedContent.Content,
-                            pushData,
-                            timeZoneId,
-                            isRetryPush,
-                            contentIndex == 0, // isFirstContent - first content=true, subsequent=false
-                            false, // isTestPush
-                            true); // skipDeduplicationCheck - device already passed UTC-based pre-check
-                    
-                    if (success)
-                    {
-                        Logger.LogInformation("Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                                device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
-                        return true;
+                        Logger.LogWarning("No content available for {PushType} push - Device: {DeviceId}",
+                            isRetryPush ? "afternoon retry" : "morning", device.DeviceId);
+                        deviceSuccess = false;
                     }
                     else
                     {
-                        Logger.LogWarning("Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}", 
-                                device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
-                        return false;
+                        try
+                        {
+                            var availableLanguages = string.Join(", ", content.LocalizedContents.Keys);
+                            Logger.LogInformation(
+                                "Language selection: DeviceId={DeviceId}, RequestedLanguage='{PushLanguage}', AvailableLanguages=[{AvailableLanguages}]",
+                                device.DeviceId, device.PushLanguage, availableLanguages);
+
+                            var localizedContent = content.GetLocalizedContent(device.PushLanguage);
+
+                            Logger.LogInformation(
+                                "📬 PUSH ATTEMPT: User {UserId}, DeviceId {DeviceId}, Content {ContentIndex}/{Total}, Title '{Title}', ContentId {ContentId}, PushToken {TokenPrefix}...",
+                                State.UserId, device.DeviceId, contentIndex + 1, contents.Count, localizedContent.Title,
+                                content.Id,
+                                device.PushToken.Substring(0, Math.Min(8, device.PushToken.Length)));
+
+                            // Create unique data payload for this content
+                            var messageId = Guid.NewGuid();
+                            var pushData = new Dictionary<string, object>
+                            {
+                                ["message_id"] = messageId.ToString(),
+                                ["type"] = (int)DailyPushConstants.PushType.DailyPush,
+                                ["date"] = dateKey,
+                                ["content_id"] = content.Id,
+                                ["content_index"] = contentIndex + 1,
+                                ["device_id"] = device.DeviceId,
+                                ["total_contents"] = contents.Count,
+                                ["timezone"] = timeZoneId,
+                                ["is_retry"] = isRetryPush,
+                                ["is_test_push"] = isTestPush
+                            };
+
+                            // Use new global JWT architecture with direct HTTP push
+                            // Skip deduplication since device already passed UTC-based pre-check
+                            var success = await SendDirectPushNotificationAsync(
+                                globalJwtProvider,
+                                projectId,
+                                device.PushToken,
+                                localizedContent.Title,
+                                localizedContent.Content,
+                                pushData,
+                                timeZoneId,
+                                isRetryPush,
+                                contentIndex == 0, // isFirstContent
+                                false, // isTestPush
+                                true); // skipDeduplicationCheck
+
+                            if (success)
+                            {
+                                Logger.LogInformation(
+                                    "Daily push sent successfully: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}",
+                                    device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
+                                deviceSuccess = true;
+                            }
+                            else
+                            {
+                                Logger.LogWarning(
+                                    "Failed to send daily push: DeviceId={DeviceId}, MessageId={MessageId}, ContentIndex={ContentIndex}/{TotalContents}, Date={Date}",
+                                    device.DeviceId, messageId, contentIndex + 1, contents.Count, dateKey);
+                                deviceSuccess = false;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError(ex,
+                                $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
+                            deviceSuccess = false;
+                        }
                     }
+
+                    Logger.LogInformation("Device push summary: DeviceId={DeviceId}, Success={DeviceSuccess}",
+                        device.DeviceId, deviceSuccess);
+
+                    return new[] { deviceSuccess };
                 }
-                catch (Exception ex)
+                finally
                 {
-                        Logger.LogError(ex, $"Error sending daily push content {contentIndex + 1} to device {device.DeviceId}");
-                    return false;
+                    // 🔄 Rollback Redis claim if ALL pushes for this device failed
+                    if (!deviceSuccess && deduplicationService != null)
+                    {
+                        try
+                        {
+                            await deduplicationService.ReleasePushClaimAsync(device.DeviceId, date, timeZoneId,
+                                isRetryPush);
+                            Logger.LogInformation(
+                                "🔄 Released Redis claim for failed device: {DeviceId} (all {ContentCount} pushes failed)",
+                                device.DeviceId, contents.Count);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError(ex, "Failed to release Redis claim for device {DeviceId}", device.DeviceId);
+                        }
+                    }
                 }
             });
-                
-                var contentResults = await Task.WhenAll(contentTasks);
-                var deviceSuccessCount = contentResults.Count(r => r);
-                deviceFailureCount = contentResults.Count(r => !r);
-                
-                // Consider device successful if at least one content was sent successfully
-                deviceSuccess = deviceSuccessCount > 0;
-                
-                Logger.LogInformation("Device push summary: DeviceId={DeviceId}, Success={DeviceSuccess}, " +
-                    "ContentSuccessCount={SuccessCount}, ContentFailureCount={FailureCount}", 
-                    device.DeviceId, deviceSuccess, deviceSuccessCount, deviceFailureCount);
-                
-                return contentResults;
-            }
-            finally
-            {
-                // 🔄 Rollback Redis claim if ALL pushes for this device failed
-                if (!deviceSuccess && deduplicationService != null)
-                {
-                    try
-                    {
-                        await deduplicationService.ReleasePushClaimAsync(device.DeviceId, date, timeZoneId, isRetryPush);
-                        Logger.LogInformation("🔄 Released Redis claim for failed device: {DeviceId} (all {ContentCount} pushes failed)", 
-                            device.DeviceId, contents.Count);
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogError(ex, "Failed to release Redis claim for device {DeviceId}", device.DeviceId);
-                    }
-                }
-            }
-        });
-        
-        // Flatten device results to individual push results for compatibility
-        var allDeviceResults = await Task.WhenAll(deviceTasks);
-        var results = allDeviceResults.SelectMany(results => results).ToArray();
-        
-        var totalPushTasks = results.Length;
-        Logger.LogInformation("ProcessDailyPushAsync: Executing {TotalPushTasks} push tasks for {DeviceCount} devices × {ContentCount} contents", 
-            totalPushTasks, enabledDevices.Count, contents.Count);
-            
-        successCount = results.Count(r => r);
-        failureCount = results.Count(r => !r);
-        
-        Logger.LogInformation("ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}", 
-            State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
+
+            // Flatten device results to individual push results for compatibility
+            var allDeviceResults = await Task.WhenAll(deviceTasks);
+            var results = allDeviceResults.SelectMany(results => results).ToArray();
+
+            var totalPushTasks = results.Length;
+            Logger.LogInformation(
+                "ProcessDailyPushAsync: Executing {TotalPushTasks} push tasks for {DeviceCount} devices × {ContentCount} contents",
+                totalPushTasks, enabledDevices.Count, contents.Count);
+
+            successCount = results.Count(r => r);
+            failureCount = results.Count(r => !r);
+
+            Logger.LogInformation(
+                "ProcessDailyPushAsync Summary - User {UserId}: {SuccessCount} success, {FailureCount} failures for {DeviceCount} devices. Individual pushes: {TotalPushes}",
+                State.UserId, successCount, failureCount, enabledDevices.Count, results.Length);
         }
         finally
         {
             userSemaphore.Release();
-            Logger.LogDebug("🔓 Released push semaphore for user {UserId}, timezone {TimeZone}", 
+            Logger.LogDebug("🔓 Released push semaphore for user {UserId}, timezone {TimeZone}",
                 State.UserId, timeZoneId);
         }
     }
@@ -1957,23 +2073,25 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     {
         var dateKey = targetDate.ToString("yyyy-MM-dd");
         var isRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var readStatus) && readStatus;
-        
+
         // 🔄 Use unified interface for consistency with HasEnabledDeviceInTimezoneAsync
         var allDevices = await GetUnifiedDevicesAsync();
         var hasEnabledDevices = allDevices.Any(d => d.PushEnabled);
         var shouldSend = !isRead && hasEnabledDevices;
-        
-        Logger.LogDebug("ShouldSendAfternoonRetryAsync: DateKey={DateKey}, IsRead={IsRead}, HasEnabledDevices={HasEnabledDevices}, ShouldSend={ShouldSend}, ReadStatusEntries={ReadEntries}, TotalDevices={TotalDevices}",
+
+        Logger.LogDebug(
+            "ShouldSendAfternoonRetryAsync: DateKey={DateKey}, IsRead={IsRead}, HasEnabledDevices={HasEnabledDevices}, ShouldSend={ShouldSend}, ReadStatusEntries={ReadEntries}, TotalDevices={TotalDevices}",
             dateKey, isRead, hasEnabledDevices, shouldSend, State.DailyPushReadStatus.Count, allDevices.Count);
-        
+
         return shouldSend;
     }
-    
+
     public async Task<object> GetPushDebugInfoAsync(string deviceId, DateOnly date, string timeZoneId)
     {
-        var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
+        var deduplicationService =
+            ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
         var readKey = date.ToString("yyyy-MM-dd");
-        
+
         // Get Redis deduplication status
         PushDeduplicationStatus? redisStatus = null;
         if (deduplicationService != null)
@@ -1987,44 +2105,48 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 Logger.LogWarning(ex, "Failed to get Redis deduplication status for device {DeviceId}", deviceId);
             }
         }
-        
+
         // Get State information
         var stateInfo = new
         {
             IsRead = State.DailyPushReadStatus.TryGetValue(readKey, out var isRead) && isRead,
             ReadKey = readKey,
             HasDevice = State.UserDevicesV2.ContainsKey(deviceId),
-            DeviceInfo = State.UserDevicesV2.TryGetValue(deviceId, out var deviceV2) ? new
-            {
-                DeviceId = deviceV2.DeviceId,
-                PushToken = !string.IsNullOrEmpty(deviceV2.PushToken) 
-                    ? deviceV2.PushToken.Substring(0, Math.Min(12, deviceV2.PushToken.Length)) + "..." 
-                    : "EMPTY",
-                PushEnabled = deviceV2.PushEnabled,
-                TimeZoneId = deviceV2.TimeZoneId,
-                Language = deviceV2.PushLanguage,
-                RegisteredAt = deviceV2.RegisteredAt.ToString("yyyy-MM-dd HH:mm:ss"),
-                LastTokenUpdate = deviceV2.LastTokenUpdate.ToString("yyyy-MM-dd HH:mm:ss"),
-                Platform = deviceV2.Platform,
-                Status = deviceV2.Status
-            } : null
+            DeviceInfo = State.UserDevicesV2.TryGetValue(deviceId, out var deviceV2)
+                ? new
+                {
+                    DeviceId = deviceV2.DeviceId,
+                    PushToken = !string.IsNullOrEmpty(deviceV2.PushToken)
+                        ? deviceV2.PushToken.Substring(0, Math.Min(12, deviceV2.PushToken.Length)) + "..."
+                        : "EMPTY",
+                    PushEnabled = deviceV2.PushEnabled,
+                    TimeZoneId = deviceV2.TimeZoneId,
+                    Language = deviceV2.PushLanguage,
+                    RegisteredAt = deviceV2.RegisteredAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                    LastTokenUpdate = deviceV2.LastTokenUpdate.ToString("yyyy-MM-dd HH:mm:ss"),
+                    Platform = deviceV2.Platform,
+                    Status = deviceV2.Status
+                }
+                : null
         };
-        
+
         return new
         {
             UserId = State.UserId,
             DeviceId = deviceId,
             Date = date.ToString("yyyy-MM-dd"),
             TimeZoneId = timeZoneId,
-            Redis = redisStatus != null ? (object)new
-            {
-                MorningSent = redisStatus.MorningSent,
-                RetrySent = redisStatus.RetrySent,
-                MorningKey = redisStatus.MorningKey,
-                RetryKey = redisStatus.RetryKey,
-                MorningSentTime = redisStatus.MorningSentTime?.ToString("yyyy-MM-dd HH:mm:ss"),
-                RetrySentTime = redisStatus.RetrySentTime?.ToString("yyyy-MM-dd HH:mm:ss")
-            } : new { Error = "Redis service not available" },
+            Redis = redisStatus != null
+                ? (object)new
+                {
+                    MorningSent = redisStatus.MorningSent,
+                    RetrySent = redisStatus.RetrySent,
+                    MorningKey = redisStatus.MorningKey,
+                    RetryKey = redisStatus.RetryKey,
+                    MorningSentTime = redisStatus.MorningSentTime?.ToString("yyyy-MM-dd HH:mm:ss"),
+                    RetrySentTime = redisStatus.RetrySentTime?.ToString("yyyy-MM-dd HH:mm:ss")
+                }
+                : new { Error = "Redis service not available" },
             State = stateInfo,
             Timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss")
         };
@@ -2032,80 +2154,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
     // ❌ V1 METHOD REMOVED: Use GetAllDevicesV2Async or GetUnifiedDevicesAsync instead
 
-    /// <summary>
-    /// Log detailed information for all devices registered under this user
-    /// Provides comprehensive debugging information for push troubleshooting
-    /// </summary>
-    public async Task LogAllUserDevicesAsync(string context = "DEBUG")
-    {
-        try
-        {
-            // 🔄 Get unified device list (V1 + migrated V2)
-            var allDevicesV2 = await GetAllDevicesV2Async();
-            var v1DevicesCount = 0; // V1 devices no longer used in logic
-            var v2DevicesCount = State.UserDevicesV2.Count;
-            // ✅ V2-only: No migration tracking needed
-            
-            var enabledDevicesCount = allDevicesV2.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
-            var disabledDevicesCount = allDevicesV2.Count(d => !d.PushEnabled);
-            var emptyTokenCount = allDevicesV2.Count(d => string.IsNullOrEmpty(d.PushToken));
-            
-            // Group devices by timezone for better organization
-            var devicesByTimezone = allDevicesV2.GroupBy(d => d.TimeZoneId).ToDictionary(g => g.Key, g => g.ToList());
-            
-            // Log summary with V1/V2 breakdown
-            Logger.LogInformation("👤 User {UserId} Device Summary [{Context}]: " +
-                "Total={TotalDevices} (V1={V1Count}, V2={V2Count}), " +
-                "Enabled={EnabledDevices}, Disabled={DisabledDevices}, EmptyToken={EmptyTokens}, " +
-                "Timezones={TimezoneCount}",
-                State.UserId, context, allDevicesV2.Count, v1DevicesCount, v2DevicesCount, 
-                enabledDevicesCount, disabledDevicesCount, emptyTokenCount, devicesByTimezone.Count);
-            
-            // Log detailed device information by timezone
-            if (allDevicesV2.Count > 0)
-            {
-                var deviceDetails = allDevicesV2.Select(device => new
-                {
-                    UserId = State.UserId.ToString(),
-                    DeviceId = device.DeviceId,
-                    PushToken = !string.IsNullOrEmpty(device.PushToken) 
-                        ? device.PushToken.Substring(0, Math.Min(12, device.PushToken.Length)) + "..." 
-                        : "EMPTY",
-                    PushEnabled = device.PushEnabled,
-                    TimeZoneId = device.TimeZoneId,
-                    Language = device.PushLanguage,
-                    RegisteredAt = device.RegisteredAt.ToString("yyyy-MM-dd HH:mm:ss"),
-                    LastTokenUpdate = device.LastTokenUpdate.ToString("yyyy-MM-dd HH:mm:ss")
-                }).ToList();
-                
-                var deviceDetailsJson = System.Text.Json.JsonSerializer.Serialize(deviceDetails, new JsonSerializerOptions 
-                { 
-                    WriteIndented = false,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
-                
-                Logger.LogInformation("📱 User {UserId} All Devices [{Context}]: {DeviceDetails}",
-                    State.UserId, context, deviceDetailsJson);
-                
-                // Log timezone distribution
-                foreach (var (timeZoneId, devices) in devicesByTimezone)
-                {
-                    var enabledInTz = devices.Count(d => d.PushEnabled && !string.IsNullOrEmpty(d.PushToken));
-                    Logger.LogInformation("🌍 User {UserId} Timezone {TimeZone} [{Context}]: " +
-                        "{DeviceCount} devices, {EnabledCount} enabled",
-                        State.UserId, timeZoneId, context, devices.Count, enabledInTz);
-                }
-            }
-            else
-            {
-                Logger.LogInformation("📱 User {UserId} has no registered devices [{Context}]", State.UserId, context);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to log user device details for user {UserId} [{Context}]", State.UserId, context);
-        }
-    }
 
     public async Task UpdateTimezoneIndexAsync(string? oldTimeZone, string newTimeZone)
     {
@@ -2114,33 +2162,36 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             // Remove user from old timezone index
             if (!string.IsNullOrEmpty(oldTimeZone))
             {
-                var oldIndexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(oldTimeZone));
+                var oldIndexGAgent =
+                    GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(oldTimeZone));
                 await oldIndexGAgent.InitializeAsync(oldTimeZone);
                 await oldIndexGAgent.RemoveUserFromTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Removed user {State.UserId} from timezone index: {oldTimeZone}");
             }
-            
+
             // Add user to new timezone index
             if (!string.IsNullOrEmpty(newTimeZone))
             {
-                var newIndexGAgent = GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+                var newIndexGAgent =
+                    GrainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
                 await newIndexGAgent.InitializeAsync(newTimeZone);
                 await newIndexGAgent.AddUserToTimezoneAsync(State.UserId);
                 Logger.LogDebug($"Added user {State.UserId} to timezone index: {newTimeZone}");
-                
+
                 // CRITICAL: Complete timezone ecosystem initialization
                 // This ensures ALL timezone-related agents are ready for immediate daily push operation
                 await InitializeTimezoneEcosystemAsync(newTimeZone);
             }
-            
+
             Logger.LogInformation($"Updated timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, $"Failed to update timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
+            Logger.LogError(ex,
+                $"Failed to update timezone index for user {State.UserId}: {oldTimeZone} -> {newTimeZone}");
         }
     }
-    
+
     /// <summary>
     /// Complete timezone ecosystem initialization - ensures ALL timezone-related agents are ready
     /// This method guarantees immediate push system availability when user switches to new timezone
@@ -2150,7 +2201,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // 🛡️ SAFETY: Validate timezone before any Grain operations
         if (string.IsNullOrWhiteSpace(newTimeZone))
         {
-            Logger.LogWarning("Empty or invalid timezone ID '{TimeZone}' - skipping timezone ecosystem initialization to prevent orphaned Grains", newTimeZone ?? "null");
+            Logger.LogWarning(
+                "Empty or invalid timezone ID '{TimeZone}' - skipping timezone ecosystem initialization to prevent orphaned Grains",
+                newTimeZone ?? "null");
             return;
         }
 
@@ -2162,37 +2215,44 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
             // Step 1: Initialize DailyContentGAgent timezone mapping (global content service)
             var contentGAgent = GrainFactory.GetGrain<IDailyContentGAgent>(DailyPushConstants.CONTENT_GAGENT_ID);
-            await contentGAgent.RegisterTimezoneGuidMappingAsync(DailyPushConstants.TimezoneToGuid(newTimeZone), newTimeZone);
+            await contentGAgent.RegisterTimezoneGuidMappingAsync(DailyPushConstants.TimezoneToGuid(newTimeZone),
+                newTimeZone);
             Logger.LogDebug("DailyContentGAgent timezone mapping registered for {TimeZone}", newTimeZone);
 
             // Step 2: Initialize and fully activate DailyPushCoordinatorGAgent
-            var coordinatorGAgent = GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
-            
+            var coordinatorGAgent =
+                GrainFactory.GetGrain<IDailyPushCoordinatorGAgent>(DailyPushConstants.TimezoneToGuid(newTimeZone));
+
             // Force complete initialization and activation
             await coordinatorGAgent.InitializeAsync(newTimeZone);
-            
+
             // 🔥 CRITICAL: Force grain to stay active by calling multiple methods
             var status = await coordinatorGAgent.GetStatusAsync();
-            
-            Logger.LogInformation("DailyPushCoordinatorGAgent fully initialized for {TimeZone}. Status: {Status}, ReminderTargetId: {TargetId}", 
+
+            Logger.LogInformation(
+                "DailyPushCoordinatorGAgent fully initialized for {TimeZone}. Status: {Status}, ReminderTargetId: {TargetId}",
                 newTimeZone, status.Status, status.ReminderTargetId);
 
             // Step 3: Validate reminders are registered (if authorized)
             if (status.ReminderTargetId != Guid.Empty)
             {
-                Logger.LogInformation("Daily push reminders are ready for {TimeZone} with authorized ReminderTargetId", newTimeZone);
+                Logger.LogInformation("Daily push reminders are ready for {TimeZone} with authorized ReminderTargetId",
+                    newTimeZone);
             }
             else
             {
-                Logger.LogWarning("ReminderTargetId is empty for {TimeZone} - daily pushes may not work until properly configured", newTimeZone);
+                Logger.LogWarning(
+                    "ReminderTargetId is empty for {TimeZone} - daily pushes may not work until properly configured",
+                    newTimeZone);
             }
 
             // Step 4: Pre-warm timezone calculations to ensure immediate readiness
             var timezoneInfo = TimeZoneInfo.FindSystemTimeZoneById(newTimeZone);
             var currentUtc = DateTime.UtcNow;
             var currentLocal = TimeZoneInfo.ConvertTimeFromUtc(currentUtc, timezoneInfo);
-            
-            Logger.LogInformation("Timezone ecosystem fully initialized for {TimeZone}. Current local time: {LocalTime} (UTC: {UtcTime})", 
+
+            Logger.LogInformation(
+                "Timezone ecosystem fully initialized for {TimeZone}. Current local time: {LocalTime} (UTC: {UtcTime})",
                 newTimeZone, currentLocal.ToString("yyyy-MM-dd HH:mm:ss"), currentUtc.ToString("yyyy-MM-dd HH:mm:ss"));
 
             // Step 5: Final verification - ensure all components are responsive
@@ -2201,18 +2261,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 contentGAgent.GetTimezoneFromGuidAsync(DailyPushConstants.TimezoneToGuid(newTimeZone)),
                 coordinatorGAgent.GetStatusAsync()
             };
-            
+
             await Task.WhenAll(verificationTasks);
-            Logger.LogInformation("Timezone ecosystem verification completed for {TimeZone} - all agents responsive", newTimeZone);
+            Logger.LogInformation("Timezone ecosystem verification completed for {TimeZone} - all agents responsive",
+                newTimeZone);
         }
         catch (TimeZoneNotFoundException ex)
         {
-            Logger.LogError(ex, "Invalid timezone ID '{TimeZone}' - timezone ecosystem initialization failed", newTimeZone);
+            Logger.LogError(ex, "Invalid timezone ID '{TimeZone}' - timezone ecosystem initialization failed",
+                newTimeZone);
             throw new ArgumentException($"Invalid timezone ID: {newTimeZone}", nameof(newTimeZone), ex);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Timezone ecosystem initialization failed for {TimeZone} - daily pushes may not work properly", newTimeZone);
+            Logger.LogError(ex,
+                "Timezone ecosystem initialization failed for {TimeZone} - daily pushes may not work properly",
+                newTimeZone);
             // Don't rethrow - allow timezone index update to succeed even if ecosystem init partially fails
         }
     }
@@ -2303,7 +2367,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             }
 
             var fcmEndpoint = $"https://fcm.googleapis.com/v1/projects/{projectId}/messages:send";
-            var jsonPayload = System.Text.Json.JsonSerializer.Serialize(message, new JsonSerializerOptions
+            var jsonPayload = JsonSerializer.Serialize(message, new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             });
@@ -2320,7 +2384,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var responseContent = await response.Content.ReadAsStringAsync();
 
             // 📱 Log FCM response for debugging (Information level for visibility)
-            Logger.LogInformation("📱 FCM Response: {StatusCode} - Body: {ResponseContent}", 
+            Logger.LogInformation("📱 FCM Response: {StatusCode} - Body: {ResponseContent}",
                 response.StatusCode, responseContent);
 
             if (response.IsSuccessStatusCode)
@@ -2344,7 +2408,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
                         Logger.LogError(
                             "🚨 FCM returned error despite 200 status - Code: {ErrorCode}, Message: {ErrorMessage}, Token: {TokenPrefix}..., Title: '{Title}'",
-                            errorCode, errorMessage, 
+                            errorCode, errorMessage,
                             pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
 
                         // Handle specific FCM errors for token cleanup
@@ -2353,7 +2417,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                             Logger.LogWarning(
                                 "❌ Push token is invalid - initiating automatic device cleanup. Token: {TokenPrefix}..., ErrorCode: {ErrorCode}",
                                 pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, errorCode);
-                            
+
                             // 🎯 自动清理失效设备
                             await MarkDeviceTokenAsInvalidAsync(pushToken, errorCode);
                         }
@@ -2367,7 +2431,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         var messageName = nameElement.GetString();
                         Logger.LogInformation(
                             "✅ Push notification sent successfully - Message: {MessageName}, Token: {TokenPrefix}..., Title: '{Title}'",
-                            messageName, 
+                            messageName,
                             pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                         return true; // ✅ Confirmed success
                     }
@@ -2375,11 +2439,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     // Unexpected response format with 200 status
                     Logger.LogWarning(
                         "⚠️ FCM returned 200 but unexpected response format: {ResponseContent}, Token: {TokenPrefix}..., Title: '{Title}'",
-                        responseContent, 
+                        responseContent,
                         pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
                     return false; // Treat unexpected format as failure
                 }
-                catch (System.Text.Json.JsonException ex)
+                catch (JsonException ex)
                 {
                     Logger.LogError(ex, "Failed to parse FCM response JSON: {ResponseContent}", responseContent);
                     // For unparseable responses with 200 status, assume success for backward compatibility
@@ -2391,7 +2455,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             }
             else
             {
-                Logger.LogError("❌ FCM request failed with status {StatusCode}: {ResponseContent}, Token: {TokenPrefix}..., Title: '{Title}'", 
+                Logger.LogError(
+                    "❌ FCM request failed with status {StatusCode}: {ResponseContent}, Token: {TokenPrefix}..., Title: '{Title}'",
                     response.StatusCode, responseContent,
                     pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, title);
 
@@ -2401,7 +2466,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     Logger.LogWarning(
                         "❌ Token is invalid - initiating automatic device cleanup. Token: {TokenPrefix}..., Status: {StatusCode}",
                         pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, response.StatusCode);
-                    
+
                     // 🎯 自动清理失效设备
                     var errorCode = responseContent.Contains("UNREGISTERED") ? "UNREGISTERED" : "INVALID_ARGUMENT";
                     await MarkDeviceTokenAsInvalidAsync(pushToken, errorCode);
@@ -2430,6 +2495,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 dataPayload[kvp.Key] = kvp.Value?.ToString() ?? "";
             }
         }
+
         return dataPayload;
     }
 
@@ -2439,15 +2505,26 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     /// Register or update device using V2 structure (enhanced version)
     /// All new device registrations should use this method
     /// </summary>
-    public async Task<bool> RegisterOrUpdateDeviceV2Async(string deviceId, string pushToken, string timeZoneId, 
+    public async Task<bool> RegisterOrUpdateDeviceV2Async(string deviceId, string pushToken, string timeZoneId,
         bool? pushEnabled, string pushLanguage, string? platform = null, string? appVersion = null)
     {
+        // Check device registration switch
+        var options =
+            ServiceProvider.GetService(typeof(IOptionsMonitor<DailyPushOptions>)) as IOptionsMonitor<DailyPushOptions>;
+        if (options != null && !options.CurrentValue.DeviceRegistrationEnabled)
+        {
+            Logger.LogInformation("Device registration disabled - returning mock success for device {DeviceId}",
+                deviceId);
+            return true; // Return success but skip actual registration
+        }
+
         var isNewDevice = !State.UserDevicesV2.ContainsKey(deviceId);
         var now = DateTime.UtcNow;
-        
+
         // 🔄 V2 ONLY: No migration from V1, V2 uses completely new data
-        var deviceInfo = isNewDevice ? new UserDeviceInfoV2() : 
-            new UserDeviceInfoV2
+        var deviceInfo = isNewDevice
+            ? new UserDeviceInfoV2()
+            : new UserDeviceInfoV2
             {
                 DeviceId = State.UserDevicesV2[deviceId].DeviceId,
                 UserId = State.UserDevicesV2[deviceId].UserId,
@@ -2467,13 +2544,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 Metadata = State.UserDevicesV2[deviceId].Metadata,
                 StructureVersion = 2
             };
-        
+
         // Store old values for cleanup and change detection
         var oldPushToken = deviceInfo.PushToken;
         var oldTimeZone = isNewDevice ? null : deviceInfo.TimeZoneId;
         var tokenChanged = oldPushToken != pushToken;
         var timeZoneChanged = oldTimeZone != timeZoneId;
-        
+
         // Update device information
         deviceInfo.DeviceId = deviceId;
         deviceInfo.UserId = State.UserId;
@@ -2483,22 +2560,22 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         deviceInfo.LastActiveAt = now;
         deviceInfo.Status = DeviceStatus.Active;
         deviceInfo.ConsecutiveFailures = 0; // Reset on successful registration
-        
+
         if (pushEnabled.HasValue)
         {
             deviceInfo.PushEnabled = pushEnabled.Value;
         }
-        
+
         if (!string.IsNullOrEmpty(platform))
         {
             deviceInfo.Platform = platform;
         }
-        
+
         if (!string.IsNullOrEmpty(appVersion))
         {
             deviceInfo.AppVersion = appVersion;
         }
-        
+
         // Set timestamps
         if (isNewDevice)
         {
@@ -2508,7 +2585,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         else if (tokenChanged)
         {
             deviceInfo.LastTokenUpdate = now;
-            
+
             // Add old token to history
             if (!string.IsNullOrEmpty(oldPushToken))
             {
@@ -2519,7 +2596,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     UsedUntil = now,
                     ReplacementReason = "token_refresh"
                 });
-                
+
                 // Keep only recent history (last 5 tokens)
                 if (deviceInfo.PushTokenHistory.Count > 5)
                 {
@@ -2530,7 +2607,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 }
             }
         }
-        
+
         // Raise V2 event
         RaiseEvent(new RegisterOrUpdateDeviceV2EventLog
         {
@@ -2540,24 +2617,24 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             OldPushToken = tokenChanged ? oldPushToken : null,
             IsMigration = false
         });
-        
+
         await ConfirmEvents();
-        
+
         // 🎯 CRITICAL: Update timezone index for V2 devices  
         // This ensures the user appears in PushSubscriberIndexGAgent for coordinated push
         if (isNewDevice || timeZoneChanged)
         {
             await UpdateTimezoneIndexAsync(oldTimeZone, timeZoneId);
-            Logger.LogInformation("🌍 V2 Device timezone index updated: User {UserId} from {OldTZ} to {NewTZ}", 
+            Logger.LogInformation("🌍 V2 Device timezone index updated: User {UserId} from {OldTZ} to {NewTZ}",
                 State.UserId, oldTimeZone ?? "none", timeZoneId);
         }
-        
+
         Logger.LogInformation("📱 V2 Device {Action}: DeviceId={DeviceId}, PushToken={TokenPrefix}..., " +
-            "TimeZone={TimeZone}, Language={Language}, Enabled={Enabled}, Platform={Platform}",
-            isNewDevice ? "registered" : "updated", deviceId, 
-            pushToken.Substring(0, Math.Min(8, pushToken.Length)), 
+                              "TimeZone={TimeZone}, Language={Language}, Enabled={Enabled}, Platform={Platform}",
+            isNewDevice ? "registered" : "updated", deviceId,
+            pushToken.Substring(0, Math.Min(8, pushToken.Length)),
             timeZoneId, pushLanguage, deviceInfo.PushEnabled, platform ?? "unknown");
-        
+
         return true;
     }
 
@@ -2572,53 +2649,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         // V1 and V2 are completely separate data sources
         return State.UserDevicesV2.Values.ToList();
     }
-    
-    /// <summary>
-    /// Get all V1 devices (legacy data) - DEPRECATED: Use GetAllDevicesV2Async()
-    /// </summary>
-    public async Task<List<UserDeviceInfo>> GetAllDevicesV1Async()
-    {
-        // 🔥 V1 devices no longer used in logic - return empty list
-        return new List<UserDeviceInfo>();
-    }
-    
-    /// <summary>
-    /// Clear all V2 device data for testing purposes
-    /// WARNING: This will permanently delete all V2 device registrations
-    /// </summary>
-    /// <returns>Number of devices cleared</returns>
-    public async Task<int> ClearAllV2DevicesAsync()
-    {
-        if (State.UserDevicesV2.Count == 0)
-        {
-            Logger.LogInformation("🧹 No V2 devices to clear for user {UserId}", State.UserId);
-            return 0;
-        }
 
-        var deviceCount = State.UserDevicesV2.Count;
-        var tokenCount = State.TokenToDeviceMapV2.Count;
-
-        // Clear all V2 device data
-        RaiseEvent(new CleanupDevicesV2EventLog
-        {
-            DeviceIdsToRemove = State.UserDevicesV2.Keys.ToList(),
-            RemovedCount = deviceCount,
-            CleanupReason = "manual_v2_clear",
-            CleanupDetails = new Dictionary<string, string>
-            {
-                ["tokens_cleared"] = tokenCount.ToString(),
-                ["trigger"] = "ClearAllV2DevicesAsync",
-                ["timestamp"] = DateTime.UtcNow.ToString("O")
-            }
-        });
-
-        await ConfirmEvents();
-
-        Logger.LogWarning("🧹 Cleared ALL V2 device data for user {UserId}: {DeviceCount} devices, {TokenCount} tokens",
-            State.UserId, deviceCount, tokenCount);
-
-        return deviceCount;
-    }
 
     // === Coordinated Push Methods ===
 
@@ -2632,20 +2663,20 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             // Use unified device source (V2 + V1 fallback)
             var allDevices = await GetUnifiedDevicesAsync();
-            
+
             // Filter devices for the specified timezone and enabled status
             var targetDevices = allDevices
                 .Where(d => d.TimeZoneId == timeZoneId && d.PushEnabled)
                 .ToList();
 
-            Logger.LogDebug("📋 Collected {DeviceCount} devices for coordinated push in {TimeZone} for user {UserId}", 
+            Logger.LogDebug("📋 Collected {DeviceCount} devices for coordinated push in {TimeZone} for user {UserId}",
                 targetDevices.Count, timeZoneId, State.UserId);
 
             return targetDevices;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to get devices for coordinated push - User: {UserId}, TimeZone: {TimeZone}", 
+            Logger.LogError(ex, "Failed to get devices for coordinated push - User: {UserId}, TimeZone: {TimeZone}",
                 State.UserId, timeZoneId);
             return new List<UserDeviceInfo>();
         }
@@ -2655,63 +2686,85 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     /// Execute coordinated push for a specific device (called by coordinator after device selection)
     /// Uses existing Redis deduplication logic
     /// </summary>
-    public async Task<bool> ExecuteCoordinatedPushAsync(UserDeviceInfo device, DateTime targetDate, List<DailyNotificationContent> contents, bool isRetryPush = false, bool isTestPush = false)
+    public async Task<bool> ExecuteCoordinatedPushAsync(UserDeviceInfo device, DateTime targetDate,
+        List<DailyNotificationContent> contents, bool isRetryPush = false, bool isTestPush = false)
     {
         try
         {
-            Logger.LogInformation("🎯 Executing coordinated push for device {DeviceId}, User: {UserId}, Retry: {IsRetry}, Test: {IsTest}", 
+            Logger.LogInformation(
+                "🎯 Executing coordinated push for device {DeviceId}, User: {UserId}, Retry: {IsRetry}, Test: {IsTest}",
                 device.DeviceId, State.UserId, isRetryPush, isTestPush);
 
             // Use existing Redis deduplication logic
-            var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
+            var deduplicationService =
+                ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
             var date = DateOnly.FromDateTime(targetDate);
-            
+
             bool canSend = true; // Default for test pushes
 
             if (!isTestPush && deduplicationService != null)
             {
                 if (isRetryPush)
                 {
-                    // Check State: if already read today, skip retry push entirely
+                    // Check both user-level and device-level read status
                     var dateKey = date.ToString("yyyy-MM-dd");
-                    if (State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead)
+                    var userRead = State.DailyPushReadStatus.TryGetValue(dateKey, out var isRead) && isRead;
+                    var deviceRead = false;
+
+                    if (!userRead)
                     {
-                        Logger.LogInformation("📖 Device {DeviceId} already read - skipping retry push", device.DeviceId);
+                        // Only check device-level read status if user-level is not read
+                        deviceRead = await deduplicationService.IsDeviceReadAsync(device.DeviceId, date);
+                    }
+
+                    if (userRead || deviceRead)
+                    {
+                        var readType = userRead ? "user-level" : "device-level";
+                        Logger.LogInformation("📖 Device {DeviceId} already read ({ReadType}) - skipping retry push",
+                            device.DeviceId, readType);
                         return false;
                     }
-                    
-                    canSend = await deduplicationService.TryClaimRetryPushAsync(device.DeviceId, date, device.TimeZoneId);
+
+                    canSend = await deduplicationService.TryClaimRetryPushAsync(device.DeviceId, date,
+                        device.TimeZoneId);
                 }
                 else
                 {
-                    canSend = await deduplicationService.TryClaimMorningPushAsync(device.DeviceId, date, device.TimeZoneId);
+                    canSend = await deduplicationService.TryClaimMorningPushAsync(device.DeviceId, date,
+                        device.TimeZoneId);
                 }
-                
-                Logger.LogInformation("🔑 Redis deduplication result for {DeviceId}: {CanSend}", device.DeviceId, canSend);
+
+                Logger.LogInformation("🔑 Redis deduplication result for {DeviceId}: {CanSend}", device.DeviceId,
+                    canSend);
             }
 
             if (!canSend)
             {
-                Logger.LogInformation("❌ Coordinated push blocked by deduplication for device {DeviceId}", device.DeviceId);
+                Logger.LogInformation("❌ Coordinated push blocked by deduplication for device {DeviceId}",
+                    device.DeviceId);
                 return false;
             }
 
             // Execute the actual push using existing logic
-            var success = await SendCoordinatedPushNotificationAsync(device, contents, targetDate, isRetryPush, isTestPush);
-            
+            var success =
+                await SendCoordinatedPushNotificationAsync(device, contents, targetDate, isRetryPush, isTestPush);
+
             if (success)
             {
-                Logger.LogInformation("✅ Coordinated push completed successfully for device {DeviceId}", device.DeviceId);
+                Logger.LogInformation("✅ Coordinated push completed successfully for device {DeviceId}",
+                    device.DeviceId);
             }
             else
             {
                 Logger.LogWarning("❌ Coordinated push failed for device {DeviceId}", device.DeviceId);
-                
+
                 // Release Redis claim if push failed
                 if (!isTestPush && deduplicationService != null && canSend)
                 {
-                    await deduplicationService.ReleasePushClaimAsync(device.DeviceId, date, device.TimeZoneId, isRetryPush);
-                    Logger.LogInformation("🔄 Released Redis claim for failed push - Device: {DeviceId}", device.DeviceId);
+                    await deduplicationService.ReleasePushClaimAsync(device.DeviceId, date, device.TimeZoneId,
+                        isRetryPush);
+                    Logger.LogInformation("🔄 Released Redis claim for failed push - Device: {DeviceId}",
+                        device.DeviceId);
                 }
             }
 
@@ -2719,7 +2772,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Exception in coordinated push execution - Device: {DeviceId}, User: {UserId}", 
+            Logger.LogError(ex, "Exception in coordinated push execution - Device: {DeviceId}, User: {UserId}",
                 device.DeviceId, State.UserId);
             return false;
         }
@@ -2728,14 +2781,16 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     /// <summary>
     /// Send coordinated push notification using existing Firebase logic
     /// </summary>
-    private async Task<bool> SendCoordinatedPushNotificationAsync(UserDeviceInfo device, List<DailyNotificationContent> contents, DateTime targetDate, bool isRetryPush, bool isTestPush)
+    private async Task<bool> SendCoordinatedPushNotificationAsync(UserDeviceInfo device,
+        List<DailyNotificationContent> contents, DateTime targetDate, bool isRetryPush, bool isTestPush)
     {
         try
         {
             // Get Global JWT Provider and Firebase project configuration
-            var globalJwtProvider = GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
+            var globalJwtProvider =
+                GrainFactory.GetGrain<IGlobalJwtProviderGAgent>(DailyPushConstants.GLOBAL_JWT_PROVIDER_ID);
             var firebaseService = ServiceProvider.GetService(typeof(FirebaseService)) as FirebaseService;
-            
+
             if (firebaseService == null)
             {
                 Logger.LogError("FirebaseService not available for coordinated push");
@@ -2752,73 +2807,83 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             var successCount = 0;
             var totalContents = contents.Count;
 
-            // Send each content as a separate push notification
-            for (int i = 0; i < contents.Count; i++)
+            // Send only the first content for morning push, second content for afternoon retry
+            var contentToSend = isRetryPush ? contents.Skip(1).FirstOrDefault() : contents.FirstOrDefault();
+
+            if (contentToSend == null)
             {
-                var content = contents[i];
-                var isFirstContent = i == 0;
-
-                try
-                {
-                    // Get localized content based on device language preference
-                    var localizedContent = content.GetLocalizedContent(device.PushLanguage);
-                    
-                    var pushData = new Dictionary<string, object>
-                    {
-                        ["type"] = isRetryPush ? "dailyRetry" : "daily",
-                        ["contentId"] = content.Id,
-                        ["contentIndex"] = i,
-                        ["totalContents"] = totalContents,
-                        ["isTestPush"] = isTestPush,
-                        ["targetDate"] = targetDate.ToString("yyyy-MM-dd"),
-                        ["deviceId"] = device.DeviceId
-                    };
-
-                    var success = await SendDirectPushNotificationAsync(
-                        globalJwtProvider,
-                        projectId,
-                        device.PushToken,
-                        localizedContent.Title,
-                        localizedContent.Content,
-                        pushData,
-                        device.TimeZoneId,
-                        isRetryPush,
-                        isFirstContent,
-                        isTestPush,
-                        skipDeduplicationCheck: true // Already handled by coordinator
-                    );
-
-                    if (success)
-                    {
-                        successCount++;
-                        Logger.LogDebug("✅ Coordinated push content {ContentIndex}/{TotalContents} sent successfully - Device: {DeviceId}", 
-                            i + 1, totalContents, device.DeviceId);
-                    }
-                    else
-                    {
-                        Logger.LogWarning("❌ Coordinated push content {ContentIndex}/{TotalContents} failed - Device: {DeviceId}", 
-                            i + 1, totalContents, device.DeviceId);
-                        
-                        // Check if this was a token failure and mark device for cleanup
-                        await CheckAndMarkDeviceForCleanupAsync(device.PushToken, "PUSH_FAILED");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "Exception sending coordinated push content {ContentIndex}/{TotalContents} - Device: {DeviceId}", 
-                        i + 1, totalContents, device.DeviceId);
-                }
+                Logger.LogWarning("No content available for {PushType} push - Device: {DeviceId}",
+                    isRetryPush ? "afternoon retry" : "morning", device.DeviceId);
+                return false;
             }
 
-            var allSuccessful = successCount == totalContents;
-            Logger.LogInformation("📊 Coordinated push summary - Device: {DeviceId}, Success: {SuccessCount}/{TotalContents}, AllSuccessful: {AllSuccessful}", 
-                device.DeviceId, successCount, totalContents, allSuccessful);
+            // Send the selected content
+            var contentIndex = isRetryPush ? 1 : 0;
+
+            try
+            {
+                // Get localized content based on device language preference
+                var localizedContent = contentToSend.GetLocalizedContent(device.PushLanguage);
+
+                var pushData = new Dictionary<string, object>
+                {
+                    ["type"] = (int)DailyPushConstants.PushType.DailyPush,
+                    ["contentId"] = contentToSend.Id,
+                    ["contentIndex"] = contentIndex,
+                    ["totalContents"] = totalContents,
+                    ["isTestPush"] = isTestPush,
+                    ["targetDate"] = targetDate.ToString("yyyy-MM-dd"),
+                    ["deviceId"] = device.DeviceId
+                };
+
+                var success = await SendDirectPushNotificationAsync(
+                    globalJwtProvider,
+                    projectId,
+                    device.PushToken,
+                    localizedContent.Title,
+                    localizedContent.Content,
+                    pushData,
+                    device.TimeZoneId,
+                    isRetryPush,
+                    isTestPush,
+                    skipDeduplicationCheck: true // Already handled by coordinator
+                );
+
+                if (success)
+                {
+                    successCount++;
+                    Logger.LogDebug(
+                        "✅ Coordinated push content {ContentIndex}/{TotalContents} sent successfully - Device: {DeviceId}",
+                        contentIndex + 1, totalContents, device.DeviceId);
+                }
+                else
+                {
+                    Logger.LogWarning(
+                        "❌ Coordinated push content {ContentIndex}/{TotalContents} failed - Device: {DeviceId}",
+                        contentIndex + 1, totalContents, device.DeviceId);
+
+                    // Check if this was a token failure and mark device for cleanup
+                    await CheckAndMarkDeviceForCleanupAsync(device.PushToken, "PUSH_FAILED");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex,
+                    "Exception sending coordinated push content {ContentIndex}/{TotalContents} - Device: {DeviceId}",
+                    contentIndex + 1, totalContents, device.DeviceId);
+            }
+
+            var allSuccessful = successCount == 1; // Only one content sent
+            Logger.LogInformation(
+                "📊 Coordinated push summary - Device: {DeviceId}, Success: {SuccessCount}/1, AllSuccessful: {AllSuccessful}",
+                device.DeviceId, successCount, allSuccessful);
 
             return allSuccessful;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Exception in SendCoordinatedPushNotificationAsync - Device: {DeviceId}", device.DeviceId);
+            Logger.LogError(ex, "Exception in SendCoordinatedPushNotificationAsync - Device: {DeviceId}",
+                device.DeviceId);
             return false;
         }
     }
@@ -2835,7 +2900,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Exception in CheckAndMarkDeviceForCleanupAsync - Token: {TokenPrefix}...", 
+            Logger.LogError(ex, "Exception in CheckAndMarkDeviceForCleanupAsync - Token: {TokenPrefix}...",
                 pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken);
         }
     }
@@ -2875,8 +2940,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             {
                 devicesToRemove.AddRange(v2DevicesToRemove);
                 cleanupDetails["v2_devices"] = string.Join(",", v2DevicesToRemove);
-                
-                Logger.LogInformation("🧹 Marking {Count} V2 devices for cleanup due to invalid token - Devices: {DeviceIds}, Error: {ErrorCode}", 
+
+                Logger.LogInformation(
+                    "🧹 Marking {Count} V2 devices for cleanup due to invalid token - Devices: {DeviceIds}, Error: {ErrorCode}",
                     v2DevicesToRemove.Count, string.Join(",", v2DevicesToRemove), errorCode);
 
                 // Remove V2 devices  
@@ -2892,24 +2958,26 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             if (devicesToRemove.Any())
             {
                 await ConfirmEvents();
-                Logger.LogWarning("🗑️ Automatically removed {Count} devices with invalid pushToken - Error: {ErrorCode}, Token: {TokenPrefix}..., DeviceIds: {DeviceIds}",
-                    devicesToRemove.Count, errorCode, 
+                Logger.LogWarning(
+                    "🗑️ Automatically removed {Count} devices with invalid pushToken - Error: {ErrorCode}, Token: {TokenPrefix}..., DeviceIds: {DeviceIds}",
+                    devicesToRemove.Count, errorCode,
                     pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken,
                     string.Join(",", devicesToRemove));
             }
             else
             {
-                Logger.LogDebug("🔍 No devices found with invalid token {TokenPrefix}... for cleanup", 
+                Logger.LogDebug("🔍 No devices found with invalid token {TokenPrefix}... for cleanup",
                     pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken);
             }
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Exception in MarkDeviceTokenAsInvalidAsync - Token: {TokenPrefix}..., Error: {ErrorCode}", 
+            Logger.LogError(ex,
+                "Exception in MarkDeviceTokenAsInvalidAsync - Token: {TokenPrefix}..., Error: {ErrorCode}",
                 pushToken.Length > 10 ? pushToken.Substring(0, 10) : pushToken, errorCode);
         }
     }
-    
+
     /// <summary>
     /// Get V2 devices in V1 format for compatibility - V2 ONLY
     /// ❌ V1 FALLBACK REMOVED: Pure V2 architecture
@@ -2927,9 +2995,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             RegisteredAt = v2.RegisteredAt,
             LastTokenUpdate = v2.LastTokenUpdate
         }).ToList();
-        
+
         Logger.LogDebug("GetUnifiedDevicesAsync: V2-only devices. Count: {DeviceCount}", v2Devices.Count);
-        
+
         return v2Devices;
     }
 
@@ -2942,10 +3010,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var thirtyDaysAgo = now.AddDays(-30);
         var sevenDaysAgo = now.AddDays(-7);
         var threeDaysAgo = now.AddDays(-3);
-        
+
         var devicesToRemove = new List<string>();
         var cleanupDetails = new Dictionary<string, string>();
-        
+
         // 1. Remove devices with consecutive push failures (token likely invalid)
         var failedDevices = State.UserDevicesV2.Values
             .Where(d => d.ConsecutiveFailures >= 5 && d.LastActiveAt <= threeDaysAgo)
@@ -2956,7 +3024,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             cleanupDetails["consecutive_failures"] = string.Join(",", failedDevices);
         }
-        
+
         // 2. Remove very old devices (30+ days inactive)
         var expiredDevices = State.UserDevicesV2.Values
             .Where(d => d.LastActiveAt <= thirtyDaysAgo)
@@ -2967,7 +3035,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             cleanupDetails["expired"] = string.Join(",", expiredDevices);
         }
-        
+
         // 3. Remove devices marked for cleanup
         var pendingCleanupDevices = State.UserDevicesV2.Values
             .Where(d => d.Status == DeviceStatus.PendingCleanup)
@@ -2978,13 +3046,13 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             cleanupDetails["pending_cleanup"] = string.Join(",", pendingCleanupDevices);
         }
-        
+
         // 4. Handle duplicates: same deviceId, keep the most recent one
         var duplicateGroups = State.UserDevicesV2.Values
             .GroupBy(d => d.DeviceId)
             .Where(g => g.Count() > 1)
             .ToList();
-            
+
         foreach (var group in duplicateGroups)
         {
             var devicesToKeep = group.OrderByDescending(d => d.LastActiveAt).Skip(1);
@@ -2995,10 +3063,10 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 cleanupDetails["duplicates"] = string.Join(",", duplicateIds);
             }
         }
-        
+
         // Remove duplicates from the removal list
         devicesToRemove = devicesToRemove.Distinct().ToList();
-        
+
         if (devicesToRemove.Any())
         {
             RaiseEvent(new CleanupDevicesV2EventLog
@@ -3009,32 +3077,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 CleanupDetails = cleanupDetails,
                 CleanupTime = now
             });
-            
+
             await ConfirmEvents();
-            
+
             Logger.LogInformation("🧹 V2 Enhanced device cleanup: removed {Count} devices. Details: {Details}",
-                devicesToRemove.Count, System.Text.Json.JsonSerializer.Serialize(cleanupDetails));
+                devicesToRemove.Count, JsonSerializer.Serialize(cleanupDetails));
         }
     }
-
-    /// <summary>
-    /// Clear push deduplication status for testing purposes
-    /// Removes Redis keys for specified device/date/timezone
-    /// </summary>
-    public async Task ClearPushStatusForTestingAsync(string deviceId, DateOnly date, string timeZoneId)
-    {
-        var deduplicationService = ServiceProvider.GetService(typeof(IPushDeduplicationService)) as IPushDeduplicationService;
-        
-        if (deduplicationService != null)
-        {
-            await deduplicationService.ResetDevicePushStatusAsync(deviceId, date, timeZoneId);
-            Logger.LogInformation("🧪 Testing: Cleared push status for device {DeviceId} on {Date} in {TimeZone}", 
-                deviceId, date, timeZoneId);
-        }
-        else
-        {
-            Logger.LogWarning("⚠️ IPushDeduplicationService not available for clearing push status");
-        }
-    }
-
 }

@@ -155,25 +155,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             }
         }
 
-        // Auto-activation: Use configured ReminderTargetId
-        var configuredTargetId = _options.CurrentValue.ReminderTargetId;
-        if (configuredTargetId != Guid.Empty && State.ReminderTargetId != configuredTargetId)
-        {
-            // ✅ Use event sourcing to properly persist state changes
-            RaiseEvent(new SetReminderTargetIdEventLog
-            {
-                OldTargetId = State.ReminderTargetId,
-                NewTargetId = configuredTargetId,
-                ChangeTime = DateTime.UtcNow
-            });
-
-            await ConfirmEvents();
-
-            _logger.LogInformation("Auto-activated timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}",
-                _timeZoneId, configuredTargetId);
-        }
-
-        // Try to register Orleans reminders if authorized and timezone is set
+        // Try to register Orleans reminders if timezone is set (TryRegisterRemindersAsync handles State sync)
         if (!string.IsNullOrEmpty(_timeZoneId))
         {
             await TryRegisterRemindersAsync();
@@ -217,36 +199,12 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             InitTime = DateTime.UtcNow
         });
 
-        // ✅ Force sync ReminderTargetId from configuration during initialization using event sourcing
-        var configuredTargetId = _options.CurrentValue.ReminderTargetId;
-        if (configuredTargetId != Guid.Empty)
-        {
-            // Only raise event if ReminderTargetId actually changed
-            if (State.ReminderTargetId != configuredTargetId)
-            {
-                RaiseEvent(new SetReminderTargetIdEventLog
-                {
-                    OldTargetId = State.ReminderTargetId,
-                    NewTargetId = configuredTargetId,
-                    ChangeTime = DateTime.UtcNow
-                });
-
-                _logger.LogInformation(
-                    "Force-synced ReminderTargetId during initialization for {TimeZone}: {OldId} -> {NewId}",
-                    timeZoneId, State.ReminderTargetId, configuredTargetId);
-            }
-        }
-        else
-        {
-            _logger.LogWarning("ReminderTargetId is Guid.Empty in configuration for {TimeZone}", timeZoneId);
-        }
-
         _timeZoneId = timeZoneId;
 
         // ✅ Confirm all events at end of initialization chain
         await ConfirmEvents();
 
-        // ✅ Now that timezone is properly initialized, register reminders
+        // ✅ Now that timezone is properly initialized, sync State and register reminders
         await TryRegisterRemindersAsync();
 
         _logger.LogInformation("Initialized timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}",
@@ -270,16 +228,8 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         _logger.LogInformation("Updated ReminderTargetId for {TimeZone}: {Old} -> {New}",
             _timeZoneId, oldTargetId, targetId);
 
-        // If this instance is now authorized, register reminders
-        if (State.ReminderTargetId == _options.CurrentValue.ReminderTargetId)
-        {
-            await TryRegisterRemindersAsync();
-        }
-        else
-        {
-            // Clean up existing reminders if no longer authorized
-            await CleanupRemindersAsync();
-        }
+        // TryRegisterRemindersAsync will sync with current configuration and handle reminders
+        await TryRegisterRemindersAsync();
     }
 
     /// <summary>
@@ -522,9 +472,18 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     {
         var now = DateTime.UtcNow;
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
+        var pushEnabled = _options.CurrentValue.PushEnabled;
 
         try
         {
+            // Global push switch check - if disabled, skip all push operations
+            if (!pushEnabled)
+            {
+                _logger.LogInformation("Push notifications disabled globally. Skipping {ReminderName} for {TimeZone}",
+                    reminderName, _timeZoneId);
+                return;
+            }
+
             // Version control check - only authorized instances should execute
             if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
             {
@@ -757,19 +716,43 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     {
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
 
-        // Version control check - only authorized instances can register reminders
-        if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
+        // 🎯 Simple logic: if State matches config, do nothing; if not, sync them
+        if (State.ReminderTargetId == configuredTargetId)
         {
-            _logger.LogInformation("ReminderTargetId doesn't match for {TimeZone}, not registering reminders. " +
-                                   "Current: {Current}, Expected: {Expected}",
-                _timeZoneId, State.ReminderTargetId, configuredTargetId);
-
-            // Clean up any existing reminders
-            await CleanupRemindersAsync();
+            // State is already synced with configuration, nothing to do
+            _logger.LogDebug("ReminderTargetId already synced for {TimeZone}: {TargetId}", 
+                _timeZoneId, configuredTargetId);
             return;
         }
 
-        await RegisterRemindersAsync();
+        // State doesn't match config - need to sync
+        _logger.LogInformation("Syncing ReminderTargetId for {TimeZone}: {OldState} → {NewConfig}",
+            _timeZoneId, State.ReminderTargetId, configuredTargetId);
+
+        // Step 1: Clean up old reminders
+        await CleanupRemindersAsync();
+
+        // Step 2: Update State using event sourcing
+        RaiseEvent(new SetReminderTargetIdEventLog
+        {
+            OldTargetId = State.ReminderTargetId,
+            NewTargetId = configuredTargetId,
+            ChangeTime = DateTime.UtcNow
+        });
+        await ConfirmEvents();
+
+        // Step 3: Register new reminders if config is valid
+        if (configuredTargetId != Guid.Empty)
+        {
+            await RegisterRemindersAsync();
+            _logger.LogInformation("✅ Synced and registered reminders for {TimeZone} with TargetId: {TargetId}",
+                _timeZoneId, configuredTargetId);
+        }
+        else
+        {
+            _logger.LogInformation("✅ Synced ReminderTargetId to Guid.Empty for {TimeZone} - no new reminders registered",
+                _timeZoneId);
+        }
     }
 
     private async Task RegisterRemindersAsync()

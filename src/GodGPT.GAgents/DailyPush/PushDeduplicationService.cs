@@ -17,8 +17,9 @@ public class PushDeduplicationService : IPushDeduplicationService
     // Redis key prefixes for different push types
     private const string MORNING_KEY_PREFIX = "godgpt:push:morning";
     private const string RETRY_KEY_PREFIX = "godgpt:push:retry";
+    private const string DEVICE_READ_KEY_PREFIX = "godgpt:device:read";
     
-    private static readonly string? TESTING_SUFFIX = null;
+    private static readonly string? TESTING_SUFFIX = "";
     
     // TTL for Redis keys (24 hours for daily push deduplication)
     private static readonly TimeSpan KEY_TTL = TimeSpan.FromHours(24);
@@ -236,6 +237,71 @@ public class PushDeduplicationService : IPushDeduplicationService
     {
         var baseKey = $"{RETRY_KEY_PREFIX}:{deviceId}:{date:yyyy-MM-dd}";
         return string.IsNullOrEmpty(TESTING_SUFFIX) ? baseKey : $"{baseKey}:{TESTING_SUFFIX}";
+    }
+    
+    /// <summary>
+    /// Build Redis key for device read status
+    /// Format: "godgpt:device:read:{deviceId}:{yyyy-MM-dd}"
+    /// </summary>
+    private static string BuildDeviceReadKey(string deviceId, DateOnly date)
+    {
+        var baseKey = $"{DEVICE_READ_KEY_PREFIX}:{deviceId}:{date:yyyy-MM-dd}";
+        return string.IsNullOrEmpty(TESTING_SUFFIX) ? baseKey : $"{baseKey}:{TESTING_SUFFIX}";
+    }
+    
+    public async Task<bool> MarkDeviceAsReadAsync(string deviceId, DateOnly date)
+    {
+        var key = BuildDeviceReadKey(deviceId, date);
+        
+        try
+        {
+            // Set device read status with timestamp
+            var timestamp = DateTime.UtcNow.ToString("O"); // ISO 8601 format
+            var success = await _redis.StringSetAsync(key, timestamp, KEY_TTL);
+            
+            if (success)
+            {
+                _logger.LogInformation("📖 Device marked as read: {Key} at {Timestamp}", key, timestamp);
+                return true;
+            }
+            else
+            {
+                _logger.LogWarning("Failed to mark device as read: {Key}", key);
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error marking device as read: {Key}", key);
+            return false;
+        }
+    }
+    
+    public async Task<bool> IsDeviceReadAsync(string deviceId, DateOnly date)
+    {
+        var key = BuildDeviceReadKey(deviceId, date);
+        
+        try
+        {
+            var value = await _redis.StringGetAsync(key);
+            var isRead = value.HasValue;
+            
+            if (isRead)
+            {
+                _logger.LogDebug("Device read status found: {Key} (read at: {ReadTime})", key, value.ToString());
+            }
+            else
+            {
+                _logger.LogDebug("Device read status not found: {Key}", key);
+            }
+            
+            return isRead;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking device read status: {Key}", key);
+            return false; // Default to not read on error
+        }
     }
     
 }
