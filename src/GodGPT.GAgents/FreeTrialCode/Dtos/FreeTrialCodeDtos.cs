@@ -36,8 +36,8 @@ public class BatchInfoDto
     [Id(5)] public DateTime LastGenerationTime { get; set; }
     [Id(6)] public FreeTrialCodeBatchConfig Config { get; set; }
     [Id(7)] public FreeTrialCodeFactoryStatus Status { get; set; }
-    [Id(8)] public HashSet<string> GeneratedCodes { get; set; } = new();
-    [Id(9)] public HashSet<string> UsedCodes { get; set; } = new();
+    [Id(8)] public List<string> GeneratedCodes { get; set; } = new();
+    [Id(9)] public List<string> UsedCodes { get; set; } = new();
 }
 
 [GenerateSerializer]

@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
@@ -23,7 +22,7 @@ public interface IFreeTrialCodeFactoryGAgent : IGAgent
     /// Generate specified quantity of free trial reward codes
     /// </summary>
     Task<GenerateCodesResultDto> GenerateCodesAsync(GenerateCodesRequestDto request);
-    
+
     /// <summary>
     /// Get current batch information
     /// </summary>
@@ -34,7 +33,7 @@ public interface IFreeTrialCodeFactoryGAgent : IGAgent
     /// Mark code as used
     /// </summary>
     Task<bool> MarkCodeAsUsedAsync(string code, string userId);
-    
+
     /// <summary>
     /// Validate if code belongs to current batch
     /// </summary>
@@ -46,18 +45,21 @@ public interface IFreeTrialCodeFactoryGAgent : IGAgent
 }
 
 [GAgent(nameof(FreeTrialCodeFactoryGAgent))]
-public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, FreeTrialCodeFactoryLogEvent>, 
+public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, FreeTrialCodeFactoryLogEvent>,
     IFreeTrialCodeFactoryGAgent
 {
     private readonly ILogger<FreeTrialCodeFactoryGAgent> _logger;
     private readonly IOptionsMonitor<StripeOptions> _stripeOptions;
+    private readonly IOptionsMonitor<CreditsOptions> _creditsOptions;
 
     private const int MaxQuantity = 10000;
 
-    public FreeTrialCodeFactoryGAgent(ILogger<FreeTrialCodeFactoryGAgent> logger, IOptionsMonitor<StripeOptions> stripeOptions)
+    public FreeTrialCodeFactoryGAgent(ILogger<FreeTrialCodeFactoryGAgent> logger,
+        IOptionsMonitor<StripeOptions> stripeOptions, IOptionsMonitor<CreditsOptions> creditsOptions)
     {
         _logger = logger;
         _stripeOptions = stripeOptions;
+        _creditsOptions = creditsOptions;
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -67,8 +69,18 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
 
     public async Task<GenerateCodesResultDto> GenerateCodesAsync(GenerateCodesRequestDto request)
     {
-        await InitializeFactoryAsync(request);
+        if (!IsUserAuthorizedToGenerateCode(request.OperatorUserId.ToString()))
+        {
+            return new GenerateCodesResultDto
+            {
+                Success = false,
+                Message = "Unauthorized attempt to generate code",
+                ErrorCode = FreeTrialCodeError.InternalError
+            };
+        }
         
+        await InitializeFactoryAsync(request);
+
         if (State.BatchId == null)
         {
             return new GenerateCodesResultDto
@@ -104,7 +116,8 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
             return new GenerateCodesResultDto
             {
                 Success = false,
-                Message = $"Would exceed batch capacity. Current: {State.TotalCodesGenerated}, Requested: {request.Quantity}, Max: {MaxQuantity}",
+                Message =
+                    $"Would exceed batch capacity. Current: {State.TotalCodesGenerated}, Requested: {request.Quantity}, Max: {MaxQuantity}",
                 ErrorCode = FreeTrialCodeError.InternalError
             };
         }
@@ -117,7 +130,7 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
             {
                 _logger.LogWarning("");
             }
-            
+
             // Initialize each code in InviteCodeGAgent
             // foreach (var code in codes)
             // {
@@ -166,7 +179,7 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
             };
         }
     }
-    
+
     public async Task<bool> InitializeFactoryAsync(GenerateCodesRequestDto request)
     {
         if (State.BatchId != null)
@@ -181,14 +194,14 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
         {
             TrialDays = request.TrialDays,
             ProductId = stripeProduct.PriceId,
-            PlanType = (PlanType) stripeProduct.PlanType,
+            PlanType = (PlanType)stripeProduct.PlanType,
             IsUltimate = stripeProduct.IsUltimate,
             Platform = PaymentPlatform.Stripe,
             StartTime = request.StartTime,
             EndTime = request.EndTime,
             Description = request.Description,
         };
-        
+
         RaiseEvent(new InitializeFactoryLogEvent
         {
             BatchId = request.BatchId,
@@ -200,9 +213,9 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
 
         await ConfirmEvents();
 
-        _logger.LogInformation("Factory initialized successfully. BatchId: {BatchId}", 
+        _logger.LogInformation("Factory initialized successfully. BatchId: {BatchId}",
             request.BatchId);
-        
+
         return true;
     }
 
@@ -247,9 +260,9 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
 
         await ConfirmEvents();
 
-        _logger.LogInformation("Code {Code} marked as used by user {UserId} in batch {BatchId}", 
+        _logger.LogInformation("Code {Code} marked as used by user {UserId} in batch {BatchId}",
             code, userId, State.BatchId);
-        
+
         return true;
     }
 
@@ -259,9 +272,9 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
         {
             return Task.FromResult(false);
         }
-        
-        if (string.IsNullOrEmpty(code) 
-            || State.GeneratedCodes.IsNullOrEmpty() 
+
+        if (string.IsNullOrEmpty(code)
+            || State.GeneratedCodes.IsNullOrEmpty()
             || !InvitationCodeHelper.IsValidFreeTrialCodeFormat(code))
         {
             return Task.FromResult(false);
@@ -273,6 +286,7 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
             {
                 return Task.FromResult(false);
             }
+
             return Task.FromResult(State.GeneratedCodes.Contains(code));
         }
         catch (Exception ex)
@@ -302,14 +316,14 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
 
         if (currentTime < startTime)
         {
-            _logger.LogWarning("Code {Code} not yet valid. Current: {CurrentTime}, Start: {StartTime}", 
+            _logger.LogWarning("Code {Code} not yet valid. Current: {CurrentTime}, Start: {StartTime}",
                 code, currentTime, startTime);
             return false;
         }
 
         if (currentTime > endTime)
         {
-            _logger.LogWarning("Code {Code} has expired. Current: {CurrentTime}, End: {EndTime}", 
+            _logger.LogWarning("Code {Code} has expired. Current: {CurrentTime}, End: {EndTime}",
                 code, currentTime, endTime);
             return false;
         }
@@ -332,8 +346,7 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
             do
             {
                 fullCode = InvitationCodeHelper.GenerateOptimizedCode(codeType, unixTimestamp);
-            } 
-            while (usedCodes.Contains(fullCode) || codes.Contains(fullCode));
+            } while (usedCodes.Contains(fullCode) || codes.Contains(fullCode));
 
             codes.Add(fullCode);
             usedCodes.Add(fullCode);
@@ -342,9 +355,10 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
         return Task.FromResult(codes);
     }
 
-    private long InitializeBatchTimestamp()
+    private bool IsUserAuthorizedToGenerateCode(string operatorUserId)
     {
-        return DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        var authorizedUsers = _creditsOptions.CurrentValue.OperatorUserId;
+        return authorizedUsers.Contains(operatorUserId);
     }
 
     private Task<StripeProduct> GetStripeProductConfigAsync(string priceId)
@@ -364,8 +378,9 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
 
         return Task.FromResult(productConfig);
     }
-    
-    protected sealed override void GAgentTransitionState(FreeTrialCodeFactoryState state, StateLogEventBase<FreeTrialCodeFactoryLogEvent> @event)
+
+    protected sealed override void GAgentTransitionState(FreeTrialCodeFactoryState state,
+        StateLogEventBase<FreeTrialCodeFactoryLogEvent> @event)
     {
         switch (@event)
         {
@@ -378,7 +393,7 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
                 break;
 
             case GenerateCodesLogEvent generateEvent:
-                state.GeneratedCodes = generateEvent.GeneratedCodes;
+                state.GeneratedCodes = generateEvent.GeneratedCodes.ToList();
                 state.TotalCodesGenerated = generateEvent.Quantity;
                 state.LastGenerationTime = generateEvent.CreationTime;
                 state.Status = generateEvent.Status;
