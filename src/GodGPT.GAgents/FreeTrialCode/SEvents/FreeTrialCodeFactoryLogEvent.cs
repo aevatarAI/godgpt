@@ -21,7 +21,7 @@ public class InitializeFactoryLogEvent : FreeTrialCodeFactoryLogEvent
 [GenerateSerializer]
 public class GenerateCodesLogEvent : FreeTrialCodeFactoryLogEvent
 {
-    [Id(0)] public HashSet<string> GeneratedCodes { get; set; }
+    [Id(0)] public List<string> GeneratedCodes { get; set; }
     [Id(1)] public int Quantity { get; set; }
     [Id(2)] public FreeTrialCodeFactoryStatus Status { get; set; }
     [Id(3)] public DateTime CreationTime { get; set; }

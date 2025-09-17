@@ -149,7 +149,7 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
 
             RaiseEvent(new GenerateCodesLogEvent
             {
-                GeneratedCodes = codes,
+                GeneratedCodes = codes.ToList(),
                 Quantity = request.Quantity,
                 Status = FreeTrialCodeFactoryStatus.Completed,
                 CreationTime = DateTime.UtcNow
@@ -393,7 +393,7 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
                 break;
 
             case GenerateCodesLogEvent generateEvent:
-                state.GeneratedCodes = generateEvent.GeneratedCodes.ToList();
+                state.GeneratedCodes = generateEvent.GeneratedCodes;
                 state.TotalCodesGenerated = generateEvent.Quantity;
                 state.LastGenerationTime = generateEvent.CreationTime;
                 state.Status = generateEvent.Status;
