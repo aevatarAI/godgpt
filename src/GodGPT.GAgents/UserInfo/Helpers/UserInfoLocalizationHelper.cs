@@ -58,8 +58,8 @@ public static class UserInfoLocalizationHelper
     {
         return channel switch
         {
-            SourceChannelEnum.AppStorePlayStore => new ("App Store / Play Store", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
-            SourceChannelEnum.SocialMedia => new ("Social media", ""),
+            SourceChannelEnum.AppStorePlayStore => new ("App Store / Play Store", ""),
+            SourceChannelEnum.SocialMedia => new ("Social media", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
             SourceChannelEnum.SearchEngine => new ("Search engine", ""),
             SourceChannelEnum.FriendReferral => new ("Friend referral", ""),
             SourceChannelEnum.EventConference => new ("Event / conference", ""),
@@ -91,8 +91,8 @@ public static class UserInfoLocalizationHelper
     {
         return channel switch
         {
-            SourceChannelEnum.AppStorePlayStore => new ("App Store／Play 商店", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
-            SourceChannelEnum.SocialMedia => new ("社群媒體", ""),
+            SourceChannelEnum.AppStorePlayStore => new ("App Store／Play 商店", ""),
+            SourceChannelEnum.SocialMedia => new ("社群媒體", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
             SourceChannelEnum.SearchEngine => new ("搜尋引擎", ""),
             SourceChannelEnum.FriendReferral => new ("朋友推薦", ""),
             SourceChannelEnum.EventConference => new ("活動／會議", ""),
@@ -124,8 +124,8 @@ public static class UserInfoLocalizationHelper
     {
         return channel switch
         {
-            SourceChannelEnum.AppStorePlayStore => new ("Tienda de Aplicaciones / Tienda Play", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
-            SourceChannelEnum.SocialMedia => new ("Redes sociales", ""),
+            SourceChannelEnum.AppStorePlayStore => new ("Tienda de Aplicaciones / Tienda Play", ""),
+            SourceChannelEnum.SocialMedia => new ("Redes sociales", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
             SourceChannelEnum.SearchEngine => new ("Motor de búsqueda", ""),
             SourceChannelEnum.FriendReferral => new ("Recomendación de amigo", ""),
             SourceChannelEnum.EventConference => new ("Evento / conferencia", ""),
