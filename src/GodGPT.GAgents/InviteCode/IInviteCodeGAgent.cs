@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.FreeTrialCode.Dtos;
 using Aevatar.Core.Abstractions;
 using Orleans.Concurrency;
 
@@ -26,4 +27,20 @@ public interface IInviteCodeGAgent : IGAgent
     /// Deactivate the invite code
     /// </summary>
     Task DeactivateCodeAsync();
+    
+    /// <summary>
+    /// Initialize free trial code
+    /// </summary>
+    Task<bool> InitializeFreeTrialCodeAsync(FreeTrialCodeInitDto initDto);
+    
+    /// <summary>
+    /// Validate and redeem free trial code
+    /// </summary>
+    Task<ValidateCodeResultDto> ValidateAndRedeemFreeTrialAsync(string userId);
+
+    /// <summary>
+    /// Get free trial code information
+    /// </summary>
+    [ReadOnly]
+    Task<FreeTrialCodeInfoDto> GetCodeInfoAsync();
 } 

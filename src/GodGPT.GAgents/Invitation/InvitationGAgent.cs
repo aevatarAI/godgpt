@@ -302,15 +302,6 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
         await ConfirmEvents();
     }
 
-    private string GenerateUniqueInviteCode()
-    {
-        // Generate a 6-character unique code
-        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        var random = new Random();
-        return new string(Enumerable.Repeat(chars, 6)
-            .Select(s => s[random.Next(s.Length)]).ToArray());
-    }
-
     private int GetSubscriptionRewardCredits(PlanType planType, bool isUltimate)
     {
         if (isUltimate)

@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.ChatManager.UserQuota;
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Core.Abstractions;
 
 namespace Aevatar.Application.Grains.UserQuota;
@@ -18,23 +19,15 @@ public class UserQuotaGAgentState : StateBase
     [Id(8)] public bool CanReceiveInviteReward { get; set; } = true;
     [Id(9)] public bool IsInitializedFromGrain { get; set; } = false;
     [Id(10)] public DailyImageConversationInfo DailyImageConversation { get; set; } = new DailyImageConversationInfo();
+    [Id(11)] public FreeTrialInfo? FreeTrialInfo { get; set; }
 }
 
-// [GenerateSerializer]
-// public class SubscriptionInfo
-// {
-//     [Id(0)] public bool IsActive { get; set; } = false;
-//     [Id(1)] public PlanType PlanType { get; set; }
-//     [Id(2)] public PaymentStatus Status { get; set; }
-//     [Id(3)] public DateTime StartDate { get; set; }
-//     [Id(4)] public DateTime EndDate { get; set; }
-//     [Id(5)] public List<string> SubscriptionIds { get; set; } = new List<string>();
-//     [Id(6)] public List<string> InvoiceIds { get; set; } = new List<string>();
-// }
-//
-// [GenerateSerializer]
-// public class RateLimitInfo
-// {
-//     [Id(0)] public int Count { get; set; }
-//     [Id(1)] public DateTime LastTime { get; set; }
-// }
+[GenerateSerializer]
+public class FreeTrialInfo
+{
+    [Id(1)] public string FreeTrialCode { get; set; }
+    [Id(2)] public int TrialDays { get; set; }
+    [Id(3)] public PlanType PlanType { get; set; }
+    [Id(4)] public bool IsUltimate { get; set; }
+    [Id(5)] public string TransactionId { get; set; }
+}

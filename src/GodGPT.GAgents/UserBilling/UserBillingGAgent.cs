@@ -16,6 +16,7 @@ using Aevatar.Application.Grains.Common.Helpers;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.FreeTrialCode;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.PaymentAnalytics;
 using Aevatar.Application.Grains.UserBilling.SEvents;
@@ -335,8 +336,18 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     public async Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto)
     {
+        var (priceId, trialDays) = await ProcessTrialCodeIfProvidedAsync(createCheckoutSessionDto);
+
         var productConfig = await GetProductConfigAsync(createCheckoutSessionDto.PriceId);
         await ValidateSubscriptionUpgradePath(createCheckoutSessionDto.UserId, productConfig);
+        
+        var successUrl = _stripeOptions.CurrentValue.SuccessUrl;
+        var cancelUrl = _stripeOptions.CurrentValue.CancelUrl;
+        if (trialDays > 0)
+        {
+            successUrl = $"{successUrl}&codeType={InvitationCodeType.FreeTrialReward}";
+            cancelUrl = $"{cancelUrl}&codeType={InvitationCodeType.FreeTrialReward}";
+        }
 
         var orderId = Guid.NewGuid().ToString();
         var options = new SessionCreateOptions
@@ -384,7 +395,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         { "price_id", createCheckoutSessionDto.PriceId },
                         { "quantity", createCheckoutSessionDto.Quantity.ToString() },
                         { "order_id", orderId }
-                    }
+                    },
+                    TrialPeriodDays = trialDays
                 }
                 : null,
             AllowPromotionCodes = true
@@ -423,10 +435,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         else
         {
-            options.SuccessUrl = _stripeOptions.CurrentValue.SuccessUrl;
+            options.SuccessUrl = successUrl;
             if (createCheckoutSessionDto.CancelUrl.IsNullOrWhiteSpace())
             {
-                options.CancelUrl = _stripeOptions.CurrentValue.CancelUrl;
+                options.CancelUrl = cancelUrl;
             }
             else
             {
@@ -482,6 +494,45 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 e.StripeError.Message);
             throw new InvalidOperationException(e.Message);
         }
+    }
+
+    private async Task<Tuple<string, int>> ProcessTrialCodeIfProvidedAsync(CreateCheckoutSessionDto createCheckoutSessionDto)
+    {
+        
+        var priceId = string.Empty;
+        int trialDays = 0;
+        var tuple = new Tuple<string, int>(string.Empty, 0);
+        if (!createCheckoutSessionDto.TrialCode.IsNullOrWhiteSpace())
+        {
+            var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+            if (await userQuotaGAgent.IsSubscribedAsync() || await userQuotaGAgent.IsSubscribedAsync(true))
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessTrialCodeIfProvidedAsync] {UserId} Subscribed users cannot use redemption codes {Code}", 
+                    this.GetPrimaryKey().ToString(), createCheckoutSessionDto.TrialCode);
+                throw new InvalidOperationException("Subscribed users cannot use redemption codes");
+            }
+            
+            var (codeType, batchId) = InvitationCodeHelper.ParseCodeInfo(createCheckoutSessionDto.TrialCode);
+            var factoryGAgent =
+                GrainFactory.GetGrain<IFreeTrialCodeFactoryGAgent>(CommonHelper.GetFreeTrialCodeFactoryGAgentId(batchId));
+            var codeUnused = await factoryGAgent.ValidateCodeAvailableAsync(createCheckoutSessionDto.TrialCode);
+            if (codeUnused)
+            {
+                var batchInfo = await factoryGAgent.GetBatchInfoAsync();
+                priceId = batchInfo.Config.ProductId;
+                trialDays = batchInfo.Config.TrialDays;
+                
+                createCheckoutSessionDto.PriceId = priceId;
+                createCheckoutSessionDto.Quantity = 1;
+            }
+            else
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessTrialCodeIfProvidedAsync] {UserId} code unavailable {Code}", 
+                    this.GetPrimaryKey().ToString(), createCheckoutSessionDto.TrialCode);
+                throw new InvalidOperationException($"code unavailable {createCheckoutSessionDto.TrialCode}");
+            }
+        }
+        return new (priceId, trialDays);
     }
 
     public async Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto)
