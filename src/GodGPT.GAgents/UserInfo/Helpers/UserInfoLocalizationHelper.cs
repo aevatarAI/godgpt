@@ -33,11 +33,11 @@ public static class UserInfoLocalizationHelper
             GodGPTLanguage.English => GetEnglishSourceChannelText(channel),
             GodGPTLanguage.TraditionalChinese => GetTraditionalChineseSourceChannelText(channel),
             GodGPTLanguage.Spanish => GetSpanishSourceChannelText(channel),
+            GodGPTLanguage.CN => GetCNSourceChannelText(channel),
             _ => GetEnglishSourceChannelText(channel) // Default to English
         };
     }
     
-
     #region English Text Methods
 
     private static string GetEnglishSeekingInterestText(SeekingInterestEnum interest)
@@ -66,6 +66,21 @@ public static class UserInfoLocalizationHelper
             SourceChannelEnum.Advertisement => new ("Advertisement", "(online ad, banner, etc.)"),
             SourceChannelEnum.Other => new ("Other", ""),
             _ => new ("Unknown", "")
+        };
+    }
+    
+    private static Tuple<string, string> GetCNSourceChannelText(SourceChannelEnum channel)
+    {
+        return channel switch
+        {
+            SourceChannelEnum.AppStorePlayStore => new ("应用商店 / Play 商店", ""),
+            SourceChannelEnum.SocialMedia => new ("社交媒体", "(Instagram, TikTok, X/Twitter, LinkedIn, Facebook)"),
+            SourceChannelEnum.SearchEngine => new ("搜索引擎", ""),
+            SourceChannelEnum.FriendReferral => new ("朋友推荐", ""),
+            SourceChannelEnum.EventConference => new ("活动 / 会议", ""),
+            SourceChannelEnum.Advertisement => new ("广告", "(在线广告、横幅等)"),
+            SourceChannelEnum.Other => new ("其他", ""),
+            _ => new ("其他", "")
         };
     }
 
