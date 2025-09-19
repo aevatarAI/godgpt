@@ -63,29 +63,44 @@ public class ValidateCodeResultDto
 [GenerateSerializer]
 public class FreeTrialActivationDto
 {
-    [Id(0)] public int TrialDays { get; set; }
-    [Id(1)] public PlanType PlanType { get; set; }
-    [Id(2)] public bool IsUltimate { get; set; }
-    [Id(3)] public DateTime StartDate { get; set; }
-    [Id(4)] public DateTime EndDate { get; set; }
-    [Id(5)] public string SubscriptionId { get; set; }
+    [Id(0)] public DateTime CreatedAt { get; set; }
+    [Id(1)] public bool IsActive { get; set; }
+    [Id(2)] public int UsageCount { get; set; }
+    [Id(3)] public string InviteCode { get; set; }
+    [Id(4)] public InvitationCodeType CodeType { get; set; }
+    [Id(5)] public long BatchId { get; set; }
+    [Id(6)] public int TrialDays { get; set; }
+    [Id(7)] public string ProductId { get; set; }
+    [Id(8)] public PlanType PlanType { get; set; }
+    [Id(9)] public bool IsUltimate { get; set; }
+    [Id(10)] public PaymentPlatform Platform { get; set; } = PaymentPlatform.Stripe;
+    [Id(11)] public string InviteeId { get; set; }
+    [Id(12)] public DateTime? UsedAt { get; set; }
+    [Id(13)] public string SessionUrl { get; set; }
+    [Id(14)] public DateTime SessionExpiresAt { get; set; }
 }
 
 [GenerateSerializer]
 public class FreeTrialCodeInitDto
 {
-    [Id(0)] public string BatchId { get; set; }
+    [Id(0)] public long BatchId { get; set; }
     [Id(1)] public int TrialDays { get; set; }
-    [Id(2)] public PlanType PlanType { get; set; }
-    [Id(3)] public bool IsUltimate { get; set; }
-    [Id(4)] public DateTime StartDate { get; set; }
-    [Id(5)] public DateTime EndDate { get; set; }
+    [Id(2)] public string ProductId { get; set; }
+    [Id(3)] public PlanType PlanType { get; set; }
+    [Id(4)] public bool IsUltimate { get; set; }
+    [Id(5)] public DateTime StartDate { get; set; }
+    [Id(6)] public DateTime EndDate { get; set; }
+    [Id(7)] public string FreeTrialCode { get; set; }
+    [Id(8)] public string InviteeId { get; set; }
+    [Id(9)] public PaymentPlatform Platform { get; set; } = PaymentPlatform.Stripe;
+    [Id(10)] public string SessionUrl { get; set; }
+    [Id(11)] public DateTime SessionExpiresAt { get; set; }
 }
 
 [GenerateSerializer]
 public class FreeTrialCodeInfoDto
 {
-    [Id(0)] public string BatchId { get; set; }
+    [Id(0)] public long BatchId { get; set; }
     [Id(1)] public int TrialDays { get; set; }
     [Id(2)] public PlanType PlanType { get; set; }
     [Id(3)] public bool IsUltimate { get; set; }

@@ -61,5 +61,7 @@ public class UserBillingInvoiceDetail
     [Id(11)] public string? Currency { get; set; }
     [Id(12)] public decimal? AmountNetTotal { get; set; }
     [Id(13)] public List<DiscountDetails>? Discounts { get; set; }
+    [Id(14)] public bool IsTrial { get; set; }
+    [Id(15)] public string TrialCode { get; set; }
 }
 

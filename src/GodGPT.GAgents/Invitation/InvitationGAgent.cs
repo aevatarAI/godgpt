@@ -38,7 +38,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
 
         var inviteCode = await GenerateUniqueCodeAsync();
         var inviteCodeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(inviteCode));
-        await inviteCodeGrain.InitializeAsync(this.GetPrimaryKey().ToString());
+        await inviteCodeGrain.InitializeAsync(this.GetPrimaryKey().ToString(), inviteCode);
 
         RaiseEvent(new SetInviteCodeLogEvent
         {

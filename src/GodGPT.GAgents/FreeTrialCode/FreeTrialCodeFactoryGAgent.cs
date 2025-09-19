@@ -131,22 +131,6 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
                 _logger.LogWarning("");
             }
 
-            // Initialize each code in InviteCodeGAgent
-            // foreach (var code in codes)
-            // {
-            //     var inviteCodeGAgent = GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(code));
-            //     var initDto = new FreeTrialCodeInitDto
-            //     {
-            //         BatchId = State.BatchId,
-            //         TrialDays = State.BatchConfig.TrialDays,
-            //         PlanType = State.BatchConfig.PlanType,
-            //         IsUltimate = State.BatchConfig.IsUltimate,
-            //         ExpirationDate = State.BatchConfig.ExpirationDate
-            //     };
-            //     
-            //     await inviteCodeGAgent.InitializeFreeTrialCodeAsync(initDto);
-            // }
-
             RaiseEvent(new GenerateCodesLogEvent
             {
                 GeneratedCodes = codes.ToList(),

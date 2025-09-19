@@ -28,6 +28,8 @@ public class PaymentDetailsDto
     //Total after discounts and taxes.
     [Id(19)] public decimal? AmountNetTotal { get; set; }
     [Id(20)] public List<DiscountDetails> Discounts { get; set; }
+    [Id(21)] public bool IsTrial { get; set; }
+    [Id(22)] public string TrialCode { get; set; }
 }
 
 [GenerateSerializer]
@@ -40,4 +42,6 @@ public class PaymentInvoiceDetailDto
     [Id(4)] public decimal Amount { get; set; }   
     [Id(5)] public decimal? AmountNetTotal { get; set; }
     [Id(6)] public List<DiscountDetails> Discounts { get; set; }
+    [Id(7)] public bool IsTrial { get; set; }
+    [Id(8)] public string TrialCode { get; set; }
 }

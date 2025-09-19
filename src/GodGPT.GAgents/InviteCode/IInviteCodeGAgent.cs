@@ -9,7 +9,7 @@ public interface IInviteCodeGAgent : IGAgent
     /// <summary>
     /// Initialize a new invite code with inviter ID
     /// </summary>
-    Task<bool> InitializeAsync(string inviterId);
+    Task<bool> InitializeAsync(string inviterId, string inviteCode);
 
     /// <summary>
     /// Validate invite code and return inviter ID if valid
@@ -33,10 +33,8 @@ public interface IInviteCodeGAgent : IGAgent
     /// </summary>
     Task<bool> InitializeFreeTrialCodeAsync(FreeTrialCodeInitDto initDto);
     
-    /// <summary>
-    /// Validate and redeem free trial code
-    /// </summary>
-    Task<ValidateCodeResultDto> ValidateAndRedeemFreeTrialAsync(string userId);
+    Task<ValidateCodeResultDto> ValidateAndGetFreeTrialCodeInfoAsync(string userId);
+    Task<bool> MarkCodeAsUsedAsync();
 
     /// <summary>
     /// Get free trial code information

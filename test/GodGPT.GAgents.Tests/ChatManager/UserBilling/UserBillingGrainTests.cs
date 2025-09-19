@@ -130,7 +130,7 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
                 StartTime = DateTime.UtcNow,
                 EndTime = DateTime.UtcNow.AddDays(90),
                 Quantity = 10,
-                OperatorUserId = userId,
+                OperatorUserId = Guid.Parse("3d2691e2-8eb7-4cce-9a08-1bcc48e11542"),
                 Description = "Test batch for unit testing"
             };
             var generateCodesResultDto = await factoryGAgent.GenerateCodesAsync(request);
@@ -139,28 +139,35 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
 
             _testOutputHelper.WriteLine($"Testing CreateCheckoutSessionAsync (HostedMode) with UserId: {userId}");
             var userBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
-            var products = await userBillingGAgent.GetStripeProductsAsync();
-            if (products.Count == 0)
-            {
-                _testOutputHelper.WriteLine("WARNING: No products configured in StripeOptions. Skipping test.");
-                return;
-            }
-            var product = products.First();
-            _testOutputHelper.WriteLine($"Selected product for test: PlanType={product.PlanType}, PriceId={product.PriceId}, Mode={product.Mode}");
             var dto = new CreateCheckoutSessionDto
             {
                 UserId = userId.ToString(),
-                PriceId = product.PriceId,
-                Mode = product.Mode,
-                Quantity = 1,
                 UiMode = StripeUiMode.HOSTED,
                 TrialCode = trailCode
             };
-            var result = await userBillingGAgent.CreateCheckoutSessionAsync(dto);
-            _testOutputHelper.WriteLine($"CreateCheckoutSessionAsync result: {result}");
-            result.ShouldNotBeNullOrEmpty();
-            result.ShouldContain("https://"); // URL should contain https://
-            result.ShouldContain("stripe.com"); // URL should contain stripe.com
+            var resultA = await userBillingGAgent.CreateCheckoutSessionAsync(dto);
+            _testOutputHelper.WriteLine($"CreateCheckoutSessionAsync resultA: {resultA}");
+            resultA.ShouldNotBeNullOrEmpty();
+            resultA.ShouldContain("https://"); // URL should contain https://
+            resultA.ShouldContain("stripe.com"); // URL should contain stripe.com
+            
+            var resultB = await userBillingGAgent.CreateCheckoutSessionAsync(dto);
+            _testOutputHelper.WriteLine($"CreateCheckoutSessionAsync resultB: {resultB}");
+            resultB.ShouldBe(resultA);
+            
+            var userIdB = Guid.NewGuid();
+            var userBBillingGAgent = Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userIdB);
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            {
+                dto = new CreateCheckoutSessionDto
+                {
+                    UserId = userIdB.ToString(),
+                    UiMode = StripeUiMode.HOSTED,
+                    TrialCode = trailCode
+                };
+                await userBillingGAgent.CreateCheckoutSessionAsync(dto);
+            });
+            exception.Message.ShouldContain("code invalid");
         }
         catch (Exception ex)
         {
