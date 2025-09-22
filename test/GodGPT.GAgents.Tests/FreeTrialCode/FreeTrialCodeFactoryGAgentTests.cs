@@ -23,7 +23,7 @@ public class FreeTrialCodeFactoryGAgentTests : AevatarGodGPTTestsBase
     {
         try
         {
-            var userId = Guid.NewGuid();
+            var userId = Guid.Parse("3d2691e2-8eb7-4cce-9a08-1bcc48e11542");
             var batchId = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             _testOutputHelper.WriteLine($"Testing GenerateCodesAsync with BatchId: {batchId}");
             
@@ -92,7 +92,7 @@ public class FreeTrialCodeFactoryGAgentTests : AevatarGodGPTTestsBase
                 StartTime = DateTime.UtcNow,
                 EndTime = DateTime.UtcNow.AddDays(90),
                 Quantity = 3,
-                OperatorUserId = Guid.NewGuid(),
+                OperatorUserId = Guid.Parse("3d2691e2-8eb7-4cce-9a08-1bcc48e11542"),
                 Description = "Test batch for GetBatchInfo testing"
             };
             
@@ -143,7 +143,7 @@ public class FreeTrialCodeFactoryGAgentTests : AevatarGodGPTTestsBase
                 StartTime = DateTime.UtcNow,
                 EndTime = DateTime.UtcNow.AddDays(90),
                 Quantity = 2,
-                OperatorUserId = Guid.NewGuid(),
+                OperatorUserId = Guid.Parse("3d2691e2-8eb7-4cce-9a08-1bcc48e11542"),
                 Description = "Test batch for MarkCodeAsUsed testing"
             };
             
@@ -192,7 +192,7 @@ public class FreeTrialCodeFactoryGAgentTests : AevatarGodGPTTestsBase
                 StartTime = DateTime.UtcNow,
                 EndTime = DateTime.UtcNow.AddDays(90),
                 Quantity = 1,
-                OperatorUserId = Guid.NewGuid(),
+                OperatorUserId = Guid.Parse("3d2691e2-8eb7-4cce-9a08-1bcc48e11542"),
                 Description = "Test batch for ValidateCodeOwnership testing"
             };
             

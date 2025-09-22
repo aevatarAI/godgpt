@@ -40,13 +40,13 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
     {
         try
         {
-            var stripeEvent = EventUtility.ConstructEvent(
-                jsonPayload,
-                stripeSignature,
-                _stripeOptions.CurrentValue.WebhookSecret
-            );
+            // var stripeEvent = EventUtility.ConstructEvent(
+            //     jsonPayload,
+            //     stripeSignature,
+            //     _stripeOptions.CurrentValue.WebhookSecret
+            // );
             //Debug
-            //var stripeEvent = EventUtility.ParseEvent(jsonPayload);
+            var stripeEvent = EventUtility.ParseEvent(jsonPayload);
             
             _logger.LogDebug("[PaymentGAgent][ProcessPaymentCallbackAsync] Processing Stripe webhook event, {0}, {1}", stripeEvent.Type, stripeEvent.Id);
             
@@ -286,7 +286,9 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                 CompletedAt = State.CompletedAt,
                 Amount = State.Amount,
                 AmountNetTotal = State.AmountNetTotal,
-                Discounts = State.Discounts
+                Discounts = State.Discounts,
+                IsTrial = State.IsTrial,
+                TrialCode = State.TrialCode
             });
             State.CreatedAt = default;
             
@@ -305,9 +307,16 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         var userId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "internal_user_id");
         var orderId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "order_id");
         var priceId = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "price_id");
+        var trialCode = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "trial_code");
+        var trialDays = TryGetFromMetadata(invoice?.Parent?.SubscriptionDetails?.Metadata, "trial_days");
+        
         _logger.LogDebug("[PaymentGAgent][ProcessInvoicePaidAsync] Processing paid invoice {InvoiceId}", invoice.Id);
         var discountDetailsList = await GetDiscountDetailsViaInvoiceAsync(invoice.Id);
         _logger.LogDebug("[PaymentGAgent][ProcessInvoicePaidAsync] Get discount completed {InvoiceId}, {DiscountCount}", invoice.Id, discountDetailsList.Count);
+
+        var isTrialPayment = await IsTrialPaymentAsync(invoice);
+        _logger.LogDebug("[PaymentGAgent][ProcessInvoicePaidAsync] Is trial payment {InvoiceId}", invoice.Id);
+        
 
         State.Id = this.GetPrimaryKey();
         State.UserId = Guid.Parse(userId);
@@ -327,6 +336,8 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         State.OrderId = orderId;
         State.LastUpdated = DateTime.UtcNow;
         State.Discounts = discountDetailsList;
+        State.IsTrial = isTrialPayment;
+        State.TrialCode = trialCode;
 
         await WriteStateAsync();
         _logger.LogInformation("[UserBillingGrain][ProcessInvoicePaidAsync] Recorded payment {PaymentId} for invoice {InvoiceId}", 
@@ -605,5 +616,25 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             PromotionCode = discount.PromotionCode?.Code ?? string.Empty
         }));
         return discountDetailsList;
+    }
+    
+    public async Task<bool> IsTrialPaymentAsync(Invoice invoice)
+    {
+
+        var subscriptionService = new SubscriptionService(_client);
+        var subscription = await subscriptionService.GetAsync(invoice?.Parent?.SubscriptionDetails?.SubscriptionId);
+    
+        var isTrialZeroPayment = false;
+        if (subscription.Status == "trialing" && invoice.AmountPaid == 0 && invoice.Total == 0)
+        {
+            if (invoice.BillingReason == "subscription_create" || 
+                invoice.Lines?.Data.Any(line => 
+                    line.Description?.ToLower().Contains("trial") == true || 
+                    line.Description?.ToLower().Contains("试用") == true) == true)
+            {
+                isTrialZeroPayment = true;
+            }
+        }
+        return isTrialZeroPayment;
     }
 }

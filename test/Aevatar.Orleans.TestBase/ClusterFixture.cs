@@ -182,6 +182,7 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<TwitterRewardOptions>(configuration.GetSection("TwitterReward"))
                 .Configure<AwakeningOptions>(configuration.GetSection("Awakening"))
                 .Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"))
+                .Configure<CreditsOptions>(configuration.GetSection("Credits"))
                 .Configure<Aevatar.Application.Grains.Common.Options.GooglePayOptions>(configuration.GetSection("GooglePay"))
                 .Configure<UserStatisticsOptions>(configuration.GetSection("UserStatistics"));
                     

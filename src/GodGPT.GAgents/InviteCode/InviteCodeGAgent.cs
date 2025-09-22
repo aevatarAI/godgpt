@@ -1,8 +1,6 @@
 using Aevatar.Application.Grains.Agents.SEvents;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.FreeTrialCode.Dtos;
-using Aevatar.Application.Grains.UserBilling;
-using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -25,7 +23,7 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
         return Task.FromResult("Invite Code Management GAgent");
     }
 
-    public async Task<bool> InitializeAsync(string inviterId)
+    public async Task<bool> InitializeAsync(string inviterId, string inviteCode)
     {
         if (!string.IsNullOrEmpty(State.InviterId))
         {
@@ -35,7 +33,8 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
         RaiseEvent(new InitializeInviteCodeLogEvent
         {
             InviterId = inviterId,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            InviteCode = inviteCode
         });
 
         await ConfirmEvents();
@@ -73,20 +72,27 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
 
     public async Task<bool> InitializeFreeTrialCodeAsync(FreeTrialCodeInitDto initDto)
     {
-        if (State.CodeType != InvitationCodeType.FriendInvitation || !string.IsNullOrEmpty(State.BatchId))
+        if (!State.InviteCode.IsNullOrWhiteSpace())
         {
-            _logger.LogWarning("Code already initialized or wrong type. CodeType: {CodeType}, BatchId: {BatchId}", 
-                State.CodeType, State.BatchId);
+            _logger.LogWarning("InviteCodeGAgent already initialized. {Code}", initDto.FreeTrialCode);
             return false;
         }
-
         RaiseEvent(new InitializeFreeTrialCodeLogEvent
         {
-            // BatchId = initDto.BatchId,
-            // TrialDays = initDto.TrialDays,
-            // PlanType = initDto.PlanType,
-            // IsUltimate = initDto.IsUltimate,
-            // CreatedAt = DateTime.UtcNow
+            Code = initDto.FreeTrialCode,
+            BatchId = initDto.BatchId,
+            TrialDays = initDto.TrialDays,
+            ProductId = initDto.ProductId,
+            PlanType = initDto.PlanType,
+            IsUltimate = initDto.IsUltimate,
+            StartDate = initDto.StartDate,
+            EndDate = initDto.EndDate,
+            InviteeId = initDto.InviteeId,
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true,
+            Platform = initDto.Platform,
+            SessionUrl = initDto.SessionUrl,
+            SessionExpiresAt = initDto.SessionExpiresAt
         });
 
         await ConfirmEvents();
@@ -97,8 +103,19 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
         return true;
     }
 
-    public async Task<ValidateCodeResultDto> ValidateAndRedeemFreeTrialAsync(string userId)
+    public async Task<ValidateCodeResultDto> ValidateAndGetFreeTrialCodeInfoAsync(string inviteeId)
     {
+        if (State.InviteCode.IsNullOrWhiteSpace())
+        {
+            return new ValidateCodeResultDto
+            {
+                IsValid = true,
+                Message = string.Empty,
+                CodeType = InvitationCodeType.FreeTrialReward,
+                ActivationInfo = null
+            };
+        } 
+        
         if (State.CodeType != InvitationCodeType.FreeTrialReward)
         {
             return new ValidateCodeResultDto
@@ -121,12 +138,12 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
             };
         }
 
-        if (!string.IsNullOrEmpty(State.InviteeId))
+        if (State.InviteeId != inviteeId)
         {
             return new ValidateCodeResultDto
             {
                 IsValid = false,
-                Message = "Code already used",
+                Message = "Code already used by another user",
                 CodeType = State.CodeType,
                 ActivationInfo = null
             };
@@ -137,14 +154,31 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
             return new ValidateCodeResultDto
             {
                 IsValid = true,
-                Message = "Free trial activated successfully",
+                Message = string.Empty,
                 CodeType = State.CodeType,
-                //ActivationInfo = activationInfo
+                ActivationInfo = new FreeTrialActivationDto
+                {
+                    CreatedAt = State.CreatedAt,
+                    IsActive = State.IsActive,
+                    UsageCount = State.UsageCount,
+                    InviteCode = State.InviteCode,
+                    CodeType = State.CodeType,
+                    BatchId = State.BatchId,
+                    TrialDays = State.TrialDays,
+                    ProductId = State.ProductId,
+                    PlanType = State.PlanType,
+                    IsUltimate = State.IsUltimate,
+                    Platform = State.Platform,
+                    InviteeId = State.InviteeId,
+                    UsedAt = State.UsedAt,
+                    SessionUrl = State.SessionUrl,
+                    SessionExpiresAt = State.SessionExpiresAt
+                }
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error redeeming free trial code for user {UserId}", userId);
+            _logger.LogError(ex, "Error redeeming free trial code for user {UserId}", inviteeId);
             return new ValidateCodeResultDto
             {
                 IsValid = false,
@@ -153,6 +187,21 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
                 ActivationInfo = null
             };
         }
+    }
+
+    public async Task<bool> MarkCodeAsUsedAsync()
+    {
+        RaiseEvent(new MarkCodeAsUsedLogEvent
+        {
+            IsActive = false,
+            UsedAt = DateTime.UtcNow
+        });
+
+        await ConfirmEvents();
+        
+        _logger.LogInformation("Free trial code Used. BatchId: {BatchId}, TrialDays: {InviteCode}", 
+            State.BatchId, State.InviteCode);
+        return true;
     }
 
     public Task<FreeTrialCodeInfoDto> GetCodeInfoAsync()
@@ -184,6 +233,7 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
                 state.IsActive = true;
                 state.UsageCount = 0;
                 state.CodeType = InvitationCodeType.FriendInvitation;
+                state.InviteCode = initEvent.InviteCode;
                 break;
 
             case DeactivateInviteCodeLogEvent:
@@ -195,20 +245,25 @@ public class InviteCodeGAgent : GAgentBase<InviteCodeState, InviteCodeLogEvent>,
                 break;
 
             case InitializeFreeTrialCodeLogEvent freeTrialInitEvent:
-                // state.CodeType = InvitationCodeType.FreeTrialReward;
-                // state.BatchId = freeTrialInitEvent.BatchId;
-                // state.TrialDays = freeTrialInitEvent.TrialDays;
-                // state.PlanType = freeTrialInitEvent.PlanType;
-                // state.IsUltimate = freeTrialInitEvent.IsUltimate;
-                // state.CreatedAt = freeTrialInitEvent.CreatedAt;
-                // state.IsActive = true;
-                // state.UsageCount = 0;
+                state.InviteCode = freeTrialInitEvent.Code;
+                state.CreatedAt = freeTrialInitEvent.CreatedAt;
+                state.IsActive = freeTrialInitEvent.IsActive;
+                state.UsageCount = 1;
+                state.CodeType = InvitationCodeType.FreeTrialReward;
+                state.BatchId = freeTrialInitEvent.BatchId;
+                state.TrialDays = freeTrialInitEvent.TrialDays;
+                state.ProductId = freeTrialInitEvent.ProductId;
+                state.PlanType = freeTrialInitEvent.PlanType;
+                state.IsUltimate = freeTrialInitEvent.IsUltimate;
+                state.Platform = freeTrialInitEvent.Platform;
+                state.InviteeId = freeTrialInitEvent.InviteeId;
+                state.SessionUrl = freeTrialInitEvent.SessionUrl;
+                state.SessionExpiresAt = freeTrialInitEvent.SessionExpiresAt;
                 break;
 
-            case RedeemFreeTrialCodeLogEvent redeemEvent:
-                // state.UsedAt = redeemEvent.UsedAt;
-                // state.IsActive = false;
-                // state.UsageCount++;
+            case MarkCodeAsUsedLogEvent redeemEvent:
+                state.UsedAt = redeemEvent.UsedAt;
+                state.IsActive = redeemEvent.IsActive;
                 break;
         }
     }
