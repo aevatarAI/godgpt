@@ -41,6 +41,8 @@ public interface IPushSubscriberIndexGAgent : IGAgent, IGrainWithGuidKey
     /// Batch update user timezone assignments (for performance)
     /// </summary>
     Task BatchUpdateUsersAsync(List<TimezoneUpdateRequest> updates);
+
+    Task<List<Guid>> GetActiveUsersAsync();
 }
 
 /// <summary>

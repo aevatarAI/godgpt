@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using GodGPT.GAgents.DailyPush.Options;
@@ -15,6 +16,15 @@ using Microsoft.IdentityModel.Tokens;
 using Orleans.Providers;
 
 namespace GodGPT.GAgents.DailyPush;
+
+/// <summary>
+/// Result container for JWT token creation with expiry information
+/// </summary>
+public class TokenResult
+{
+    public string Token { get; set; } = "";
+    public DateTime Expiry { get; set; }
+}
 
 // Note: Using TokenResponse from FirebaseService.cs
 
@@ -31,10 +41,6 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private readonly ILogger<GlobalJwtProviderGAgent> _logger;
     private readonly IOptionsMonitor<DailyPushOptions> _options;
     
-    // Global pushToken daily push tracking - STATIC MEMORY for cross-user deduplication
-    // This is NOT stored in Orleans State to ensure immediate consistency across all requests
-    private static readonly ConcurrentDictionary<string, DateOnly> _lastPushDates = new(); // ✅ Static in-memory only
-    private static int _cleanupCounter = 0;
     
     // JWT caching and creation control - ALL IN MEMORY for zero-latency access
     // These are NOT stored in Orleans State to avoid any persistence delays
@@ -42,6 +48,12 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     private DateTime _tokenExpiry = DateTime.MinValue;  // ✅ In-memory only
     private volatile Task<string?>? _tokenCreationTask; // ✅ In-memory only
     private readonly SemaphoreSlim _tokenSemaphore = new(1, 1);  // ✅ In-memory only
+    
+    // Statistics tracking - ALL IN MEMORY to avoid slow State operations
+    private static int _totalTokenRequests = 0;
+    private static int _successfulTokenCreations = 0;
+    private static DateTime? _lastTokenCreation = null;
+    private static string? _lastError = null;
     
     // Error handling and retry control
     private DateTime _lastFailureTime = DateTime.MinValue;
@@ -60,13 +72,13 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
     public override async Task<string> GetDescriptionAsync()
     {
         var status = await GetStatusAsync();
-        return $"Global JWT Provider - Tokens: {status.TotalTokenRequests}, Dedupe: {status.TotalDeduplicationChecks}, Prevented: {status.PreventedDuplicates}";
+        return $"Global JWT Provider - Tokens: {status.TotalTokenRequests}, Ready: {status.IsReady}, LastToken: {status.LastTokenCreation}";
     }
 
     public async Task<string?> GetFirebaseAccessTokenAsync()
     {
         // Fast path: increment counter without blocking (statistics only)
-        State.IncrementTokenRequests();
+        Interlocked.Increment(ref _totalTokenRequests);
         
         // Check cached token first - aggressive optimization: use token until last 30 seconds
         if (!string.IsNullOrEmpty(_cachedJwtToken) && DateTime.UtcNow < _tokenExpiry.AddSeconds(-30))
@@ -76,7 +88,14 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             return _cachedJwtToken;
         }
         
-        _logger.LogDebug("JWT token expired, creating new token");
+        // Check if we're in failure cooldown period (token is null but expiry is set to prevent rapid retries)
+        if (string.IsNullOrEmpty(_cachedJwtToken) && _tokenExpiry > DateTime.MinValue && DateTime.UtcNow < _tokenExpiry)
+        {
+            _logger.LogDebug("JWT creation in failure cooldown period, returning null");
+            return null;
+        }
+        
+        _logger.LogDebug("JWT token expired or not cached, creating new token");
 
         // Check for failure cooldown period to prevent rapid retries after consecutive failures
         if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
@@ -96,15 +115,10 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             }
         }
 
-        // Use task-based singleton pattern for thread-safe token creation
-        var currentTask = _tokenCreationTask;
-        if (currentTask != null && !currentTask.IsCompleted)
-        {
-            _logger.LogDebug("JWT creation already in progress, awaiting result");
-            return await currentTask;
-        }
-
-        await _tokenSemaphore.WaitAsync();
+        // Thread-safe token creation with timeout protection against deadlocks
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(2)); // 2分钟超时
+        
+        await _tokenSemaphore.WaitAsync(timeoutCts.Token);
         try
         {
             // Double-check after acquiring lock - consistent with main check
@@ -112,149 +126,94 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             {
                 return _cachedJwtToken;
             }
-
-            // Check if another thread started creation
-            currentTask = _tokenCreationTask;
-            if (currentTask != null && !currentTask.IsCompleted)
+            
+            // Double-check failure cooldown period
+            if (string.IsNullOrEmpty(_cachedJwtToken) && _tokenExpiry > DateTime.MinValue && DateTime.UtcNow < _tokenExpiry)
             {
-                return await currentTask;
+                _logger.LogDebug("JWT creation in failure cooldown period after acquiring lock, returning null");
+                return null;
             }
 
-            // Start new token creation
-            _tokenCreationTask = CreateJwtTokenInternalAsync();
-            return await _tokenCreationTask;
+            // Check if another thread already started creation while we were waiting
+            var currentTask = _tokenCreationTask;
+            if (currentTask != null && !currentTask.IsCompleted)
+            {
+                _logger.LogDebug("JWT creation already in progress, releasing semaphore and awaiting result");
+                // 🔧 DEADLOCK FIX: Release semaphore before awaiting external task
+                _tokenSemaphore.Release();
+                try
+                {
+                    using var taskTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+                    return await currentTask.WaitAsync(taskTimeout.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("JWT creation task timed out, will retry");
+                    // Re-acquire semaphore for cleanup
+                    await _tokenSemaphore.WaitAsync(timeoutCts.Token);
+                    _tokenCreationTask = null; // Clear hung task
+                }
+                catch
+                {
+                    // Re-acquire semaphore for cleanup  
+                    await _tokenSemaphore.WaitAsync(timeoutCts.Token);
+                    _tokenCreationTask = null; // Clear failed task
+                    throw;
+                }
+            }
+
+            // Create token with timeout protection
+            _logger.LogDebug("Creating new JWT token with deadlock protection");
+            using var createTimeout = new CancellationTokenSource(TimeSpan.FromMinutes(1));
+            var tokenResult = await CreateJwtTokenInternalWithExpiryAsync().WaitAsync(createTimeout.Token);
+            
+            if (tokenResult != null && !string.IsNullOrEmpty(tokenResult.Token))
+            {
+                _cachedJwtToken = tokenResult.Token;
+                _tokenExpiry = tokenResult.Expiry;
+                _logger.LogDebug("JWT token cached successfully with expiry: {Expiry}", _tokenExpiry);
+                
+                // Clear the task reference since we completed successfully
+                _tokenCreationTask = null;
+                return tokenResult.Token;
+            }
+            
+            // Clear the task reference since we failed
+            _tokenCreationTask = null;
+            
+            // 🔧 CONCURRENCY FIX: Set short-term failure cache to prevent immediate retry by other threads
+            // This prevents all waiting threads from attempting creation if first one fails
+            _tokenExpiry = DateTime.UtcNow.AddSeconds(30); // 30-second failure cache
+            _logger.LogWarning("JWT creation failed, setting 30-second failure cache to prevent concurrent retries");
+            
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogError("JWT creation timed out - preventing potential deadlock");
+            _tokenCreationTask = null;
+            
+            // Set short-term failure cache for timeout scenarios as well
+            _tokenExpiry = DateTime.UtcNow.AddSeconds(30);
+            return null;
         }
         finally
         {
-            _tokenSemaphore.Release();
-        }
-    }
-
-    public async Task<bool> CanSendPushAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true)
-    {
-        if (string.IsNullOrEmpty(pushToken))
-        {
-            _logger.LogWarning("Push token is empty for deduplication check");
-            return false;
-        }
-
-        State.IncrementDeduplicationChecks();
-
-        // Periodically cleanup old records (every 100 calls)
-        if (Interlocked.Increment(ref _cleanupCounter) % 100 == 0)
-        {
-            CleanupOldRecords();
-        }
-
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        
-        // IMPROVED DEDUPLICATION LOGIC:
-        // Use sequence-level deduplication to prevent duplicate content sequences
-        // but allow retry pushes and proper content flow
-        
-        if (isRetryPush)
-        {
-            // Retry pushes are always allowed - they don't interfere with normal daily pushes
-            _logger.LogDebug("Retry push allowed for timezone {TimeZone}", timeZoneId);
-            return true;
-        }
-
-        // For normal daily pushes, check sequence-level deduplication
-        var sequenceKey = $"{pushToken}:{timeZoneId}";
-        
-        if (isFirstContent)
-        {
-            // For first content, check if sequence has already started today
-            // Use atomic TryAdd to prevent race conditions
-            var wasAdded = _lastPushDates.TryAdd(sequenceKey, today);
-            if (!wasAdded)
+            try
             {
-                // Sequence already started by another user
-                _logger.LogDebug("Push sequence blocked - already started for timezone {TimeZone}", timeZoneId);
-                
-                State.IncrementPreventedDuplicates();
-                
-                // Log deduplication event for analytics
-                var tokenPrefix = pushToken.Substring(0, Math.Min(8, pushToken.Length));
-                RaiseEvent(new DuplicatePreventionEventLog 
-                { 
-                    PushTokenPrefix = tokenPrefix,
-                    TimeZone = timeZoneId,
-                    PreventionDate = today.ToDateTime(TimeOnly.MinValue),
-                    PreventionTime = DateTime.UtcNow
-                });
-                
-                return false;
+                _tokenSemaphore.Release();
             }
-            else
+            catch (ObjectDisposedException)
             {
-                _logger.LogDebug("Push sequence start allowed for timezone {TimeZone}", timeZoneId);
-                return true;
+                // Semaphore disposed, ignore
             }
-        }
-        else
-        {
-            // For subsequent content, check if sequence was started today
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
+            catch (SemaphoreFullException)
             {
-                // Sequence exists and is for today - allow content
-                _logger.LogDebug("Content allowed within existing sequence for timezone {TimeZone}", timeZoneId);
-                return true;
-            }
-            else
-            {
-                // No sequence started today - block this content
-                _logger.LogDebug("Content blocked - no sequence started today for timezone {TimeZone}", timeZoneId);
-                State.IncrementPreventedDuplicates();
-                return false;
+                // Already released, ignore
             }
         }
     }
 
-    public async Task MarkPushSentAsync(string pushToken, string timeZoneId, bool isRetryPush = false, bool isFirstContent = true)
-    {
-        if (string.IsNullOrEmpty(pushToken))
-        {
-            return;
-        }
-
-        // For retry pushes, no deduplication tracking needed
-        if (isRetryPush)
-        {
-            _logger.LogDebug("Retry push sent confirmation for timezone {TimeZone}", timeZoneId);
-            return;
-        }
-
-        var sequenceKey = $"{pushToken}:{timeZoneId}";
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        
-        if (isFirstContent)
-        {
-            // Verify that the sequence record exists (should already be set by CanSendPushAsync.TryAdd)
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
-            {
-                _logger.LogDebug("First content sent - sequence confirmed for timezone {TimeZone}", timeZoneId);
-            }
-            else
-            {
-                _logger.LogWarning("Sequence record inconsistency detected for timezone {TimeZone}", timeZoneId);
-            }
-        }
-        else
-        {
-            // For subsequent content, just confirm it was sent within an existing sequence
-            if (_lastPushDates.TryGetValue(sequenceKey, out var recordedDate) && recordedDate == today)
-            {
-                _logger.LogDebug("Subsequent content sent within sequence for timezone {TimeZone}", timeZoneId);
-            }
-            else
-            {
-                _logger.LogWarning("Content sent without sequence record for timezone {TimeZone}", timeZoneId);
-            }
-        }
-
-        await Task.CompletedTask;
-    }
 
     public async Task<GlobalJwtProviderStatus> GetStatusAsync()
     {
@@ -263,13 +222,9 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             IsReady = !string.IsNullOrEmpty(_options?.CurrentValue?.FilePaths?.FirebaseKeyPath),
             HasCachedToken = !string.IsNullOrEmpty(_cachedJwtToken),
             TokenExpiry = _tokenExpiry != DateTime.MinValue ? _tokenExpiry : null,
-            TotalTokenRequests = State.TotalTokenRequests,
-            TotalDeduplicationChecks = State.TotalDeduplicationChecks,
-            PreventedDuplicates = State.PreventedDuplicates,
-            TrackedPushTokens = _lastPushDates.Count,
-            LastTokenCreation = State.LastTokenCreation,
-            LastCleanup = State.LastCleanup,
-            LastError = State.LastError
+            TotalTokenRequests = _totalTokenRequests,
+            LastTokenCreation = _lastTokenCreation,
+            LastError = _lastError
         };
     }
 
@@ -282,6 +237,22 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         
         var newToken = await GetFirebaseAccessTokenAsync();
         _logger.LogInformation("JWT token force refreshed: {HasToken}", !string.IsNullOrEmpty(newToken));
+    }
+
+    /// <summary>
+    /// Internal JWT creation with proper RSA lifecycle management and expiry information
+    /// Uses proven pattern from UserBillingGrain to avoid ObjectDisposedException
+    /// </summary>
+    private async Task<TokenResult?> CreateJwtTokenInternalWithExpiryAsync()
+    {
+        var token = await CreateJwtTokenInternalAsync();
+        if (!string.IsNullOrEmpty(token))
+        {
+            // Use conservative expiry: 50 minutes (10 minutes before actual 60-minute expiry)
+            var expiry = DateTime.UtcNow.AddMinutes(50);
+            return new TokenResult { Token = token, Expiry = expiry };
+        }
+        return null;
     }
 
     /// <summary>
@@ -300,7 +271,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             {
                 var error = "❌ CRITICAL: DailyPushOptions.FilePaths.FirebaseKeyPath not configured for GlobalJwtProviderGAgent";
                 _logger.LogError(error);
-                State.RecordError(error);
+                _lastError = error;
                 return null;
             }
 
@@ -309,7 +280,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             {
                 var error = "HttpClient not available for GlobalJwtProviderGAgent";
                 _logger.LogError(error);
-                State.RecordError(error);
+                _lastError = error;
                 return null;
             }
 
@@ -319,7 +290,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
             {
                 var error = $"Failed to load service account from {firebaseKeyPath}";
                 _logger.LogError(error);
-                State.RecordError(error);
+                _lastError = error;
                 return null;
             }
 
@@ -338,19 +309,15 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                     var tokenResponse = await ExchangeJwtForAccessTokenAsync(httpClient, jwt);
                     if (tokenResponse != null && !string.IsNullOrEmpty(tokenResponse.AccessToken))
                     {
-                        // Cache token with 24-hour expiry (or shorter if specified)
-                        var expiryHours = Math.Min(tokenResponse.ExpiresIn / 3600, 24);
-                        _tokenExpiry = DateTime.UtcNow.AddHours(expiryHours);
+                        // Note: Token caching (_cachedJwtToken, _tokenExpiry) is now handled by the calling method
+                        // within proper semaphore protection to prevent race conditions
                         
                         _logger.LogDebug("Token expiry calculated: expires in {ExpiresInSeconds}s", tokenResponse.ExpiresIn);
-                        _cachedJwtToken = tokenResponse.AccessToken;
                         
-                        State.RecordSuccessfulTokenCreation();
-                        RaiseEvent(new TokenCreationSuccessEventLog 
-                        { 
-                            CreationTime = DateTime.UtcNow,
-                            TokenExpiry = _tokenExpiry 
-                        });
+                        // Record success in memory only - avoid slow State operations
+                        Interlocked.Increment(ref _successfulTokenCreations);
+                        _lastTokenCreation = DateTime.UtcNow;
+                        _lastError = null; // Clear error on success
                         
                         // Reset failure tracking on success
                         _consecutiveFailures = 0;
@@ -370,12 +337,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                             continue;
                         }
                         
-                        State.RecordError(httpError);
-                        RaiseEvent(new TokenCreationFailureEventLog 
-                        { 
-                            AttemptNumber = maxRetries,
-                            ErrorMessage = httpError 
-                        });
+                        _lastError = httpError;
                         
                         // Record failure for cooldown mechanism
                         RecordTokenCreationFailure();
@@ -393,12 +355,7 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
                         continue;
                     }
                     
-                    State.RecordError(exceptionError);
-                    RaiseEvent(new TokenCreationFailureEventLog 
-                    { 
-                        AttemptNumber = maxRetries,
-                        ErrorMessage = exceptionError 
-                    });
+                    _lastError = exceptionError;
                     
                     // Record failure for cooldown mechanism
                     RecordTokenCreationFailure();
@@ -576,39 +533,5 @@ public class GlobalJwtProviderGAgent : GAgentBase<GlobalJwtProviderState, DailyP
         }
     }
 
-    /// <summary>
-    /// Cleanup old push records to prevent memory leaks
-    /// </summary>
-    private void CleanupOldRecords()
-    {
-        try
-        {
-            var cutoffDate = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-7));
-            var keysToRemove = _lastPushDates
-                .Where(kvp => kvp.Value < cutoffDate)
-                .Select(kvp => kvp.Key)
-                .ToList();
-
-            var removedCount = 0;
-            foreach (var key in keysToRemove)
-            {
-                if (_lastPushDates.TryRemove(key, out _))
-                {
-                    removedCount++;
-                }
-            }
-
-            if (removedCount > 0)
-            {
-                _logger.LogDebug("Cleaned up {RemovedCount} old push records", removedCount);
-            }
-
-            State.RecordCleanup();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Error during push records cleanup: {ErrorMessage}", ex.Message);
-        }
-    }
 }
 

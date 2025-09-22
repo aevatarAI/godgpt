@@ -69,9 +69,11 @@ public interface IChatManagerGAgent : IGAgent
     // === Daily Push Notification Methods ===
     
     /// <summary>
-    /// Register or update device for daily push notifications
+    /// Register or update device using V2 structure (enhanced version)
+    /// All new device registrations should use this method
     /// </summary>
-    Task<bool> RegisterOrUpdateDeviceAsync(string deviceId, string pushToken, string timeZoneId, bool? pushEnabled, string pushLanguage);
+    Task<bool> RegisterOrUpdateDeviceV2Async(string deviceId, string pushToken, string timeZoneId, 
+        bool? pushEnabled, string pushLanguage, string? platform = null, string? appVersion = null);
     
     /// <summary>
     /// Mark daily push as read for today
@@ -89,13 +91,44 @@ public interface IChatManagerGAgent : IGAgent
     Task<bool> ShouldSendAfternoonRetryAsync(DateTime targetDate);
     
     /// <summary>
+    /// Get push debug information for a specific device (for troubleshooting)
+    /// </summary>
+    [ReadOnly]
+    Task<object> GetPushDebugInfoAsync(string deviceId, DateOnly date, string timeZoneId);
+    
+    /// <summary>
+    /// Get all V2 devices for this user
+    /// </summary>
+    [ReadOnly]
+    Task<List<UserDeviceInfoV2>> GetAllDevicesV2Async();
+    
+    /// <summary>
+    /// Log detailed information for all devices registered under this user
+    /// </summary>
+    
+    /// <summary>
     /// Check if user has enabled devices in specific timezone (performance optimization)
     /// </summary>
     Task<bool> HasEnabledDeviceInTimezoneAsync(string timeZoneId);
-    
+
     /// <summary>
     /// Get device status for query API
     /// </summary>
     Task<UserDeviceInfo?> GetDeviceStatusAsync(string deviceId);
+    
+    // === Coordinated Push Methods ===
+    
+    /// <summary>
+    /// Get devices for coordinated push (called by DailyPushCoordinatorGAgent)
+    /// Returns device information without executing push
+    /// </summary>
+    [ReadOnly]
+    Task<List<UserDeviceInfo>> GetDevicesForCoordinatedPushAsync(string timeZoneId, DateTime targetDate);
+    
+    /// <summary>
+    /// Execute coordinated push for a specific device (called by coordinator after device selection)
+    /// Uses existing Redis deduplication logic
+    /// </summary>
+    Task<bool> ExecuteCoordinatedPushAsync(UserDeviceInfo device, DateTime targetDate, List<DailyNotificationContent> contents, bool isRetryPush = false, bool isTestPush = false);
     
 }

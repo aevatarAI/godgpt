@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
@@ -154,25 +155,7 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             }
         }
 
-        // Auto-activation: Use configured ReminderTargetId
-        var configuredTargetId = _options.CurrentValue.ReminderTargetId;
-        if (configuredTargetId != Guid.Empty && State.ReminderTargetId != configuredTargetId)
-        {
-            // ✅ Use event sourcing to properly persist state changes
-            RaiseEvent(new SetReminderTargetIdEventLog
-            {
-                OldTargetId = State.ReminderTargetId,
-                NewTargetId = configuredTargetId,
-                ChangeTime = DateTime.UtcNow
-            });
-
-            await ConfirmEvents();
-
-            _logger.LogInformation("Auto-activated timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}",
-                _timeZoneId, configuredTargetId);
-        }
-
-        // Try to register Orleans reminders if authorized and timezone is set
+        // Try to register Orleans reminders if timezone is set (TryRegisterRemindersAsync handles State sync)
         if (!string.IsNullOrEmpty(_timeZoneId))
         {
             await TryRegisterRemindersAsync();
@@ -216,36 +199,12 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
             InitTime = DateTime.UtcNow
         });
 
-        // ✅ Force sync ReminderTargetId from configuration during initialization using event sourcing
-        var configuredTargetId = _options.CurrentValue.ReminderTargetId;
-        if (configuredTargetId != Guid.Empty)
-        {
-            // Only raise event if ReminderTargetId actually changed
-            if (State.ReminderTargetId != configuredTargetId)
-            {
-                RaiseEvent(new SetReminderTargetIdEventLog
-                {
-                    OldTargetId = State.ReminderTargetId,
-                    NewTargetId = configuredTargetId,
-                    ChangeTime = DateTime.UtcNow
-                });
-
-                _logger.LogInformation(
-                    "Force-synced ReminderTargetId during initialization for {TimeZone}: {OldId} -> {NewId}",
-                    timeZoneId, State.ReminderTargetId, configuredTargetId);
-            }
-        }
-        else
-        {
-            _logger.LogWarning("ReminderTargetId is Guid.Empty in configuration for {TimeZone}", timeZoneId);
-        }
-
         _timeZoneId = timeZoneId;
 
         // ✅ Confirm all events at end of initialization chain
         await ConfirmEvents();
 
-        // ✅ Now that timezone is properly initialized, register reminders
+        // ✅ Now that timezone is properly initialized, sync State and register reminders
         await TryRegisterRemindersAsync();
 
         _logger.LogInformation("Initialized timezone scheduler for {TimeZone} with ReminderTargetId: {TargetId}",
@@ -269,16 +228,8 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         _logger.LogInformation("Updated ReminderTargetId for {TimeZone}: {Old} -> {New}",
             _timeZoneId, oldTargetId, targetId);
 
-        // If this instance is now authorized, register reminders
-        if (State.ReminderTargetId == _options.CurrentValue.ReminderTargetId)
-        {
-            await TryRegisterRemindersAsync();
-        }
-        else
-        {
-            // Clean up existing reminders if no longer authorized
-            await CleanupRemindersAsync();
-        }
+        // TryRegisterRemindersAsync will sync with current configuration and handle reminders
+        await TryRegisterRemindersAsync();
     }
 
     /// <summary>
@@ -521,9 +472,18 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     {
         var now = DateTime.UtcNow;
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
+        var pushEnabled = _options.CurrentValue.PushEnabled;
 
         try
         {
+            // Global push switch check - if disabled, skip all push operations
+            if (!pushEnabled)
+            {
+                _logger.LogInformation("Push notifications disabled globally. Skipping {ReminderName} for {TimeZone}",
+                    reminderName, _timeZoneId);
+                return;
+            }
+
             // Version control check - only authorized instances should execute
             if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
             {
@@ -756,19 +716,43 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     {
         var configuredTargetId = _options.CurrentValue.ReminderTargetId;
 
-        // Version control check - only authorized instances can register reminders
-        if (State.ReminderTargetId != configuredTargetId || configuredTargetId == Guid.Empty)
+        // 🎯 Simple logic: if State matches config, do nothing; if not, sync them
+        if (State.ReminderTargetId == configuredTargetId)
         {
-            _logger.LogInformation("ReminderTargetId doesn't match for {TimeZone}, not registering reminders. " +
-                                   "Current: {Current}, Expected: {Expected}",
-                _timeZoneId, State.ReminderTargetId, configuredTargetId);
-
-            // Clean up any existing reminders
-            await CleanupRemindersAsync();
+            // State is already synced with configuration, nothing to do
+            _logger.LogDebug("ReminderTargetId already synced for {TimeZone}: {TargetId}", 
+                _timeZoneId, configuredTargetId);
             return;
         }
 
-        await RegisterRemindersAsync();
+        // State doesn't match config - need to sync
+        _logger.LogInformation("Syncing ReminderTargetId for {TimeZone}: {OldState} → {NewConfig}",
+            _timeZoneId, State.ReminderTargetId, configuredTargetId);
+
+        // Step 1: Clean up old reminders
+        await CleanupRemindersAsync();
+
+        // Step 2: Update State using event sourcing
+        RaiseEvent(new SetReminderTargetIdEventLog
+        {
+            OldTargetId = State.ReminderTargetId,
+            NewTargetId = configuredTargetId,
+            ChangeTime = DateTime.UtcNow
+        });
+        await ConfirmEvents();
+
+        // Step 3: Register new reminders if config is valid
+        if (configuredTargetId != Guid.Empty)
+        {
+            await RegisterRemindersAsync();
+            _logger.LogInformation("✅ Synced and registered reminders for {TimeZone} with TargetId: {TargetId}",
+                _timeZoneId, configuredTargetId);
+        }
+        else
+        {
+            _logger.LogInformation("✅ Synced ReminderTargetId to Guid.Empty for {TimeZone} - no new reminders registered",
+                _timeZoneId);
+        }
     }
 
     private async Task RegisterRemindersAsync()
@@ -846,79 +830,276 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
     private async Task<(int processedCount, int failureCount)> ProcessUserBatchAsync(
         List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate, bool isManualTrigger = false)
     {
-        var processedCount = 0;
-        var failureCount = 0;
-
-        // Process with limited concurrency to avoid overloading
-        var semaphore = new SemaphoreSlim(50);
-        var tasks = userIds.Select(async userId =>
-        {
-            await semaphore.WaitAsync();
-            try
-            {
-                var chatManagerGAgent = _grainFactory.GetGrain<IChatManagerGAgent>(userId);
-
-                // Check if user has enabled devices in this timezone
-                if (await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId))
-                {
-                    // For manual triggers, treat as test push to bypass deduplication
-                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId,
-                        bypassReadStatusCheck: isManualTrigger, isTestPush: isManualTrigger);
-                    Interlocked.Increment(ref processedCount);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to process daily push for user {UserId}", userId);
-                Interlocked.Increment(ref failureCount);
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
-
-        await Task.WhenAll(tasks);
-        return (processedCount, failureCount);
+        // 🎯 Use coordinated push approach for better device selection and deduplication
+        return await ProcessCoordinatedUserBatchAsync(userIds, contents, targetDate, isManualTrigger);
     }
 
     private async Task<(int retryCount, int failureCount)> ProcessAfternoonRetryBatchAsync(
         List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate, bool isManualTrigger = false)
     {
+        // 🎯 Use coordinated retry push approach for better device selection and deduplication
+        return await ProcessCoordinatedAfternoonRetryBatchAsync(userIds, contents, targetDate, isManualTrigger);
+    }
+
+    // === Coordinated Push Implementation ===
+
+    /// <summary>
+    /// Device candidate for coordinated push selection
+    /// </summary>
+    private class DeviceCandidate
+    {
+        public Guid UserId { get; set; }
+        public UserDeviceInfo DeviceInfo { get; set; } = null!;
+        public IChatManagerGAgent ChatManagerGAgent { get; set; } = null!;
+    }
+
+    /// <summary>
+    /// Process coordinated morning push with intelligent device selection
+    /// </summary>
+    private async Task<(int processedCount, int failureCount)> ProcessCoordinatedUserBatchAsync(
+        List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate, bool isManualTrigger = false)
+    {
+        var processedDevices = 0;
+        var failureCount = 0;
+
+        try
+        {
+            _logger.LogInformation("🎯 Starting coordinated push for {UserCount} users in {TimeZone}", 
+                userIds.Count, _timeZoneId);
+
+            // Step 1: Collect all device candidates from all users
+            var allCandidates = new List<DeviceCandidate>();
+            var collectionTasks = userIds.Select(async userId =>
+            {
+                try
+                {
+                    var chatManagerGAgent = _grainFactory.GetGrain<IChatManagerGAgent>(userId);
+                    var userDevices = await chatManagerGAgent.GetDevicesForCoordinatedPushAsync(_timeZoneId, targetDate);
+                    
+                    return userDevices.Select(device => new DeviceCandidate
+                    {
+                        UserId = userId,
+                        DeviceInfo = device,
+                        ChatManagerGAgent = chatManagerGAgent
+                    }).ToList();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to collect devices from user {UserId}", userId);
+                    return new List<DeviceCandidate>();
+                }
+            });
+
+            var candidateResults = await Task.WhenAll(collectionTasks);
+            allCandidates = candidateResults.SelectMany(c => c).ToList();
+
+            _logger.LogInformation("📋 Collected {CandidateCount} device candidates from {UserCount} users", 
+                allCandidates.Count, userIds.Count);
+
+            // Step 2: Group candidates by deviceId and select best candidate for each device
+            var deviceGroups = allCandidates.GroupBy(c => c.DeviceInfo.DeviceId);
+            var selectedCandidates = new List<DeviceCandidate>();
+
+            foreach (var deviceGroup in deviceGroups)
+            {
+                var candidates = deviceGroup.ToList();
+                var winner = SelectBestCandidate(candidates);
+                
+                if (winner != null)
+                {
+                    selectedCandidates.Add(winner);
+                    
+                    if (candidates.Count > 1)
+                    {
+                        _logger.LogInformation("🏆 Device {DeviceId} winner selected: User {UserId} (token: {TokenUpdate}) from {CandidateCount} candidates", 
+                            winner.DeviceInfo.DeviceId, winner.UserId, winner.DeviceInfo.LastTokenUpdate, candidates.Count);
+                    }
+                }
+            }
+
+            _logger.LogInformation("✅ Selected {SelectedCount} devices for coordinated push (reduced from {CandidateCount} candidates)", 
+                selectedCandidates.Count, allCandidates.Count);
+
+            // Step 3: Execute coordinated push for selected devices
+            var executionTasks = selectedCandidates.Select(async candidate =>
+            {
+                try
+                {
+                    var success = await candidate.ChatManagerGAgent.ExecuteCoordinatedPushAsync(
+                        candidate.DeviceInfo, targetDate, contents, 
+                        isRetryPush: false, isTestPush: isManualTrigger);
+                    
+                    if (success)
+                    {
+                        Interlocked.Increment(ref processedDevices);
+                        _logger.LogDebug("✅ Coordinated push successful for device {DeviceId}", candidate.DeviceInfo.DeviceId);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref failureCount);
+                        _logger.LogWarning("❌ Coordinated push failed for device {DeviceId}", candidate.DeviceInfo.DeviceId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Exception in coordinated push execution for device {DeviceId}", candidate.DeviceInfo.DeviceId);
+                    Interlocked.Increment(ref failureCount);
+                }
+            });
+
+            await Task.WhenAll(executionTasks);
+
+            _logger.LogInformation("📊 Coordinated push completed for {TimeZone}: {ProcessedDevices} devices processed, {FailureCount} failures", 
+                _timeZoneId, processedDevices, failureCount);
+
+            return (processedDevices, failureCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception in ProcessCoordinatedUserBatchAsync for {TimeZone}", _timeZoneId);
+            return (processedDevices, failureCount);
+        }
+    }
+
+    /// <summary>
+    /// Select the best candidate device from multiple candidates for the same deviceId
+    /// Priority: pushEnabled > newest lastTokenUpdate > random selection
+    /// </summary>
+    private DeviceCandidate? SelectBestCandidate(List<DeviceCandidate> candidates)
+    {
+        if (candidates == null || !candidates.Any())
+            return null;
+
+        try
+        {
+            // Filter to enabled devices only
+            var enabledCandidates = candidates.Where(c => c.DeviceInfo.PushEnabled).ToList();
+            
+            if (!enabledCandidates.Any())
+            {
+                _logger.LogInformation("🚫 Device {DeviceId} skipped: all {CandidateCount} candidates have pushEnabled=false", 
+                    candidates.First().DeviceInfo.DeviceId, candidates.Count);
+                return null;
+            }
+
+            // Select the candidate with the newest token update time
+            var winner = enabledCandidates
+                .OrderByDescending(c => c.DeviceInfo.LastTokenUpdate)
+                .ThenBy(c => c.UserId) // Secondary sort for deterministic results
+                .First();
+
+            if (enabledCandidates.Count > 1)
+            {
+                var otherCandidates = enabledCandidates.Where(c => c.UserId != winner.UserId).ToList();
+                _logger.LogDebug("🎯 Device {DeviceId} selection: Winner={WinnerUser}@{WinnerToken}, Others={OtherUsers}", 
+                    winner.DeviceInfo.DeviceId, winner.UserId, winner.DeviceInfo.LastTokenUpdate,
+                    string.Join(",", otherCandidates.Select(c => $"{c.UserId}@{c.DeviceInfo.LastTokenUpdate}")));
+            }
+
+            return winner;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception in SelectBestCandidate for device {DeviceId}", 
+                candidates.FirstOrDefault()?.DeviceInfo.DeviceId ?? "unknown");
+            return candidates.FirstOrDefault();
+        }
+    }
+
+    /// <summary>
+    /// Process coordinated afternoon retry push
+    /// </summary>
+    private async Task<(int retryCount, int failureCount)> ProcessCoordinatedAfternoonRetryBatchAsync(
+        List<Guid> userIds, List<DailyNotificationContent> contents, DateTime targetDate, bool isManualTrigger = false)
+    {
         var retryCount = 0;
         var failureCount = 0;
 
-        var semaphore = new SemaphoreSlim(50);
-        var tasks = userIds.Select(async userId =>
+        try
         {
-            await semaphore.WaitAsync();
-            try
-            {
-                var chatManagerGAgent = _grainFactory.GetGrain<IChatManagerGAgent>(userId);
+            _logger.LogInformation("🎯 Starting coordinated afternoon retry for {UserCount} users in {TimeZone}", 
+                userIds.Count, _timeZoneId);
 
-                // Check if user needs afternoon retry and has enabled devices
-                if (await chatManagerGAgent.HasEnabledDeviceInTimezoneAsync(_timeZoneId) &&
-                    (isManualTrigger || await chatManagerGAgent.ShouldSendAfternoonRetryAsync(targetDate)))
+            // Step 1: Collect device candidates and filter for retry eligibility
+            var eligibleCandidates = new List<DeviceCandidate>();
+            
+            foreach (var userId in userIds)
+            {
+                try
                 {
-                    // For manual triggers, treat as test push to bypass deduplication
-                    await chatManagerGAgent.ProcessDailyPushAsync(targetDate, contents, _timeZoneId,
-                        bypassReadStatusCheck: isManualTrigger, isRetryPush: !isManualTrigger,
-                        isTestPush: isManualTrigger);
-                    Interlocked.Increment(ref retryCount);
+                    var chatManagerGAgent = _grainFactory.GetGrain<IChatManagerGAgent>(userId);
+                    
+                    // Check if user needs afternoon retry
+                    if (isManualTrigger || await chatManagerGAgent.ShouldSendAfternoonRetryAsync(targetDate))
+                    {
+                        var userDevices = await chatManagerGAgent.GetDevicesForCoordinatedPushAsync(_timeZoneId, targetDate);
+                        
+                        eligibleCandidates.AddRange(userDevices.Select(device => new DeviceCandidate
+                        {
+                            UserId = userId,
+                            DeviceInfo = device,
+                            ChatManagerGAgent = chatManagerGAgent
+                        }));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to collect retry candidates from user {UserId}", userId);
                 }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to process afternoon retry for user {UserId}", userId);
-                Interlocked.Increment(ref failureCount);
-            }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
 
-        await Task.WhenAll(tasks);
-        return (retryCount, failureCount);
+            _logger.LogInformation("📋 Collected {CandidateCount} retry candidates from {UserCount} users", 
+                eligibleCandidates.Count, userIds.Count);
+
+            // Step 2: Group and select best candidates
+            var deviceGroups = eligibleCandidates.GroupBy(c => c.DeviceInfo.DeviceId);
+            var selectedCandidates = new List<DeviceCandidate>();
+
+            foreach (var deviceGroup in deviceGroups)
+            {
+                var winner = SelectBestCandidate(deviceGroup.ToList());
+                if (winner != null)
+                {
+                    selectedCandidates.Add(winner);
+                }
+            }
+
+            // Step 3: Execute coordinated retry push
+            var executionTasks = selectedCandidates.Select(async candidate =>
+            {
+                try
+                {
+                    var success = await candidate.ChatManagerGAgent.ExecuteCoordinatedPushAsync(
+                        candidate.DeviceInfo, targetDate, contents, 
+                        isRetryPush: true, isTestPush: isManualTrigger);
+                    
+                    if (success)
+                    {
+                        Interlocked.Increment(ref retryCount);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref failureCount);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Exception in coordinated retry push for device {DeviceId}", candidate.DeviceInfo.DeviceId);
+                    Interlocked.Increment(ref failureCount);
+                }
+            });
+
+            await Task.WhenAll(executionTasks);
+
+            _logger.LogInformation("📊 Coordinated retry completed for {TimeZone}: {RetryCount} retries, {FailureCount} failures", 
+                _timeZoneId, retryCount, failureCount);
+
+            return (retryCount, failureCount);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception in ProcessCoordinatedAfternoonRetryBatchAsync for {TimeZone}", _timeZoneId);
+            return (retryCount, failureCount);
+        }
     }
 }

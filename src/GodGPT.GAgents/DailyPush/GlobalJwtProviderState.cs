@@ -58,6 +58,15 @@ public class GlobalJwtProviderState : StateBase
     public DateTime ActivationTime { get; set; } = DateTime.UtcNow;
     
     /// <summary>
+    /// Global deduplication tracking - stores device/token keys and their claim dates
+    /// Key format: "device:{deviceId}:{date}:{hour}:{timezone}" or "token:{token}:{date}:{hour}"
+    /// Value: DateOnly when the key was claimed
+    /// CRITICAL: Must be in Orleans State for cross-silo consistency in clusters!
+    /// </summary>
+    [Id(8)]
+    public Dictionary<string, DateOnly> LastPushDates { get; set; } = new();
+    
+    /// <summary>
     /// Increment token request counter
     /// </summary>
     public void IncrementTokenRequests()
