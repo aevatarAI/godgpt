@@ -168,6 +168,8 @@ public partial class UserBillingGrainTests : AevatarOrleansTestBase<AevatarGodGP
                 await userBillingGAgent.CreateCheckoutSessionAsync(dto);
             });
             exception.Message.ShouldContain("code invalid");
+
+            var paymentSummaryDtos = await userBillingGAgent.GetPaymentHistoryAsync();
         }
         catch (Exception ex)
         {

@@ -49,9 +49,11 @@ namespace Aevatar.Application.Grains.Tests.ChatManager.UserBilling;
             Cluster.GrainFactory.GetGrain<IUserBillingGAgent>(userId);
         var result = await userBillingGAgent.HandleStripeWebhookEventAsync(json, signature);
             Assert.True(result);
-        }
-        
-        [Fact]
+
+            await userBillingGAgent.GetPaymentHistoryAsync();
+    }
+
+    [Fact]
     public async Task HandleStripeWebhookEventAsync_Subscription_Full()
     {
         var userId = Guid.NewGuid();
