@@ -65,3 +65,27 @@ public class UserBillingInvoiceDetail
     [Id(15)] public string TrialCode { get; set; }
 }
 
+
+[GenerateSerializer]
+public class PaymentSummaryDto
+{
+    [Id(0)] public Guid PaymentGrainId { get; set; }
+    [Id(1)] public string OrderId { get; set; }
+    [Id(2)] public PlanType PlanType { get; set; }
+    [Id(3)] public decimal Amount { get; set; }
+    [Id(4)] public string Currency { get; set; } = "USD";
+    [Id(5)] public DateTime CreatedAt { get; set; }
+    [Id(6)] public DateTime? CompletedAt { get; set; }
+    [Id(7)] public PaymentStatus Status { get; set; }
+    [Id(8)] public PaymentPlatform Platform {get; set;}
+    [Id(9)] public string SubscriptionId { get; set; }
+    [Id(10)] public DateTime SubscriptionStartDate { get; set; }
+    [Id(11)] public DateTime SubscriptionEndDate { get; set; }
+    [Id(12)] public Guid UserId { get; set; }
+    [Id(13)] public string PriceId { get; set; }
+    [Id(14)] public string AppStoreEnvironment { get; set; }
+    [Id(15)] public string MembershipLevel { get; set; }
+    [Id(16)] public decimal? AmountNetTotal { get; set; }
+    [Id(17)] public bool IsTrial { get; set; }
+    [Id(18)] public string TrialCode { get; set; }
+}
