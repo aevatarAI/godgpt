@@ -86,6 +86,6 @@ public class PaymentSummaryDto
     [Id(14)] public string AppStoreEnvironment { get; set; }
     [Id(15)] public string MembershipLevel { get; set; }
     [Id(16)] public decimal? AmountNetTotal { get; set; }
-    [Id(17)] public bool IsTrial { get; set; }
-    [Id(18)] public string TrialCode { get; set; }
+    [Id(17)] public bool IsTrial { get; set; } = false;
+    [Id(18)] public string TrialCode { get; set; } = string.Empty;
 }
