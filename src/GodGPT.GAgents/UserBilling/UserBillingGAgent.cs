@@ -54,7 +54,7 @@ public interface IUserBillingGAgent : IGAgent
     Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
     Task<Guid> AddPaymentRecordAsync(ChatManager.UserBilling.PaymentSummary paymentSummary);
     Task<ChatManager.UserBilling.PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
-    Task<List<ChatManager.UserBilling.PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
+    Task<List<PaymentSummaryDto>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
     Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
     Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
@@ -1390,7 +1390,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         return payment;
     }
 
-    public async Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
+    public async Task<List<PaymentSummaryDto>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
     {
         _logger.LogInformation(
             "[UserBillingGAgent][GetPaymentHistoryAsync] Getting payment history page {Page} with size {PageSize}",
@@ -1430,7 +1430,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         // Calculate skip and take values
         int skip = (page - 1) * pageSize;
 
-        var paymentHistories = new List<ChatManager.UserBilling.PaymentSummary>();
+        var paymentHistories = new List<PaymentSummaryDto>();
         var paymentSummaries = State.PaymentHistory;
         foreach (var paymentSummary in paymentSummaries)
         {
@@ -1463,13 +1463,33 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 {
                     paymentSummary.AmountNetTotal = paymentSummary.Amount;
                 }
-                paymentHistories.Add(paymentSummary);
+
+                paymentHistories.Add(new PaymentSummaryDto
+                {
+                    PaymentGrainId = paymentSummary.PaymentGrainId,
+                    OrderId = paymentSummary.OrderId,
+                    PlanType = paymentSummary.PlanType,
+                    Amount = paymentSummary.Amount,
+                    Currency = paymentSummary.Currency,
+                    CreatedAt = paymentSummary.CreatedAt,
+                    CompletedAt = paymentSummary.CompletedAt,
+                    Status = paymentSummary.Status,
+                    Platform = paymentSummary.Platform,
+                    SubscriptionId = paymentSummary.SubscriptionId,
+                    SubscriptionStartDate = paymentSummary.SubscriptionStartDate,
+                    SubscriptionEndDate = paymentSummary.SubscriptionEndDate,
+                    UserId = paymentSummary.UserId,
+                    PriceId = paymentSummary.PriceId,
+                    AppStoreEnvironment = paymentSummary.AppStoreEnvironment,
+                    MembershipLevel = paymentSummary.MembershipLevel,
+                    AmountNetTotal = paymentSummary.AmountNetTotal
+                });
             }
             else
             {
                 paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail =>
                 {
-                    var payment = new ChatManager.UserBilling.PaymentSummary
+                    var payment = new PaymentSummaryDto
                     {
                         PaymentGrainId = paymentSummary.PaymentGrainId,
                         OrderId = paymentSummary.OrderId,
@@ -1494,7 +1514,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                             : invoiceDetail.MembershipLevel,
                         AmountNetTotal = invoiceDetail.AmountNetTotal == null
                             ? paymentSummary.AmountNetTotal
-                            : invoiceDetail.AmountNetTotal
+                            : invoiceDetail.AmountNetTotal,
+                        IsTrial = invoiceDetail.IsTrial,
+                        TrialCode = invoiceDetail.TrialCode
                     };
                     if (payment.AmountNetTotal == null)
                     {

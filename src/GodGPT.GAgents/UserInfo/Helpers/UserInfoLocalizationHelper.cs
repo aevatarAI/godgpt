@@ -19,6 +19,7 @@ public static class UserInfoLocalizationHelper
             GodGPTLanguage.English => GetEnglishSeekingInterestText(interest),
             GodGPTLanguage.TraditionalChinese => GetTraditionalChineseSeekingInterestText(interest),
             GodGPTLanguage.Spanish => GetSpanishSeekingInterestText(interest),
+            GodGPTLanguage.CN => GetCNSeekingInterestText(interest),
             _ => GetEnglishSeekingInterestText(interest) // Default to English
         };
     }
@@ -51,6 +52,20 @@ public static class UserInfoLocalizationHelper
             SeekingInterestEnum.DailyFortuneTelling => "Daily fortune telling",
             SeekingInterestEnum.CareerGuidance => "Career guidance",
             _ => "Unknown"
+        };
+    }
+    
+    private static string GetCNSeekingInterestText(SeekingInterestEnum interest)
+    {
+        return interest switch
+        {
+            SeekingInterestEnum.Companionship => "陪伴",
+            SeekingInterestEnum.SelfDiscovery => "自我发现",
+            SeekingInterestEnum.SpiritualGrowth => "灵性成长",
+            SeekingInterestEnum.LoveAndRelationships => "爱情与关系",
+            SeekingInterestEnum.DailyFortuneTelling => "每日占卜",
+            SeekingInterestEnum.CareerGuidance => "职业指导",
+            _ => "其他"
         };
     }
 
