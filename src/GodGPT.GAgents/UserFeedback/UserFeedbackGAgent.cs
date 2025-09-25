@@ -89,12 +89,18 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
     {
         try
         {
+            _logger.LogDebug("[UserFeedbackGAgent][SubmitFeedbackAsync] Start - UserId: {UserId}, FeedbackType: {FeedbackType}",
+                this.GetPrimaryKey(), request.FeedbackType);
+            
             var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
             
             // Validate request
             var validationResult = ValidateSubmitRequest(request, language);
             if (!validationResult.IsValid)
             {
+                _logger.LogWarning("[UserFeedbackGAgent][SubmitFeedbackAsync] Validation failed for user {UserId}: {ErrorCode} - {Message}",
+                    this.GetPrimaryKey(), validationResult.ErrorCode, validationResult.Message);
+                    
                 return new SubmitFeedbackResult
                 {
                     Success = false,
@@ -107,6 +113,9 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
             var eligibilityResult = await CheckFeedbackEligibilityAsync();
             if (!eligibilityResult.Eligible)
             {
+                _logger.LogWarning("[UserFeedbackGAgent][SubmitFeedbackAsync] Frequency limit exceeded for user {UserId}. Last feedback: {LastFeedbackTime}",
+                    this.GetPrimaryKey(), eligibilityResult.LastFeedbackTime);
+                    
                 return new SubmitFeedbackResult
                 {
                     Success = false,
@@ -143,8 +152,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("User feedback submitted successfully. UserId: {UserId}, FeedbackId: {FeedbackId}, Type: {Type}",
-                this.GetPrimaryKey().ToString(), feedbackInfo.FeedbackId, request.FeedbackType);
+            _logger.LogInformation("[UserFeedbackGAgent][SubmitFeedbackAsync] User feedback submitted successfully. UserId: {UserId}, FeedbackId: {FeedbackId}, Type: {Type}",
+                this.GetPrimaryKey(), feedbackInfo.FeedbackId, request.FeedbackType);
 
             return new SubmitFeedbackResult
             {
@@ -155,7 +164,7 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
         catch (Exception ex)
         {
             var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
-            _logger.LogError(ex, "Error submitting feedback for user: {UserId}", this.GetPrimaryKey().ToString());
+            _logger.LogError(ex, "[UserFeedbackGAgent][SubmitFeedbackAsync] Error submitting feedback for user: {UserId}", this.GetPrimaryKey());
             
             return new SubmitFeedbackResult
             {
@@ -168,6 +177,9 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
 
     public Task<CheckEligibilityResult> CheckFeedbackEligibilityAsync()
     {
+        _logger.LogDebug("[UserFeedbackGAgent][CheckFeedbackEligibilityAsync] Checking eligibility for user {UserId}",
+            this.GetPrimaryKey());
+            
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         
         // If no previous feedback, user is eligible
@@ -209,6 +221,9 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
 
     public Task<GetFeedbackHistoryResult> GetFeedbackHistoryAsync(GetFeedbackHistoryRequest request)
     {
+        _logger.LogDebug("[UserFeedbackGAgent][GetFeedbackHistoryAsync] Getting feedback history for user {UserId}. PageSize: {PageSize}, PageIndex: {PageIndex}",
+            this.GetPrimaryKey(), request.PageSize, request.PageIndex);
+            
         var allFeedbacks = new List<FeedbackHistoryItem>();
         
         // Add current feedback if exists
@@ -256,6 +271,9 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
             .ToList();
         
         var hasMore = (request.PageIndex + 1) * request.PageSize < totalCount;
+        
+        _logger.LogDebug("[UserFeedbackGAgent][GetFeedbackHistoryAsync] Retrieved {Count} feedbacks for user {UserId}. Total: {TotalCount}, HasMore: {HasMore}",
+            pagedFeedbacks.Count, this.GetPrimaryKey(), totalCount, hasMore);
         
         return Task.FromResult(new GetFeedbackHistoryResult
         {
