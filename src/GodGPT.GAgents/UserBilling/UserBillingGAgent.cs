@@ -1055,13 +1055,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         Event stripeEvent;
         try
         {
-            // stripeEvent = EventUtility.ConstructEvent(
-            //     jsonPayload,
-            //     stripeSignature,
-            //     _stripeOptions.CurrentValue.WebhookSecret
-            // );
+            stripeEvent = EventUtility.ConstructEvent(
+                jsonPayload,
+                stripeSignature,
+                _stripeOptions.CurrentValue.WebhookSecret
+            );
             //Debug
-            stripeEvent = EventUtility.ParseEvent(jsonPayload);
+            // stripeEvent = EventUtility.ParseEvent(jsonPayload);
         }
         catch (StripeException ex)
         {
