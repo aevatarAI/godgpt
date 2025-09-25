@@ -3,6 +3,7 @@ using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.Anonymous.Options;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
+using Aevatar.Application.Grains.UserFeedback.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -41,6 +42,7 @@ public class GodGPTGAgentModule : AbpModule
         Configure<AwakeningOptions>(configuration.GetSection("Awakening"));
         Configure<GooglePayOptions>(configuration.GetSection("GooglePay"));
         Configure<UserStatisticsOptions>(configuration.GetSection("UserStatistics"));
+        Configure<UserFeedbackOptions>(configuration.GetSection("UserFeedback"));
         
         // Register GooglePayOptions post processor for flat configuration support
         context.Services.AddSingleton<IPostConfigureOptions<GooglePayOptions>, GooglePayOptionsPostProcessor>();

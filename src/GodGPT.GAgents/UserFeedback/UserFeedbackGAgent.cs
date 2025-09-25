@@ -2,10 +2,12 @@ using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.UserFeedback.Dtos;
+using Aevatar.Application.Grains.UserFeedback.Options;
 using Aevatar.Application.Grains.UserFeedback.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
 
@@ -30,17 +32,16 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
 {
     private readonly ILogger<UserFeedbackGAgent> _logger;
     private readonly ILocalizationService _localizationService;
-    
-    private const int FeedbackFrequencyDays = 14;
-    private const int MaxArchivedFeedbacks = 50;
-    private const int MaxResponseLength = 2000;
+    private readonly IOptionsMonitor<UserFeedbackOptions> _feedbackOptions;
 
     public UserFeedbackGAgent(
         ILogger<UserFeedbackGAgent> logger,
-        ILocalizationService localizationService)
+        ILocalizationService localizationService,
+        IOptionsMonitor<UserFeedbackOptions> feedbackOptions)
     {
         _logger = logger;
         _localizationService = localizationService;
+        _feedbackOptions = feedbackOptions;
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -64,7 +65,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                     state.ArchivedFeedbacks.Add(archivedData);
                     
                     // Limit archived data count
-                    if (state.ArchivedFeedbacks.Count > MaxArchivedFeedbacks)
+                    var maxArchived = _feedbackOptions.CurrentValue.MaxArchivedFeedbacks;
+                    if (state.ArchivedFeedbacks.Count > maxArchived)
                     {
                         state.ArchivedFeedbacks.RemoveAt(0);
                     }
@@ -179,7 +181,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
         }
 
         var timeSinceLastFeedback = DateTime.UtcNow - State.LastFeedbackTime.Value;
-        var isEligible = timeSinceLastFeedback.TotalDays >= FeedbackFrequencyDays;
+        var frequencyDays = _feedbackOptions.CurrentValue.FeedbackFrequencyDays;
+        var isEligible = timeSinceLastFeedback.TotalDays >= frequencyDays;
         
         if (isEligible)
         {
@@ -191,7 +194,7 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
             });
         }
 
-        var nextEligibleTime = State.LastFeedbackTime.Value.AddDays(FeedbackFrequencyDays);
+        var nextEligibleTime = State.LastFeedbackTime.Value.AddDays(frequencyDays);
         var daysRemaining = (int)Math.Ceiling((nextEligibleTime - DateTime.UtcNow).TotalDays);
         
         return Task.FromResult(new CheckEligibilityResult
@@ -274,10 +277,11 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
             return (false, _localizationService.GetLocalizedValidationMessage("invalid_feedback_type", language), "INVALID_FEEDBACK_TYPE");
         }
 
-        if (!string.IsNullOrEmpty(request.Response) && request.Response.Length > MaxResponseLength)
+        var maxResponseLength = _feedbackOptions.CurrentValue.MaxResponseLength;
+        if (!string.IsNullOrEmpty(request.Response) && request.Response.Length > maxResponseLength)
         {
             return (false, _localizationService.GetLocalizedValidationMessage("response_too_long", language, 
-                new Dictionary<string, string> { { "maxLength", MaxResponseLength.ToString() } }), "RESPONSE_TOO_LONG");
+                new Dictionary<string, string> { { "maxLength", maxResponseLength.ToString() } }), "RESPONSE_TOO_LONG");
         }
         
         return (true, string.Empty, string.Empty);
