@@ -30,4 +30,5 @@ public class CreateCheckoutSessionDto
     
     [Id(7)] public string PaymentMethodConfiguration { get; set; }
     [Id(8)] public string CancelUrl { get; set; }
+    [Id(9)] public string TrialCode { get; set; }
 }
