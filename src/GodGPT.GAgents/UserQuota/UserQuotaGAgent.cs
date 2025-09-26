@@ -6,6 +6,7 @@ using Aevatar.Application.Grains.Common.Helpers;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.FreeTrialCode.Dtos;
 using Aevatar.Application.Grains.UserQuota.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
@@ -45,6 +46,10 @@ public interface IUserQuotaGAgent : IGAgent
     Task AddCreditsAsync(int credits);
     Task<bool> RedeemInitialRewardAsync(string userId, DateTime dateTime);
     Task<UserQuotaGAgentState> GetUserQuotaStateAsync();
+    
+    // New methods for free trial support
+    Task<bool> ActivateFreeTrialAsync(int trialDays, PlanType planType, bool isUltimate);
+    Task<FreeTrialInfoDto> GetFreeTrialInfoAsync();
 }
 
 [GAgent(nameof(UserQuotaGAgent))]
@@ -831,6 +836,47 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         return true;
     }
 
+    public async Task<bool> ActivateFreeTrialAsync(int trialDays, PlanType planType, bool isUltimate)
+    {
+        var startDate = DateTime.UtcNow;
+        var endDate = startDate.AddDays(trialDays);
+
+        RaiseEvent(new ActivateFreeTrialLogEvent
+        {
+            TrialDays = trialDays,
+            PlanType = planType,
+            IsUltimate = isUltimate,
+            StartDate = startDate,
+            EndDate = endDate
+        });
+
+        await ConfirmEvents();
+
+        _logger.LogInformation("Free trial activated for user {UserId}. Days: {TrialDays}, PlanType: {PlanType}, IsUltimate: {IsUltimate}", 
+            this.GetPrimaryKeyString(), trialDays, planType, isUltimate);
+
+        return true;
+    }
+
+    public Task<FreeTrialInfoDto> GetFreeTrialInfoAsync()
+    {
+        if (State.FreeTrialInfo == null)
+        {
+            return Task.FromResult(new FreeTrialInfoDto());
+        }
+        
+        var freeTrialInfo = new FreeTrialInfoDto
+        {
+            FreeTrialCode = State.FreeTrialInfo.FreeTrialCode,
+            TrialDays = State.FreeTrialInfo.TrialDays,
+            PlanType = State.FreeTrialInfo.PlanType,
+            IsUltimate = State.FreeTrialInfo.IsUltimate,
+            TransactionId = State.FreeTrialInfo.TransactionId
+        };
+
+        return Task.FromResult(freeTrialInfo);
+    }
+    
     protected sealed override void GAgentTransitionState(UserQuotaGAgentState state,
         StateLogEventBase<UserQuotaLogEvent> @event)
     {
@@ -922,6 +968,17 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             
             case UpdateDailyImageConversationLogEvent updateDailyImageConversation:
                 State.DailyImageConversation = updateDailyImageConversation.DailyImageConversation;
+                break;
+
+            case ActivateFreeTrialLogEvent activateFreeTrialEvent:
+                if (state.FreeTrialInfo == null)
+                {
+                    state.FreeTrialInfo = new FreeTrialInfo();
+                }
+                state.FreeTrialInfo.FreeTrialCode = string.Empty;
+                state.FreeTrialInfo.TrialDays = activateFreeTrialEvent.TrialDays;
+                state.FreeTrialInfo.PlanType = activateFreeTrialEvent.PlanType;
+                state.FreeTrialInfo.IsUltimate = activateFreeTrialEvent.IsUltimate;
                 break;
                 
             case ClearAllLogEvent clearAll:

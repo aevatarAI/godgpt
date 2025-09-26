@@ -29,6 +29,8 @@ public class UserPaymentState
     //Total after discounts and taxes.
     [Id(20)] public decimal? AmountNetTotal { get; set; }
     [Id(21)] public List<DiscountDetails>? Discounts { get; set; }
+    [Id(22)] public bool IsTrial { get; set; }
+    [Id(23)] public string TrialCode { get; set; }
 
     public PaymentDetailsDto ToDto()
     {
@@ -54,7 +56,9 @@ public class UserPaymentState
             SessionId = this.SessionId,
             InvoiceDetails = ToInvoiceDetailDtos(),
             AmountNetTotal = this.AmountNetTotal,
-            Discounts = this.Discounts
+            Discounts = this.Discounts,
+            IsTrial = this.IsTrial,
+            TrialCode = this.TrialCode
         };
     }
 
@@ -76,7 +80,9 @@ public class UserPaymentState
                 CompletedAt = paymentInvoiceDetail.CompletedAt,
                 Amount = paymentInvoiceDetail.Amount,
                 AmountNetTotal = paymentInvoiceDetail.AmountNetTotal,
-                Discounts = paymentInvoiceDetail.Discounts
+                Discounts = paymentInvoiceDetail.Discounts,
+                IsTrial = paymentInvoiceDetail.IsTrial,
+                TrialCode = paymentInvoiceDetail.TrialCode
             });
         }
 
@@ -107,7 +113,9 @@ public class UserPaymentState
             SessionId = dto.SessionId,
             InvoiceDetails = FromInvoiceDetails(dto.InvoiceDetails),
             AmountNetTotal = dto.AmountNetTotal,
-            Discounts = dto.Discounts
+            Discounts = dto.Discounts,
+            IsTrial = dto.IsTrial,
+            TrialCode = dto.TrialCode
         };
     }
 
@@ -129,7 +137,9 @@ public class UserPaymentState
                 CompletedAt = invoiceDetailDto.CompletedAt,
                 Amount = invoiceDetailDto.Amount,
                 AmountNetTotal = invoiceDetailDto.AmountNetTotal,
-                Discounts = invoiceDetailDto.Discounts
+                Discounts = invoiceDetailDto.Discounts,
+                IsTrial = invoiceDetailDto.IsTrial,
+                TrialCode = invoiceDetailDto.TrialCode
             });
         }
         return paymentInvoiceDetails;
@@ -146,6 +156,8 @@ public class PaymentInvoiceDetail
     [Id(4)] public decimal Amount { get; set; }   
     [Id(5)] public decimal? AmountNetTotal { get; set; }
     [Id(6)] public List<DiscountDetails>? Discounts { get; set; }
+    [Id(7)] public bool IsTrial { get; set; }
+    [Id(8)] public string TrialCode { get; set; }
 }
 
 [GenerateSerializer]

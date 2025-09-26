@@ -38,7 +38,7 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
 
         var inviteCode = await GenerateUniqueCodeAsync();
         var inviteCodeGrain = GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(inviteCode));
-        await inviteCodeGrain.InitializeAsync(this.GetPrimaryKey().ToString());
+        await inviteCodeGrain.InitializeAsync(this.GetPrimaryKey().ToString(), inviteCode);
 
         RaiseEvent(new SetInviteCodeLogEvent
         {
@@ -300,15 +300,6 @@ public class InvitationGAgent : GAgentBase<InvitationState, InvitationLogEvent>,
             IssueAt = DateTime.UtcNow
         });
         await ConfirmEvents();
-    }
-
-    private string GenerateUniqueInviteCode()
-    {
-        // Generate a 6-character unique code
-        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        var random = new Random();
-        return new string(Enumerable.Repeat(chars, 6)
-            .Select(s => s[random.Next(s.Length)]).ToArray());
     }
 
     private int GetSubscriptionRewardCredits(PlanType planType, bool isUltimate)

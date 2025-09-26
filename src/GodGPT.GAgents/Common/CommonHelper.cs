@@ -7,6 +7,8 @@ public class CommonHelper
 {
     // Salt for IP hashing - should be stored securely in production
     private static readonly string IP_HASH_SALT = "AnonymousGodGPT_2025_Salt_Key";
+
+    private const string FreeTrialCodeFactoryGAgentIdPrefix = "FREETRIALCODEFACTORYGAGENT";
     
     public static Guid StringToGuid(string input)
     {
@@ -35,6 +37,11 @@ public class CommonHelper
     public static Guid GetAppleUserPaymentGrainId(string transactionId)
     {
         return StringToGuid(string.Join("_", transactionId, "AppStore"));
+    }
+
+    public static Guid GetFreeTrialCodeFactoryGAgentId(long batchId)
+    {
+        return StringToGuid(string.Join("_", FreeTrialCodeFactoryGAgentIdPrefix, batchId));
     }
     
     /// <summary>
