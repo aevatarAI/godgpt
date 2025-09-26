@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Aevatar.Application.Grains.Agents.ChatManager;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using Aevatar.Application.Grains.Agents.Invitation;
 using Aevatar.Application.Grains.ChatManager.Dtos;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.ChatManager.UserBilling.Payment;
@@ -16,6 +17,8 @@ using Aevatar.Application.Grains.Common.Helpers;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.FreeTrialCode;
+using Aevatar.Application.Grains.FreeTrialCode.Dtos;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.PaymentAnalytics;
 using Aevatar.Application.Grains.UserBilling.SEvents;
@@ -51,7 +54,7 @@ public interface IUserBillingGAgent : IGAgent
     Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
     Task<Guid> AddPaymentRecordAsync(ChatManager.UserBilling.PaymentSummary paymentSummary);
     Task<ChatManager.UserBilling.PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
-    Task<List<ChatManager.UserBilling.PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
+    Task<List<PaymentSummaryDto>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
     Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
     Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
@@ -335,6 +338,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     public async Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto)
     {
+        var (priceId, trialDays, sessionUrl, batchInfo) = await ProcessTrialCodeIfProvidedAsync(createCheckoutSessionDto);
+        if (!sessionUrl.IsNullOrWhiteSpace())
+        {
+            return sessionUrl;
+        }
+        
         var productConfig = await GetProductConfigAsync(createCheckoutSessionDto.PriceId);
         await ValidateSubscriptionUpgradePath(createCheckoutSessionDto.UserId, productConfig);
 
@@ -356,7 +365,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty },
                 { "price_id", createCheckoutSessionDto.PriceId },
                 { "quantity", createCheckoutSessionDto.Quantity.ToString() },
-                { "order_id", orderId }
+                { "order_id", orderId },
+                {"trial_days", trialDays.ToString()},
+                {"trial_code", createCheckoutSessionDto.TrialCode}
             },
             SavedPaymentMethodOptions = new SessionSavedPaymentMethodOptionsOptions
             {
@@ -383,12 +394,27 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         { "internal_user_id", createCheckoutSessionDto.UserId ?? string.Empty },
                         { "price_id", createCheckoutSessionDto.PriceId },
                         { "quantity", createCheckoutSessionDto.Quantity.ToString() },
-                        { "order_id", orderId }
+                        { "order_id", orderId },
+                        {"trial_days", trialDays.ToString()},
+                        {"trial_code", createCheckoutSessionDto.TrialCode}
                     }
                 }
                 : null,
             AllowPromotionCodes = true
         };
+        
+        var successUrl = _stripeOptions.CurrentValue.SuccessUrl;
+        var cancelUrl = _stripeOptions.CurrentValue.CancelUrl;
+        if (trialDays > 0)
+        {
+            successUrl = $"{successUrl}&codeType={InvitationCodeType.FreeTrialReward}";
+            cancelUrl = $"{cancelUrl}&codeType={InvitationCodeType.FreeTrialReward}";
+
+            if (createCheckoutSessionDto.Mode == PaymentMode.SUBSCRIPTION && options.SubscriptionData != null)
+            {
+                options.SubscriptionData.TrialPeriodDays = trialDays;
+            }
+        }
 
         if (createCheckoutSessionDto.PaymentMethodTypes != null && createCheckoutSessionDto.PaymentMethodTypes.Any())
         {
@@ -423,10 +449,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         else
         {
-            options.SuccessUrl = _stripeOptions.CurrentValue.SuccessUrl;
+            options.SuccessUrl = successUrl;
             if (createCheckoutSessionDto.CancelUrl.IsNullOrWhiteSpace())
             {
-                options.CancelUrl = _stripeOptions.CurrentValue.CancelUrl;
+                options.CancelUrl = cancelUrl;
             }
             else
             {
@@ -469,10 +495,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             }
             else
             {
+                sessionUrl = session.Url;
+                var sessionExpiresAt = session.ExpiresAt;
+                await InitializeFreeTrialCodeAsync(createCheckoutSessionDto, trialDays, batchInfo, sessionUrl, sessionExpiresAt);
                 _logger.LogInformation(
                     "[UserBillingGAgent][CreateCheckoutSessionAsync] Created hosted checkout session with ID: {SessionId}, returning URL",
                     session.Id);
-            return session.Url;
+                return sessionUrl;
             }
         }
         catch (StripeException e)
@@ -481,6 +510,83 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 "[UserBillingGAgent][CreateCheckoutSessionAsync] Failed to create checkout session: {ErrorMessage}",
                 e.StripeError.Message);
             throw new InvalidOperationException(e.Message);
+        }
+    }
+
+    private async Task<Tuple<string, int, string, BatchInfoDto>> ProcessTrialCodeIfProvidedAsync(CreateCheckoutSessionDto createCheckoutSessionDto)
+    {
+        var priceId = string.Empty;
+        int trialDays = 0;
+        string sessionUrl = string.Empty;
+        BatchInfoDto batchInfo = null;
+        var tuple = new Tuple<string, int, string, BatchInfoDto>(string.Empty, 0, string.Empty, null);
+        if (!createCheckoutSessionDto.TrialCode.IsNullOrWhiteSpace())
+        {
+            var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(this.GetPrimaryKey());
+            if (await userQuotaGAgent.IsSubscribedAsync() || await userQuotaGAgent.IsSubscribedAsync(true))
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessTrialCodeIfProvidedAsync] {UserId} Subscribed users cannot use redemption codes {Code}", 
+                    this.GetPrimaryKey().ToString(), createCheckoutSessionDto.TrialCode);
+                throw new InvalidOperationException("Subscribed users cannot use redemption codes");
+            }
+            
+            var (codeType, batchId) = InvitationCodeHelper.ParseCodeInfo(createCheckoutSessionDto.TrialCode);
+            var factoryGAgent =
+                GrainFactory.GetGrain<IFreeTrialCodeFactoryGAgent>(CommonHelper.GetFreeTrialCodeFactoryGAgentId(batchId));
+            var codeUnused = await factoryGAgent.ValidateCodeAvailableAsync(createCheckoutSessionDto.TrialCode);
+            if (codeUnused)
+            {
+                var inviteCodeGAgent = GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(createCheckoutSessionDto.TrialCode));
+                var validateCodeResult = await inviteCodeGAgent.ValidateAndGetFreeTrialCodeInfoAsync(createCheckoutSessionDto.UserId);
+                if (validateCodeResult.IsValid)
+                {
+                    batchInfo = await factoryGAgent.GetBatchInfoAsync();
+                    priceId = batchInfo.Config.ProductId;
+                    trialDays = batchInfo.Config.TrialDays;
+                    sessionUrl = validateCodeResult.ActivationInfo?.SessionUrl ?? string.Empty;
+                
+                    createCheckoutSessionDto.PriceId = priceId;
+                    createCheckoutSessionDto.Quantity = 1;
+                }
+                else
+                {
+                    _logger.LogWarning("[UserBillingGAgent][ProcessTrialCodeIfProvidedAsync] {UserId} code invalid {Code}", 
+                        this.GetPrimaryKey().ToString(), createCheckoutSessionDto.TrialCode);
+                    throw new InvalidOperationException($"code invalid {createCheckoutSessionDto.TrialCode}");
+                }
+            }
+            else
+            {
+                _logger.LogWarning("[UserBillingGAgent][ProcessTrialCodeIfProvidedAsync] {UserId} code unavailable {Code}", 
+                    this.GetPrimaryKey().ToString(), createCheckoutSessionDto.TrialCode);
+                throw new InvalidOperationException($"code unavailable {createCheckoutSessionDto.TrialCode}");
+            }
+        }
+        return new (priceId, trialDays, sessionUrl, batchInfo);
+    }
+    
+    private async Task InitializeFreeTrialCodeAsync(CreateCheckoutSessionDto createCheckoutSessionDto, int trialDays,
+        BatchInfoDto batchInfo, string sessionUrl, DateTime sessionExpiresAt)
+    {
+        if (trialDays > 0)
+        {
+            var inviteCodeGAgent =
+                GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(createCheckoutSessionDto.TrialCode));
+            await inviteCodeGAgent.InitializeFreeTrialCodeAsync(new FreeTrialCodeInitDto
+            {
+                BatchId = batchInfo.BatchId,
+                TrialDays = batchInfo.Config.TrialDays,
+                ProductId = batchInfo.Config.ProductId,
+                PlanType = batchInfo.Config.PlanType,
+                IsUltimate = batchInfo.Config.IsUltimate,
+                StartDate = batchInfo.Config.StartTime,
+                EndDate = batchInfo.Config.EndTime,
+                FreeTrialCode = createCheckoutSessionDto.TrialCode,
+                InviteeId = createCheckoutSessionDto.UserId,
+                Platform = PaymentPlatform.Stripe,
+                SessionUrl = sessionUrl,
+                SessionExpiresAt = sessionExpiresAt
+            });
         }
     }
 
@@ -959,7 +1065,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 _stripeOptions.CurrentValue.WebhookSecret
             );
             //Debug
-            //stripeEvent = EventUtility.ParseEvent(jsonPayload);
+            // stripeEvent = EventUtility.ParseEvent(jsonPayload);
         }
         catch (StripeException ex)
         {
@@ -1022,6 +1128,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     CancelAtPeriodEnd = true
                 });
             }
+
+            //process trial code
+            var trialDays = await MarkTrialCodeUsedAsync(invoiceDetail, userId, paymentSummary);
             
             subscriptionIds.Clear();
             subscriptionIds.Add(paymentSummary.SubscriptionId);
@@ -1034,7 +1143,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
                 }
                 subscriptionInfoDto.EndDate =
-                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate);
+                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate, trialDays);
             }
             else
             {
@@ -1042,7 +1151,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
                 subscriptionInfoDto.StartDate = DateTime.UtcNow;
                 subscriptionInfoDto.EndDate =
-                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate);
+                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate, trialDays);
                 await userQuotaGAgent.ResetRateLimitsAsync();
             }
             subscriptionInfoDto.Status = PaymentStatus.Completed;
@@ -1069,9 +1178,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 if (premiumSubscription.IsActive)
                 {
                     premiumSubscription.StartDate =
-                        GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.StartDate);
+                        GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.StartDate, trialDays);
                     premiumSubscription.EndDate =
-                        GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.EndDate);
+                        GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.EndDate, trialDays);
                     await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscription);
                 }
             }
@@ -1082,9 +1191,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 userId);
             
             // Report payment success to Google Analytics
-            var purchaseType = !paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.InvoiceDetails.Count == 1
-                ? PurchaseType.Subscription
-                : PurchaseType.Renewal;
+            var purchaseType = GetStripePurchaseType(invoiceDetail.IsTrial, paymentSummary);
+            
             var amount = invoiceDetail.AmountNetTotal ?? invoiceDetail.Amount;
             amount = amount ?? productConfig.Amount;
             _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,
@@ -1107,6 +1215,54 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         
         return true;
+    }
+
+    private async Task<int> MarkTrialCodeUsedAsync(UserBillingInvoiceDetail invoiceDetail, Guid userId,
+        PaymentSummary paymentSummary)
+    {
+        int trialDays = 0;
+        if (invoiceDetail.IsTrial && !invoiceDetail.TrialCode.IsNullOrWhiteSpace())
+        {
+            _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Use trial code {0}, {1}, {2}, {3}",
+                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId, invoiceDetail.TrialCode);
+            var (codeType, batchId) = InvitationCodeHelper.ParseCodeInfo(invoiceDetail.TrialCode);
+            var factoryGAgent =
+                GrainFactory.GetGrain<IFreeTrialCodeFactoryGAgent>(CommonHelper.GetFreeTrialCodeFactoryGAgentId(batchId));
+            var batchInfoDto = await factoryGAgent.GetBatchInfoAsync();
+            await factoryGAgent.MarkCodeAsUsedAsync(invoiceDetail.TrialCode, userId.ToString());
+            var inviteCodeGAgent =
+                GrainFactory.GetGrain<IInviteCodeGAgent>(CommonHelper.StringToGuid(invoiceDetail.TrialCode));
+            await inviteCodeGAgent.MarkCodeAsUsedAsync();
+            trialDays = batchInfoDto?.Config?.TrialDays ?? 0;
+            _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Use trial code {0}, {1}, {2}, {3}, {4}",
+                userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId, invoiceDetail.TrialCode, trialDays);
+        }
+
+        return trialDays;
+    }
+
+    private static PurchaseType GetStripePurchaseType(bool isTrial, PaymentSummary paymentSummary)
+    {
+        PurchaseType purchaseType;
+        if (isTrial)
+        {
+            purchaseType = PurchaseType.Trial;
+        }
+        else
+        {
+            if ((!paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.InvoiceDetails.Count == 1)
+                || (!paymentSummary.InvoiceDetails.IsNullOrEmpty() && paymentSummary.InvoiceDetails.Count == 2 &&
+                    paymentSummary.InvoiceDetails.First().IsTrial))
+            {
+                purchaseType = PurchaseType.Subscription;
+            }
+            else
+            {
+                purchaseType = PurchaseType.Renewal;
+            }
+        }
+
+        return purchaseType;
     }
 
     private async Task RollbackQuotaAfterRefundAsync(Guid userId, string subscriptionId, bool isUltimate, PlanType planType, UserBillingInvoiceDetail invoiceDetail)
@@ -1238,7 +1394,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         return payment;
     }
 
-    public async Task<List<PaymentSummary>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
+    public async Task<List<PaymentSummaryDto>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10)
     {
         _logger.LogInformation(
             "[UserBillingGAgent][GetPaymentHistoryAsync] Getting payment history page {Page} with size {PageSize}",
@@ -1278,7 +1434,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         // Calculate skip and take values
         int skip = (page - 1) * pageSize;
 
-        var paymentHistories = new List<ChatManager.UserBilling.PaymentSummary>();
+        var paymentHistories = new List<PaymentSummaryDto>();
         var paymentSummaries = State.PaymentHistory;
         foreach (var paymentSummary in paymentSummaries)
         {
@@ -1311,13 +1467,33 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 {
                     paymentSummary.AmountNetTotal = paymentSummary.Amount;
                 }
-                paymentHistories.Add(paymentSummary);
+
+                paymentHistories.Add(new PaymentSummaryDto
+                {
+                    PaymentGrainId = paymentSummary.PaymentGrainId,
+                    OrderId = paymentSummary.OrderId,
+                    PlanType = paymentSummary.PlanType,
+                    Amount = paymentSummary.Amount,
+                    Currency = paymentSummary.Currency,
+                    CreatedAt = paymentSummary.CreatedAt,
+                    CompletedAt = paymentSummary.CompletedAt,
+                    Status = paymentSummary.Status,
+                    Platform = paymentSummary.Platform,
+                    SubscriptionId = paymentSummary.SubscriptionId,
+                    SubscriptionStartDate = paymentSummary.SubscriptionStartDate,
+                    SubscriptionEndDate = paymentSummary.SubscriptionEndDate,
+                    UserId = paymentSummary.UserId,
+                    PriceId = paymentSummary.PriceId,
+                    AppStoreEnvironment = paymentSummary.AppStoreEnvironment,
+                    MembershipLevel = paymentSummary.MembershipLevel,
+                    AmountNetTotal = paymentSummary.AmountNetTotal
+                });
             }
             else
             {
                 paymentHistories.AddRange(paymentSummary.InvoiceDetails.Select(invoiceDetail =>
                 {
-                    var payment = new ChatManager.UserBilling.PaymentSummary
+                    var payment = new PaymentSummaryDto
                     {
                         PaymentGrainId = paymentSummary.PaymentGrainId,
                         OrderId = paymentSummary.OrderId,
@@ -1342,7 +1518,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                             : invoiceDetail.MembershipLevel,
                         AmountNetTotal = invoiceDetail.AmountNetTotal == null
                             ? paymentSummary.AmountNetTotal
-                            : invoiceDetail.AmountNetTotal
+                            : invoiceDetail.AmountNetTotal,
+                        IsTrial = invoiceDetail.IsTrial,
+                        TrialCode = invoiceDetail.TrialCode
                     };
                     if (payment.AmountNetTotal == null)
                     {
@@ -1534,7 +1712,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 CreatedAt = paymentDetails.CreatedAt,
                 Status = paymentDetails.Status,
                 Amount = productConfig.Amount,
-                Currency = paymentDetails.Currency
+                Currency = paymentDetails.Currency,
+                
             };
             if (paymentDetails.Status == PaymentStatus.Completed)
             {
@@ -1545,6 +1724,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 invoiceDetail.SubscriptionEndDate = subscriptionEndDate;
                 invoiceDetail.AmountNetTotal = paymentDetails.AmountNetTotal;
                 invoiceDetail.Discounts = paymentDetails.Discounts;
+                invoiceDetail.IsTrial = paymentDetails.IsTrial;
+                invoiceDetail.TrialCode = paymentDetails.TrialCode;
             }
 
             paymentSummary.InvoiceDetails.Add(invoiceDetail);
@@ -1557,6 +1738,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 invoiceDetail.CompletedAt = paymentDetails.CompletedAt ?? DateTime.UtcNow;
                 invoiceDetail.AmountNetTotal = paymentDetails.AmountNetTotal;
                 invoiceDetail.Discounts = paymentDetails.Discounts;
+                invoiceDetail.IsTrial = paymentDetails.IsTrial;
+                invoiceDetail.TrialCode = paymentDetails.TrialCode;
             }
             if (paymentDetails.Status == PaymentStatus.Completed && invoiceDetail.SubscriptionStartDate == default)
             {
@@ -2213,9 +2396,15 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         };
     }
 
-    private DateTime GetSubscriptionEndDate(PlanType planType, DateTime startDate)
+    private DateTime GetSubscriptionEndDate(PlanType planType, DateTime startDate, int trialDay = 0)
     {
         var endDate = startDate;
+
+        if (trialDay > 0)
+        {
+            return endDate.AddDays(trialDay);
+        }
+        
         switch (planType)
         {
             case PlanType.Day:

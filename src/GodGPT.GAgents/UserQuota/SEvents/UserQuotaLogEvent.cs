@@ -88,3 +88,13 @@ public class UpdateDailyImageConversationLogEvent : UserQuotaLogEvent
 {
     [Id(0)] public DailyImageConversationInfo DailyImageConversation { get; set; }
 }
+
+[GenerateSerializer]
+public class ActivateFreeTrialLogEvent : UserQuotaLogEvent
+{
+    [Id(0)] public int TrialDays { get; set; }
+    [Id(1)] public PlanType PlanType { get; set; }
+    [Id(2)] public bool IsUltimate { get; set; }
+    [Id(3)] public DateTime StartDate { get; set; }
+    [Id(4)] public DateTime EndDate { get; set; }
+}
