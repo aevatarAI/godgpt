@@ -36,7 +36,27 @@ public enum FeedbackReasonEnum
     TemporaryPause = 6,
     
     /// <summary>
+    /// Need more features
+    /// </summary>
+    NeedMoreFeatures = 7,
+    
+    /// <summary>
+    /// Better pricing on another plan
+    /// </summary>
+    BetterPricingOnAnotherPlan = 8,
+    
+    /// <summary>
+    /// My usage changed
+    /// </summary>
+    UsageChanged = 9,
+    
+    /// <summary>
+    /// Payment/Invoice needs
+    /// </summary>
+    PaymentInvoiceNeeds = 10,
+    
+    /// <summary>
     /// Other reason not listed above
     /// </summary>
-    Other = 7
+    Other = 11
 }

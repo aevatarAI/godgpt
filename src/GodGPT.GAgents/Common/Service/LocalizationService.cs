@@ -274,6 +274,10 @@ public class LocalizationService : ILocalizationService
                 ["en.TechnicalIssues"] = "Technical issues or bugs",
                 ["en.ContentNotRelevant"] = "Content/features not relevant",
                 ["en.TemporaryPause"] = "Temporary pause (might return)",
+                ["en.NeedMoreFeatures"] = "Need more features",
+                ["en.BetterPricingOnAnotherPlan"] = "Better pricing on another plan",
+                ["en.UsageChanged"] = "My usage changed",
+                ["en.PaymentInvoiceNeeds"] = "Payment/Invoice needs",
                 ["en.Other"] = "Other",
                 
                 // Traditional Chinese feedback reasons
@@ -283,6 +287,10 @@ public class LocalizationService : ILocalizationService
                 ["zh-tw.TechnicalIssues"] = "技術問題或錯誤",
                 ["zh-tw.ContentNotRelevant"] = "內容/功能不相關",
                 ["zh-tw.TemporaryPause"] = "暫時暫停（可能會回來）",
+                ["zh-tw.NeedMoreFeatures"] = "需要更多功能",
+                ["zh-tw.BetterPricingOnAnotherPlan"] = "其他方案有更好的價格",
+                ["zh-tw.UsageChanged"] = "我的使用情況改變了",
+                ["zh-tw.PaymentInvoiceNeeds"] = "付款/發票需求",
                 ["zh-tw.Other"] = "其他",
                 
                 // Spanish feedback reasons
@@ -292,6 +300,10 @@ public class LocalizationService : ILocalizationService
                 ["es.TechnicalIssues"] = "Problemas técnicos o errores",
                 ["es.ContentNotRelevant"] = "Contenido/características no relevantes",
                 ["es.TemporaryPause"] = "Pausa temporal (podría volver)",
+                ["es.NeedMoreFeatures"] = "Necesito más funciones",
+                ["es.BetterPricingOnAnotherPlan"] = "Mejor precio en otro plan",
+                ["es.UsageChanged"] = "Mi uso cambió",
+                ["es.PaymentInvoiceNeeds"] = "Necesidades de pago/factura",
                 ["es.Other"] = "Otro",
                 
                 // Simplified Chinese feedback reasons
@@ -301,6 +313,10 @@ public class LocalizationService : ILocalizationService
                 ["zh.TechnicalIssues"] = "技术问题或错误",
                 ["zh.ContentNotRelevant"] = "内容/功能不相关",
                 ["zh.TemporaryPause"] = "暂时暂停（可能会回来）",
+                ["zh.NeedMoreFeatures"] = "需要更多功能",
+                ["zh.BetterPricingOnAnotherPlan"] = "其他方案有更好的价格",
+                ["zh.UsageChanged"] = "我的使用情况改变了",
+                ["zh.PaymentInvoiceNeeds"] = "付款/发票需求",
                 ["zh.Other"] = "其他"
             }
         };
