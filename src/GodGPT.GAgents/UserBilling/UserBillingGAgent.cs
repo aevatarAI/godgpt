@@ -346,14 +346,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         
         var productConfig = await GetProductConfigAsync(createCheckoutSessionDto.PriceId);
         await ValidateSubscriptionUpgradePath(createCheckoutSessionDto.UserId, productConfig);
-        
-        var successUrl = _stripeOptions.CurrentValue.SuccessUrl;
-        var cancelUrl = _stripeOptions.CurrentValue.CancelUrl;
-        if (trialDays > 0)
-        {
-            successUrl = $"{successUrl}&codeType={InvitationCodeType.FreeTrialReward}";
-            cancelUrl = $"{cancelUrl}&codeType={InvitationCodeType.FreeTrialReward}";
-        }
 
         var orderId = Guid.NewGuid().ToString();
         var options = new SessionCreateOptions
@@ -405,12 +397,24 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                         { "order_id", orderId },
                         {"trial_days", trialDays.ToString()},
                         {"trial_code", createCheckoutSessionDto.TrialCode}
-                    },
-                    TrialPeriodDays = trialDays
+                    }
                 }
                 : null,
             AllowPromotionCodes = true
         };
+        
+        var successUrl = _stripeOptions.CurrentValue.SuccessUrl;
+        var cancelUrl = _stripeOptions.CurrentValue.CancelUrl;
+        if (trialDays > 0)
+        {
+            successUrl = $"{successUrl}&codeType={InvitationCodeType.FreeTrialReward}";
+            cancelUrl = $"{cancelUrl}&codeType={InvitationCodeType.FreeTrialReward}";
+
+            if (createCheckoutSessionDto.Mode == PaymentMode.SUBSCRIPTION && options.SubscriptionData != null)
+            {
+                options.SubscriptionData.TrialPeriodDays = trialDays;
+            }
+        }
 
         if (createCheckoutSessionDto.PaymentMethodTypes != null && createCheckoutSessionDto.PaymentMethodTypes.Any())
         {
