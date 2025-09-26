@@ -40,7 +40,8 @@ public class UserFeedbackGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTests
                 Reasons = new List<FeedbackReasonEnum> 
                 { 
                     FeedbackReasonEnum.TooExpensive, 
-                    FeedbackReasonEnum.NotUsingEnough 
+                    FeedbackReasonEnum.NotUsingEnough,
+                    FeedbackReasonEnum.NeedMoreFeatures
                 },
                 Response = "The service is too expensive and I don't use it frequently enough.",
                 ContactRequested = false,
