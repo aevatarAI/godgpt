@@ -11,6 +11,7 @@ using Aevatar.Application.Grains.ChatManager.UserBilling;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
+using Aevatar.Application.Grains.UserFeedback.Options;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.SemanticKernel.Extensions;
@@ -184,9 +185,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<LLMRegionOptions>(configuration.GetSection("LLMRegion"))
                 .Configure<CreditsOptions>(configuration.GetSection("Credits"))
                 .Configure<Aevatar.Application.Grains.Common.Options.GooglePayOptions>(configuration.GetSection("GooglePay"))
-                .Configure<UserStatisticsOptions>(configuration.GetSection("UserStatistics"));
-                    
-                    
+                .Configure<UserStatisticsOptions>(configuration.GetSection("UserStatistics"))
+                .Configure<UserFeedbackOptions>(configuration.GetSection("UserFeedback"));
         }
     }
 
