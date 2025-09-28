@@ -167,12 +167,20 @@ public class SpeechService : ISpeechService
         // Validate input parameters
         if (string.IsNullOrEmpty(text))
         {
+            _logger.LogError("[VOICE_SERVICE_DEBUG] Text cannot be null or empty");
             throw new ArgumentException("Text cannot be null or empty", nameof(text));
         }
         
+        _logger.LogInformation($"[VOICE_SERVICE_DEBUG] Starting TTS - Text: '{text}', Language: {language}");
+        
         var tempSpeechConfig = SpeechConfig.FromSubscription(_speechConfig.SubscriptionKey, _speechConfig.Region);
-        tempSpeechConfig.SpeechSynthesisLanguage = GetLanguageCode(language);
-        tempSpeechConfig.SpeechSynthesisVoiceName = GetVoiceName(language);
+        var languageCode = GetLanguageCode(language);
+        var voiceName = GetVoiceName(language);
+        
+        tempSpeechConfig.SpeechSynthesisLanguage = languageCode;
+        tempSpeechConfig.SpeechSynthesisVoiceName = voiceName;
+        
+        _logger.LogInformation($"[VOICE_SERVICE_DEBUG] Config - LanguageCode: {languageCode}, VoiceName: {voiceName}, Region: {_speechConfig.Region}");
         
         // Configure MP3 format with 16kHz sample rate
         tempSpeechConfig.SetSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3);
@@ -180,7 +188,21 @@ public class SpeechService : ISpeechService
         // Create audio config for memory output instead of system audio to avoid SPXERR_AUDIO_SYS_LIBRARY_NOT_FOUND error
         using var audioConfig = AudioConfig.FromStreamOutput(AudioOutputStream.CreatePullStream());
         using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig, audioConfig);
+        
+        _logger.LogInformation($"[VOICE_SERVICE_DEBUG] Calling SpeakTextAsync...");
         using var result = await tempSynthesizer.SpeakTextAsync(text);
+        
+        _logger.LogInformation($"[VOICE_SERVICE_DEBUG] TTS Result - Reason: {result.Reason}, AudioData: {result.AudioData?.Length ?? 0} bytes");
+        
+        if (result.Reason != ResultReason.SynthesizingAudioCompleted)
+        {
+            _logger.LogError($"[VOICE_SERVICE_DEBUG] TTS Failed - Reason: {result.Reason}");
+            if (result.Reason == ResultReason.Canceled)
+            {
+                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                _logger.LogError($"[VOICE_SERVICE_DEBUG] TTS Canceled - Reason: {cancellation.Reason}, ErrorCode: {cancellation.ErrorCode}, ErrorDetails: {cancellation.ErrorDetails}");
+            }
+        }
         
         // Calculate approximate duration based on text length and speech rate
         // Average speech rate is ~150 words per minute or ~2.5 words per second
@@ -190,12 +212,14 @@ public class SpeechService : ISpeechService
         var metadata = new AudioMetadata
         {
             Duration = estimatedDuration,
-            SizeBytes = result.AudioData.Length,
+            SizeBytes = result.AudioData?.Length ?? 0,
             SampleRate = 16000, // 16kHz as configured
             BitRate = 32000, // 32kbps as configured
             Format = "mp3",
             LanguageType = language
         };
+        
+        _logger.LogInformation($"[VOICE_SERVICE_DEBUG] TTS Success - Metadata: Duration={metadata.Duration}s, Size={metadata.SizeBytes} bytes");
         
         return (result.AudioData, metadata);
     }

@@ -1396,61 +1396,72 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 if (!string.IsNullOrWhiteSpace(chatContent.ResponseContent))
                 {
                     textAccumulator.Append(chatContent.ResponseContent);
-                    Logger.LogDebug(
-                        $"[ChatMessageCallbackAsync] Appended text: '{chatContent.ResponseContent}', IsLastChunk: {chatContent.IsLastChunk}");
+                    Logger.LogInformation(
+                        $"[VOICE_STREAM_DEBUG] Chunk {chatContent.SerialNumber}: '{chatContent.ResponseContent}', IsLastChunk: {chatContent.IsLastChunk}");
                 }
                 else
                 {
-                    Logger.LogDebug(
-                        $"[ChatMessageCallbackAsync] Skipped whitespace content, IsLastChunk: {chatContent.IsLastChunk}");
+                    Logger.LogInformation(
+                        $"[VOICE_STREAM_DEBUG] Skipped empty chunk {chatContent.SerialNumber}, IsLastChunk: {chatContent.IsLastChunk}");
                 }
 
                 // Check for complete sentences in accumulated text
                 var accumulatedText = textAccumulator.ToString();
-                Logger.LogDebug($"[ChatMessageCallbackAsync] Total accumulated text: '{accumulatedText}'");
+                Logger.LogInformation($"[VOICE_STREAM_DEBUG] Total accumulated ({accumulatedText.Length} chars): '{accumulatedText}'");
 
                 var completeSentence =
                     ExtractCompleteSentence(accumulatedText, textAccumulator, chatContent.IsLastChunk);
 
-                Logger.LogDebug($"[ChatMessageCallbackAsync] ExtractCompleteSentence result: '{completeSentence}'");
+                Logger.LogInformation($"[VOICE_STREAM_DEBUG] ExtractCompleteSentence result: '{completeSentence ?? "NULL"}'");
 
                 if (!string.IsNullOrEmpty(completeSentence))
                 {
                     try
                     {
+                        Logger.LogInformation($"[VOICE_TTS_DEBUG] Starting TTS for sentence: '{completeSentence}', Language: {voiceLanguage}");
+                        
                         // Clean text for speech synthesis (remove markdown and math formulas)
                         var cleanedText = CleanTextForSpeech(completeSentence, voiceLanguage);
+                        Logger.LogInformation($"[VOICE_TTS_DEBUG] Cleaned text: '{cleanedText}'");
 
                         // Skip synthesis if cleaned text has no meaningful content
                         var hasMeaningful = HasMeaningfulContent(cleanedText);
+                        Logger.LogInformation($"[VOICE_TTS_DEBUG] HasMeaningfulContent: {hasMeaningful}");
 
                         if (hasMeaningful)
                         {
                             try
                             {
+                                Logger.LogInformation($"[VOICE_TTS_DEBUG] Calling TextToSpeechWithMetadataAsync for: '{cleanedText}'");
+                                
                                 // Synthesize voice for cleaned sentence
                                 var voiceResult =
                                     await _speechService.TextToSpeechWithMetadataAsync(cleanedText, voiceLanguage);
 
+                                Logger.LogInformation($"[VOICE_TTS_DEBUG] TTS Success - AudioData: {voiceResult.AudioData?.Length ?? 0} bytes, Duration: {voiceResult.Metadata?.Duration ?? 0}s");
+                                
                                 partialMessage.AudioData = voiceResult.AudioData;
                                 partialMessage.AudioMetadata = voiceResult.Metadata;
                             }
                             catch (Exception ex)
                             {
-                                Logger.LogError(ex, $"Voice synthesis failed for text: '{cleanedText}'");
+                                Logger.LogError(ex, $"[VOICE_TTS_DEBUG] Voice synthesis failed for text: '{cleanedText}'");
                             }
+                        }
+                        else
+                        {
+                            Logger.LogInformation($"[VOICE_TTS_DEBUG] Skipping TTS - text has no meaningful content: '{cleanedText}'");
                         }
                     }
                     catch (Exception ex)
                     {
                         Logger.LogError(ex,
-                            $"[GodChatGAgent][ChatMessageCallbackAsync] Voice synthesis failed for sentence: {completeSentence}");
+                            $"[VOICE_TTS_DEBUG] Voice synthesis outer exception for sentence: {completeSentence}");
                     }
                 }
                 else
                 {
-                    Logger.LogDebug(
-                        $"[ChatMessageCallbackAsync] No complete sentence extracted from accumulated text: '{textAccumulator.ToString()}'");
+                    Logger.LogInformation($"[VOICE_TTS_DEBUG] No complete sentence extracted, skipping TTS");
                 }
 
                 // Clean up accumulator if this is the last chunk
@@ -1866,11 +1877,16 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private static bool HasMeaningfulContent(string text)
     {
         if (string.IsNullOrEmpty(text))
+        {
+            Logger.LogInformation($"[VOICE_CONTENT_DEBUG] Text is null/empty: {text == null ? "NULL" : "EMPTY"}");
             return false;
+        }
 
         // Remove all punctuation and check if there's actual content
         var cleanText = ChatRegexPatterns.NonWordChars.Replace(text, "");
         var result = cleanText.Length > 0; // At least one letter or Chinese character
+
+        Logger.LogInformation($"[VOICE_CONTENT_DEBUG] Original: '{text}' -> Clean: '{cleanText}' -> HasMeaning: {result}");
 
         return result;
     }
@@ -1885,16 +1901,16 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private string ExtractCompleteSentence(string accumulatedText, StringBuilder textAccumulator,
         bool isLastChunk = false)
     {
-        Logger.LogDebug($"[ExtractCompleteSentence] Input: '{accumulatedText}', isLastChunk: {isLastChunk}");
+        Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Input: '{accumulatedText}', Length: {accumulatedText?.Length ?? 0}, isLastChunk: {isLastChunk}");
 
         if (string.IsNullOrEmpty(accumulatedText))
         {
-            Logger.LogDebug("[ExtractCompleteSentence] Returning null - empty input");
+            Logger.LogInformation("[VOICE_EXTRACT_DEBUG] Returning null - empty input");
             return null;
         }
 
         var hasMeaningfulContent = HasMeaningfulContent(accumulatedText);
-        Logger.LogDebug($"[ExtractCompleteSentence] HasMeaningfulContent: {hasMeaningfulContent}");
+        Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] HasMeaningfulContent: {hasMeaningfulContent}");
 
         // Enhanced logic: return any non-empty text when isLastChunk = true
         if (isLastChunk)
@@ -1902,6 +1918,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             var trimmedText = accumulatedText.Trim();
             if (!string.IsNullOrEmpty(trimmedText))
             {
+                Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] isLastChunk=true, extracting: '{trimmedText}'");
                 textAccumulator.Clear();
                 return trimmedText;
             }
@@ -1911,6 +1928,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         if (accumulatedText.Length <= 6 && hasMeaningfulContent)
         {
             var shortText = accumulatedText.Trim();
+            Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Short text extracted: '{shortText}'");
             textAccumulator.Clear();
             return shortText;
         }
@@ -1918,27 +1936,42 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var extractIndex = -1;
 
         // Look for complete sentence endings
+        Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Searching for sentence enders in: '{accumulatedText}'");
         for (var i = accumulatedText.Length - 1; i >= 0; i--)
         {
             if (VoiceChatConstants.SentenceEnders.Contains(accumulatedText[i]))
             {
+                Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Found sentence ender '{accumulatedText[i]}' at position {i}");
                 // Only check if there's meaningful content, no length restriction
                 var potentialSentence = accumulatedText.Substring(0, i + 1);
                 if (HasMeaningfulContent(potentialSentence))
                 {
+                    Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Potential sentence is meaningful: '{potentialSentence}'");
                     extractIndex = i;
                     break;
+                }
+                else
+                {
+                    Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Potential sentence not meaningful: '{potentialSentence}'");
                 }
             }
         }
 
         if (extractIndex == -1)
+        {
+            Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] No sentence ender found, returning null");
             return null;
+        }
 
         // Extract complete sentence
         var completeSentence = accumulatedText.Substring(0, extractIndex + 1).Trim();
         if (string.IsNullOrEmpty(completeSentence))
+        {
+            Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Extracted sentence is empty after trim");
             return null;
+        }
+
+        Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Successfully extracted sentence: '{completeSentence}'");
 
         // Remove processed text from accumulator
         var remainingText = accumulatedText.Substring(extractIndex + 1);
@@ -1957,8 +1990,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private string CleanTextForSpeech(string text, VoiceLanguageEnum language = VoiceLanguageEnum.English)
     {
         if (string.IsNullOrEmpty(text))
+        {
+            Logger.LogInformation($"[VOICE_CLEAN_DEBUG] Input text is null/empty");
             return text;
+        }
 
+        Logger.LogInformation($"[VOICE_CLEAN_DEBUG] Input text: '{text}', Language: {language}");
         var cleanText = text;
 
         // Remove markdown links but keep link text
@@ -2000,6 +2037,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
         // Remove excessive whitespace
         cleanText = ChatRegexPatterns.WhitespaceNormalize.Replace(cleanText, " ").Trim();
+
+        Logger.LogInformation($"[VOICE_CLEAN_DEBUG] Output text: '{cleanText}', Length: {cleanText.Length}");
 
         return cleanText;
     }
