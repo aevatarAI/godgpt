@@ -1874,11 +1874,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     /// </summary>
     /// <param name="text">Text to check</param>
     /// <returns>True if text contains meaningful content, false otherwise</returns>
-    private static bool HasMeaningfulContent(string text)
+    private bool HasMeaningfulContent(string text)
     {
         if (string.IsNullOrEmpty(text))
         {
-            Logger.LogInformation($"[VOICE_CONTENT_DEBUG] Text is null/empty: {text == null ? "NULL" : "EMPTY"}");
+            Logger.LogInformation($"[VOICE_CONTENT_DEBUG] Text is null/empty: {(text == null ? "NULL" : "EMPTY")}");
             return false;
         }
 
