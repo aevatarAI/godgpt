@@ -182,6 +182,8 @@ public class SpeechService : ISpeechService
         using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig, audioConfig);
         using var result = await tempSynthesizer.SpeakTextAsync(text);
         
+        _logger.LogInformation($"[VOICE_SERVICE_DEBUG] TTS Result - Reason: {result.Reason}, AudioData: {result.AudioData?.Length ?? 0} bytes");
+        
         // Calculate approximate duration based on text length and speech rate
         // Average speech rate is ~150 words per minute or ~2.5 words per second
         var wordCount = text.Split(' ').Length;
@@ -215,10 +217,10 @@ public class SpeechService : ISpeechService
     {
         return language switch
         {
-            VoiceLanguageEnum.English => "en-US-JennyNeural",
-            VoiceLanguageEnum.Chinese => "zh-CN-XiaoxiaoNeural",
-            VoiceLanguageEnum.Spanish => "es-ES-ElviraNeural",
-            _ => "en-US-JennyNeural"
+            VoiceLanguageEnum.English => "en-US-NancyNeural",
+            VoiceLanguageEnum.Chinese => "zh-CN-XiaoyiNeural",
+            VoiceLanguageEnum.Spanish => "es-ES-AbrilNeural",
+            _ => "en-US-NancyNeural"
         };
     }
 
