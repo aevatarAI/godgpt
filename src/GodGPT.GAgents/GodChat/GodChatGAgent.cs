@@ -1957,6 +1957,29 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             }
         }
 
+        // If no sentence ender found but text is too long, use fallback separators
+        if (extractIndex == -1 && accumulatedText.Length > VoiceChatConstants.MaxTextLengthBeforeFallback)
+        {
+            Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] No sentence ender found but text too long ({accumulatedText.Length} chars), searching fallback separators");
+            
+            // Look for fallback separators (comma, semicolon, colon) from the end
+            for (var i = accumulatedText.Length - 1; i >= 0; i--)
+            {
+                if (VoiceChatConstants.FallbackSeparators.Contains(accumulatedText[i]))
+                {
+                    Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Found fallback separator '{accumulatedText[i]}' at position {i}");
+                    
+                    var potentialSentence = accumulatedText.Substring(0, i + 1);
+                    if (HasMeaningfulContent(potentialSentence) && potentialSentence.Length >= 30) // Minimum 30 chars for fallback
+                    {
+                        Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] Using fallback separator for long text: '{potentialSentence}'");
+                        extractIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
         if (extractIndex == -1)
         {
             Logger.LogInformation($"[VOICE_EXTRACT_DEBUG] No sentence ender found, returning null");
