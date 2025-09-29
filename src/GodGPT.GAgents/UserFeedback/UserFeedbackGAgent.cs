@@ -82,6 +82,14 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                 }
                 state.UpdatedAt = submitEvent.SubmittedAt;
                 break;
+            case SkippedFeedbackLogEvent skippedFeedbackLogEvent:
+                state.LastFeedbackTime = skippedFeedbackLogEvent.SubmittedAt;
+                if (state.CreatedAt == default)
+                {
+                    state.CreatedAt = skippedFeedbackLogEvent.SubmittedAt;
+                }
+                state.UpdatedAt = skippedFeedbackLogEvent.SubmittedAt;
+                break;
         }
     }
 
@@ -106,6 +114,26 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                     Success = false,
                     Message = validationResult.Message,
                     ErrorCode = validationResult.ErrorCode
+                };
+            }
+
+            if (request.SkippedFeedback)
+            {
+                _logger.LogDebug("[UserFeedbackGAgent][SubmitFeedbackAsync] User {UserId} skipped feedback",
+                    this.GetPrimaryKey().ToString());
+                
+                RaiseEvent(new SkippedFeedbackLogEvent
+                {
+                    SubmittedAt = DateTime.UtcNow
+                });
+
+                // Confirm events to persist state changes
+                await ConfirmEvents();
+                
+                return new SubmitFeedbackResult
+                {
+                    Success = true,
+                    Message = string.Empty
                 };
             }
 
