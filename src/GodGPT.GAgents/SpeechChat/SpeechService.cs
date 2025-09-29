@@ -302,10 +302,10 @@ public class SpeechService : ISpeechService
     {
         return language switch
         {
-            VoiceLanguageEnum.English => "en-US-AvaNeural",
-            VoiceLanguageEnum.Chinese => "zh-CN-XiaoxiaoNeural",
+            VoiceLanguageEnum.English => "en-US-AmandaMultilingualNeural",
+            VoiceLanguageEnum.Chinese => "zh-CN-XiaoxiaoMultilingualNeural",
             VoiceLanguageEnum.Spanish => "es-ES-ElviraNeural",
-            _ => "en-US-AvaNeural"
+            _ => "en-US-AmandaMultilingualNeural"
         };
     }
 
