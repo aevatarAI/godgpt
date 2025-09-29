@@ -172,7 +172,62 @@ public class SpeechService : ISpeechService
         }
         
         _logger.LogInformation($"[VOICE_SERVICE_DEBUG] Starting TTS - Text: '{text}', Language: {language}");
+
+        // Implement fast retry with progressive backoff for 429 errors
+        const int maxRetries = 2;
+        var retryDelays = new[] { 100, 500 }; // Fast retry: 100ms, then 500ms
         
+        for (int attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            try
+            {
+                var attemptPrefix = attempt > 0 ? $"[Retry {attempt}] " : "";
+                _logger.LogInformation($"[VOICE_SERVICE_DEBUG] {attemptPrefix}Attempt {attempt + 1}/{maxRetries + 1}");
+                
+                var result = await PerformTTSAsync(text, language);
+                
+                if (result.AudioData?.Length > 0)
+                {
+                    _logger.LogInformation($"[VOICE_SERVICE_DEBUG] {attemptPrefix}TTS Success - AudioData: {result.AudioData.Length} bytes");
+                    return result;
+                }
+                
+                // If we get here, TTS failed but didn't throw an exception
+                _logger.LogWarning($"[VOICE_SERVICE_DEBUG] {attemptPrefix}TTS returned empty audio, attempt {attempt + 1} failed");
+                
+                if (attempt < maxRetries)
+                {
+                    _logger.LogInformation($"[VOICE_SERVICE_DEBUG] Retrying in {retryDelays[attempt]}ms...");
+                    await Task.Delay(retryDelays[attempt]);
+                }
+            }
+            catch (Exception ex) when (Is429Error(ex) && attempt < maxRetries)
+            {
+                _logger.LogWarning($"[VOICE_SERVICE_DEBUG] TTS 429 Error on attempt {attempt + 1}: {ex.Message}");
+                _logger.LogInformation($"[VOICE_SERVICE_DEBUG] Retrying in {retryDelays[attempt]}ms...");
+                await Task.Delay(retryDelays[attempt]);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"[VOICE_SERVICE_DEBUG] TTS Fatal Error on attempt {attempt + 1}: {ex.Message}");
+                throw;
+            }
+        }
+        
+        // All retries exhausted
+        _logger.LogError($"[VOICE_SERVICE_DEBUG] All {maxRetries + 1} TTS attempts failed, returning empty audio");
+        return (new byte[0], new AudioMetadata { Duration = 0, SizeBytes = 0, SampleRate = 16000, Format = "mp3" });
+    }
+
+    private static bool Is429Error(Exception ex)
+    {
+        return ex.Message.Contains("429") || 
+               ex.Message.Contains("TooManyRequests") ||
+               ex.Message.Contains("Too many requests");
+    }
+
+    private async Task<(byte[] AudioData, AudioMetadata Metadata)> PerformTTSAsync(string text, VoiceLanguageEnum language)
+    {
         var tempSpeechConfig = SpeechConfig.FromSubscription(_speechConfig.SubscriptionKey, _speechConfig.Region);
         var languageCode = GetLanguageCode(language);
         var voiceName = GetVoiceName(language);
@@ -201,6 +256,14 @@ public class SpeechService : ISpeechService
             {
                 var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
                 _logger.LogError($"[VOICE_SERVICE_DEBUG] TTS Canceled - Reason: {cancellation.Reason}, ErrorCode: {cancellation.ErrorCode}, ErrorDetails: {cancellation.ErrorDetails}");
+                
+                // Throw specific exception for 429 errors to trigger retry
+                if (cancellation.ErrorCode == CancellationErrorCode.TooManyRequests ||
+                    cancellation.ErrorDetails?.Contains("429") == true ||
+                    cancellation.ErrorDetails?.Contains("Too many requests") == true)
+                {
+                    throw new InvalidOperationException($"TTS 429 Error: {cancellation.ErrorDetails}");
+                }
             }
         }
         
@@ -240,7 +303,7 @@ public class SpeechService : ISpeechService
         return language switch
         {
             VoiceLanguageEnum.English => "en-US-NancyNeural",
-            VoiceLanguageEnum.Chinese => "zh-CN-XiaoyiNeural",
+            VoiceLanguageEnum.Chinese => "zh-CN-XiaoqiuNeural",
             VoiceLanguageEnum.Spanish => "es-ES-AbrilNeural",
             _ => "en-US-NancyNeural"
         };
