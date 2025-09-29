@@ -12,7 +12,8 @@ public static class VoiceChatConstants
     public static readonly List<char> SentenceEnders =
     [
         '.', '?', '!', '。', '？', '！', // Complete sentence endings
-        ',', ';', ':', '，', '；', '：', // Semantic pause markers
+        // Removed comma separators to reduce TTS call frequency
+        // ',', ';', ':', '，', '；', '：', // Semantic pause markers - REMOVED to fix 429 errors
         '\n', '\r'                        // Line breaks
     ];
 } 
