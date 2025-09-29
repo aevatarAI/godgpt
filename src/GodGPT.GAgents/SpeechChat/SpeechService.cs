@@ -303,7 +303,7 @@ public class SpeechService : ISpeechService
         return language switch
         {
             VoiceLanguageEnum.English => "en-US-NancyNeural",
-            VoiceLanguageEnum.Chinese => "zh-CN-XiaoqiuNeural",
+            VoiceLanguageEnum.Chinese => "zh-CN-XiaomoNeural",
             VoiceLanguageEnum.Spanish => "es-ES-AbrilNeural",
             _ => "en-US-NancyNeural"
         };
