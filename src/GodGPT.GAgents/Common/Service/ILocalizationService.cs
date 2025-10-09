@@ -26,7 +26,7 @@ public interface ILocalizationService
     /// <param name="validationKey">Validation message key</param>
     /// <param name="language">Target language</param>
     /// <returns>Localized validation message</returns>
-    string GetLocalizedValidationMessage(string validationKey, GodGPTLanguage language);
+    string GetLocalizedValidationMessage(string validationKey, GodGPTLanguage language, Dictionary<string, string>? parameters = null);
     
     /// <summary>
     /// Get localized exception message with parameter replacement
@@ -45,4 +45,12 @@ public interface ILocalizationService
     /// <param name="parameters">Parameters to replace in the message template</param>
     /// <returns>Localized message with parameters replaced</returns>
     string GetLocalizedMessage(string key, GodGPTLanguage language, Dictionary<string, string> parameters);
+    
+    /// <summary>
+    /// Get localized feedback reason text by reason key and language
+    /// </summary>
+    /// <param name="reasonKey">Feedback reason key</param>
+    /// <param name="language">Target language</param>
+    /// <returns>Localized feedback reason text</returns>
+    string GetLocalizedFeedbackReason(string reasonKey, GodGPTLanguage language);
 } 

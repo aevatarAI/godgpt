@@ -18,6 +18,7 @@ using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
+using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
@@ -865,6 +866,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         var userBillingGAgent = GrainFactory.GetGrain<IUserBillingGAgent>(this.GetPrimaryKey());
         await userBillingGAgent.ClearAllAsync();
+
+        var userInfoCollectionGAgent = GrainFactory.GetGrain<IUserInfoCollectionGAgent>(this.GetPrimaryKey());
+        await userInfoCollectionGAgent.ClearAllAsync();
 
         RaiseEvent(new ClearAllEventLog());
         await ConfirmEvents();

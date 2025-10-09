@@ -33,9 +33,10 @@ public class LocalizationService : ILocalizationService
     /// <summary>
     /// Get localized validation message by validation key and language
     /// </summary>
-    public string GetLocalizedValidationMessage(string validationKey, GodGPTLanguage language)
+    public string GetLocalizedValidationMessage(string validationKey, GodGPTLanguage language, Dictionary<string, string>? parameters = null)
     {
-        return GetTranslation(validationKey, language, "validation");
+        var message = GetTranslation(validationKey, language, "validation");
+        return ReplaceParameters(message, parameters);
     }
     
     /// <summary>
@@ -57,12 +58,20 @@ public class LocalizationService : ILocalizationService
     }
     
     /// <summary>
+    /// Get localized feedback reason text by reason enum and language
+    /// </summary>
+    public string GetLocalizedFeedbackReason(string reasonKey, GodGPTLanguage language)
+    {
+        return GetTranslation(reasonKey, language, "feedback_reasons");
+    }
+    
+    /// <summary>
     /// Replace parameters in message template using {parameterName} format
     /// </summary>
     /// <param name="message">Message template</param>
     /// <param name="parameters">Parameters to replace</param>
     /// <returns>Message with parameters replaced</returns>
-    private string ReplaceParameters(string message, Dictionary<string, string> parameters)
+    private string ReplaceParameters(string message, Dictionary<string, string>? parameters)
     {
         if (parameters == null || !parameters.Any())
             return message;
@@ -211,8 +220,29 @@ public class LocalizationService : ILocalizationService
                 ["en.Required"] = "This field is required.",
                 ["zh-tw.Required"] = "此欄位為必填項",
                 ["es.Required"] = "Este campo es requerido.",
-                ["zh.Required"] = "此字段为必填项。"
+                ["zh.Required"] = "此字段为必填项。",
+                
+                // User Feedback validation messages
 
+                ["en.invalid_feedback_type"] = "Invalid feedback type. Must be 'Cancel' or 'Change'.",
+                ["zh-tw.invalid_feedback_type"] = "無效的反饋類型。必須是「取消」或「更改」。",
+                ["es.invalid_feedback_type"] = "Tipo de comentario no válido. Debe ser 'Cancelar' o 'Cambiar'.",
+                ["zh.invalid_feedback_type"] = "无效的反馈类型。必须是\"取消\"或\"更改\"。",
+                
+                ["en.reason_required"] = "Feedback reason is required.",
+                ["zh-tw.reason_required"] = "需要反饋原因。",
+                ["es.reason_required"] = "Se requiere razón del comentario.",
+                ["zh.reason_required"] = "需要反馈原因。",
+                
+                ["en.reasons_required"] = "At least one feedback reason must be selected.",
+                ["zh-tw.reasons_required"] = "必須選擇至少一個反饋原因。",
+                ["es.reasons_required"] = "Debe seleccionar al menos una razón de comentario.",
+                ["zh.reasons_required"] = "必须选择至少一个反馈原因。",
+                
+                ["en.response_too_long"] = "Response is too long. Maximum {maxLength} characters allowed.",
+                ["zh-tw.response_too_long"] = "回應太長。最多允許 {maxLength} 個字元。",
+                ["es.response_too_long"] = "La respuesta es demasiado larga. Máximo {maxLength} caracteres permitidos.",
+                ["zh.response_too_long"] = "回复太长。最多允许 {maxLength} 个字符。"
             },
             
             ["messages"] = new Dictionary<string, string>
@@ -221,7 +251,73 @@ public class LocalizationService : ILocalizationService
                 ["en.Success"] = "Operation completed successfully.",
                 ["zh-tw.Success"] = "操作成功完成。",
                 ["es.Success"] = "Operación completada exitosamente.",
-                ["zh.Success"] = "操作成功完成。"
+                ["zh.Success"] = "操作成功完成。",
+                
+                // User Feedback message
+                ["en.feedback_submission_failed"] = "Failed to submit feedback.",
+                ["zh-tw.feedback_submission_failed"] = "反饋提交失敗。",
+                ["es.feedback_submission_failed"] = "Error al enviar comentario.",
+                ["zh.feedback_submission_failed"] = "反馈提交失败。",
+
+                ["en.feedback_frequency_limit"] = "You can submit feedback again in {days} days. Please wait.",
+                ["zh-tw.feedback_frequency_limit"] = "您可以在 {days} 天後再次提交反饋。請等待。",
+                ["es.feedback_frequency_limit"] = "Puedes enviar comentarios nuevamente en {days} días. Por favor espera.",
+                ["zh.feedback_frequency_limit"] = "您可以在 {days} 天后再次提交反馈。请等待。"
+            },
+            
+            ["feedback_reasons"] = new Dictionary<string, string>
+            {
+                // English feedback reasons
+                ["en.TooExpensive"] = "Too expensive",
+                ["en.NotUsingEnough"] = "Not using it enough",
+                ["en.FoundBetterAlternative"] = "Found a better alternative",
+                ["en.TechnicalIssues"] = "Technical issues or bugs",
+                ["en.ContentNotRelevant"] = "Content/features not relevant",
+                ["en.TemporaryPause"] = "Temporary pause (might return)",
+                ["en.NeedMoreFeatures"] = "Need more features",
+                ["en.BetterPricingOnAnotherPlan"] = "Better pricing on another plan",
+                ["en.UsageChanged"] = "My usage changed",
+                ["en.PaymentInvoiceNeeds"] = "Payment/Invoice needs",
+                ["en.Other"] = "Other",
+                
+                // Traditional Chinese feedback reasons
+                ["zh-tw.TooExpensive"] = "太昂貴",
+                ["zh-tw.NotUsingEnough"] = "使用不夠頻繁",
+                ["zh-tw.FoundBetterAlternative"] = "找到更好的替代方案",
+                ["zh-tw.TechnicalIssues"] = "技術問題或錯誤",
+                ["zh-tw.ContentNotRelevant"] = "內容/功能不相關",
+                ["zh-tw.TemporaryPause"] = "暫時暫停（可能會回來）",
+                ["zh-tw.NeedMoreFeatures"] = "需要更多功能",
+                ["zh-tw.BetterPricingOnAnotherPlan"] = "其他方案有更好的價格",
+                ["zh-tw.UsageChanged"] = "我的使用情況改變了",
+                ["zh-tw.PaymentInvoiceNeeds"] = "付款/發票需求",
+                ["zh-tw.Other"] = "其他",
+                
+                // Spanish feedback reasons
+                ["es.TooExpensive"] = "Demasiado caro",
+                ["es.NotUsingEnough"] = "No lo uso lo suficiente",
+                ["es.FoundBetterAlternative"] = "Encontré una mejor alternativa",
+                ["es.TechnicalIssues"] = "Problemas técnicos o errores",
+                ["es.ContentNotRelevant"] = "Contenido/características no relevantes",
+                ["es.TemporaryPause"] = "Pausa temporal (podría volver)",
+                ["es.NeedMoreFeatures"] = "Necesito más funciones",
+                ["es.BetterPricingOnAnotherPlan"] = "Mejor precio en otro plan",
+                ["es.UsageChanged"] = "Mi uso cambió",
+                ["es.PaymentInvoiceNeeds"] = "Necesidades de pago/factura",
+                ["es.Other"] = "Otro",
+                
+                // Simplified Chinese feedback reasons
+                ["zh.TooExpensive"] = "太昂贵",
+                ["zh.NotUsingEnough"] = "使用不够频繁",
+                ["zh.FoundBetterAlternative"] = "找到更好的替代方案",
+                ["zh.TechnicalIssues"] = "技术问题或错误",
+                ["zh.ContentNotRelevant"] = "内容/功能不相关",
+                ["zh.TemporaryPause"] = "暂时暂停（可能会回来）",
+                ["zh.NeedMoreFeatures"] = "需要更多功能",
+                ["zh.BetterPricingOnAnotherPlan"] = "其他方案有更好的价格",
+                ["zh.UsageChanged"] = "我的使用情况改变了",
+                ["zh.PaymentInvoiceNeeds"] = "付款/发票需求",
+                ["zh.Other"] = "其他"
             }
         };
 
