@@ -41,13 +41,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
     private const string CNDefaultRegion = "CN";
-    private const string ProxyGPTModelName = "HyperEcho";
-    private const string ChatModelName = "GodGPT";
-    private const string ConsoleModelName = "GodGPTConsole";
     private const string CNConsoleRegion = "CNCONSOLE";
     private const string ConsoleRegion = "CONSOLE";
-    private const string CNConsoleModelName = "CNConsole";
-    private const string BytePlusDeepSeekV3ModelName = "BytePlusDeepSeekV3";
+    private const string LocalBackupModel = "OpenAI";
 
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
@@ -843,7 +839,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         {
             var systemPrompt = rolePrompts.IsNullOrWhiteSpace() ? State.PromptTemplate : rolePrompts;
 
-            if (llm == ProxyGPTModelName || llm == ChatModelName || llm == ConsoleModelName || llm == CNConsoleModelName || llm == BytePlusDeepSeekV3ModelName)
+            if (llm != LocalBackupModel)
             {
                 systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
             }
