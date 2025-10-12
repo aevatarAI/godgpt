@@ -19,4 +19,6 @@ public static class ExceptionMessageKeys
     public const string ChatRateLimit = "ChatRateLimit";
     public const string VoiceChatRateLimit = "VoiceChatRateLimit";
 
+    public const string HomeDosAndDontPrompt = "home_dos_and_dont_prompt";
+
 } 
