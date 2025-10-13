@@ -26,7 +26,7 @@ public interface IGoogleAuthGAgent : IGAgent
     /// <param name="platform">Platform name (web, ios, android, etc.)</param>
     /// <param name="code">Authorization code from Google</param>
     /// <param name="redirectUri">Redirect URI used in authorization</param>
-    Task<GoogleAuthResultDto> VerifyAuthCodeAsync(string platform, string code, string redirectUri);
+    Task<GoogleAuthResultDto> VerifyAuthCodeAsync(string platform, string code, string redirectUri, string codeVerifier);
 
     /// <summary>
     /// Get Google binding status
@@ -111,7 +111,7 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
     /// <summary>
     /// Verify OAuth2 authorization code and bind Google account
     /// </summary>
-    public async Task<GoogleAuthResultDto> VerifyAuthCodeAsync(string platform, string code, string redirectUri)
+    public async Task<GoogleAuthResultDto> VerifyAuthCodeAsync(string platform, string code, string redirectUri, string codeVerifier)
     {
         try
         {
@@ -126,7 +126,7 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
             }
 
             // Exchange authorization code for access token
-            var tokenResult = await ExchangeAuthCodeAsync(platform, code, redirectUri);
+            var tokenResult = await ExchangeAuthCodeAsync(platform, code, redirectUri, codeVerifier);
             if (!tokenResult.Success)
             {
                 _logger.LogError("[GoogleAuthGAgent][VerifyAuthCodeAsync] Failed to exchange auth code for token on platform {Platform}: {Error}", platform, tokenResult.Error);
@@ -158,9 +158,6 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
                 return new GoogleAuthResultDto { Success = false, Error = bindingResult.Error };
             }
 
-            // Get redirect URI from platform config or fallback to default
-            var redirectUriResult = GetPlatformRedirectUri(platform);
-
             return new GoogleAuthResultDto
             {
                 Success = true,
@@ -168,7 +165,7 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
                 Email = userInfo.Email,
                 DisplayName = userInfo.DisplayName,
                 BindStatus = State.IsBound,
-                RedirectUri = redirectUriResult
+                RedirectUri = redirectUri
             };
         }
         catch (Exception ex)
@@ -372,55 +369,16 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
             var client = _httpClientFactory.CreateClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", State.AccessToken);
 
-            // Build query parameters with defaults and validation
-            var queryParams = BuildCalendarQueryParameters(query);
-            var calendarId = string.IsNullOrEmpty(query.CalendarId) ? "primary" : query.CalendarId;
-            
-            var url = $"{_authOptions.CurrentValue.CalendarApiEndpoint}/calendars/{calendarId}/events?{queryParams}";
-
-            _logger.LogInformation("[GoogleAuthGAgent][QueryCalendarEventsAsync] Querying Google Calendar events: {Url}", url);
-
-            var response = await client.GetAsync(url);
-            if (!response.IsSuccessStatusCode)
+            // If CalendarId is empty, query all calendars
+            if (string.IsNullOrEmpty(query.CalendarId))
             {
-                var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
-                var error = await response.Content.ReadAsStringAsync();
-                var localizedMessage = _localizationService.GetLocalizedException(ExceptionMessageKeys.FailedGetUserInfo, language);
-
-                _logger.LogError("[GoogleAuthGAgent][QueryCalendarEventsAsync] Calendar events query failed: {Error}", error);
-                return new GoogleCalendarListDto { Success = false, Error = localizedMessage };
+                return await QueryAllCalendarsEventsAsync(client, query);
             }
-
-            var content = await response.Content.ReadAsStringAsync();
-            var calendarResponse = JsonConvert.DeserializeObject<GoogleCalendarEventsResponseDto>(content);
-
-            var events = new List<GoogleCalendarEventDto>();
-            if (calendarResponse?.Items != null)
+            else
             {
-                foreach (var item in calendarResponse.Items)
-                {
-                    events.Add(new GoogleCalendarEventDto
-                    {
-                        Id = item.Id,
-                        Summary = item.Summary,
-                        Description = item.Description,
-                        StartTime = item.Start,
-                        EndTime = item.End,
-                        Status = item.Status,
-                        Created = item.Created,
-                        Updated = item.Updated
-                    });
-                }
+                // Query specific calendar
+                return await QuerySingleCalendarEventsAsync(client, query, query.CalendarId);
             }
-
-            _logger.LogInformation("[GoogleAuthGAgent][QueryCalendarEventsAsync] Successfully retrieved {Count} calendar events", events.Count);
-
-            return new GoogleCalendarListDto
-            {
-                Success = true,
-                Events = events,
-                NextPageToken = calendarResponse?.NextPageToken
-            };
         }
         catch (Exception ex)
         {
@@ -572,7 +530,7 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
         }
     }
 
-    private async Task<TokenResultDto> ExchangeAuthCodeAsync(string platform, string code, string redirectUri)
+    private async Task<TokenResultDto> ExchangeAuthCodeAsync(string platform, string code, string redirectUri, string codeVerifier)
     {
         try
         {
@@ -622,6 +580,13 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
                 _logger.LogInformation("[GoogleAuthGAgent][ExchangeAuthCodeAsync] Platform {Platform} does not require client_secret (e.g., iOS)", platform);
             }
 
+            if (!codeVerifier.IsNullOrWhiteSpace())
+            {
+                
+                formData.Add("code_verifier", codeVerifier);
+                _logger.LogDebug("[GoogleAuthGAgent][ExchangeAuthCodeAsync] Added code_verifier for platform: {Platform}", platform);
+            }
+
             var response = await client.PostAsync(_authOptions.CurrentValue.TokenEndpoint, new FormUrlEncodedContent(formData));
             var responseContent = await response.Content.ReadAsStringAsync();
             
@@ -633,6 +598,11 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
             }
 
             var tokenResponse = JsonConvert.DeserializeObject<GoogleTokenResponseDto>(responseContent);
+            if (tokenResponse == null)
+            {
+                _logger.LogError("[GoogleAuthGAgent][ExchangeAuthCodeAsync] Failed to deserialize token response for platform: {Platform}", platform);
+                return new TokenResultDto { Success = false, Error = "Invalid token response" };
+            }
 
             _logger.LogInformation("[GoogleAuthGAgent][ExchangeAuthCodeAsync] Successfully exchanged auth code for platform: {Platform}", platform);
 
@@ -700,6 +670,11 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
             }
 
             var tokenResponse = JsonConvert.DeserializeObject<GoogleTokenResponseDto>(responseContent);
+            if (tokenResponse == null)
+            {
+                _logger.LogError("[GoogleAuthGAgent][RefreshAccessTokenAsync] Failed to deserialize token response for platform: {Platform}", platform);
+                return new TokenResultDto { Success = false, Error = "Invalid token response" };
+            }
 
             _logger.LogInformation("[GoogleAuthGAgent][RefreshAccessTokenAsync] Successfully refreshed token for platform: {Platform}", platform);
 
@@ -746,6 +721,11 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
             }
 
             var watchResponse = JsonConvert.DeserializeObject<GoogleCalendarWatchResponseDto>(responseContent);
+            if (watchResponse == null)
+            {
+                _logger.LogError("[GoogleAuthGAgent][SetupCalendarWatchAsync] Failed to deserialize watch response");
+                return new GoogleCalendarWatchDto { Success = false, Error = "Invalid watch response" };
+            }
 
             return new GoogleCalendarWatchDto
             {
@@ -871,29 +851,6 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
         return false;
     }
 
-    /// <summary>
-    /// Get redirect URI for platform
-    /// </summary>
-    private string GetPlatformRedirectUri(string platform)
-    {
-        if (string.IsNullOrEmpty(platform))
-        {
-            return string.Empty;
-        }
-
-        var platformLower = platform.ToLowerInvariant();
-
-        // Get redirect URI from platform config
-        var platformConfig = GetPlatformConfig(platformLower);
-        if (!string.IsNullOrEmpty(platformConfig?.RedirectUri))
-        {
-            return platformConfig.RedirectUri;
-        }
-
-        _logger.LogWarning("[GoogleAuthGAgent][GetPlatformRedirectUri] RedirectUri not configured for platform: {Platform}", platform);
-        return string.Empty;
-    }
-    
     /// <summary>
     /// Build query parameters string for Google Calendar API
     /// </summary>
@@ -1156,6 +1113,10 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
         
             // Deserialize JSON
             var payload = JsonConvert.DeserializeObject<GoogleIdTokenPayload>(payloadJson);
+            if (payload == null)
+            {
+                throw new ArgumentException("Failed to deserialize ID token payload");
+            }
         
             return new GoogleUserInfoDto
             {
@@ -1170,5 +1131,185 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
             _logger.LogError(ex, "[GoogleAuthGAgent][ParseIdToken] Error parsing Google ID token");
             return new GoogleUserInfoDto { Success = false, Error = "Failed to parse ID token" };
         }
+    }
+
+    /// <summary>
+    /// Query events from all user calendars
+    /// </summary>
+    private async Task<GoogleCalendarListDto> QueryAllCalendarsEventsAsync(HttpClient client, GoogleCalendarQueryDto query)
+    {
+        try
+        {
+            // First, get the list of all calendars
+            var calendarListUrl = $"{_authOptions.CurrentValue.CalendarApiEndpoint}/users/me/calendarList?maxResults={_authOptions.CurrentValue.MaxCalendarListResultLimit}";
+            
+            _logger.LogInformation("[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] Fetching calendar list: {Url}", calendarListUrl);
+
+            var calendarListResponse = await client.GetAsync(calendarListUrl);
+            if (!calendarListResponse.IsSuccessStatusCode)
+            {
+                var error = await calendarListResponse.Content.ReadAsStringAsync();
+                _logger.LogError("[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] Failed to get calendar list: {Error}", error);
+                return new GoogleCalendarListDto { Success = false, Error = "Failed to get calendar list" };
+            }
+
+            var calendarListContent = await calendarListResponse.Content.ReadAsStringAsync();
+            var calendarListData = JsonConvert.DeserializeObject<GoogleCalendarListResponseDto>(calendarListContent);
+
+            if (calendarListData?.Items == null || calendarListData.Items.Count == 0)
+            {
+                _logger.LogWarning("[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] No calendars found");
+                return new GoogleCalendarListDto
+                {
+                    Success = true,
+                    Events = new List<GoogleCalendarEventDto>(),
+                    TotalCalendarsQueried = 0
+                };
+            }
+
+            // Filter calendars to query (only selected and not hidden calendars)
+            var calendarsToQuery = calendarListData.Items
+                .Where(cal => cal.Selected && !cal.Hidden && 
+                             (cal.AccessRole == "owner" || cal.AccessRole == "reader" || cal.AccessRole == "writer"))
+                .ToList();
+
+            _logger.LogInformation("[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] Found {TotalCalendars} calendars, will query {QueryCalendars} calendars", 
+                calendarListData.Items.Count, calendarsToQuery.Count);
+
+            var allEvents = new List<GoogleCalendarEventDto>();
+            var queriedCalendarIds = new List<string>();
+            var failedCalendarIds = new Dictionary<string, string>();
+
+            // Query each calendar in parallel for better performance
+            var queryTasks = calendarsToQuery.Select(async calendar =>
+            {
+                try
+                {
+                    var calendarEvents = await QuerySingleCalendarEventsInternalAsync(client, query, calendar.Id, calendar.Summary);
+                    return new { Calendar = calendar, Events = calendarEvents, Success = true, Error = (string?)null };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] Error querying calendar {CalendarId}: {Error}", 
+                        calendar.Id, ex.Message);
+                    return new { Calendar = calendar, Events = new List<GoogleCalendarEventDto>(), Success = false, Error = (string?)ex.Message };
+                }
+            });
+
+            var queryResults = await Task.WhenAll(queryTasks);
+
+            foreach (var result in queryResults)
+            {
+                if (result.Success)
+                {
+                    allEvents.AddRange(result.Events);
+                    queriedCalendarIds.Add(result.Calendar.Id);
+                }
+                else
+                {
+                    failedCalendarIds[result.Calendar.Id] = result.Error ?? "Unknown error";
+                }
+            }
+
+            // Sort all events by start time
+            allEvents = allEvents
+                .OrderBy(e => e.StartTime?.DateTime ?? DateTime.MinValue)
+                .ToList();
+
+            _logger.LogInformation("[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] Successfully retrieved {EventCount} events from {SuccessCount} calendars, {FailedCount} calendars failed", 
+                allEvents.Count, queriedCalendarIds.Count, failedCalendarIds.Count);
+
+            return new GoogleCalendarListDto
+            {
+                Success = true,
+                Events = allEvents,
+                TotalCalendarsQueried = calendarsToQuery.Count,
+                QueriedCalendarIds = queriedCalendarIds,
+                FailedCalendarIds = failedCalendarIds
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] Error querying all calendars");
+            return new GoogleCalendarListDto { Success = false, Error = "Internal server error" };
+        }
+    }
+
+    /// <summary>
+    /// Query events from a single calendar
+    /// </summary>
+    private async Task<GoogleCalendarListDto> QuerySingleCalendarEventsAsync(HttpClient client, GoogleCalendarQueryDto query, string calendarId)
+    {
+        try
+        {
+            var events = await QuerySingleCalendarEventsInternalAsync(client, query, calendarId, calendarId);
+
+            return new GoogleCalendarListDto
+            {
+                Success = true,
+                Events = events,
+                TotalCalendarsQueried = 1,
+                QueriedCalendarIds = new List<string> { calendarId }
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[GoogleAuthGAgent][QuerySingleCalendarEventsAsync] Error querying calendar {CalendarId}", calendarId);
+            return new GoogleCalendarListDto 
+            { 
+                Success = false, 
+                Error = "Internal server error",
+                FailedCalendarIds = new Dictionary<string, string> { { calendarId, ex.Message } }
+            };
+        }
+    }
+
+    /// <summary>
+    /// Internal method to query events from a single calendar
+    /// </summary>
+    private async Task<List<GoogleCalendarEventDto>> QuerySingleCalendarEventsInternalAsync(HttpClient client, GoogleCalendarQueryDto query, string calendarId, string calendarName)
+    {
+        // Build query parameters with defaults and validation
+        var queryParams = BuildCalendarQueryParameters(query);
+        var url = $"{_authOptions.CurrentValue.CalendarApiEndpoint}/calendars/{Uri.EscapeDataString(calendarId)}/events?{queryParams}";
+
+        _logger.LogDebug("[GoogleAuthGAgent][QuerySingleCalendarEventsInternalAsync] Querying calendar {CalendarId}: {Url}", calendarId, url);
+
+        var response = await client.GetAsync(url);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogError("[GoogleAuthGAgent][QuerySingleCalendarEventsInternalAsync] Calendar events query failed for {CalendarId}: {Error}", calendarId, error);
+            throw new HttpRequestException($"Calendar query failed: {response.StatusCode}");
+        }
+
+        var content = await response.Content.ReadAsStringAsync();
+        var calendarResponse = JsonConvert.DeserializeObject<GoogleCalendarEventsResponseDto>(content);
+
+        var events = new List<GoogleCalendarEventDto>();
+        if (calendarResponse?.Items != null)
+        {
+            foreach (var item in calendarResponse.Items)
+            {
+                events.Add(new GoogleCalendarEventDto
+                {
+                    Id = item.Id,
+                    Summary = item.Summary,
+                    Description = item.Description,
+                    StartTime = item.Start,
+                    EndTime = item.End,
+                    Status = item.Status,
+                    Created = item.Created,
+                    Updated = item.Updated,
+                    CalendarId = calendarId,
+                    CalendarName = calendarName ?? calendarId
+                });
+            }
+        }
+
+        _logger.LogDebug("[GoogleAuthGAgent][QuerySingleCalendarEventsInternalAsync] Retrieved {Count} events from calendar {CalendarId}", 
+            events.Count, calendarId);
+
+        return events;
     }
 }

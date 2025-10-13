@@ -62,7 +62,7 @@ public class GoogleAuthGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTestsMo
             // First authenticate with real auth code
             await googleAuthGAgent.VerifyAuthCodeAsync(
                 "web", 
-                "4/0AVGzR1BPgoiFBIsaXI5MEE-dq3zJjRLDDDLEgIyccHumO5PkYN6q3pcxlJSsBJbLR4_4Fg", 
+                "4/0AVGzR1BKq0vUCFNyk2zaio_hTQ_d_IBLWJQO5LHMtR7J1ak5Jktq5wwKV_LDHr1iWrRL1g", 
                 "https://feiniao.uk"
             );
 
@@ -73,7 +73,6 @@ public class GoogleAuthGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTestsMo
                     StartTime = DateTime.UtcNow.AddDays(-1),
                     EndTime = DateTime.UtcNow.AddDays(7),
                     MaxResults = 200,
-                    CalendarId = "primary",
                     SingleEvents = true,
                     OrderBy = "startTime"
                     // EventTypes is null - should return ALL events including tasks and appointments
