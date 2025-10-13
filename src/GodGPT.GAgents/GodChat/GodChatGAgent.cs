@@ -609,6 +609,16 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         Logger.LogDebug(
             $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}");
         
+        // Get session creation time for timestamp prefix
+        var chatManager = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
+        var sessionInfo = await chatManager.GetSessionCreationInfoAsync(sessionId);
+        DateTime sessionCreateTime = sessionInfo?.CreateAt ?? DateTime.UtcNow;
+        if (sessionInfo == null)
+        {
+            Logger.LogWarning($"[GodChatGAgent][GodStreamChatAsync] Session {sessionId} not found, using current time as fallback");
+        }
+        var timePrompt = GetSessionTimePrompt(sessionCreateTime);
+        
         var configuration = GetConfiguration();
         var sysMessage = await configuration.GetPrompt();
         
@@ -644,14 +654,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 }
             }
 
-            // Add conversation suggestions prompt for text chat only
-            string enhancedMessage = message;
-            if (!isPromptVoiceChat)
-            {
-                enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
-                Logger.LogDebug(
-                    $"[GodChatGAgent][GodStreamChatAsync] Added conversation suggestions prompt for text chat");
-            }
+            // Add session timestamp to user message
+            string enhancedMessage = $"{timePrompt}\n\n{message}";
+            Logger.LogDebug(
+                $"[GodChatGAgent][GodStreamChatAsync] Added session timestamp to message. IsVoiceChat: {isPromptVoiceChat}");
 
             var settings = promptSettings ?? new ExecutionPromptSettings();
             settings.Temperature = "0.9";
@@ -839,13 +845,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         {
             var systemPrompt = rolePrompts.IsNullOrWhiteSpace() ? State.PromptTemplate : rolePrompts;
 
+            // Add conversation suggestions prompt to system prompt for caching optimization
             if (llm != LocalBackupModel)
             {
-                systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+                systemPrompt = $"{systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}";
             }
             else
             {
-                systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+                systemPrompt = $"{oldSystemPrompt} {systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}";
             }
 
             // if (llm != ProxyGPTModelName)
@@ -2038,9 +2045,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         return new Tuple<string, string>(response, title);
     }
 
-    private string GetCustomPrompt()
+    /// <summary>
+    /// Format session creation time as a prompt prefix for user messages
+    /// </summary>
+    /// <param name="sessionCreateTime">Session creation UTC time from SessionInfo.CreateAt</param>
+    /// <returns>Time context prompt</returns>
+    private string GetSessionTimePrompt(DateTime sessionCreateTime)
     {
-        return $"The current UTC time is: {DateTime.UtcNow}. Please answer all questions based on this UTC time.";
+        return $"The current UTC time is: {sessionCreateTime:yyyy-MM-dd HH:mm:ss}. Please answer all questions based on this UTC time.";
     }
 
     public async Task<string> GodVoiceStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled,
@@ -2052,6 +2064,16 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug(
             $"[GodChatGAgent][GodVoiceStreamChatAsync] {sessionId.ToString()} start with message: {message}, language: {voiceLanguage}");
+
+        // Get session creation time for timestamp prefix
+        var chatManager = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
+        var sessionInfo = await chatManager.GetSessionCreationInfoAsync(sessionId);
+        DateTime sessionCreateTime = sessionInfo?.CreateAt ?? DateTime.UtcNow;
+        if (sessionInfo == null)
+        {
+            Logger.LogWarning($"[GodChatGAgent][GodVoiceStreamChatAsync] Session {sessionId} not found, using current time as fallback");
+        }
+        var timePrompt = GetSessionTimePrompt(sessionCreateTime);
 
         // Step 1: Get configuration and system message (same as GodStreamChatAsync)
         var configuration = GetConfiguration();
@@ -2080,8 +2102,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             var settings = promptSettings ?? new ExecutionPromptSettings();
             settings.Temperature = "0.9";
             
-            // Start streaming with voice context
-            var promptMsg = message;
+            // Start streaming with voice context - add timestamp first
+            var promptMsg = $"{timePrompt}\n\n{message}";
             switch (voiceLanguage)
             {
                 case  VoiceLanguageEnum.English:
