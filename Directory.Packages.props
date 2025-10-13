@@ -6,7 +6,7 @@
 <!--    <AevatarVerion>1.4.13</AevatarVerion>-->
 <!--    <AevatarGAgentVerion>1.4.17</AevatarGAgentVerion>-->
     <AevatarVerion>1.5.2</AevatarVerion>
-    <AevatarGAgentVerion>1.5.7-alpha.1</AevatarGAgentVerion>
+    <AevatarGAgentVerion>1.5.7-alpha.2</AevatarGAgentVerion>
     <!-- Suppress package dependency warnings for third-party packages -->
     <NoWarn>$(NoWarn);NU1603</NoWarn>
   </PropertyGroup>
