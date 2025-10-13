@@ -25,9 +25,10 @@ public class GoogleCalendarQueryDto
     public int MaxResults { get; set; } = 200;
 
     /// <summary>
-    /// Calendar ID to query (optional, defaults to 'primary')
+    /// Calendar ID to query (optional, defaults to empty string which means query all calendars)
+    /// Use "primary" to query only the primary calendar
     /// </summary>
-    [Id(3)] public string CalendarId { get; set; } = "primary";
+    [Id(3)] public string CalendarId { get; set; } = string.Empty;
 
     /// <summary>
     /// Whether to expand recurring events into individual instances

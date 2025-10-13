@@ -69,6 +69,8 @@ public class GoogleAuthOptions
     /// Value: platform configuration
     /// </summary>
     [Id(11)] public Dictionary<string, GooglePlatformConfig?> PlatformConfigs { get; set; } = new Dictionary<string, GooglePlatformConfig?>();
+
+    [Id(12)] public int MaxCalendarListResultLimit { get; set; } = 10;
 }
 
 /// <summary>
