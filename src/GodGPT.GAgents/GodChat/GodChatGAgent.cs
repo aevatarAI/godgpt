@@ -12,7 +12,11 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.GoogleAuth;
+using Aevatar.Application.Grains.GoogleAuth.Dtos;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserInfo;
+using Aevatar.Application.Grains.UserInfo.Dtos;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
@@ -41,13 +45,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private static readonly TimeSpan RequestRecoveryDelay = TimeSpan.FromSeconds(600);
     private const string DefaultRegion = "DEFAULT";
     private const string CNDefaultRegion = "CN";
-    private const string ProxyGPTModelName = "HyperEcho";
-    private const string ChatModelName = "GodGPT";
-    private const string ConsoleModelName = "GodGPTConsole";
     private const string CNConsoleRegion = "CNCONSOLE";
     private const string ConsoleRegion = "CONSOLE";
-    private const string CNConsoleModelName = "CNConsole";
-    private const string BytePlusDeepSeekV3ModelName = "BytePlusDeepSeekV3";
+    private const string LocalBackupModel = "OpenAI";
 
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
@@ -144,45 +144,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         Logger.LogDebug(
             $"[GodChatGAgent][RequestStreamChatEvent] decommission :{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
         await PublishAsync(chatMessage);
-
-        // string chatId = Guid.NewGuid().ToString();
-        // Logger.LogDebug(
-        //     $"[GodChatGAgent][RequestStreamGodChatEvent] start:{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
-        // var title = "";
-        // var content = "";
-        // var isLastChunk = false;
-        //
-        // try
-        // {
-        //     if (State.StreamingModeEnabled)
-        //     {
-        //         Logger.LogDebug("State.StreamingModeEnabled is on");
-        //         await StreamChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content, chatId);
-        //     }
-        //     else
-        //     {
-        //         var response = await ChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content);
-        //         content = response.Item1;
-        //         title = response.Item2;
-        //         isLastChunk = true;
-        //     }
-        // }
-        // catch (Exception e)
-        // {
-        //     Logger.LogError(e, $"[GodChatGAgent][RequestStreamGodChatEvent] handle error:{e.ToString()}");
-        // }
-        //
-        // await PublishAsync(new ResponseStreamGodChat()
-        // {
-        //     ChatId = chatId,
-        //     Response = content,
-        //     NewTitle = title,
-        //     IsLastChunk = isLastChunk,
-        //     SerialNumber = -1,
-        //     SessionId = @event.SessionId
-        // });
-        //
-        // Logger.LogDebug($"[GodChatGAgent][RequestStreamGodChatEvent] end:{JsonConvert.SerializeObject(@event)}");
     }
 
     [EventHandler]
@@ -613,9 +574,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         Logger.LogDebug(
             $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}");
         
-        var configuration = GetConfiguration();
-        var sysMessage = await configuration.GetPrompt();
-        
         var aiChatContextDto =
             CreateAIChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings, isHttpRequest,
                 region, images);
@@ -652,9 +610,19 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             string enhancedMessage = message;
             if (!isPromptVoiceChat)
             {
-                enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
-                Logger.LogDebug(
-                    $"[GodChatGAgent][GodStreamChatAsync] Added conversation suggestions prompt for text chat");
+                var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} Language from context: {language}");
+                var homeDosAndDontPromptMessage = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.HomeDosAndDontPrompt,language);
+                if (message == homeDosAndDontPromptMessage)
+                {
+                    enhancedMessage = await GenerateDailyRecommendationsAsync(language);
+                }
+                else
+                {
+                    enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
+                }
             }
 
             var settings = promptSettings ?? new ExecutionPromptSettings();
@@ -846,7 +814,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         {
             var systemPrompt = rolePrompts.IsNullOrWhiteSpace() ? State.PromptTemplate : rolePrompts;
 
-            if (llm == ProxyGPTModelName || llm == ChatModelName || llm == ConsoleModelName || llm == CNConsoleModelName || llm == BytePlusDeepSeekV3ModelName)
+            if (llm != LocalBackupModel)
             {
                 systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
             }
@@ -2268,5 +2236,240 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
 
         return false;
+    }
+    
+    private async Task<string> GenerateDailyRecommendationsAsync(GodGPTLanguage language)
+    {
+        var googleAuthGAgent = GrainFactory.GetGrain<IGoogleAuthGAgent>(State.ChatManagerGuid);
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
+        var isSubscribed = await userQuotaGAgent.IsSubscribedAsync(true) && await userQuotaGAgent.IsSubscribedAsync(false);
+        // Get today's calendar events
+        var googleCalendarListDto = await googleAuthGAgent.QueryCalendarEventsAsync(new GoogleCalendarQueryDto
+        {
+            CalendarId = "primary",
+            OrderBy = "startTime"
+        });
+        // Generate daily recommendations based on subscription status and calendar events
+        return await GenerateDailyRecommendationsAsync(isSubscribed, googleCalendarListDto, language.ToString());
+    }
+
+    /// <summary>
+    /// Generate daily recommendations based on subscription status and calendar events
+    /// </summary>
+    private Task<string> GenerateDailyRecommendationsAsync(
+        bool isSubscribed, 
+        GoogleCalendarListDto calendarEvents, 
+        string language)
+    {
+        try
+        {
+            Logger.LogDebug("[GodChatGAgent][GenerateDailyRecommendationsAsync] Generating daily recommendations");
+            
+            // Get user information
+            var currentTime = DateTime.UtcNow;
+            
+            // Format calendar events
+            var notBound = !calendarEvents.Success && calendarEvents.Error == "Google account not bound";
+            var hasEvents = calendarEvents?.Success == true && !calendarEvents.Events.IsNullOrEmpty();
+            var formattedEvents = hasEvents ? FormatCalendarEvents(calendarEvents!.Events) : new List<string>();
+            
+            // Generate recommendations based on scenarios
+            if (isSubscribed && hasEvents)
+            {
+                // Scenario 3: Subscribed user with events
+                return Task.FromResult(GenerateSubscribedUserWithEventsRecommendations(currentTime, formattedEvents, calendarEvents!.Events, language));
+            }
+            else if (!isSubscribed && hasEvents)
+            {
+                // Scenario 2: Non-subscribed user with events
+                return Task.FromResult(GenerateNonSubscribedUserWithEventsRecommendations(currentTime, formattedEvents, calendarEvents!.Events, language));
+            } else if (isSubscribed &&  !hasEvents && !notBound)
+            {
+                return Task.FromResult(GeneratePaidAndBoundUserWithoutEventsRecommendations(currentTime, language));
+            }
+            else
+            {
+                // Scenario 1: User without events (both subscribed and non-subscribed)
+                return Task.FromResult(GenerateUserWithoutEventsRecommendations(currentTime, language));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[GodChatGAgent][GenerateDailyRecommendationsAsync] Error generating daily recommendations");
+            return Task.FromResult(GenerateUserWithoutEventsRecommendations(DateTime.UtcNow, language));
+        }
+    }
+
+    /// <summary>
+    /// Format calendar events for display
+    /// </summary>
+    private List<string> FormatCalendarEvents(List<GoogleCalendarEventDto> events)
+    {
+        var formattedEvents = new List<string>();
+        
+        foreach (var eventItem in events)
+        {
+            if (string.IsNullOrEmpty(eventItem.Summary)) continue;
+            
+            var eventTime = "Unknown time";
+            if (eventItem.StartTime?.DateTime.HasValue == true)
+            {
+                var startTime = eventItem.StartTime.DateTime.Value;
+                eventTime = startTime.ToString("HH:mm");
+            }
+            
+            formattedEvents.Add($"{eventItem.Summary} @ {eventTime}");
+        }
+        
+        return formattedEvents;
+    }
+    
+    private string GeneratePaidAndBoundUserWithoutEventsRecommendations(DateTime currentTime, string language)
+    {
+        
+        var prompt = $@"Generate personalized daily recommendations based on user information and cosmic theory
+Output format (respond to user in {{language}}):
+Hi, username, based on your name, gender, age, address, and local time, here are your personalized daily recommendations (covering health, work, emotions, life, etc.):
+Recommended
+1. Xxxx
+2. xxxxx
+Avoid
+1. Xxxxx
+2. Xxxxx
+
+A sentence like: We found your calendar is empty today. This is a perfect opportunity to spend time with yourself, engage in deep thinking, or enjoy free time! When you have new arrangements, we'll be here to provide personalized guidance.";
+
+        return prompt;
+    }   
+
+    /// <summary>
+    /// Generate recommendations for users without events
+    /// </summary>
+    private string GenerateUserWithoutEventsRecommendations(DateTime currentTime, string language)
+    {
+        
+        var prompt = $@"Generate personalized daily recommendations based on user information and cosmic theory
+Output format (respond to user in {language}):
+Based on your name, gender, age, address, and local time, here are your personalized daily recommendations (covering health, work, emotions, life, etc.):
+Recommended
+1. Xxxx
+2. xxxxx
+Avoid
+1. Xxxxx
+2. Xxxxx
+Summary in one sentence (within 20 characters): xxxxx";
+
+        return prompt;
+    }
+
+    /// <summary>
+    /// Generate recommendations for non-subscribed users with events
+    /// </summary>
+    private string GenerateNonSubscribedUserWithEventsRecommendations(DateTime currentTime, List<string> formattedEvents, List<GoogleCalendarEventDto> events, string language)
+    {
+        var prompt = $@"User events event_title @ time \\n";
+
+        // Add detailed event analysis for subscribed users
+        for (int i = 0; i < events.Count && i < formattedEvents.Count; i++)
+        {
+            var eventItem = events[i];
+            if (eventItem.Summary.IsNullOrWhiteSpace())
+            {
+                continue;
+            }
+            var eventSummary = eventItem.Summary;
+            var eventTime = "Unknown time";
+            
+            if (eventItem.StartTime?.DateTime.HasValue == true)
+            {
+                var startTime = eventItem.StartTime.DateTime.Value;
+                eventTime = startTime.ToString("HH:mm");
+            }
+            
+            prompt += $@"{eventSummary} @ {eventTime}";
+        }
+
+        
+        prompt += $@"Generate personalized daily recommendations based on user information and cosmic theory
+Output format (respond to user in {{language}}):
+Hi, username, based on your name, gender, age, address, and local time, here are your personalized daily recommendations (covering health, work, emotions, life, etc.):
+Recommended
+1. Xxxx
+2. xxxxx
+Avoid
+1. Xxxxx
+2. Xxxxx
+
+Event1 @ time
+Event2 @ time
+
+
+Summary in one sentence (within 20 characters): xxxxx
+Would you like me to provide detailed guidance for you?";
+
+        return prompt;
+    }
+
+    /// <summary>
+    /// Generate recommendations for subscribed users with events
+    /// </summary>
+    private string GenerateSubscribedUserWithEventsRecommendations(DateTime currentTime, List<string> formattedEvents, List<GoogleCalendarEventDto> events, string language)
+    {
+        
+        var prompt = $@"User events event_title @ time \\n";
+
+        // Add detailed event analysis for subscribed users
+        for (int i = 0; i < events.Count && i < formattedEvents.Count; i++)
+        {
+            var eventItem = events[i];
+            if (eventItem.Summary.IsNullOrWhiteSpace())
+            {
+                continue;
+            }
+            var eventSummary = eventItem.Summary;
+            var eventTime = "Unknown time";
+            
+            if (eventItem.StartTime?.DateTime.HasValue == true)
+            {
+                var startTime = eventItem.StartTime.DateTime.Value;
+                eventTime = startTime.ToString("HH:mm");
+            }
+            
+            prompt += $@"{eventSummary} @ {eventTime}";
+        }
+
+        prompt += $@"Generate personalized daily recommendations based on user information and cosmic theory
+Output format (respond to user in {language}):
+Hi, username, based on your name, gender, age, address, and local time, here are your personalized daily recommendations (covering health, work, emotions, life, etc.):
+Recommended
+1. Xxxx
+2. xxxxx
+Avoid
+1. Xxxxx
+2. Xxxxx
+
+Event1 @ time
+Overview
+Event Overview
+Recommended
+1. Xxxx
+2. xxxxx
+Avoid
+1. Xxxxx
+2. Xxxxx
+
+Event2 @ time
+Overview
+Event Overview
+Recommended
+1. Xxxx
+2. xxxxx
+Avoid
+1. Xxxxx
+2. Xxxxx
+
+Summary in one sentence (within 20 characters): xxxxx";
+
+        return prompt;
     }
 }

@@ -186,7 +186,8 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                 .Configure<CreditsOptions>(configuration.GetSection("Credits"))
                 .Configure<Aevatar.Application.Grains.Common.Options.GooglePayOptions>(configuration.GetSection("GooglePay"))
                 .Configure<UserStatisticsOptions>(configuration.GetSection("UserStatistics"))
-                .Configure<UserFeedbackOptions>(configuration.GetSection("UserFeedback"));
+                .Configure<UserFeedbackOptions>(configuration.GetSection("UserFeedback"))
+                .Configure<GoogleAuthOptions>(configuration.GetSection("GoogleAuth"));
         }
     }
 

@@ -167,6 +167,7 @@ public class SpeechService : ISpeechService
         // Validate input parameters
         if (string.IsNullOrEmpty(text))
         {
+            _logger.LogError("[VOICE_SERVICE_DEBUG] Text cannot be null or empty");
             throw new ArgumentException("Text cannot be null or empty", nameof(text));
         }
         
@@ -181,6 +182,18 @@ public class SpeechService : ISpeechService
         using var audioConfig = AudioConfig.FromStreamOutput(AudioOutputStream.CreatePullStream());
         using var tempSynthesizer = new SpeechSynthesizer(tempSpeechConfig, audioConfig);
         using var result = await tempSynthesizer.SpeakTextAsync(text);
+        
+        _logger.LogInformation($"[VOICE_SERVICE_DEBUG] TTS Result - Reason: {result.Reason}, AudioData: {result.AudioData?.Length ?? 0} bytes");
+        
+        if (result.Reason != ResultReason.SynthesizingAudioCompleted)
+        {
+            _logger.LogError($"[VOICE_SERVICE_DEBUG] TTS Failed - Reason: {result.Reason}");
+            if (result.Reason == ResultReason.Canceled)
+            {
+                var cancellation = SpeechSynthesisCancellationDetails.FromResult(result);
+                _logger.LogError($"[VOICE_SERVICE_DEBUG] TTS Canceled - Reason: {cancellation.Reason}, ErrorCode: {cancellation.ErrorCode}, ErrorDetails: {cancellation.ErrorDetails}");
+            }
+        }
         
         // Calculate approximate duration based on text length and speech rate
         // Average speech rate is ~150 words per minute or ~2.5 words per second
@@ -215,10 +228,10 @@ public class SpeechService : ISpeechService
     {
         return language switch
         {
-            VoiceLanguageEnum.English => "en-US-JennyNeural",
-            VoiceLanguageEnum.Chinese => "zh-CN-XiaoxiaoNeural",
+            VoiceLanguageEnum.English => "en-US-JennyMultilingualNeural",
+            VoiceLanguageEnum.Chinese => "zh-CN-XiaoxiaoMultilingualNeural",
             VoiceLanguageEnum.Spanish => "es-ES-ElviraNeural",
-            _ => "en-US-JennyNeural"
+            _ => "en-US-JennyMultilingualNeural"
         };
     }
 

@@ -350,11 +350,19 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var sysMessage = string.Empty;
         if (!string.IsNullOrEmpty(guider))
         {
-            var rolePrompt = GetRolePrompt(guider);
-            if (!string.IsNullOrEmpty(rolePrompt))
+            if (guider == SessionGuiderConstants.DailyGuide)
             {
-                sysMessage = rolePrompt;
-                Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Added role prompt for guider: {guider}");
+                var userInfoCollectionGAgent = GrainFactory.GetGrain<IUserInfoCollectionGAgent>(this.GetPrimaryKey());
+                sysMessage = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+            }
+            else
+            {
+                var rolePrompt = GetRolePrompt(guider);
+                if (!string.IsNullOrEmpty(rolePrompt))
+                {
+                    sysMessage = rolePrompt;
+                    Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Added role prompt for guider: {guider}");
+                }
             }
         }
 

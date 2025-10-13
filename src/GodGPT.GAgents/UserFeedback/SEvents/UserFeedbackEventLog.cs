@@ -21,3 +21,12 @@ public class SubmitFeedbackLogEvent : UserFeedbackEventLog
     [Id(2)] public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
     [Id(3)] public int FeedbackCount { get; set; }
 }
+
+/// <summary>
+/// Submit feedback event
+/// </summary>
+[GenerateSerializer]
+public class SkippedFeedbackLogEvent : UserFeedbackEventLog
+{
+    [Id(0)] public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
+}

@@ -32,6 +32,8 @@ public class SubmitFeedbackRequest
     /// Contact email (required when ContactRequested is true)
     /// </summary>
     [Id(4)] public string Email { get; set; } = string.Empty;
+
+    [Id(5)] public bool SkippedFeedback { get; set; } = false;
 }
 
 /// <summary>
