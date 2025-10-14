@@ -6,7 +6,7 @@
 <!--    <AevatarVerion>1.4.13</AevatarVerion>-->
 <!--    <AevatarGAgentVerion>1.4.17</AevatarGAgentVerion>-->
     <AevatarVerion>1.5.2</AevatarVerion>
-    <AevatarGAgentVerion>1.5.7-alpha.3</AevatarGAgentVerion>
+    <AevatarGAgentVerion>1.5.7-alpha.4</AevatarGAgentVerion>
     <!-- Suppress package dependency warnings for third-party packages -->
     <NoWarn>$(NoWarn);NU1603</NoWarn>
   </PropertyGroup>
@@ -139,7 +139,7 @@
     <PackageVersion Include="Microsoft.Extensions.Http.Polly" Version="8.0.3" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.5" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.9" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
     <PackageVersion Include="Microsoft.Orleans.Client" Version="$(OrleansVerion)" />
     <PackageVersion Include="Microsoft.Orleans.Core.Abstractions" Version="9.0.1" />
