@@ -116,6 +116,31 @@ public class AIAgentStatusProxy :
     {
         Logger.LogDebug(
             $"[AIAgentStatusProxy][AIChatHandleStreamAsync] sessionId {context?.RequestId.ToString()}, chatId {context?.ChatId}, errorEnum {errorEnum}, errorMessage {errorMessage}: {JsonConvert.SerializeObject(content)}");
+        
+        // Cache monitoring logs
+        if (tokenUsage != null)
+        {
+            // 1. Print the entire TokenUsageStatistics object
+            Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] TokenUsageStatistics: {JsonConvert.SerializeObject(tokenUsage)}");
+            
+            // 2. Analyze and print cache hit rate
+            if (tokenUsage.InputToken > 0)
+            {
+                double cacheHitRate = tokenUsage.CachedTokens > 0 
+                    ? (tokenUsage.CachedTokens * 100.0 / tokenUsage.InputToken) 
+                    : 0;
+                    
+                if (tokenUsage.CachedTokens > 0)
+                {
+                    Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] ✅ Cache Hit! Input: {tokenUsage.InputToken}, Output: {tokenUsage.OutputToken}, Cached: {tokenUsage.CachedTokens}, Hit Rate: {cacheHitRate:F1}%");
+                }
+                else
+                {
+                    Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] ❌ Cache Miss. Input: {tokenUsage.InputToken}, Output: {tokenUsage.OutputToken}");
+                }
+            }
+        }
+        
         if (errorEnum == AIExceptionEnum.RequestLimitError)
         {
             RaiseEvent(new SetAvailableLogEvent
