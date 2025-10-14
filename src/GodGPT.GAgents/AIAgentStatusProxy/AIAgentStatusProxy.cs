@@ -114,14 +114,19 @@ public class AIAgentStatusProxy :
         AIStreamChatContent? content,
         TokenUsageStatistics? tokenUsage = null)
     {
+        var sessionId = context?.RequestId.ToString() ?? "unknown";
+        var chunkInfo = content != null ? $"IsLast:{content.IsLastChunk}, SerialNum:{content.SerialNumber}" : "no-content";
+        
+        Logger.LogInformation($"[AIAgentStatusProxy][StreamCallback] Session {sessionId} - Chunk({chunkInfo}), HasTokenUsage:{tokenUsage != null}, TokenData:{(tokenUsage != null ? $"I:{tokenUsage.InputToken},O:{tokenUsage.OutputToken},C:{tokenUsage.CachedTokens}" : "null")}");
+        
         Logger.LogDebug(
-            $"[AIAgentStatusProxy][AIChatHandleStreamAsync] sessionId {context?.RequestId.ToString()}, chatId {context?.ChatId}, errorEnum {errorEnum}, errorMessage {errorMessage}: {JsonConvert.SerializeObject(content)}");
+            $"[AIAgentStatusProxy][AIChatHandleStreamAsync] sessionId {sessionId}, chatId {context?.ChatId}, errorEnum {errorEnum}, errorMessage {errorMessage}: {JsonConvert.SerializeObject(content)}");
         
         // Cache monitoring logs
         if (tokenUsage != null)
         {
             // 1. Print the entire TokenUsageStatistics object
-            Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] TokenUsageStatistics: {JsonConvert.SerializeObject(tokenUsage)}");
+            Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] Session {sessionId} - TokenUsageStatistics: {JsonConvert.SerializeObject(tokenUsage)}");
             
             // 2. Analyze and print cache hit rate
             if (tokenUsage.InputToken > 0)
@@ -132,11 +137,11 @@ public class AIAgentStatusProxy :
                     
                 if (tokenUsage.CachedTokens > 0)
                 {
-                    Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] ✅ Cache Hit! Input: {tokenUsage.InputToken}, Output: {tokenUsage.OutputToken}, Cached: {tokenUsage.CachedTokens}, Hit Rate: {cacheHitRate:F1}%");
+                    Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] Session {sessionId} - ✅ Cache Hit! Input: {tokenUsage.InputToken}, Output: {tokenUsage.OutputToken}, Cached: {tokenUsage.CachedTokens}, Hit Rate: {cacheHitRate:F1}%");
                 }
                 else
                 {
-                    Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] ❌ Cache Miss. Input: {tokenUsage.InputToken}, Output: {tokenUsage.OutputToken}");
+                    Logger.LogInformation($"[AIAgentStatusProxy][CacheMonitor] Session {sessionId} - ❌ Cache Miss. Input: {tokenUsage.InputToken}, Output: {tokenUsage.OutputToken}");
                 }
             }
         }
