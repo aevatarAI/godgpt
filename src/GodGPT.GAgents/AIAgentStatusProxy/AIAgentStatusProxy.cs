@@ -109,9 +109,10 @@ public class AIAgentStatusProxy :
         return await base.PromptWithStreamAsync(prompt, selectedHistory, promptSettings, context, imageKeys: imageKeys);
     }
 
-    protected async Task AIChatHandleStreamAsync(AIChatContextDto context, AIExceptionEnum errorEnum,
+    protected override async Task AIChatHandleStreamAsync(AIChatContextDto context, AIExceptionEnum errorEnum,
         string? errorMessage,
-        AIStreamChatContent? content)
+        AIStreamChatContent? content,
+        TokenUsageStatistics? tokenUsage = null)
     {
         Logger.LogDebug(
             $"[AIAgentStatusProxy][AIChatHandleStreamAsync] sessionId {context?.RequestId.ToString()}, chatId {context?.ChatId}, errorEnum {errorEnum}, errorMessage {errorMessage}: {JsonConvert.SerializeObject(content)}");
