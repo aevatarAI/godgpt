@@ -618,6 +618,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogWarning($"[GodChatGAgent][GodStreamChatAsync] Session {sessionId} not found, using current time as fallback");
         }
         var timePrompt = GetSessionTimePrompt(sessionCreateTime);
+        Logger.LogInformation($"[GodChatGAgent][GodStreamChatAsync] Session {sessionId} - CreateTime: {sessionCreateTime:yyyy-MM-dd HH:mm:ss} UTC, TimePrompt: {timePrompt}");
         
         var configuration = GetConfiguration();
         var sysMessage = await configuration.GetPrompt();
@@ -2074,6 +2075,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogWarning($"[GodChatGAgent][GodVoiceStreamChatAsync] Session {sessionId} not found, using current time as fallback");
         }
         var timePrompt = GetSessionTimePrompt(sessionCreateTime);
+        Logger.LogInformation($"[GodChatGAgent][GodVoiceStreamChatAsync] Session {sessionId} - CreateTime: {sessionCreateTime:yyyy-MM-dd HH:mm:ss} UTC, TimePrompt: {timePrompt}");
 
         // Step 1: Get configuration and system message (same as GodStreamChatAsync)
         var configuration = GetConfiguration();
