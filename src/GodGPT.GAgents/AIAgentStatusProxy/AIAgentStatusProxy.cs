@@ -111,8 +111,7 @@ public class AIAgentStatusProxy :
 
     protected override async Task AIChatHandleStreamAsync(AIChatContextDto context, AIExceptionEnum errorEnum,
         string? errorMessage,
-        AIStreamChatContent? content,
-        TokenUsageStatistics? tokenUsage = null)
+        AIStreamChatContent? content)
     {
         Logger.LogDebug(
             $"[AIAgentStatusProxy][AIChatHandleStreamAsync] sessionId {context?.RequestId.ToString()}, chatId {context?.ChatId}, errorEnum {errorEnum}, errorMessage {errorMessage}: {JsonConvert.SerializeObject(content)}");

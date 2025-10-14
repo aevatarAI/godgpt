@@ -865,13 +865,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             //     systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
             // }
             //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
-            var proxy = GrainFactory.GetGrain<GodAIAgentStatusProxy>(Guid.NewGuid());
-            await proxy.ConfigAsync(new GodAIAgentStatusProxyConfig
+            var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
+            await proxy.ConfigAsync(new AIAgentStatusProxyConfig
             {
                 Instructions = systemPrompt,
                 LLMConfig = new LLMConfigDto { SystemLLM = llm },
                 StreamingModeEnabled = true,
                 StreamingConfig = new StreamingConfig { BufferingSize = 32 },
+                RequestRecoveryDelay = RequestRecoveryDelay,
                 ParentId = this.GetPrimaryKey()
             });
             await PublishAsync(proxy.GetGrainId(),new AIAgentStatusProxyInitializeGEvent()
