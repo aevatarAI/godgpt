@@ -613,9 +613,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} Language from context: {language}");
                 var homeDosAndDontPromptMessage = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.HomeDosAndDontPrompt,language);
-                if (message == homeDosAndDontPromptMessage)
+                var chatPageMessageAfterSync = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.ChatPageMessageAfterSync,language);
+                if (message == homeDosAndDontPromptMessage || message == chatPageMessageAfterSync)
                 {
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language);
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added calendar prompt for text chat");
                 }
                 else
                 {

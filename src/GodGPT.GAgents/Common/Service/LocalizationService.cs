@@ -268,7 +268,13 @@ public class LocalizationService : ILocalizationService
                 ["en.home_dos_and_dont_prompt"] = "What’s my daily guide for today?",
                 ["zh-tw.home_dos_and_dont_prompt"] = "展示我的今日宜忌",
                 ["es.home_dos_and_dont_prompt"] = "展示我的今日宜忌",
-                ["zh.home_dos_and_dont_prompt"] = "¿Cuál es mi guía diaria de hoy?"
+                ["zh.home_dos_and_dont_prompt"] = "¿Cuál es mi guía diaria de hoy?",
+                
+                //ChatPageMessageAfterSync
+                ["en.chat_page_message_after_sync"] = "Google calendar is synced, what’s my daily guide for today?",
+                ["zh-tw.chat_page_message_after_sync"] = "谷歌日历已同步，请结合日历展示我的今日宜忌",
+                ["es.chat_page_message_after_sync"] = "谷歌日曆已同步，請結合日曆展示我的今日宜忌。",
+                ["zh.chat_page_message_after_sync"] = "El calendario de Google está sincronizado, ¿cuál es mi guía diaria para hoy?"
             },
             
             ["feedback_reasons"] = new Dictionary<string, string>
