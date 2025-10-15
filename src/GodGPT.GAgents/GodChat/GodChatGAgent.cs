@@ -630,11 +630,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} Language from context: {language}");
                 var homeDosAndDontPromptMessage = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.HomeDosAndDontPrompt,language);
                 var chatPageMessageAfterSync = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.ChatPageMessageAfterSync,language);
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} homeDosAndDontPromptMessage: {homeDosAndDontPromptMessage}");
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} message: {message}, {message == homeDosAndDontPromptMessage}");
                 if (message == homeDosAndDontPromptMessage || message == chatPageMessageAfterSync)
                 {
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language);
                     Logger.LogDebug(
                         $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added calendar prompt for text chat");
+                    Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                 }
                 else
                 {
