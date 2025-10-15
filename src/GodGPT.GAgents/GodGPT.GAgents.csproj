@@ -21,9 +21,10 @@
         <PackageReference Include="Microsoft.IdentityModel.Tokens" />
         <PackageReference Include="System.IdentityModel.Tokens.Jwt" />
         <PackageReference Include="Volo.Abp.AutoMapper" />
-        <PackageReference Include="Aevatar.GAgents.AIGAgent" />
-        <PackageReference Include="Aevatar.GAgents.AI.Abstractions" />
-        <PackageReference Include="Aevatar.GAgents.SemanticKernel" />
+        <!-- Changed to ProjectReference for local debugging -->
+        <ProjectReference Include="../../../aevatar-gagents/src/Aevatar.GAgents.AIGAgent/Aevatar.GAgents.AIGAgent.csproj" />
+        <ProjectReference Include="../../../aevatar-gagents/src/Aevatar.GAgents.AI.Abstractions/Aevatar.GAgents.AI.Abstractions.csproj" />
+        <ProjectReference Include="../../../aevatar-gagents/src/Aevatar.GAgents.SemanticKernel/Aevatar.GAgents.SemanticKernel.csproj" />
         <PackageReference Include="Aevatar.EventSourcing.Core" />
         <PackageReference Include="Stripe.net" />
         <PackageReference Include="Google.Apis.AndroidPublisher.v3" />
@@ -38,7 +39,8 @@
         <PackageReference Include="Microsoft.Extensions.Options" />
         <PackageReference Include="Volo.Abp.Core" />
         <PackageReference Include="Volo.Abp.EventBus.Abstractions" />
-        <PackageReference Include="Aevatar.GAgents.ChatAgent" />
+        <!-- Changed to ProjectReference for local debugging -->
+        <ProjectReference Include="../../../aevatar-gagents/src/Aevatar.GAgents.ChatAgent/Aevatar.GAgents.ChatAgent.csproj" />
         <PackageReference Include="Microsoft.Orleans.Sdk" />
         <PackageReference Include="Microsoft.Orleans.Reminders" />
         <PackageReference Include="Microsoft.Orleans.Streaming" />
