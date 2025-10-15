@@ -111,14 +111,10 @@ public class AIAgentStatusProxy :
 
     protected override async Task AIChatHandleStreamAsync(AIChatContextDto context, AIExceptionEnum errorEnum,
         string? errorMessage,
-        AIStreamChatContent? content,
-        TokenUsageStatistics? tokenUsage = null)
+        AIStreamChatContent? content)
     {
-        var sessionId = context?.RequestId.ToString() ?? "unknown";
-        
         Logger.LogDebug(
-            $"[AIAgentStatusProxy][AIChatHandleStreamAsync] sessionId {sessionId}, chatId {context?.ChatId}, errorEnum {errorEnum}, errorMessage {errorMessage}: {JsonConvert.SerializeObject(content)}");
-        
+            $"[AIAgentStatusProxy][AIChatHandleStreamAsync] sessionId {context?.RequestId.ToString()}, chatId {context?.ChatId}, errorEnum {errorEnum}, errorMessage {errorMessage}: {JsonConvert.SerializeObject(content)}");
         if (errorEnum == AIExceptionEnum.RequestLimitError)
         {
             RaiseEvent(new SetAvailableLogEvent
