@@ -2247,11 +2247,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     {
         var googleAuthGAgent = GrainFactory.GetGrain<IGoogleAuthGAgent>(State.ChatManagerGuid);
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
-        var isSubscribed = await userQuotaGAgent.IsSubscribedAsync(true) && await userQuotaGAgent.IsSubscribedAsync(false);
+        var isSubscribed = await userQuotaGAgent.IsSubscribedAsync(true) || await userQuotaGAgent.IsSubscribedAsync(false);
         // Get today's calendar events
         var googleCalendarListDto = await googleAuthGAgent.QueryCalendarEventsAsync(new GoogleCalendarQueryDto
         {
-            CalendarId = "primary",
             OrderBy = "startTime"
         });
         // Generate daily recommendations based on subscription status and calendar events
@@ -2277,6 +2276,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             var notBound = !calendarEvents.Success && calendarEvents.Error == "Google account not bound";
             var hasEvents = calendarEvents?.Success == true && !calendarEvents.Events.IsNullOrEmpty();
             var formattedEvents = hasEvents ? FormatCalendarEvents(calendarEvents!.Events) : new List<string>();
+            
+            Logger.LogDebug($"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey().ToString()} isSubscribed: {isSubscribed}, notBound: {notBound}, hasEvents: {hasEvents}");
             
             // Generate recommendations based on scenarios
             if (isSubscribed && hasEvents)
