@@ -51,3 +51,9 @@ public class UpdateUserInfoCollectionLogEvent : UserInfoCollectionLogEvent
 public class ClearUserInfoCollectionLogEvent : UserInfoCollectionLogEvent
 {
 }
+
+[GenerateSerializer]
+public class UpdateFixStateLogEvent : UserInfoCollectionLogEvent
+{
+    [Id(0)] public int FixState { get; set; }
+}
