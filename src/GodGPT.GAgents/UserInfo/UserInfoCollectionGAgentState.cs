@@ -39,4 +39,5 @@ public class UserInfoCollectionGAgentState : StateBase
     
     // Source channels codes (Step 7) - Enum values for statistics
     [Id(17)] public List<int> SourceChannelsCode { get; set; } = new List<int>();
+    [Id(18)] public int FixState { get; set; } = 0;
 }

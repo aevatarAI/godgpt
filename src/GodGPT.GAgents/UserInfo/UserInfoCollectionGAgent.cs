@@ -560,6 +560,23 @@ User Language: {languageText}";
                 state.SourceChannelsCode = new List<int>();
                 _logger.LogDebug("[UserInfoCollectionGAgent][GAgentTransitionState] Cleared all user info collection data");
                 break;
+            case UpdateFixStateLogEvent updateFixState:
+                state.FixState = updateFixState.FixState;
+                break;
+        }
+    }
+    
+    // Check and initialize first access status if needed
+    protected override async Task OnGAgentActivateAsync(CancellationToken cancellationToken)
+    {
+        // Check and initialize first access status if needed
+        if (State.FixState == 0)
+        {
+            _logger.LogDebug("[UserInfoCollectionGAgent][GAgentTransitionState] Modify data sync status {0}", this.GetPrimaryKey().ToString());
+            RaiseEvent(new UpdateFixStateLogEvent
+            {
+                FixState = 1
+            });
         }
     }
 }
