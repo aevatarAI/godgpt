@@ -642,11 +642,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} Language from context: {language}");
                 var homeDosAndDontPromptMessage = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.HomeDosAndDontPrompt,language);
                 var chatPageMessageAfterSync = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.ChatPageMessageAfterSync,language);
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} homeDosAndDontPromptMessage: {homeDosAndDontPromptMessage}");
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} message: {message}, {message == homeDosAndDontPromptMessage}");
                 if (message.StartsWith(homeDosAndDontPromptMessage) || message.StartsWith(chatPageMessageAfterSync))
                 {
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
-                    Logger.LogDebug(
-                        $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added calendar prompt for text chat");
+                    Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                 }
                 else
                 {
@@ -1189,13 +1190,15 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
             await ConfirmEvents();
 
-            var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
-            var inviterId = await chatManagerGAgent.GetInviterAsync();
-
-            if (inviterId != null && inviterId != Guid.Empty)
+            if (State.ChatManagerGuid != Guid.Empty)
             {
-                var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
-                await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
+                var inviterId = await chatManagerGAgent.GetInviterAsync();
+                if (inviterId != null && inviterId != Guid.Empty)
+                {
+                    var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
+                    await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                }
             }
 
             // Store suggestions and clean content for later use in partialMessage
