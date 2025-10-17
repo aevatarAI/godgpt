@@ -649,7 +649,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 var chatPageMessageAfterSync = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.ChatPageMessageAfterSync,language);
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} homeDosAndDontPromptMessage: {homeDosAndDontPromptMessage}");
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} message: {message}, {message == homeDosAndDontPromptMessage}");
-                if (message == homeDosAndDontPromptMessage || message == chatPageMessageAfterSync)
+                if (message.StartsWith(homeDosAndDontPromptMessage) || message.StartsWith(chatPageMessageAfterSync))
                 {
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
                     Logger.LogDebug(
