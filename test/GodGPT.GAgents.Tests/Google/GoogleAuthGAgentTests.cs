@@ -62,7 +62,7 @@ public class GoogleAuthGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTestsMo
             // First authenticate with real auth code
             await googleAuthGAgent.VerifyAuthCodeAsync(
                 "web", 
-                "4/0AVGzR1AElBwh596LHWTM7ZyCb1GCGri_AEcOnvvIzutVgUMYALrR2iCBD9sOejXFwgk1jw", 
+                "4/0AVGzR1ClE7TFOJ203QJ62wYjTTgxLu5CSNTmEZ27KXWpBDtHEs3vu2storiLWKPbHSCeoA", 
                 "https://feiniao.uk", string.Empty
             );
 

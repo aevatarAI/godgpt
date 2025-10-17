@@ -2420,7 +2420,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
                 continue;
             }
             var eventSummary = eventItem.Summary;
-            var eventTime = "Unknown time";
+            var eventTime = string.Empty;
             
             if (eventItem.StartTime?.DateTime.HasValue == true)
             {
@@ -2428,7 +2428,14 @@ xxxxx (A brief one-sentence summary, under 20 words)";
                 eventTime = startTime.ToString("HH:mm");
             }
             
-            prompt += $@"{eventSummary} @ {eventTime}";
+            if (eventTime.IsNullOrWhiteSpace())
+            {
+                prompt += $@"{eventSummary}\\n";
+            }
+            else
+            {
+                prompt += $@"{eventSummary} @ {eventTime}\\n";
+            }
         }
 
         
