@@ -11,12 +11,14 @@ public class GoogleCalendarQueryDto
     /// <summary>
     /// Start time for calendar events query (optional, defaults to now)
     /// </summary>
-    [Id(0)] public DateTime? StartTime { get; set; }
+    [Id(0)]
+    public string StartTime { get; set; } = string.Empty;
 
     /// <summary>
     /// End time for calendar events query (optional, defaults to StartTime + configured range)
     /// </summary>
-    [Id(1)] public DateTime? EndTime { get; set; }
+    [Id(1)]
+    public string EndTime { get; set; } = string.Empty;
 
     /// <summary>
     /// Maximum number of events to return (optional, uses configured default)

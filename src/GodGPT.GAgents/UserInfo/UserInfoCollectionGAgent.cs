@@ -39,7 +39,7 @@ public interface IUserInfoCollectionGAgent : IGAgent
     /// <summary>
     /// Generate user info prompt template with user data
     /// </summary>
-    Task<string> GenerateUserInfoPromptAsync();
+    Task<Tuple<string, string>> GenerateUserInfoPromptAsync(DateTime? userLocalTime = null);
 }
 
 [GAgent(nameof(UserInfoCollectionGAgent))]
@@ -329,18 +329,18 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         };
     }
 
-    public async Task<string> GenerateUserInfoPromptAsync()
+    public async Task<Tuple<string, string>> GenerateUserInfoPromptAsync(DateTime? userLocalTime = null)
     {
         _logger.LogInformation("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generating user info prompt");
         
         if (!State.IsInitialized)
         {
             _logger.LogWarning("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] User info collection not initialized");
-            return string.Empty;
+            return new Tuple<string, string>(string.Empty, string.Empty);
         }
 
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
-        var currentTime = DateTime.UtcNow;
+        var currentTime = userLocalTime ?? DateTime.UtcNow;
         
         // Generate full name
         var fullName = $"{State.FirstName} {State.LastName}".Trim();
@@ -396,19 +396,20 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         };
         
         // Format current time
-        var timeText = currentTime.ToString("yyyy-MM-dd HH:mm:ss UTC");
+        var timeText = currentTime.ToString("yyyy-MM-dd HH:mm:ss");
         
         // Generate the prompt template
-        var prompt = $@"User Name: {fullName}
+        var prompt = $@"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.
+User Name: {fullName}
 User Location: {location}
-Message Time: {timeText}
+User Message Time: {timeText}
 User Gender: {genderText}
 User Age: {age}
 User Language: {languageText}";
 
         _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generated prompt for user {UserId}", State.UserId);
         
-        return prompt;
+        return new Tuple<string, string>(fullName, prompt);
     }
 
     /// <summary>

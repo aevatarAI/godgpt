@@ -32,7 +32,7 @@ public class GoogleAuthGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTestsMo
             authCode = WebUtility.UrlDecode(authCode);
             var redirectUri = "https://feiniao.uk";
 
-            var result = await googleAuthGAgent.VerifyAuthCodeAsync(platform, authCode, redirectUri);
+            var result = await googleAuthGAgent.VerifyAuthCodeAsync(platform, authCode, redirectUri, string.Empty);
 
             result.ShouldNotBeNull();
             result.Success.ShouldBeTrue();
@@ -62,16 +62,28 @@ public class GoogleAuthGAgentTests : AevatarOrleansTestBase<AevatarGodGPTTestsMo
             // First authenticate with real auth code
             await googleAuthGAgent.VerifyAuthCodeAsync(
                 "web", 
-                "4/0AVGzR1BKq0vUCFNyk2zaio_hTQ_d_IBLWJQO5LHMtR7J1ak5Jktq5wwKV_LDHr1iWrRL1g", 
-                "https://feiniao.uk"
+                "4/0AVGzR1AElBwh596LHWTM7ZyCb1GCGri_AEcOnvvIzutVgUMYALrR2iCBD9sOejXFwgk1jw", 
+                "https://feiniao.uk", string.Empty
             );
 
+            string userTimeZoneId = TimeZoneInfo.Utc.Id; //"Asia/Shanghai";
+            var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(userTimeZoneId);
+            
+            var queryTime = DateTime.UtcNow;
+            var dayStart = queryTime.Date.AddDays(-30);
+            var dayStartOffset = new DateTimeOffset(dayStart, userTimeZone.GetUtcOffset(dayStart));
+            var timeMinRfc3339 = dayStartOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
+
+            var dayEnd = queryTime.Date.AddDays(1);
+            var dayEndOffset = new DateTimeOffset(dayEnd, userTimeZone.GetUtcOffset(dayEnd));
+            var timeMaxRfc3339 = dayEndOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
+            
             //// Query without specifying EventTypes (should return all events including tasks and appointments)
             {
                 var query = new GoogleCalendarQueryDto
                 {
-                    StartTime = DateTime.UtcNow.AddDays(-1),
-                    EndTime = DateTime.UtcNow.AddDays(7),
+                    StartTime = timeMinRfc3339,
+                    EndTime = timeMaxRfc3339,
                     MaxResults = 200,
                     SingleEvents = true,
                     OrderBy = "startTime"

@@ -852,7 +852,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var result = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -897,7 +897,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var result = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -930,7 +930,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var result = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -953,7 +953,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         // Don't update any data - agent remains uninitialized
 
         // Act
-        var result = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -995,7 +995,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var result = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -1039,7 +1039,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var result = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
 
         // Assert
         result.ShouldNotBeNull();
@@ -1072,7 +1072,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var result = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
 
         // Assert
         result.ShouldNotBeNull();
