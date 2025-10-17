@@ -2287,7 +2287,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var dayStartOffset = new DateTimeOffset(dayStart, userTimeZone.GetUtcOffset(dayStart));
         var timeMinRfc3339 = dayStartOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
 
-        var dayEnd = queryTime.Date.AddDays(1);
+        var dayEnd = queryTime.Date.AddDays(1).AddSeconds(-1);
         var dayEndOffset = new DateTimeOffset(dayEnd, userTimeZone.GetUtcOffset(dayEnd));
         var timeMaxRfc3339 = dayEndOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
         var googleCalendarListDto = await googleAuthGAgent.QueryCalendarEventsAsync(new GoogleCalendarQueryDto
