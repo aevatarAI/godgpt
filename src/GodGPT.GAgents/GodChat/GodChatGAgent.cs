@@ -2296,7 +2296,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var dayStartOffset = new DateTimeOffset(dayStart, userTimeZone.GetUtcOffset(dayStart));
         var timeMinRfc3339 = dayStartOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
 
-        var dayEnd = queryTime.Date.AddDays(1);
+        var dayEnd = queryTime.Date.AddDays(1).AddSeconds(-1);
         var dayEndOffset = new DateTimeOffset(dayEnd, userTimeZone.GetUtcOffset(dayEnd));
         var timeMaxRfc3339 = dayEndOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
         var googleCalendarListDto = await googleAuthGAgent.QueryCalendarEventsAsync(new GoogleCalendarQueryDto
@@ -2430,7 +2430,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
                 continue;
             }
             var eventSummary = eventItem.Summary;
-            var eventTime = "Unknown time";
+            var eventTime = string.Empty;
             
             if (eventItem.StartTime?.DateTime.HasValue == true)
             {
@@ -2438,7 +2438,14 @@ xxxxx (A brief one-sentence summary, under 20 words)";
                 eventTime = startTime.ToString("HH:mm");
             }
             
-            prompt += $@"{eventSummary} @ {eventTime}";
+            if (eventTime.IsNullOrWhiteSpace())
+            {
+                prompt += $@"{eventSummary}\\n";
+            }
+            else
+            {
+                prompt += $@"{eventSummary} @ {eventTime}\\n";
+            }
         }
 
         
