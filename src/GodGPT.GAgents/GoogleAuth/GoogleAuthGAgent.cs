@@ -1225,6 +1225,9 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
                 }
             }
 
+            _logger.LogDebug("[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] {UserId} Google response: {EventCount}", 
+                this.GetPrimaryKey(), JsonConvert.SerializeObject(allEvents));
+            
             // Sort all events by start time
             allEvents = allEvents
                 .OrderBy(e => e.StartTime?.DateTime ?? DateTime.MinValue)
@@ -1232,6 +1235,8 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
 
             _logger.LogInformation("[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] Successfully retrieved {EventCount} events from {SuccessCount} calendars, {FailedCount} calendars failed", 
                 allEvents.Count, queriedCalendarIds.Count, failedCalendarIds.Count);
+            _logger.LogDebug("[GoogleAuthGAgent][QueryAllCalendarsEventsAsync] {UserId} Order By : {EventCount}", 
+                this.GetPrimaryKey(), JsonConvert.SerializeObject(allEvents));
 
             return new GoogleCalendarListDto
             {

@@ -2306,6 +2306,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             OrderBy = "startTime"
         });
         // Generate daily recommendations based on subscription status and calendar events
+        Logger.LogDebug($"[GoogleAuthGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey().ToString()} Google response: {JsonConvert.SerializeObject(googleCalendarListDto)}");
         return GenerateDailyRecommendationsAsync(prompt, isSubscribed, googleCalendarListDto, language.ToString());
     }
 
