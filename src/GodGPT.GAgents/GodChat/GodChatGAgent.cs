@@ -254,7 +254,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var configuration = GetConfiguration();
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
-            content, chatId, promptSettings, isHttpRequest, region, images: images);
+            content, chatId, promptSettings, isHttpRequest, region, images: images, 
+            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId);
         
         totalStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
@@ -2290,6 +2291,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var dayEnd = queryTime.Date.AddDays(1).AddSeconds(-1);
         var dayEndOffset = new DateTimeOffset(dayEnd, userTimeZone.GetUtcOffset(dayEnd));
         var timeMaxRfc3339 = dayEndOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
+        Logger.LogDebug($"[GodChatGAgent][GenerateDailyRecommendationsAsync]Final timeMin: {timeMinRfc3339}, timeMax: {timeMaxRfc3339}, TimeZone: {userTimeZone.Id}");
         var googleCalendarListDto = await googleAuthGAgent.QueryCalendarEventsAsync(new GoogleCalendarQueryDto
         {
             StartTime = timeMinRfc3339,
