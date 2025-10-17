@@ -849,7 +849,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             var isDailyGuide = systemPrompt == DailyGuide;
             if (isDailyGuide)
             {
-                systemPrompt = string.Empty;
+                systemPrompt = @"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.";
             }
             else
             {
