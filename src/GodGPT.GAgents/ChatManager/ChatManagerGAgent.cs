@@ -331,7 +331,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
 
     public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null,
-        string? guider = null)
+        string? guider = null, DateTime? userLocalTime = null)
     {
         Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Start - UserId: {this.GetPrimaryKey()}");
 
@@ -352,8 +352,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         {
             if (guider == SessionGuiderConstants.DailyGuide)
             {
-                var userInfoCollectionGAgent = GrainFactory.GetGrain<IUserInfoCollectionGAgent>(this.GetPrimaryKey());
-                sysMessage = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+                sysMessage = $"###{SessionGuiderConstants.DailyGuide}###";
             }
             else
             {

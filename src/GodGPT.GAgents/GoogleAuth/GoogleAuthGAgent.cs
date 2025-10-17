@@ -858,12 +858,26 @@ public class GoogleAuthGAgent : GAgentBase<GoogleAuthState, GoogleAuthLogEvent, 
     {
         var parameters = new List<string>();
 
-        // Time range parameters
-        var startTime = query.StartTime ?? DateTime.UtcNow;
-        var endTime = query.EndTime ?? startTime.AddDays(_authOptions.CurrentValue.DefaultCalendarQueryRangeDays);
-        
-        parameters.Add($"timeMin={startTime:yyyy-MM-ddTHH:mm:ssZ}");
-        parameters.Add($"timeMax={endTime:yyyy-MM-ddTHH:mm:ssZ}");
+        if (query.StartTime.IsNullOrWhiteSpace())
+        {
+            var startTime = DateTime.UtcNow;
+            parameters.Add($"timeMin={startTime:yyyy-MM-ddTHH:mm:ssZ}");
+            
+        }
+        else
+        {
+            parameters.Add($"timeMin={Uri.EscapeDataString(query.StartTime)}");
+        }
+
+        if (query.EndTime.IsNullOrWhiteSpace())
+        {
+            var endTime = DateTime.UtcNow.AddDays(_authOptions.CurrentValue.DefaultCalendarQueryRangeDays);
+            parameters.Add($"timeMax={endTime:yyyy-MM-ddTHH:mm:ssZ}");
+        }
+        else
+        {
+            parameters.Add($"timeMax={Uri.EscapeDataString(query.EndTime)}");
+        }
 
         // Max results with validation
         var effectiveMaxResults = Math.Min(Math.Max(1, query.MaxResults), _authOptions.CurrentValue.MaxCalendarResultsLimit);

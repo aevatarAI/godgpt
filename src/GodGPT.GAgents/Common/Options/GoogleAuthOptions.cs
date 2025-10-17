@@ -51,7 +51,7 @@ public class GoogleAuthOptions
     /// <summary>
     /// Default calendar query time range in days (from now)
     /// </summary>
-    [Id(8)] public int DefaultCalendarQueryRangeDays { get; set; } = 30;
+    [Id(8)] public int DefaultCalendarQueryRangeDays { get; set; } = 1;
 
     /// <summary>
     /// Maximum allowed tasks per request (hard limit)
