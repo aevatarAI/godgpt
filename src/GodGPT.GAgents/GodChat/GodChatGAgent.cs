@@ -2303,7 +2303,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         // Generate daily recommendations based on subscription status and calendar events
         var languageEnglishName = GodGPTLanguageHelper.GetLanguageEnglishName(language);
-        prompt = $"Use  {languageEnglishName} to respond\n {prompt}";
+        prompt = $"Use  {languageEnglishName} to respond including titles like DO, DON'T \n {prompt}";
         return GenerateDailyRecommendationsAsync(prompt, isSubscribed, googleCalendarListDto, languageEnglishName);
     }
 
@@ -2434,7 +2434,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
             
             if (eventTime.IsNullOrWhiteSpace())
             {
-                prompt += $@"{eventSummary}\\n";
+                //prompt += $@"{eventSummary}\\n";
             }
             else
             {
@@ -2486,7 +2486,7 @@ Would you like me to create detailed guidance for you?";
 
             if (eventTime.IsNullOrWhiteSpace())
             {
-                prompt += $@"{eventSummary}\\n";
+                //prompt += $@"{eventSummary}\\n";
             }
             else
             {
@@ -2504,8 +2504,7 @@ DON'T
 - Xxxxx
 
 Event1 @ time
-Overview
-Event Overview
+xxxxxxx(Event Overview)
 DO
 - Xxxx
 - xxxxx
@@ -2514,8 +2513,7 @@ DON'T
 - Xxxxx
 
 Event2 @ time
-Overview
-Event Overview
+xxxxxxx(Event Overview)
 DO
 - Xxxx
 - xxxxx
