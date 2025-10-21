@@ -1,5 +1,6 @@
 using Aevatar.Application.Grains.Fortune.Dtos;
 using Aevatar.Core.Abstractions;
+using Orleans;
 
 namespace Aevatar.Application.Grains.Fortune.SEvents;
 
@@ -103,6 +104,29 @@ public class FeedbackUpdatedEvent : FortuneFeedbackEventLog
     [Id(4)] public string? Email { get; set; }
     [Id(5)] public bool AgreeToContact { get; set; }
     [Id(6)] public DateTime UpdatedAt { get; set; }
+}
+
+#endregion
+
+#region Stats Snapshot Events
+
+/// <summary>
+/// Base event log for Fortune Stats Snapshot GAgent
+/// </summary>
+[GenerateSerializer]
+public abstract class FortuneStatsSnapshotEventLog : StateLogEventBase<FortuneStatsSnapshotEventLog>
+{
+}
+
+/// <summary>
+/// Stats snapshot event
+/// </summary>
+[GenerateSerializer]
+public class StatsSnapshotEvent : FortuneStatsSnapshotEventLog
+{
+    [Id(0)] public Dictionary<string, MethodStats> GlobalStats { get; set; } = new();
+    [Id(1)] public Dictionary<string, Dictionary<string, MethodStats>> UserStats { get; set; } = new();
+    [Id(2)] public DateTime SnapshotAt { get; set; }
 }
 
 #endregion
