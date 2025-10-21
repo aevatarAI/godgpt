@@ -82,7 +82,7 @@ public class FeedbackSubmittedEvent : FortuneFeedbackEventLog
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public Guid PredictionId { get; set; }
     [Id(3)] public int Rating { get; set; }
-    [Id(4)] public List<FeedbackTypeEnum> FeedbackTypes { get; set; } = new();
+    [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(5)] public string? Comment { get; set; }
     [Id(6)] public string? Email { get; set; }
     [Id(7)] public bool AgreeToContact { get; set; }
@@ -96,7 +96,7 @@ public class FeedbackSubmittedEvent : FortuneFeedbackEventLog
 public class FeedbackUpdatedEvent : FortuneFeedbackEventLog
 {
     [Id(0)] public int Rating { get; set; }
-    [Id(1)] public List<FeedbackTypeEnum> FeedbackTypes { get; set; } = new();
+    [Id(1)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(2)] public string? Comment { get; set; }
     [Id(3)] public string? Email { get; set; }
     [Id(4)] public bool AgreeToContact { get; set; }
