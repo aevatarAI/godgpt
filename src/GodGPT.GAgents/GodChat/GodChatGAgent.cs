@@ -649,12 +649,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
                     Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                 }
-                else
-                {
-                    enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
-                    Logger.LogDebug(
-                        $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
-                }
+                
+                enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
+                Logger.LogDebug(
+                    $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
             }
 
             var settings = promptSettings ?? new ExecutionPromptSettings();
