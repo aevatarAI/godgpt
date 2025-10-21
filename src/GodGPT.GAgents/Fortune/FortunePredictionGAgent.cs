@@ -134,7 +134,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             // - No session/history management overhead
             // TODO: Create FortuneAIService for direct API calls when time permits
             
-            var godChat = _clusterClient.GetGrain<IGodChat>(Guid.Parse(userInfo.UserId));
+            var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
+            var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
             var chatId = Guid.NewGuid().ToString();
 
             var settings = new ExecutionPromptSettings
@@ -146,7 +147,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             // This allows Fortune to use cost-optimized models (e.g., GPT-4o-mini)
             // separate from the main chat experience
             var response = await godChat.ChatWithoutHistoryAsync(
-                Guid.Parse(userInfo.UserId), 
+                userGuid, 
                 string.Empty, 
                 prompt, 
                 chatId, 
