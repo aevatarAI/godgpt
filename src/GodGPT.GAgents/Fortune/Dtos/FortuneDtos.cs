@@ -199,7 +199,7 @@ public class PredictionSummaryDto
     [Id(3)] public string? ForecastSummary { get; set; } // Brief summary from forecast
     [Id(4)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new(); // Full prediction results
     [Id(5)] public bool HasFeedback { get; set; }
-    [Id(6)] public PredictionFeedbackSummary? Feedback { get; set; }
+    [Id(6)] public List<PredictionFeedbackSummary> Feedbacks { get; set; } = new(); // Multiple feedbacks for different methods
     [Id(7)] public DateTime CreatedAt { get; set; }
 }
 
@@ -209,10 +209,11 @@ public class PredictionSummaryDto
 [GenerateSerializer]
 public class PredictionFeedbackSummary
 {
-    [Id(0)] public int Rating { get; set; } // 1-5 emoji rating
-    [Id(1)] public List<string> FeedbackTypes { get; set; } = new();
-    [Id(2)] public string? Comment { get; set; }
-    [Id(3)] public DateTime CreatedAt { get; set; }
+    [Id(0)] public string? PredictionMethod { get; set; } // Which prediction method this feedback is for
+    [Id(1)] public int Rating { get; set; } // 1-5 emoji rating
+    [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
+    [Id(3)] public string? Comment { get; set; }
+    [Id(4)] public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>
@@ -238,11 +239,12 @@ public class SubmitFeedbackRequest
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
-    [Id(2)] public int Rating { get; set; } // 1-5 (emoji rating)
-    [Id(3)] public List<string> FeedbackTypes { get; set; } = new();
-    [Id(4)] public string? Comment { get; set; }
-    [Id(5)] public string? Email { get; set; }
-    [Id(6)] public bool AgreeToContact { get; set; }
+    [Id(2)] public string? PredictionMethod { get; set; } // e.g., "horoscope", "bazi", null for overall
+    [Id(3)] public int Rating { get; set; } // 1-5 (emoji rating)
+    [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
+    [Id(5)] public string? Comment { get; set; }
+    [Id(6)] public string? Email { get; set; }
+    [Id(7)] public bool AgreeToContact { get; set; }
 }
 
 /// <summary>
@@ -265,13 +267,14 @@ public class FeedbackDto
     [Id(0)] public string FeedbackId { get; set; } = string.Empty;
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public Guid PredictionId { get; set; }
-    [Id(3)] public int Rating { get; set; } // 1-5 (emoji rating)
-    [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
-    [Id(5)] public string? Comment { get; set; }
-    [Id(6)] public string? Email { get; set; }
-    [Id(7)] public bool AgreeToContact { get; set; }
-    [Id(8)] public DateTime CreatedAt { get; set; }
-    [Id(9)] public DateTime UpdatedAt { get; set; }
+    [Id(3)] public string? PredictionMethod { get; set; } // e.g., "horoscope", "bazi", null for overall
+    [Id(4)] public int Rating { get; set; } // 1-5 (emoji rating)
+    [Id(5)] public List<string> FeedbackTypes { get; set; } = new();
+    [Id(6)] public string? Comment { get; set; }
+    [Id(7)] public string? Email { get; set; }
+    [Id(8)] public bool AgreeToContact { get; set; }
+    [Id(9)] public DateTime CreatedAt { get; set; }
+    [Id(10)] public DateTime UpdatedAt { get; set; }
 }
 
 #endregion

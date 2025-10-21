@@ -47,6 +47,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 state.FeedbackId = submittedEvent.FeedbackId;
                 state.UserId = submittedEvent.UserId;
                 state.PredictionId = submittedEvent.PredictionId;
+                state.PredictionMethod = submittedEvent.PredictionMethod;
                 state.Rating = submittedEvent.Rating;
                 state.FeedbackTypes = submittedEvent.FeedbackTypes;
                 state.Comment = submittedEvent.Comment;
@@ -57,6 +58,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 break;
 
             case FeedbackUpdatedEvent updatedEvent:
+                state.PredictionMethod = updatedEvent.PredictionMethod;
                 state.Rating = updatedEvent.Rating;
                 state.FeedbackTypes = updatedEvent.FeedbackTypes;
                 state.Comment = updatedEvent.Comment;
@@ -95,6 +97,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 // Raise update event
                 RaiseEvent(new FeedbackUpdatedEvent
                 {
+                    PredictionMethod = request.PredictionMethod,
                     Rating = request.Rating,
                     FeedbackTypes = request.FeedbackTypes,
                     Comment = request.Comment,
@@ -125,6 +128,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 FeedbackId = feedbackId,
                 UserId = request.UserId,
                 PredictionId = request.PredictionId,
+                PredictionMethod = request.PredictionMethod,
                 Rating = request.Rating,
                 FeedbackTypes = request.FeedbackTypes,
                 Comment = request.Comment,
@@ -167,6 +171,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 FeedbackId = State.FeedbackId,
                 UserId = State.UserId,
                 PredictionId = State.PredictionId,
+                PredictionMethod = State.PredictionMethod,
                 Rating = State.Rating,
                 FeedbackTypes = State.FeedbackTypes,
                 Comment = State.Comment,
