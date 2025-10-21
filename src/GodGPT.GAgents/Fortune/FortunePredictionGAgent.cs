@@ -242,34 +242,35 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
 
 User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, MBTI: {mbtiName}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
 
-Analyze using 11 methods: zodiac, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayan, humanDesign, mbti, tarot.
+Analyze using 12 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, mbti, tarot, zhengYu.
 
 Return JSON:
 {{
-  ""overallEnergy"": <0-100>,
-  ""overallSummary"": ""<≤10 words>"",
+  ""energy"": <0-100>,
   ""results"": {{
-    ""zodiac"": {{""summary"": ""..."", ""description"": ""..."", ""love"": ""★★★☆☆"", ""career"": ""..."", ""health"": ""..."", ""finance"": ""...""}},
+    ""forecast"": {{""summary"": ""<≤10 words overall prediction>"", ""description"": ""<≤100 words comprehensive fortune overview>""}},
+    ""horoscope"": {{""summary"": ""..."", ""description"": ""..."", ""love"": ""★★★☆☆"", ""career"": ""..."", ""health"": ""..."", ""finance"": ""...""}},
     ""bazi"": {{""summary"": ""..."", ""description"": ""..."", ""suitable"": ""..."", ""avoid"": ""..."", ""direction"": ""..."", ""luckyNumber"": ""...""}},
     ""ziwei"": {{""summary"": ""..."", ""description"": ""..."", ""palace"": ""..."", ""element"": ""...""}},
     ""constellation"": {{""summary"": ""..."", ""description"": ""..."", ""mansion"": ""..."", ""influence"": ""...""}},
     ""numerology"": {{""summary"": ""..."", ""description"": ""..."", ""personalDay"": ""..."", ""lifePath"": ""..."", ""luckyNumber"": ""...""}},
     ""synastry"": {{""summary"": ""..."", ""description"": ""..."", ""compatibility"": ""..."", ""suggestion"": ""...""}},
     ""chineseZodiac"": {{""summary"": ""..."", ""description"": ""..."", ""zodiac"": ""..."", ""conflict"": ""..."", ""harmony"": ""...""}},
-    ""mayan"": {{""summary"": ""..."", ""description"": ""..."", ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
-    ""humanDesign"": {{""summary"": ""..."", ""description"": ""..."", ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
+    ""mayanTotem"": {{""summary"": ""..."", ""description"": ""..."", ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
+    ""humanFigure"": {{""summary"": ""..."", ""description"": ""..."", ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
     ""mbti"": {{""summary"": ""..."", ""description"": ""..."", ""mood"": ""..."", ""social"": ""..."", ""suggestion"": ""...""}},
-    ""tarot"": {{""summary"": ""..."", ""description"": ""..."", ""card1"": ""..."", ""card2"": ""..."", ""card3"": ""..."", ""interpretation"": ""...""}}
+    ""tarot"": {{""summary"": ""..."", ""description"": ""..."", ""card1"": ""..."", ""card2"": ""..."", ""card3"": ""..."", ""interpretation"": ""...""}},
+    ""zhengYu"": {{""summary"": ""..."", ""description"": ""..."", ""element"": ""..."", ""balance"": ""..."", ""guidance"": ""...""}}
   }}
 }}
 
-Rules: All summary ≤10 words, description ≤100 words. JSON only, no extra text.";
+Rules: All summary ≤10 words, description ≤100 words. forecast is the comprehensive overall prediction. JSON only, no extra text.";
 
         return prompt;
     }
 
     /// <summary>
-    /// Parse AI JSON response (new structure with overallEnergy and results)
+    /// Parse AI JSON response (structure with energy at top level and forecast in results)
     /// </summary>
     private (Dictionary<string, Dictionary<string, string>>?, int) ParseAIResponse(string aiResponse)
     {
@@ -289,29 +290,40 @@ Rules: All summary ≤10 words, description ≤100 words. JSON only, no extra te
                     return (null, 70);
                 }
 
-                // Extract overallEnergy
-                var overallEnergy = 70; // Default value
-                if (fullResponse.ContainsKey("overallEnergy"))
+                // Extract energy (supporting both "energy" and "overallEnergy" for backward compatibility)
+                var energy = 70; // Default value
+                if (fullResponse.ContainsKey("energy"))
+                {
+                    if (fullResponse["energy"] is long energyLong)
+                    {
+                        energy = (int)energyLong;
+                    }
+                    else if (fullResponse["energy"] is int energyInt)
+                    {
+                        energy = energyInt;
+                    }
+                }
+                else if (fullResponse.ContainsKey("overallEnergy"))
                 {
                     if (fullResponse["overallEnergy"] is long energyLong)
                     {
-                        overallEnergy = (int)energyLong;
+                        energy = (int)energyLong;
                     }
                     else if (fullResponse["overallEnergy"] is int energyInt)
                     {
-                        overallEnergy = energyInt;
+                        energy = energyInt;
                     }
                 }
 
-                // Extract results
+                // Extract results (should include forecast as first item)
                 if (fullResponse.ContainsKey("results") && fullResponse["results"] != null)
                 {
                     var resultsJson = JsonConvert.SerializeObject(fullResponse["results"]);
                     var results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(resultsJson);
-                    return (results, overallEnergy);
+                    return (results, energy);
                 }
 
-                return (null, overallEnergy);
+                return (null, energy);
             }
 
             return (null, 70);
