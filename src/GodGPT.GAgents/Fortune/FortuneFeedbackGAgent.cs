@@ -108,31 +108,16 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
 
             var now = DateTime.UtcNow;
 
-            // Check if feedback already exists (update scenario)
+            // Check if feedback already exists - do not allow duplicate submission
             if (!string.IsNullOrEmpty(State.FeedbackId))
             {
-                _logger.LogInformation("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Updating existing feedback: {FeedbackId}",
-                    State.FeedbackId);
-
-                // Raise update event
-                RaiseEvent(new FeedbackUpdatedEvent
-                {
-                    PredictionMethod = request.PredictionMethod,
-                    Rating = request.Rating,
-                    FeedbackTypes = request.FeedbackTypes,
-                    Comment = request.Comment,
-                    Email = request.Email,
-                    AgreeToContact = request.AgreeToContact,
-                    UpdatedAt = now
-                });
-
-                await ConfirmEvents();
+                _logger.LogWarning("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Feedback already exists: {FeedbackId}, PredictionId: {PredictionId}, Method: {Method}",
+                    State.FeedbackId, request.PredictionId, request.PredictionMethod ?? "overall");
 
                 return new SubmitFeedbackResult
                 {
-                    Success = true,
-                    Message = string.Empty,
-                    FeedbackId = State.FeedbackId
+                    Success = false,
+                    Message = $"Feedback already submitted for this prediction{(string.IsNullOrEmpty(request.PredictionMethod) ? "" : $" ({request.PredictionMethod})")}"
                 };
             }
 
