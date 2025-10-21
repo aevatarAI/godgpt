@@ -188,6 +188,28 @@ public class GetTodayPredictionResult
 }
 
 /// <summary>
+/// Prediction method result with feedback
+/// </summary>
+[GenerateSerializer]
+public class PredictionMethodResult
+{
+    [Id(0)] public Dictionary<string, string> Content { get; set; } = new(); // Prediction content (summary, description, detail, etc.)
+    [Id(1)] public PredictionFeedbackSummary? Feedback { get; set; } // Associated feedback if exists
+}
+
+/// <summary>
+/// Feedback summary within prediction history
+/// </summary>
+[GenerateSerializer]
+public class PredictionFeedbackSummary
+{
+    [Id(0)] public int Rating { get; set; } // 1-5 emoji rating
+    [Id(1)] public List<string> FeedbackTypes { get; set; } = new();
+    [Id(2)] public string? Comment { get; set; }
+    [Id(3)] public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
 /// Prediction summary DTO (for history)
 /// </summary>
 [GenerateSerializer]
@@ -197,23 +219,9 @@ public class PredictionSummaryDto
     [Id(1)] public DateOnly PredictionDate { get; set; }
     [Id(2)] public int Energy { get; set; }
     [Id(3)] public string? ForecastSummary { get; set; } // Brief summary from forecast
-    [Id(4)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new(); // Full prediction results
+    [Id(4)] public Dictionary<string, PredictionMethodResult> Results { get; set; } = new(); // Prediction results with feedbacks merged
     [Id(5)] public bool HasFeedback { get; set; }
-    [Id(6)] public List<PredictionFeedbackSummary> Feedbacks { get; set; } = new(); // Multiple feedbacks for different methods
-    [Id(7)] public DateTime CreatedAt { get; set; }
-}
-
-/// <summary>
-/// Feedback summary within prediction history
-/// </summary>
-[GenerateSerializer]
-public class PredictionFeedbackSummary
-{
-    [Id(0)] public string? PredictionMethod { get; set; } // Which prediction method this feedback is for
-    [Id(1)] public int Rating { get; set; } // 1-5 emoji rating
-    [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
-    [Id(3)] public string? Comment { get; set; }
-    [Id(4)] public DateTime CreatedAt { get; set; }
+    [Id(6)] public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>
