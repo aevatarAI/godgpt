@@ -248,9 +248,9 @@ Return JSON:
 {{
   ""energy"": <0-100>,
   ""results"": {{
-    ""forecast"": {{""summary"": ""<≤10 words overall prediction>"", ""description"": ""<≤100 words comprehensive fortune overview>""}},
-    ""horoscope"": {{""summary"": ""..."", ""description"": ""..."", ""love"": ""★★★☆☆"", ""career"": ""★★★★☆"", ""health"": ""★★★☆☆"", ""finance"": ""★★★★★""}},
-    ""bazi"": {{""summary"": ""..."", ""description"": ""..."", ""suitable"": ""..."", ""avoid"": ""..."", ""direction"": ""..."", ""luckyNumber"": ""...""}},
+    ""forecast"": {{""summary"": ""<≤10 words overall prediction>"", ""description"": ""<≤100 words comprehensive fortune overview>"", ""love"": ""★★★☆☆"", ""career"": ""★★★★☆"", ""health"": ""★★★☆☆"", ""finance"": ""★★★★★""}},
+    ""horoscope"": {{""summary"": ""..."", ""description"": ""..."", ""yourSign"": ""..."", ""risingSign"": ""...""}},
+    ""bazi"": {{""summary"": ""..."", ""description"": ""..."", ""dayMaster"": ""..."", ""suitable"": ""..."", ""avoid"": ""..."", ""direction"": ""..."", ""luckyNumber"": ""...""}},
     ""ziwei"": {{""summary"": ""..."", ""description"": ""..."", ""palace"": ""..."", ""element"": ""...""}},
     ""constellation"": {{""summary"": ""..."", ""description"": ""..."", ""mansion"": ""..."", ""influence"": ""...""}},
     ""numerology"": {{""summary"": ""..."", ""description"": ""..."", ""personalDay"": ""..."", ""lifePath"": ""..."", ""luckyNumber"": ""...""}},
