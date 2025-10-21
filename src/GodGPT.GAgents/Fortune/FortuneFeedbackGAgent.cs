@@ -3,6 +3,7 @@ using Aevatar.Application.Grains.Fortune.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
+using Orleans;
 using Orleans.Concurrency;
 
 namespace Aevatar.Application.Grains.Fortune;
@@ -10,7 +11,7 @@ namespace Aevatar.Application.Grains.Fortune;
 /// <summary>
 /// Interface for Fortune Feedback GAgent - manages user feedback on predictions
 /// </summary>
-public interface IFortuneFeedbackGAgent : IGAgent
+public interface IFortuneFeedbackGAgent : IGAgent, IGrainWithStringKey
 {
     Task<SubmitFeedbackResult> SubmitOrUpdateFeedbackAsync(SubmitFeedbackRequest request);
     

@@ -6,6 +6,7 @@ using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Options;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Orleans;
 using Orleans.Concurrency;
 
 namespace Aevatar.Application.Grains.Fortune;
@@ -13,7 +14,7 @@ namespace Aevatar.Application.Grains.Fortune;
 /// <summary>
 /// Interface for Fortune Prediction GAgent - manages fortune prediction generation
 /// </summary>
-public interface IFortunePredictionGAgent : IGAgent
+public interface IFortunePredictionGAgent : IGAgent, IGrainWithStringKey
 {
     Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo);
 }
