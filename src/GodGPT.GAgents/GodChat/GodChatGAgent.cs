@@ -650,7 +650,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                 }
                 
-                enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
+                enhancedMessage = enhancedMessage + ChatPrompts.ConversationSuggestionsPrompt;
                 Logger.LogDebug(
                     $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
             }
