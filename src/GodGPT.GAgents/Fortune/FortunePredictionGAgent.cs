@@ -18,6 +18,9 @@ namespace Aevatar.Application.Grains.Fortune;
 public interface IFortunePredictionGAgent : IGAgent
 {
     Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo);
+    
+    [ReadOnly]
+    Task<PredictionResultDto?> GetPredictionAsync();
 }
 
 [GAgent(nameof(FortunePredictionGAgent))]
@@ -112,6 +115,28 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 Message = "Failed to generate prediction"
             };
         }
+    }
+
+    /// <summary>
+    /// Get prediction from state without generating
+    /// </summary>
+    public Task<PredictionResultDto?> GetPredictionAsync()
+    {
+        if (State.PredictionId == Guid.Empty)
+        {
+            return Task.FromResult<PredictionResultDto?>(null);
+        }
+
+        return Task.FromResult<PredictionResultDto?>(new PredictionResultDto
+        {
+            PredictionId = State.PredictionId,
+            UserId = State.UserId,
+            PredictionDate = State.PredictionDate,
+            Energy = State.Energy,
+            Results = State.Results,
+            CreatedAt = State.CreatedAt,
+            FromCache = true
+        });
     }
 
     /// <summary>
