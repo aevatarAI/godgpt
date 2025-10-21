@@ -156,7 +156,7 @@ public class PredictionResultDto
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public DateOnly PredictionDate { get; set; }
-    [Id(3)] public int OverallEnergy { get; set; }
+    [Id(3)] public int Energy { get; set; }
     [Id(4)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new();
     [Id(5)] public DateTime CreatedAt { get; set; }
     [Id(6)] public bool FromCache { get; set; }
@@ -181,7 +181,7 @@ public class PredictionSummaryDto
 {
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public DateOnly PredictionDate { get; set; }
-    [Id(2)] public int OverallEnergy { get; set; }
+    [Id(2)] public int Energy { get; set; }
     [Id(3)] public bool HasFeedback { get; set; }
     [Id(4)] public int? FeedbackScore { get; set; }
     [Id(5)] public DateTime CreatedAt { get; set; }

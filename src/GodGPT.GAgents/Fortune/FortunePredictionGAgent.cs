@@ -52,7 +52,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 state.UserId = generatedEvent.UserId;
                 state.PredictionDate = generatedEvent.PredictionDate;
                 state.Results = generatedEvent.Results;
-                state.OverallEnergy = generatedEvent.OverallEnergy;
+                state.Energy = generatedEvent.Energy;
                 state.CreatedAt = generatedEvent.CreatedAt;
                 break;
         }
@@ -81,7 +81,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                         PredictionId = State.PredictionId,
                         UserId = State.UserId,
                         PredictionDate = State.PredictionDate,
-                        OverallEnergy = State.OverallEnergy,
+                        Energy = State.Energy,
                         Results = State.Results,
                         CreatedAt = State.CreatedAt,
                         FromCache = true
@@ -190,7 +190,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 UserId = userInfo.UserId,
                 PredictionDate = predictionDate,
                 Results = parsedResults,
-                OverallEnergy = overallEnergy,
+                Energy = overallEnergy,
                 CreatedAt = now
             });
 
@@ -209,7 +209,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     PredictionId = predictionId,
                     UserId = userInfo.UserId,
                     PredictionDate = predictionDate,
-                    OverallEnergy = overallEnergy,
+                    Energy = overallEnergy,
                     Results = parsedResults,
                     CreatedAt = now,
                     FromCache = false
