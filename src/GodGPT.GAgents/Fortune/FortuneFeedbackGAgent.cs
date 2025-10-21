@@ -11,7 +11,7 @@ namespace Aevatar.Application.Grains.Fortune;
 /// <summary>
 /// Interface for Fortune Feedback GAgent - manages user feedback on predictions
 /// </summary>
-public interface IFortuneFeedbackGAgent : IGrainWithStringKey
+public interface IFortuneFeedbackGAgent : IGAgent
 {
     Task<SubmitFeedbackResult> SubmitOrUpdateFeedbackAsync(SubmitFeedbackRequest request);
     
