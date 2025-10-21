@@ -30,7 +30,8 @@ public class UserRegisteredEvent : FortuneUserEventLog
     [Id(8)] public MbtiTypeEnum MbtiType { get; set; }
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
     [Id(10)] public string? Interests { get; set; }
-    [Id(11)] public DateTime CreatedAt { get; set; }
+    [Id(11)] public CalendarTypeEnum CalendarType { get; set; }
+    [Id(12)] public DateTime CreatedAt { get; set; }
 }
 
 #endregion

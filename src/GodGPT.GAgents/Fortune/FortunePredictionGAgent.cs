@@ -236,10 +236,11 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         var relationshipStatus = userInfo.RelationshipStatus?.ToString() ?? "Unknown";
         var birthLocation = $"{userInfo.BirthCity}, {userInfo.BirthCountry}";
         var birthDateTime = $"{userInfo.BirthDate:yyyy-MM-dd} {userInfo.BirthTime:HH:mm}";
+        var calendarType = userInfo.CalendarType == CalendarTypeEnum.Solar ? "Solar" : "Lunar";
 
         var prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
 
-User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} at {birthLocation}, Gender: {userInfo.Gender}, MBTI: {mbtiName}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
+User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, MBTI: {mbtiName}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
 
 Analyze using 11 methods: zodiac, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayan, humanDesign, mbti, tarot.
 

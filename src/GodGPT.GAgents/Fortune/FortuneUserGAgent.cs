@@ -54,6 +54,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 state.MbtiType = registerEvent.MbtiType;
                 state.RelationshipStatus = registerEvent.RelationshipStatus;
                 state.Interests = registerEvent.Interests;
+                state.CalendarType = registerEvent.CalendarType;
                 state.CreatedAt = registerEvent.CreatedAt;
                 state.UpdatedAt = registerEvent.CreatedAt;
                 break;
@@ -106,6 +107,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 MbtiType = request.MbtiType,
                 RelationshipStatus = request.RelationshipStatus,
                 Interests = request.Interests,
+                CalendarType = request.CalendarType,
                 CreatedAt = now
             });
 
@@ -168,6 +170,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                     MbtiType = State.MbtiType,
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
+                    CalendarType = State.CalendarType,
                     CreatedAt = State.CreatedAt
                 }
             });
