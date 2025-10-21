@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Fortune.Dtos;
 using Aevatar.Application.Grains.Fortune.SEvents;
 using Aevatar.Core;
