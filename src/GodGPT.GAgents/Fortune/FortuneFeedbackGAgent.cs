@@ -47,13 +47,21 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 state.FeedbackId = submittedEvent.FeedbackId;
                 state.UserId = submittedEvent.UserId;
                 state.PredictionId = submittedEvent.PredictionId;
-                state.Score = submittedEvent.Score;
+                state.Rating = submittedEvent.Rating;
+                state.FeedbackTypes = submittedEvent.FeedbackTypes;
+                state.Comment = submittedEvent.Comment;
+                state.Email = submittedEvent.Email;
+                state.AgreeToContact = submittedEvent.AgreeToContact;
                 state.CreatedAt = submittedEvent.CreatedAt;
                 state.UpdatedAt = submittedEvent.CreatedAt;
                 break;
 
             case FeedbackUpdatedEvent updatedEvent:
-                state.Score = updatedEvent.Score;
+                state.Rating = updatedEvent.Rating;
+                state.FeedbackTypes = updatedEvent.FeedbackTypes;
+                state.Comment = updatedEvent.Comment;
+                state.Email = updatedEvent.Email;
+                state.AgreeToContact = updatedEvent.AgreeToContact;
                 state.UpdatedAt = updatedEvent.UpdatedAt;
                 break;
         }
@@ -66,13 +74,13 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             _logger.LogDebug("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Start - UserId: {UserId}, PredictionId: {PredictionId}",
                 request.UserId, request.PredictionId);
 
-            // Validate score
-            if (request.Score < 1 || request.Score > 10)
+            // Validate rating
+            if (request.Rating < 1 || request.Rating > 5)
             {
                 return new SubmitFeedbackResult
                 {
                     Success = false,
-                    Message = "Score must be between 1 and 10"
+                    Message = "Rating must be between 1 and 5"
                 };
             }
 
@@ -87,7 +95,11 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 // Raise update event
                 RaiseEvent(new FeedbackUpdatedEvent
                 {
-                    Score = request.Score,
+                    Rating = request.Rating,
+                    FeedbackTypes = request.FeedbackTypes,
+                    Comment = request.Comment,
+                    Email = request.Email,
+                    AgreeToContact = request.AgreeToContact,
                     UpdatedAt = now
                 });
 
@@ -113,7 +125,11 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 FeedbackId = feedbackId,
                 UserId = request.UserId,
                 PredictionId = request.PredictionId,
-                Score = request.Score,
+                Rating = request.Rating,
+                FeedbackTypes = request.FeedbackTypes,
+                Comment = request.Comment,
+                Email = request.Email,
+                AgreeToContact = request.AgreeToContact,
                 CreatedAt = now
             });
 
@@ -151,7 +167,11 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 FeedbackId = State.FeedbackId,
                 UserId = State.UserId,
                 PredictionId = State.PredictionId,
-                Score = State.Score,
+                Rating = State.Rating,
+                FeedbackTypes = State.FeedbackTypes,
+                Comment = State.Comment,
+                Email = State.Email,
+                AgreeToContact = State.AgreeToContact,
                 CreatedAt = State.CreatedAt,
                 UpdatedAt = State.UpdatedAt
             });

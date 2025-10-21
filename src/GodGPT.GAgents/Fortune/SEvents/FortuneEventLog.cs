@@ -81,8 +81,12 @@ public class FeedbackSubmittedEvent : FortuneFeedbackEventLog
     [Id(0)] public string FeedbackId { get; set; } = string.Empty;
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public Guid PredictionId { get; set; }
-    [Id(3)] public int Score { get; set; }
-    [Id(4)] public DateTime CreatedAt { get; set; }
+    [Id(3)] public int Rating { get; set; }
+    [Id(4)] public List<FeedbackTypeEnum> FeedbackTypes { get; set; } = new();
+    [Id(5)] public string? Comment { get; set; }
+    [Id(6)] public string? Email { get; set; }
+    [Id(7)] public bool AgreeToContact { get; set; }
+    [Id(8)] public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>
@@ -91,8 +95,12 @@ public class FeedbackSubmittedEvent : FortuneFeedbackEventLog
 [GenerateSerializer]
 public class FeedbackUpdatedEvent : FortuneFeedbackEventLog
 {
-    [Id(0)] public int Score { get; set; }
-    [Id(1)] public DateTime UpdatedAt { get; set; }
+    [Id(0)] public int Rating { get; set; }
+    [Id(1)] public List<FeedbackTypeEnum> FeedbackTypes { get; set; } = new();
+    [Id(2)] public string? Comment { get; set; }
+    [Id(3)] public string? Email { get; set; }
+    [Id(4)] public bool AgreeToContact { get; set; }
+    [Id(5)] public DateTime UpdatedAt { get; set; }
 }
 
 #endregion

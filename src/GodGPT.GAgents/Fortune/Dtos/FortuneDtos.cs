@@ -66,6 +66,20 @@ public enum CalendarTypeEnum
     [Id(1)] Lunar = 1   // Lunar calendar
 }
 
+/// <summary>
+/// Feedback type enumeration
+/// </summary>
+[GenerateSerializer]
+public enum FeedbackTypeEnum
+{
+    [Id(0)] Accuracy = 0,
+    [Id(1)] Clarity = 1,
+    [Id(2)] Tone = 2,
+    [Id(3)] Length = 3,
+    [Id(4)] Design = 4,
+    [Id(5)] Bug = 5
+}
+
 #endregion
 
 #region User Management DTOs
@@ -183,7 +197,7 @@ public class PredictionSummaryDto
     [Id(1)] public DateOnly PredictionDate { get; set; }
     [Id(2)] public int Energy { get; set; }
     [Id(3)] public bool HasFeedback { get; set; }
-    [Id(4)] public int? FeedbackScore { get; set; }
+    [Id(4)] public int? FeedbackRating { get; set; } // 1-5 emoji rating
     [Id(5)] public DateTime CreatedAt { get; set; }
 }
 
@@ -210,7 +224,11 @@ public class SubmitFeedbackRequest
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
-    [Id(2)] public int Score { get; set; } // 1-10
+    [Id(2)] public int Rating { get; set; } // 1-5 (emoji rating)
+    [Id(3)] public List<FeedbackTypeEnum> FeedbackTypes { get; set; } = new();
+    [Id(4)] public string? Comment { get; set; }
+    [Id(5)] public string? Email { get; set; }
+    [Id(6)] public bool AgreeToContact { get; set; }
 }
 
 /// <summary>
@@ -233,9 +251,13 @@ public class FeedbackDto
     [Id(0)] public string FeedbackId { get; set; } = string.Empty;
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public Guid PredictionId { get; set; }
-    [Id(3)] public int Score { get; set; }
-    [Id(4)] public DateTime CreatedAt { get; set; }
-    [Id(5)] public DateTime UpdatedAt { get; set; }
+    [Id(3)] public int Rating { get; set; } // 1-5 (emoji rating)
+    [Id(4)] public List<FeedbackTypeEnum> FeedbackTypes { get; set; } = new();
+    [Id(5)] public string? Comment { get; set; }
+    [Id(6)] public string? Email { get; set; }
+    [Id(7)] public bool AgreeToContact { get; set; }
+    [Id(8)] public DateTime CreatedAt { get; set; }
+    [Id(9)] public DateTime UpdatedAt { get; set; }
 }
 
 #endregion
