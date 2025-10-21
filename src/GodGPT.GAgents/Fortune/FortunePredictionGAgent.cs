@@ -232,7 +232,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     /// </summary>
     private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate)
     {
-        var mbtiName = userInfo.MbtiType.ToString();
         var relationshipStatus = userInfo.RelationshipStatus?.ToString() ?? "Unknown";
         var birthLocation = $"{userInfo.BirthCity}, {userInfo.BirthCountry}";
         var birthDateTime = $"{userInfo.BirthDate:yyyy-MM-dd} {userInfo.BirthTime:HH:mm}";
@@ -240,9 +239,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
 
         var prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
 
-User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, MBTI: {mbtiName}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
+User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
 
-Analyze using 12 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, mbti, tarot, zhengYu.
+Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
 
 Return JSON:
 {{
@@ -258,7 +257,6 @@ Return JSON:
     ""chineseZodiac"": {{""summary"": ""..."", ""description"": ""..."", ""zodiac"": ""..."", ""conflict"": ""..."", ""harmony"": ""...""}},
     ""mayanTotem"": {{""summary"": ""..."", ""description"": ""..."", ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
     ""humanFigure"": {{""summary"": ""..."", ""description"": ""..."", ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
-    ""mbti"": {{""summary"": ""..."", ""description"": ""..."", ""mood"": ""..."", ""social"": ""..."", ""suggestion"": ""...""}},
     ""tarot"": {{""summary"": ""..."", ""description"": ""..."", ""card1"": ""..."", ""card2"": ""..."", ""card3"": ""..."", ""interpretation"": ""...""}},
     ""zhengYu"": {{""summary"": ""..."", ""description"": ""..."", ""element"": ""..."", ""balance"": ""..."", ""guidance"": ""...""}}
   }}
