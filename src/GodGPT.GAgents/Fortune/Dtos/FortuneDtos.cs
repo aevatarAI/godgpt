@@ -298,6 +298,7 @@ public class MethodStatsDto
     [Id(0)] public string Method { get; set; } = string.Empty;
     [Id(1)] public double AvgRating { get; set; }
     [Id(2)] public int TotalCount { get; set; }
+    [Id(3)] public double PositiveRate { get; set; } // Positive feedback rate (3-5 stars / total), 0-100
 }
 
 /// <summary>
@@ -308,9 +309,10 @@ public class RecommendationItemDto
 {
     [Id(0)] public int Rank { get; set; }
     [Id(1)] public string Method { get; set; } = string.Empty;
-    [Id(2)] public string Source { get; set; } = string.Empty; // "global" or "personal"
+    [Id(2)] public string Source { get; set; } = string.Empty; // "global" or "personal" or "default"
     [Id(3)] public double AvgRating { get; set; }
     [Id(4)] public int TotalCount { get; set; }
+    [Id(5)] public double PositiveRate { get; set; } // Positive feedback rate (3-5 stars / total), 0-100
 }
 
 /// <summary>
