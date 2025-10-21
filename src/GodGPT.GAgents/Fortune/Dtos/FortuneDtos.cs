@@ -197,9 +197,10 @@ public class PredictionSummaryDto
     [Id(1)] public DateOnly PredictionDate { get; set; }
     [Id(2)] public int Energy { get; set; }
     [Id(3)] public string? ForecastSummary { get; set; } // Brief summary from forecast
-    [Id(4)] public bool HasFeedback { get; set; }
-    [Id(5)] public PredictionFeedbackSummary? Feedback { get; set; }
-    [Id(6)] public DateTime CreatedAt { get; set; }
+    [Id(4)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new(); // Full prediction results
+    [Id(5)] public bool HasFeedback { get; set; }
+    [Id(6)] public PredictionFeedbackSummary? Feedback { get; set; }
+    [Id(7)] public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>
