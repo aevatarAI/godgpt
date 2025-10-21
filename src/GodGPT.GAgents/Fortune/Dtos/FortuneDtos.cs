@@ -14,6 +14,37 @@ public enum GenderEnum
 }
 
 /// <summary>
+/// MBTI Type enumeration (16 types) - Optional field
+/// </summary>
+[GenerateSerializer]
+public enum MbtiTypeEnum
+{
+    // Analysts
+    [Id(0)] INTJ = 0,
+    [Id(1)] INTP = 1,
+    [Id(2)] ENTJ = 2,
+    [Id(3)] ENTP = 3,
+    
+    // Diplomats
+    [Id(4)] INFJ = 4,
+    [Id(5)] INFP = 5,
+    [Id(6)] ENFJ = 6,
+    [Id(7)] ENFP = 7,
+    
+    // Sentinels
+    [Id(8)] ISTJ = 8,
+    [Id(9)] ISFJ = 9,
+    [Id(10)] ESTJ = 10,
+    [Id(11)] ESFJ = 11,
+    
+    // Explorers
+    [Id(12)] ISTP = 12,
+    [Id(13)] ISFP = 13,
+    [Id(14)] ESTP = 14,
+    [Id(15)] ESFP = 15
+}
+
+/// <summary>
 /// Relationship status enumeration
 /// </summary>
 [GenerateSerializer]
@@ -67,9 +98,10 @@ public class RegisterUserRequest
     [Id(5)] public TimeOnly BirthTime { get; set; }
     [Id(6)] public string BirthCountry { get; set; } = string.Empty;
     [Id(7)] public string BirthCity { get; set; } = string.Empty;
-    [Id(8)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
-    [Id(9)] public string? Interests { get; set; }
-    [Id(10)] public CalendarTypeEnum CalendarType { get; set; }
+    [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
+    [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
+    [Id(10)] public string? Interests { get; set; }
+    [Id(11)] public CalendarTypeEnum CalendarType { get; set; }
 }
 
 /// <summary>
@@ -98,10 +130,11 @@ public class FortuneUserDto
     [Id(5)] public TimeOnly BirthTime { get; set; }
     [Id(6)] public string BirthCountry { get; set; } = string.Empty;
     [Id(7)] public string BirthCity { get; set; } = string.Empty;
-    [Id(8)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
-    [Id(9)] public string? Interests { get; set; }
-    [Id(10)] public CalendarTypeEnum CalendarType { get; set; }
-    [Id(11)] public DateTime CreatedAt { get; set; }
+    [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
+    [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
+    [Id(10)] public string? Interests { get; set; }
+    [Id(11)] public CalendarTypeEnum CalendarType { get; set; }
+    [Id(12)] public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>

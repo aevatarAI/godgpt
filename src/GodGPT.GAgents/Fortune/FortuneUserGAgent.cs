@@ -51,6 +51,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 state.BirthTime = registerEvent.BirthTime;
                 state.BirthCountry = registerEvent.BirthCountry;
                 state.BirthCity = registerEvent.BirthCity;
+                state.MbtiType = registerEvent.MbtiType;
                 state.RelationshipStatus = registerEvent.RelationshipStatus;
                 state.Interests = registerEvent.Interests;
                 state.CalendarType = registerEvent.CalendarType;
@@ -103,6 +104,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 BirthTime = request.BirthTime,
                 BirthCountry = request.BirthCountry,
                 BirthCity = request.BirthCity,
+                MbtiType = request.MbtiType,
                 RelationshipStatus = request.RelationshipStatus,
                 Interests = request.Interests,
                 CalendarType = request.CalendarType,
@@ -165,6 +167,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                     BirthTime = State.BirthTime,
                     BirthCountry = State.BirthCountry,
                     BirthCity = State.BirthCity,
+                    MbtiType = State.MbtiType,
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
                     CalendarType = State.CalendarType,
