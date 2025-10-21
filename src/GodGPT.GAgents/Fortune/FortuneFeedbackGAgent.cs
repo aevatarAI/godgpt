@@ -86,6 +86,26 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 };
             }
 
+            // Validate prediction method if specified
+            if (!string.IsNullOrEmpty(request.PredictionMethod))
+            {
+                var validMethods = new[]
+                {
+                    "forecast", "horoscope", "bazi", "ziwei", "constellation",
+                    "numerology", "synastry", "chineseZodiac", "mayanTotem",
+                    "humanFigure", "tarot", "zhengYu"
+                };
+
+                if (!validMethods.Contains(request.PredictionMethod))
+                {
+                    return new SubmitFeedbackResult
+                    {
+                        Success = false,
+                        Message = $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}"
+                    };
+                }
+            }
+
             var now = DateTime.UtcNow;
 
             // Check if feedback already exists (update scenario)
