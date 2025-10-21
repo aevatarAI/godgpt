@@ -14,7 +14,7 @@ namespace Aevatar.Application.Grains.Fortune;
 /// <summary>
 /// Interface for Fortune Prediction GAgent - manages fortune prediction generation
 /// </summary>
-public interface IFortunePredictionGAgent : IGAgent, IGrainWithStringKey
+public interface IFortunePredictionGAgent : IGrainWithStringKey
 {
     Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo);
 }

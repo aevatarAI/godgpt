@@ -11,7 +11,7 @@ namespace Aevatar.Application.Grains.Fortune;
 /// <summary>
 /// Interface for Fortune User GAgent - manages user registration and info
 /// </summary>
-public interface IFortuneUserGAgent : IGAgent, IGrainWithStringKey
+public interface IFortuneUserGAgent : IGrainWithStringKey
 {
     Task<RegisterUserResult> RegisterAsync(RegisterUserRequest request);
     
