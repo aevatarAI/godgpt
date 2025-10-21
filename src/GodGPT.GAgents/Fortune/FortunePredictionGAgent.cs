@@ -244,26 +244,33 @@ User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calenda
 
 Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
 
-Return JSON:
+Return JSON structure:
 {{
   ""energy"": <0-100>,
   ""results"": {{
-    ""forecast"": {{""summary"": ""<≤10 words overall prediction>"", ""description"": ""<≤100 words comprehensive fortune overview>"", ""love"": ""★★★☆☆"", ""career"": ""★★★★☆"", ""health"": ""★★★☆☆"", ""finance"": ""★★★★★""}},
-    ""horoscope"": {{""summary"": ""..."", ""description"": ""..."", ""yourSign"": ""..."", ""risingSign"": ""...""}},
-    ""bazi"": {{""summary"": ""..."", ""description"": ""..."", ""dayMaster"": ""..."", ""suitable"": ""..."", ""avoid"": ""..."", ""direction"": ""..."", ""luckyNumber"": ""...""}},
-    ""ziwei"": {{""summary"": ""..."", ""description"": ""..."", ""palace"": ""..."", ""element"": ""...""}},
-    ""constellation"": {{""summary"": ""..."", ""description"": ""..."", ""mansion"": ""..."", ""influence"": ""...""}},
-    ""numerology"": {{""summary"": ""..."", ""description"": ""..."", ""personalDay"": ""..."", ""lifePath"": ""..."", ""luckyNumber"": ""...""}},
-    ""synastry"": {{""summary"": ""..."", ""description"": ""..."", ""compatibility"": ""..."", ""suggestion"": ""...""}},
-    ""chineseZodiac"": {{""summary"": ""..."", ""description"": ""..."", ""zodiac"": ""..."", ""conflict"": ""..."", ""harmony"": ""...""}},
-    ""mayanTotem"": {{""summary"": ""..."", ""description"": ""..."", ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
-    ""humanFigure"": {{""summary"": ""..."", ""description"": ""..."", ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
-    ""tarot"": {{""summary"": ""..."", ""description"": ""..."", ""top"": ""..."", ""left"": ""..."", ""right"": ""..."", ""interpretation"": ""...""}},
-    ""zhengYu"": {{""summary"": ""..."", ""description"": ""..."", ""element"": ""..."", ""balance"": ""..."", ""guidance"": ""...""}}
+    ""forecast"": {{...base_fields, ""love"": ""★★★☆☆"", ""career"": ""★★★★☆"", ""health"": ""★★★☆☆"", ""finance"": ""★★★★★""}},
+    ""horoscope"": {{...base_fields, ""yourSign"": ""..."", ""risingSign"": ""...""}},
+    ""bazi"": {{...base_fields, ""dayMaster"": ""..."", ""suitable"": ""..."", ""avoid"": ""..."", ""direction"": ""..."", ""luckyNumber"": ""...""}},
+    ""ziwei"": {{...base_fields, ""palace"": ""..."", ""element"": ""...""}},
+    ""constellation"": {{...base_fields, ""mansion"": ""..."", ""influence"": ""...""}},
+    ""numerology"": {{...base_fields, ""personalDay"": ""..."", ""lifePath"": ""..."", ""luckyNumber"": ""...""}},
+    ""synastry"": {{...base_fields, ""compatibility"": ""..."", ""suggestion"": ""...""}},
+    ""chineseZodiac"": {{...base_fields, ""zodiac"": ""..."", ""conflict"": ""..."", ""harmony"": ""...""}},
+    ""mayanTotem"": {{...base_fields, ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
+    ""humanFigure"": {{...base_fields, ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
+    ""tarot"": {{...base_fields, ""top"": ""..."", ""left"": ""..."", ""right"": ""..."", ""interpretation"": ""...""}},
+    ""zhengYu"": {{...base_fields, ""element"": ""..."", ""balance"": ""..."", ""guidance"": ""...""}}
   }}
 }}
 
-Rules: All summary ≤10 words, description ≤100 words. forecast is the comprehensive overall prediction. JSON only, no extra text.";
+Field Rules:
+- base_fields = {{""summary"": ""≤10 words"", ""description"": ""≤100 words"", ""detail"": ""≤300 words""}}
+- summary: Brief one-liner capturing essence
+- description: Concise overview with key points
+- detail: In-depth analysis with specific insights, guidance, and explanations
+- forecast: Comprehensive overall prediction combining all methods
+- Star ratings use format: ★★★☆☆ (1-5 stars)
+- Return valid JSON only, no additional text";
 
         return prompt;
     }
