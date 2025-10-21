@@ -257,7 +257,7 @@ Return JSON:
     ""chineseZodiac"": {{""summary"": ""..."", ""description"": ""..."", ""zodiac"": ""..."", ""conflict"": ""..."", ""harmony"": ""...""}},
     ""mayanTotem"": {{""summary"": ""..."", ""description"": ""..."", ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
     ""humanFigure"": {{""summary"": ""..."", ""description"": ""..."", ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
-    ""tarot"": {{""summary"": ""..."", ""description"": ""..."", ""card1"": ""..."", ""card2"": ""..."", ""card3"": ""..."", ""interpretation"": ""...""}},
+    ""tarot"": {{""summary"": ""..."", ""description"": ""..."", ""top"": ""..."", ""left"": ""..."", ""right"": ""..."", ""interpretation"": ""...""}},
     ""zhengYu"": {{""summary"": ""..."", ""description"": ""..."", ""element"": ""..."", ""balance"": ""..."", ""guidance"": ""...""}}
   }}
 }}
