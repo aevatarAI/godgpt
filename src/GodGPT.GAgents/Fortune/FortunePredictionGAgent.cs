@@ -248,22 +248,27 @@ Return JSON:
 {{
   ""energy"": <0-100>,
   ""results"": {{
-    ""forecast"": {{""summary"": ""<≤10 words overall prediction>"", ""description"": ""<≤100 words comprehensive fortune overview>"", ""love"": ""★★★☆☆"", ""career"": ""★★★★☆"", ""health"": ""★★★☆☆"", ""finance"": ""★★★★★""}},
-    ""horoscope"": {{""summary"": ""..."", ""description"": ""..."", ""yourSign"": ""..."", ""risingSign"": ""...""}},
-    ""bazi"": {{""summary"": ""..."", ""description"": ""..."", ""dayMaster"": ""..."", ""suitable"": ""..."", ""avoid"": ""..."", ""direction"": ""..."", ""luckyNumber"": ""...""}},
-    ""ziwei"": {{""summary"": ""..."", ""description"": ""..."", ""palace"": ""..."", ""element"": ""...""}},
-    ""constellation"": {{""summary"": ""..."", ""description"": ""..."", ""mansion"": ""..."", ""influence"": ""...""}},
-    ""numerology"": {{""summary"": ""..."", ""description"": ""..."", ""personalDay"": ""..."", ""lifePath"": ""..."", ""luckyNumber"": ""...""}},
-    ""synastry"": {{""summary"": ""..."", ""description"": ""..."", ""compatibility"": ""..."", ""suggestion"": ""...""}},
-    ""chineseZodiac"": {{""summary"": ""..."", ""description"": ""..."", ""zodiac"": ""..."", ""conflict"": ""..."", ""harmony"": ""...""}},
-    ""mayanTotem"": {{""summary"": ""..."", ""description"": ""..."", ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
-    ""humanFigure"": {{""summary"": ""..."", ""description"": ""..."", ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
-    ""tarot"": {{""summary"": ""..."", ""description"": ""..."", ""top"": ""..."", ""left"": ""..."", ""right"": ""..."", ""interpretation"": ""...""}},
-    ""zhengYu"": {{""summary"": ""..."", ""description"": ""..."", ""element"": ""..."", ""balance"": ""..."", ""guidance"": ""...""}}
+    ""forecast"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words comprehensive analysis>"", ""love"": ""★★★☆☆"", ""career"": ""★★★★☆"", ""health"": ""★★★☆☆"", ""finance"": ""★★★★★""}},
+    ""horoscope"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""yourSign"": ""..."", ""risingSign"": ""...""}},
+    ""bazi"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""dayMaster"": ""..."", ""suitable"": ""..."", ""avoid"": ""..."", ""direction"": ""..."", ""luckyNumber"": ""...""}},
+    ""ziwei"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""palace"": ""..."", ""element"": ""...""}},
+    ""constellation"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""mansion"": ""..."", ""influence"": ""...""}},
+    ""numerology"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""personalDay"": ""..."", ""lifePath"": ""..."", ""luckyNumber"": ""...""}},
+    ""synastry"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""compatibility"": ""..."", ""suggestion"": ""...""}},
+    ""chineseZodiac"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""zodiac"": ""..."", ""conflict"": ""..."", ""harmony"": ""...""}},
+    ""mayanTotem"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
+    ""humanFigure"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
+    ""tarot"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""top"": ""..."", ""left"": ""..."", ""right"": ""..."", ""interpretation"": ""...""}},
+    ""zhengYu"": {{""summary"": ""<≤10 words>"", ""description"": ""<≤100 words>"", ""detail"": ""<≤300 words>"", ""element"": ""..."", ""balance"": ""..."", ""guidance"": ""...""}}
   }}
 }}
 
-Rules: All summary ≤10 words, description ≤100 words. forecast is the comprehensive overall prediction. JSON only, no extra text.";
+Rules:
+- summary: ≤10 words (brief one-liner)
+- description: ≤100 words (concise overview)
+- detail: ≤300 words (in-depth analysis with specific insights, guidance, and explanations)
+- forecast is the comprehensive overall prediction combining all methods
+- JSON only, no extra text outside JSON structure.";
 
         return prompt;
     }
