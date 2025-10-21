@@ -109,16 +109,58 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
 
             var now = DateTime.UtcNow;
 
-            // Check if feedback already exists - do not allow duplicate submission
+            // Check if this is a detailed feedback (has any field beyond rating)
+            var isDetailedFeedback = request.FeedbackTypes.Any() || 
+                                     !string.IsNullOrEmpty(request.Comment) || 
+                                     !string.IsNullOrEmpty(request.Email) || 
+                                     request.AgreeToContact;
+
+            // Check if feedback already exists
             if (!string.IsNullOrEmpty(State.FeedbackId))
             {
-                _logger.LogWarning("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Feedback already exists: {FeedbackId}, PredictionId: {PredictionId}, Method: {Method}",
-                    State.FeedbackId, request.PredictionId, request.PredictionMethod ?? "overall");
+                // Check if existing feedback has detailed information
+                var existingHasDetails = State.FeedbackTypes.Any() || 
+                                        !string.IsNullOrEmpty(State.Comment) || 
+                                        !string.IsNullOrEmpty(State.Email) || 
+                                        State.AgreeToContact;
+
+                // If existing feedback has details, do not allow any updates
+                if (existingHasDetails)
+                {
+                    _logger.LogWarning("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Detailed feedback already exists, cannot update: {FeedbackId}",
+                        State.FeedbackId);
+
+                    return new SubmitFeedbackResult
+                    {
+                        Success = false,
+                        Message = "Detailed feedback already submitted and cannot be modified"
+                    };
+                }
+
+                // If new request has detailed info, treat as upgrade from simple to detailed
+                // Otherwise, allow rating-only update
+                _logger.LogInformation("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Updating feedback: {FeedbackId}, IsDetailedUpdate: {IsDetailed}",
+                    State.FeedbackId, isDetailedFeedback);
+
+                // Raise update event
+                RaiseEvent(new FeedbackUpdatedEvent
+                {
+                    PredictionMethod = request.PredictionMethod,
+                    Rating = request.Rating,
+                    FeedbackTypes = request.FeedbackTypes,
+                    Comment = request.Comment,
+                    Email = request.Email,
+                    AgreeToContact = request.AgreeToContact,
+                    UpdatedAt = now
+                });
+
+                await ConfirmEvents();
 
                 return new SubmitFeedbackResult
                 {
-                    Success = false,
-                    Message = $"Feedback already submitted for this prediction{(string.IsNullOrEmpty(request.PredictionMethod) ? "" : $" ({request.PredictionMethod})")}"
+                    Success = true,
+                    Message = string.Empty,
+                    FeedbackId = State.FeedbackId
                 };
             }
 
