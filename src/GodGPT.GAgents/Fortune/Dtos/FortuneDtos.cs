@@ -287,3 +287,42 @@ public class FeedbackDto
 
 #endregion
 
+#region Stats & Recommendations
+
+/// <summary>
+/// Method statistics DTO
+/// </summary>
+[GenerateSerializer]
+public class MethodStatsDto
+{
+    [Id(0)] public string Method { get; set; } = string.Empty;
+    [Id(1)] public double AvgRating { get; set; }
+    [Id(2)] public int TotalCount { get; set; }
+}
+
+/// <summary>
+/// Recommendation item DTO
+/// </summary>
+[GenerateSerializer]
+public class RecommendationItemDto
+{
+    [Id(0)] public int Rank { get; set; }
+    [Id(1)] public string Method { get; set; } = string.Empty;
+    [Id(2)] public string Source { get; set; } = string.Empty; // "global" or "personal"
+    [Id(3)] public double AvgRating { get; set; }
+    [Id(4)] public int TotalCount { get; set; }
+}
+
+/// <summary>
+/// Get recommendations result
+/// </summary>
+[GenerateSerializer]
+public class GetRecommendationsResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public List<RecommendationItemDto> Recommendations { get; set; } = new();
+}
+
+#endregion
+

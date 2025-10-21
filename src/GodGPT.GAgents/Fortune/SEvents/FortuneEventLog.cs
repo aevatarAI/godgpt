@@ -107,3 +107,50 @@ public class FeedbackUpdatedEvent : FortuneFeedbackEventLog
 
 #endregion
 
+#region Global Feedback Stats Events
+
+/// <summary>
+/// Base event log for Global Fortune Feedback Stats GAgent
+/// </summary>
+[GenerateSerializer]
+public abstract class GlobalFortuneFeedbackStatsEventLog : StateLogEventBase<GlobalFortuneFeedbackStatsEventLog>
+{
+}
+
+/// <summary>
+/// Global stats updated event
+/// </summary>
+[GenerateSerializer]
+public class GlobalStatsUpdatedEvent : GlobalFortuneFeedbackStatsEventLog
+{
+    [Id(0)] public string Method { get; set; } = string.Empty;
+    [Id(1)] public int Rating { get; set; }
+    [Id(2)] public DateTime UpdatedAt { get; set; }
+}
+
+#endregion
+
+#region User Feedback Stats Events
+
+/// <summary>
+/// Base event log for User Fortune Feedback Stats GAgent
+/// </summary>
+[GenerateSerializer]
+public abstract class UserFortuneFeedbackStatsEventLog : StateLogEventBase<UserFortuneFeedbackStatsEventLog>
+{
+}
+
+/// <summary>
+/// User stats updated event
+/// </summary>
+[GenerateSerializer]
+public class UserStatsUpdatedEvent : UserFortuneFeedbackStatsEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string Method { get; set; } = string.Empty;
+    [Id(2)] public int Rating { get; set; }
+    [Id(3)] public DateTime UpdatedAt { get; set; }
+}
+
+#endregion
+
