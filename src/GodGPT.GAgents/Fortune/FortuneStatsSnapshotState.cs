@@ -1,4 +1,5 @@
 using Aevatar.Core;
+using Aevatar.Core.Abstractions;
 using Orleans;
 
 namespace Aevatar.Application.Grains.Fortune;
