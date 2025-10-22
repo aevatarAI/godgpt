@@ -280,6 +280,7 @@ CRITICAL RULES:
 - detail: MUST be 100-300 words in TWO paragraphs separated by \n\n (minimum 100 words total, do NOT write as one long paragraph)
 - forecast: comprehensive overall prediction
 - star ratings: use ★★★☆☆ format (1-5 stars)
+- chineseZodiac: include Five Elements information naturally
 - Return valid JSON only, no additional text";
 
         return prompt;
