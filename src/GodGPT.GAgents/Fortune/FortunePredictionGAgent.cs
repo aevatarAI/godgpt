@@ -271,6 +271,8 @@ User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calenda
 
 Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
 
+Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
+
 Return JSON structure:
 {{
   ""energy"": <0-100>,
@@ -291,9 +293,9 @@ Return JSON structure:
 }}
 
 Field Rules:
-- base_fields = {{""summary"": ""≤10 words"", ""description"": ""≤100 words"", ""detail"": ""≤300 words""}}
+- base_fields = {{""summary"": ""≤10 words"", ""description"": ""30-100 words"", ""detail"": ""≤300 words""}}
 - summary: Brief one-liner capturing essence
-- description: Concise overview with key points
+- description: Concise overview with key points (minimum 30 words, maximum 100 words)
 - detail: In-depth analysis with specific insights, guidance, and explanations
 - forecast: Comprehensive overall prediction combining all methods
 - Star ratings use format: ★★★☆☆ (1-5 stars)
