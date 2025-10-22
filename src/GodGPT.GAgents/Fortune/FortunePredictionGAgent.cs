@@ -273,32 +273,115 @@ Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, syn
 
 Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
 
-Return JSON structure:
+Return JSON structure (each method includes summary, description, detail plus method-specific fields):
 {{
   ""energy"": <0-100>,
   ""results"": {{
-    ""forecast"": {{...base_fields, ""love"": ""★★★☆☆"", ""career"": ""★★★★☆"", ""health"": ""★★★☆☆"", ""finance"": ""★★★★★""}},
-    ""horoscope"": {{...base_fields, ""yourSign"": ""..."", ""risingSign"": ""...""}},
-    ""bazi"": {{...base_fields, ""dayMaster"": ""..."", ""suitable"": ""..."", ""avoid"": ""..."", ""direction"": ""..."", ""luckyNumber"": ""...""}},
-    ""ziwei"": {{...base_fields, ""palace"": ""..."", ""element"": ""...""}},
-    ""constellation"": {{...base_fields, ""mansion"": ""..."", ""influence"": ""...""}},
-    ""numerology"": {{...base_fields, ""personalDay"": ""..."", ""lifePath"": ""..."", ""luckyNumber"": ""...""}},
-    ""synastry"": {{...base_fields, ""compatibility"": ""..."", ""suggestion"": ""...""}},
-    ""chineseZodiac"": {{...base_fields, ""zodiac"": ""..."", ""conflict"": ""..."", ""harmony"": ""...""}},
-    ""mayanTotem"": {{...base_fields, ""totem"": ""..."", ""tone"": ""..."", ""keyword"": ""...""}},
-    ""humanFigure"": {{...base_fields, ""type"": ""..."", ""strategy"": ""..."", ""authority"": ""...""}},
-    ""tarot"": {{...base_fields, ""top"": ""..."", ""left"": ""..."", ""right"": ""..."", ""interpretation"": ""...""}},
-    ""zhengYu"": {{...base_fields, ""element"": ""..."", ""balance"": ""..."", ""guidance"": ""...""}}
+    ""forecast"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""love"": ""★★★☆☆"",
+      ""career"": ""★★★★☆"",
+      ""health"": ""★★★☆☆"",
+      ""finance"": ""★★★★★""
+    }},
+    ""horoscope"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""yourSign"": ""..."",
+      ""risingSign"": ""...""
+    }},
+    ""bazi"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""dayMaster"": ""..."",
+      ""suitable"": ""..."",
+      ""avoid"": ""..."",
+      ""direction"": ""..."",
+      ""luckyNumber"": ""...""
+    }},
+    ""ziwei"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""palace"": ""..."",
+      ""element"": ""...""
+    }},
+    ""constellation"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""mansion"": ""..."",
+      ""influence"": ""...""
+    }},
+    ""numerology"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""personalDay"": ""..."",
+      ""lifePath"": ""..."",
+      ""luckyNumber"": ""...""
+    }},
+    ""synastry"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""compatibility"": ""..."",
+      ""suggestion"": ""...""
+    }},
+    ""chineseZodiac"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""zodiac"": ""..."",
+      ""conflict"": ""..."",
+      ""harmony"": ""...""
+    }},
+    ""mayanTotem"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""totem"": ""..."",
+      ""tone"": ""..."",
+      ""keyword"": ""...""
+    }},
+    ""humanFigure"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""type"": ""..."",
+      ""strategy"": ""..."",
+      ""authority"": ""...""
+    }},
+    ""tarot"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""top"": ""..."",
+      ""left"": ""..."",
+      ""right"": ""..."",
+      ""interpretation"": ""...""
+    }},
+    ""zhengYu"": {{
+      ""summary"": ""..."",
+      ""description"": ""..."",
+      ""detail"": ""..."",
+      ""element"": ""..."",
+      ""balance"": ""..."",
+      ""guidance"": ""...""
+    }}
   }}
 }}
 
-Field Rules:
-- base_fields = {{""summary"": ""≤10 words"", ""description"": ""30-100 words"", ""detail"": ""≤300 words""}}
-- summary: Brief one-liner capturing essence
-- description: Concise overview with key points (minimum 30 words, maximum 100 words)
-- detail: In-depth analysis with specific insights, guidance, and explanations
+Field Requirements:
+- summary: Brief one-liner (≤10 words)
+- description: Concise overview with key points (30-100 words minimum 30, maximum 100)
+- detail: In-depth analysis with specific insights and guidance (≤300 words)
 - forecast: Comprehensive overall prediction combining all methods
-- Star ratings use format: ★★★☆☆ (1-5 stars)
+- Star ratings format: ★★★☆☆ (1-5 stars)
 - Return valid JSON only, no additional text";
 
         return prompt;
