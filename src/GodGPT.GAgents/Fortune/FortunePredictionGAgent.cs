@@ -266,123 +266,15 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         var calendarType = userInfo.CalendarType == CalendarTypeEnum.Solar ? "Solar" : "Lunar";
 
         var prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
-
 User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
 
 Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
-
 Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
 
-Return JSON structure (each method includes summary, description, detail plus method-specific fields):
-{{
-  ""energy"": <0-100>,
-  ""results"": {{
-    ""forecast"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""love"": ""★★★☆☆"",
-      ""career"": ""★★★★☆"",
-      ""health"": ""★★★☆☆"",
-      ""finance"": ""★★★★★""
-    }},
-    ""horoscope"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""yourSign"": ""..."",
-      ""risingSign"": ""...""
-    }},
-    ""bazi"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""dayMaster"": ""..."",
-      ""suitable"": ""..."",
-      ""avoid"": ""..."",
-      ""direction"": ""..."",
-      ""luckyNumber"": ""...""
-    }},
-    ""ziwei"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""palace"": ""..."",
-      ""element"": ""...""
-    }},
-    ""constellation"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""mansion"": ""..."",
-      ""influence"": ""...""
-    }},
-    ""numerology"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""personalDay"": ""..."",
-      ""lifePath"": ""..."",
-      ""luckyNumber"": ""...""
-    }},
-    ""synastry"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""compatibility"": ""..."",
-      ""suggestion"": ""...""
-    }},
-    ""chineseZodiac"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""zodiac"": ""..."",
-      ""conflict"": ""..."",
-      ""harmony"": ""...""
-    }},
-    ""mayanTotem"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""totem"": ""..."",
-      ""tone"": ""..."",
-      ""keyword"": ""...""
-    }},
-    ""humanFigure"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""type"": ""..."",
-      ""strategy"": ""..."",
-      ""authority"": ""...""
-    }},
-    ""tarot"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""top"": ""..."",
-      ""left"": ""..."",
-      ""right"": ""..."",
-      ""interpretation"": ""...""
-    }},
-    ""zhengYu"": {{
-      ""summary"": ""..."",
-      ""description"": ""..."",
-      ""detail"": ""..."",
-      ""element"": ""..."",
-      ""balance"": ""..."",
-      ""guidance"": ""...""
-    }}
-  }}
-}}
+Return JSON (each method has summary/description/detail + specific fields):
+{{""energy"":<0-100>,""results"":{{""forecast"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
 
-Field Requirements:
-- summary: Brief one-liner (≤10 words)
-- description: Concise overview with key points (30-100 words minimum 30, maximum 100)
-- detail: In-depth analysis with specific insights and guidance (≤300 words)
-- forecast: Comprehensive overall prediction combining all methods
-- Star ratings format: ★★★☆☆ (1-5 stars)
-- Return valid JSON only, no additional text";
+Rules: summary≤10 words | description=30-100 words | detail≤300 words | forecast=overall prediction | star ratings=★★★☆☆ format | return valid JSON only";
 
         return prompt;
     }
