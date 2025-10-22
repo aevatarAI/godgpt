@@ -277,7 +277,7 @@ Return JSON (each method has summary/description/detail + specific fields):
 CRITICAL RULES:
 - summary: max 10 words
 - description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)
-- detail: MUST be 100-300 words (minimum 100 words required, do NOT write less than 100 words)
+- detail: MUST be 100-300 words in TWO paragraphs separated by \n\n (minimum 100 words total, do NOT write as one long paragraph)
 - forecast: comprehensive overall prediction
 - star ratings: use ★★★☆☆ format (1-5 stars)
 - Return valid JSON only, no additional text";
