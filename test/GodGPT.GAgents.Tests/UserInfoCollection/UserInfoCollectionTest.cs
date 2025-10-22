@@ -706,8 +706,8 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
             NameInfo = new UserNameInfoDto
             {
                 Gender = 2,
-                FirstName = "小美",
-                LastName = "王"
+                FirstName = "Xiaomei",
+                LastName = "Wang"
             },
             SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.Companionship, SeekingInterestEnum.SelfDiscovery, SeekingInterestEnum.SpiritualGrowth },
             SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.AppStorePlayStore, SourceChannelEnum.SocialMedia, SourceChannelEnum.SearchEngine }
@@ -733,14 +733,14 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         // Verify code fields (should be same as English)
         result.Data.SeekingInterestsCode.ShouldNotBeNull();
         result.Data.SeekingInterestsCode.Count.ShouldBe(3);
-        result.Data.SeekingInterestsCode.ShouldContain(0); // 夥伴關係
-        result.Data.SeekingInterestsCode.ShouldContain(1); // 自我探索
-        result.Data.SeekingInterestsCode.ShouldContain(2); // 靈性成長
+        result.Data.SeekingInterestsCode.ShouldContain(0);
+        result.Data.SeekingInterestsCode.ShouldContain(1);
+        result.Data.SeekingInterestsCode.ShouldContain(2);
         result.Data.SourceChannelsCode.ShouldNotBeNull();
         result.Data.SourceChannelsCode.Count.ShouldBe(3);
-        result.Data.SourceChannelsCode.ShouldContain(0); // App Store／Play 商店
-        result.Data.SourceChannelsCode.ShouldContain(1); // 社群媒體
-        result.Data.SourceChannelsCode.ShouldContain(2); // 搜尋引擎
+        result.Data.SourceChannelsCode.ShouldContain(0);
+        result.Data.SourceChannelsCode.ShouldContain(1);
+        result.Data.SourceChannelsCode.ShouldContain(2);
     }
 
     [Fact]
@@ -816,6 +816,271 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         result.ShouldNotBeNull();
         result.Success.ShouldBeFalse();
         result.Message.ShouldContain("Invalid seeking interests");
+    }
+
+    #endregion
+
+    #region Generate User Info Prompt Tests
+
+    [Fact]
+    public async Task GenerateUserInfoPromptAsync_Should_Generate_Complete_Prompt_With_All_Data()
+    {
+        // Arrange
+        RequestContext.Set("GodGPTLanguage", "English");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var updateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = 1,
+                FirstName = "John",
+                LastName = "Doe"
+            },
+            LocationInfo = new UserLocationInfoDto
+            {
+                Country = "United States",
+                City = "New York"
+            },
+            BirthDateInfo = new UserBirthDateInfoDto
+            {
+                Day = 15,
+                Month = 6,
+                Year = 1990
+            }
+        };
+
+        await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Act
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+        result.ShouldContain("User Name: John Doe");
+        result.ShouldContain("User Location: New York, United States");
+        result.ShouldContain("Message Time:");
+        result.ShouldContain("User Gender: Male");
+        result.ShouldContain("User Age:");
+        result.ShouldContain("User Language: English");
+        
+        _testOutputHelper.WriteLine($"Generated prompt: {result}");
+    }
+
+    [Fact]
+    public async Task GenerateUserInfoPromptAsync_Should_Generate_Prompt_With_Female_Gender()
+    {
+        // Arrange
+        RequestContext.Set("GodGPTLanguage", "TraditionalChinese");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var updateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = 2,
+                FirstName = "Jane",
+                LastName = "Smith"
+            },
+            LocationInfo = new UserLocationInfoDto
+            {
+                Country = "Canada",
+                City = "Toronto"
+            },
+            BirthDateInfo = new UserBirthDateInfoDto
+            {
+                Day = 22,
+                Month = 12,
+                Year = 1985
+            }
+        };
+
+        await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Act
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+        result.ShouldContain("User Name: Jane Smith");
+        result.ShouldContain("User Location: Toronto, Canada");
+        result.ShouldContain("User Gender: Female");
+        result.ShouldContain("User Language: Traditional Chinese");
+        
+        _testOutputHelper.WriteLine($"Generated prompt: {result}");
+    }
+
+    [Fact]
+    public async Task GenerateUserInfoPromptAsync_Should_Handle_Partial_Data_With_Unknown_Values()
+    {
+        // Arrange
+        RequestContext.Set("GodGPTLanguage", "Spanish");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var updateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = 1,
+                FirstName = "Carlos",
+                LastName = "Rodriguez"
+            }
+            // No location or birth date provided
+        };
+
+        await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Act
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+        result.ShouldContain("User Name: Carlos Rodriguez");
+        result.ShouldContain("User Location: Unknown");
+        result.ShouldContain("User Gender: Male");
+        result.ShouldContain("User Age: Unknown");
+        result.ShouldContain("User Language: Spanish");
+        
+        _testOutputHelper.WriteLine($"Generated prompt: {result}");
+    }
+
+    [Fact]
+    public async Task GenerateUserInfoPromptAsync_Should_Return_Empty_String_When_Not_Initialized()
+    {
+        // Arrange
+        RequestContext.Set("GodGPTLanguage", "English");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        // Don't update any data - agent remains uninitialized
+
+        // Act
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.ShouldBeEmpty();
+        
+        _testOutputHelper.WriteLine($"Generated prompt for uninitialized agent: '{result}'");
+    }
+
+    [Fact]
+    public async Task GenerateUserInfoPromptAsync_Should_Calculate_Age_Correctly()
+    {
+        // Arrange
+        RequestContext.Set("GodGPTLanguage", "English");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var currentYear = DateTime.UtcNow.Year;
+        var birthYear = currentYear - 30; // 30 years old
+        
+        var updateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = 2,
+                FirstName = "Alice",
+                LastName = "Johnson"
+            },
+            LocationInfo = new UserLocationInfoDto
+            {
+                Country = "Australia",
+                City = "Sydney"
+            },
+            BirthDateInfo = new UserBirthDateInfoDto
+            {
+                Day = 1,
+                Month = 1,
+                Year = birthYear
+            }
+        };
+
+        await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Act
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+        result.ShouldContain("User Name: Alice Johnson");
+        result.ShouldContain("User Location: Sydney, Australia");
+        result.ShouldContain("User Gender: Female");
+        result.ShouldContain("User Age: 30");
+        result.ShouldContain("User Language: English");
+        
+        _testOutputHelper.WriteLine($"Generated prompt: {result}");
+    }
+
+    [Fact]
+    public async Task GenerateUserInfoPromptAsync_Should_Handle_Invalid_Birth_Date_Gracefully()
+    {
+        // Arrange
+        RequestContext.Set("GodGPTLanguage", "English");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var updateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = 1,
+                FirstName = "Bob",
+                LastName = "Wilson"
+            },
+            LocationInfo = new UserLocationInfoDto
+            {
+                Country = "United Kingdom",
+                City = "London"
+            },
+            BirthDateInfo = new UserBirthDateInfoDto
+            {
+                Day = 31,
+                Month = 2, // Invalid: February 31st
+                Year = 1990
+            }
+        };
+
+        await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Act
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+        result.ShouldContain("User Name: Bob Wilson");
+        result.ShouldContain("User Location: London, United Kingdom");
+        result.ShouldContain("User Gender: Male");
+        result.ShouldContain("User Age: Unknown"); // Should handle invalid date gracefully
+        result.ShouldContain("User Language: English");
+        
+        _testOutputHelper.WriteLine($"Generated prompt: {result}");
+    }
+
+    [Fact]
+    public async Task GenerateUserInfoPromptAsync_Should_Handle_Different_Languages()
+    {
+        // Test CN language
+        RequestContext.Set("GodGPTLanguage", "CN");
+        var userInfoCollectionGAgent = await CreateTestUserInfoCollectionGAgentAsync();
+        var updateDto = new UpdateUserInfoCollectionDto
+        {
+            NameInfo = new UserNameInfoDto
+            {
+                Gender = 1,
+                FirstName = "Li",
+                LastName = "Ming"
+            }
+        };
+
+        await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
+
+        // Act
+        var (fullName, result) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync();
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.ShouldNotBeEmpty();
+        result.ShouldContain("User Name: Li Ming");
+        result.ShouldContain("User Language: Chinese");
+        
+        _testOutputHelper.WriteLine($"Generated prompt for CN language: {result}");
     }
 
     #endregion

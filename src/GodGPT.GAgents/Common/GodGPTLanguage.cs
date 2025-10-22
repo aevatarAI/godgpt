@@ -105,4 +105,21 @@ public static class GodGPTLanguageHelper
 
         return promptMsg;
     }
+    
+    /// <summary>
+    /// Gets the English name for the specified GodGPT language
+    /// </summary>
+    /// <param name="language">The GodGPT language enum value</param>
+    /// <returns>English name of the language</returns>
+    public static string GetLanguageEnglishName(GodGPTLanguage language)
+    {
+        return language switch
+        {
+            GodGPTLanguage.English => "English",
+            GodGPTLanguage.TraditionalChinese => "Traditional Chinese",
+            GodGPTLanguage.Spanish => "Spanish",
+            GodGPTLanguage.CN => "Chinese",
+            _ => "English"
+        };
+    }
 } 
