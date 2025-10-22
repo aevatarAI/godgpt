@@ -650,7 +650,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 $"[GodChatGAgent][GodStreamChatAsync] Processing message. IsVoiceChat: {isPromptVoiceChat}");
 
             var settings = promptSettings ?? new ExecutionPromptSettings();
-            settings.Temperature = "0.9";
+            settings.Temperature = "1.0";
             var result = await aiAgentStatusProxy.PromptWithStreamAsync(enhancedMessage, State.ChatHistory, settings,
                 context: aiChatContextDto, imageKeys: images);
             if (!result)
@@ -1505,7 +1505,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
 
         var settings = promptSettings ?? new ExecutionPromptSettings();
-        settings.Temperature = "0.9";
+        settings.Temperature = "1.0";
 
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId,
             promptSettings, isHttpRequest, region);
@@ -1535,7 +1535,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
 
         var settings = promptSettings ?? new ExecutionPromptSettings();
-        settings.Temperature = "0.9";
+        settings.Temperature = "1.0";
         
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId, promptSettings, isHttpRequest, region);
         var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
@@ -2073,7 +2073,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             
             // Set default temperature for voice chat
             var settings = promptSettings ?? new ExecutionPromptSettings();
-            settings.Temperature = "0.9";
+            settings.Temperature = "1.0";
             
             // Start streaming with voice context (timestamp now in system prompt)
             var promptMsg = message;
