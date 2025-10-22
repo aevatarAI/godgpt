@@ -274,7 +274,13 @@ Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy o
 Return JSON (each method has summary/description/detail + specific fields):
 {{""energy"":<0-100>,""results"":{{""forecast"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
 
-Rules: summary≤10 words | description=30-100 words | detail≤300 words | forecast=overall prediction | star ratings=★★★☆☆ format | return valid JSON only";
+CRITICAL RULES:
+- summary: max 10 words
+- description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)
+- detail: max 300 words
+- forecast: comprehensive overall prediction
+- star ratings: use ★★★☆☆ format (1-5 stars)
+- Return valid JSON only, no additional text";
 
         return prompt;
     }
