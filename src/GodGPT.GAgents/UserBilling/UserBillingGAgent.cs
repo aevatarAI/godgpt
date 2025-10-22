@@ -424,7 +424,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 string.Join(", ", createCheckoutSessionDto.PaymentMethodTypes));
         }
 
-        if (!string.IsNullOrEmpty(createCheckoutSessionDto.PaymentMethodCollection))
+        if (!string.IsNullOrEmpty(createCheckoutSessionDto.PaymentMethodCollection) && createCheckoutSessionDto.Mode == PaymentMode.SUBSCRIPTION)
         {
             options.PaymentMethodCollection = createCheckoutSessionDto.PaymentMethodCollection;
             _logger.LogInformation(
