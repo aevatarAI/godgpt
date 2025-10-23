@@ -71,10 +71,6 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
                 case EventTypes.CustomerSubscriptionDeleted:   
                     resultDto = await ProcessSubscriptionEventAsync(stripeEvent);
                     break;
-                //payment_intent.succeeded
-                // case EventTypes.PaymentIntentSucceeded: 
-                //     resultDto = await ProcessPaymentIntentSucceededAsync(stripeEvent);
-                //     break;
                 //charge.refunded
                 case EventTypes.ChargeRefunded:
                     resultDto = await ProcessChargeRefundedAsync(stripeEvent);

@@ -175,7 +175,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             }
             
             // Use SubscriptionHelper for consistent daily average price calculation
-            var dailyAvgPrice = SubscriptionHelper.CalculateDailyAveragePrice(planType, product.Amount).ToString();
+            var dailyAvgPrice = "0.0";
+            if (planType != PlanType.None)
+            {
+                dailyAvgPrice = SubscriptionHelper.CalculateDailyAveragePrice(planType, product.Amount).ToString();
+            }
 
             productDtos.Add(new StripeProductDto
             {
