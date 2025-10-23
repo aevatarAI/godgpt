@@ -35,6 +35,15 @@ public class UserRegisteredEvent : FortuneUserEventLog
     [Id(12)] public DateTime CreatedAt { get; set; }
 }
 
+/// <summary>
+/// User cleared event (for testing)
+/// </summary>
+[GenerateSerializer]
+public class UserClearedEvent : FortuneUserEventLog
+{
+    [Id(0)] public DateTime ClearedAt { get; set; }
+}
+
 #endregion
 
 #region Prediction Events

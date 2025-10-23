@@ -148,6 +148,16 @@ public class GetUserInfoResult
     [Id(2)] public FortuneUserDto? UserInfo { get; set; }
 }
 
+/// <summary>
+/// Clear user result (for testing)
+/// </summary>
+[GenerateSerializer]
+public class ClearUserResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+}
+
 #endregion
 
 #region Prediction DTOs
