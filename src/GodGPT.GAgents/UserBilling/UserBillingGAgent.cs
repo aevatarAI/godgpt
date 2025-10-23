@@ -185,7 +185,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 Amount = product.Amount,
                 DailyAvgPrice = dailyAvgPrice,
                 Currency = product.Currency,
-                IsUltimate = product.IsUltimate
+                IsUltimate = product.IsUltimate,
+                Credits = product.Credits
             });
         }
         
@@ -424,7 +425,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 string.Join(", ", createCheckoutSessionDto.PaymentMethodTypes));
         }
 
-        if (!string.IsNullOrEmpty(createCheckoutSessionDto.PaymentMethodCollection))
+        if (!string.IsNullOrEmpty(createCheckoutSessionDto.PaymentMethodCollection) && createCheckoutSessionDto.Mode == PaymentMode.SUBSCRIPTION)
         {
             options.PaymentMethodCollection = createCheckoutSessionDto.PaymentMethodCollection;
             _logger.LogInformation(
@@ -1118,86 +1119,105 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Update for complete invoice {0}, {1}, {2}",
                 userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
-            foreach (var subscriptionId in subscriptionIds.Where(subscriptionId => subscriptionId != paymentSummary.SubscriptionId))
-            {
-                await CancelSubscriptionAsync(new CancelSubscriptionDto
-                {
-                    UserId = userId,
-                    SubscriptionId = subscriptionId,
-                    CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
-                    CancelAtPeriodEnd = true
-                });
-            }
 
-            //process trial code
-            var trialDays = await MarkTrialCodeUsedAsync(invoiceDetail, userId, paymentSummary);
+            if (paymentSummary.PaymentType != null && paymentSummary.PaymentType == PaymentType.OneTime)
+            {
+                _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Process credits transaction, {0}, {1}, {2}",
+                    userId, paymentSummary.SubscriptionId, invoiceDetail.InvoiceId);
+                var addPurchasedCredits = await userQuotaGAgent.AddPurchasedCreditsAsync(productConfig.Credits, invoiceDetail.InvoiceId);
+                if (addPurchasedCredits.Success)
+                {
+                    // Report payment success to Google Analytics
+                    var purchaseType = PurchaseType.Credits;
             
-            subscriptionIds.Clear();
-            subscriptionIds.Add(paymentSummary.SubscriptionId);
-            invoiceIds.Add(invoiceDetail.InvoiceId);
-
-            if (subscriptionInfoDto.IsActive)
-            {
-                if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscriptionInfoDto.PlanType) <= SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType) productConfig.PlanType))
-                {
-                    subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
+                    var amount = invoiceDetail.AmountNetTotal ?? invoiceDetail.Amount;
+                    amount = amount ?? productConfig.Amount;
+                    _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,
+                        productConfig.PriceId, invoiceDetail.Currency ?? string.Empty, amount.Value);
                 }
-                subscriptionInfoDto.EndDate =
-                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate, trialDays);
             }
             else
             {
-                subscriptionInfoDto.IsActive = true;
-                subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
-                subscriptionInfoDto.StartDate = DateTime.UtcNow;
-                subscriptionInfoDto.EndDate =
-                    GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate, trialDays);
-                await userQuotaGAgent.ResetRateLimitsAsync();
-            }
-            subscriptionInfoDto.Status = PaymentStatus.Completed;
-            subscriptionInfoDto.SubscriptionIds = subscriptionIds;
-            subscriptionInfoDto.InvoiceIds = invoiceIds;
-            await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
-
-            if (productConfig.IsUltimate)
-            {
-                var premiumSubscription = await userQuotaGAgent.GetSubscriptionAsync(false);
-                if (!premiumSubscription.SubscriptionIds.IsNullOrEmpty())
+                foreach (var subscriptionId in subscriptionIds.Where(subscriptionId => subscriptionId != paymentSummary.SubscriptionId))
                 {
-                    foreach (var subscriptionId in premiumSubscription.SubscriptionIds)
+                    await CancelSubscriptionAsync(new CancelSubscriptionDto
                     {
-                        await CancelSubscriptionAsync(new CancelSubscriptionDto
+                        UserId = userId,
+                        SubscriptionId = subscriptionId,
+                        CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
+                        CancelAtPeriodEnd = true
+                    });
+                }
+
+                //process trial code
+                var trialDays = await MarkTrialCodeUsedAsync(invoiceDetail, userId, paymentSummary);
+                
+                subscriptionIds.Clear();
+                subscriptionIds.Add(paymentSummary.SubscriptionId);
+                invoiceIds.Add(invoiceDetail.InvoiceId);
+
+                if (subscriptionInfoDto.IsActive)
+                {
+                    if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscriptionInfoDto.PlanType) <= SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType) productConfig.PlanType))
+                    {
+                        subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
+                    }
+                    subscriptionInfoDto.EndDate =
+                        GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.EndDate, trialDays);
+                }
+                else
+                {
+                    subscriptionInfoDto.IsActive = true;
+                    subscriptionInfoDto.PlanType = (PlanType) productConfig.PlanType;
+                    subscriptionInfoDto.StartDate = DateTime.UtcNow;
+                    subscriptionInfoDto.EndDate =
+                        GetSubscriptionEndDate(subscriptionInfoDto.PlanType, subscriptionInfoDto.StartDate, trialDays);
+                    await userQuotaGAgent.ResetRateLimitsAsync();
+                }
+                subscriptionInfoDto.Status = PaymentStatus.Completed;
+                subscriptionInfoDto.SubscriptionIds = subscriptionIds;
+                subscriptionInfoDto.InvoiceIds = invoiceIds;
+                await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
+
+                if (productConfig.IsUltimate)
+                {
+                    var premiumSubscription = await userQuotaGAgent.GetSubscriptionAsync(false);
+                    if (!premiumSubscription.SubscriptionIds.IsNullOrEmpty())
+                    {
+                        foreach (var subscriptionId in premiumSubscription.SubscriptionIds)
                         {
-                            UserId = userId,
-                            SubscriptionId = subscriptionId,
-                            CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
-                            CancelAtPeriodEnd = true
-                        });
+                            await CancelSubscriptionAsync(new CancelSubscriptionDto
+                            {
+                                UserId = userId,
+                                SubscriptionId = subscriptionId,
+                                CancellationReason = $"Upgrade to a new subscription {paymentSummary.SubscriptionId}",
+                                CancelAtPeriodEnd = true
+                            });
+                        }
+                    }
+                    if (premiumSubscription.IsActive)
+                    {
+                        premiumSubscription.StartDate =
+                            GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.StartDate, trialDays);
+                        premiumSubscription.EndDate =
+                            GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.EndDate, trialDays);
+                        await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscription);
                     }
                 }
-                if (premiumSubscription.IsActive)
-                {
-                    premiumSubscription.StartDate =
-                        GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.StartDate, trialDays);
-                    premiumSubscription.EndDate =
-                        GetSubscriptionEndDate((PlanType)productConfig.PlanType, premiumSubscription.EndDate, trialDays);
-                    await userQuotaGAgent.UpdateSubscriptionAsync(premiumSubscription);
-                }
+                
+                //Invite users to pay rewards
+                await ProcessInviteeSubscriptionAsync(userId, (PlanType) productConfig.PlanType, productConfig.IsUltimate, invoiceDetail.InvoiceId);
+                _logger.LogWarning("[UserBillingGAgent][HandleStripeWebhookEventAsync] Process invitee subscription completed, user {UserId}",
+                    userId);
+                
+                // Report payment success to Google Analytics
+                var purchaseType = GetStripePurchaseType(invoiceDetail.IsTrial, paymentSummary);
+            
+                var amount = invoiceDetail.AmountNetTotal ?? invoiceDetail.Amount;
+                amount = amount ?? productConfig.Amount;
+                _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,
+                    productConfig.PriceId, invoiceDetail.Currency ?? string.Empty, amount.Value);
             }
-            
-            //Invite users to pay rewards
-            await ProcessInviteeSubscriptionAsync(userId, (PlanType) productConfig.PlanType, productConfig.IsUltimate, invoiceDetail.InvoiceId);
-            _logger.LogWarning("[UserBillingGAgent][HandleStripeWebhookEventAsync] Process invitee subscription completed, user {UserId}",
-                userId);
-            
-            // Report payment success to Google Analytics
-            var purchaseType = GetStripePurchaseType(invoiceDetail.IsTrial, paymentSummary);
-            
-            var amount = invoiceDetail.AmountNetTotal ?? invoiceDetail.Amount;
-            amount = amount ?? productConfig.Amount;
-            _ = ReportApplePaymentSuccessAsync(detailsDto.UserId, invoiceDetail.InvoiceId, purchaseType, PaymentPlatform.Stripe,
-                productConfig.PriceId, invoiceDetail.Currency ?? string.Empty, amount.Value);
-            
         } else if (invoiceDetail != null && invoiceDetail.Status == PaymentStatus.Cancelled && subscriptionIds.Contains(paymentSummary.SubscriptionId))
         {
             _logger.LogDebug("[UserBillingGAgent][HandleStripeWebhookEventAsync] Cancel User subscription {0}, {1}, {2}",
@@ -1641,6 +1661,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             existingPaymentSummary.MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate);
             existingPaymentSummary.Amount = productConfig.Amount;
             existingPaymentSummary.Currency = productConfig.Currency;
+            existingPaymentSummary.PaymentType = paymentDetails.PaymentType;
             existingPaymentSummary.Status = paymentDetails.Status;
             existingPaymentSummary.SubscriptionId = paymentDetails.SubscriptionId;
             existingPaymentSummary.AmountNetTotal = paymentDetails.AmountNetTotal;
@@ -1675,6 +1696,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
                 Amount = productConfig.Amount,
                 Currency = productConfig.Currency,
+                PaymentType = paymentDetails.PaymentType,
                 CreatedAt = paymentDetails.CreatedAt,
                 Status = paymentDetails.Status,
                 SubscriptionId = paymentDetails.SubscriptionId,
@@ -1693,7 +1715,16 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     private async Task CreateOrUpdateInvoiceDetailAsync(PaymentDetailsDto paymentDetails, StripeProduct productConfig,
         ChatManager.UserBilling.PaymentSummary paymentSummary)
     {
-        if (paymentDetails.InvoiceId.IsNullOrWhiteSpace())
+        var id = string.Empty;
+        if (paymentDetails.Mode == PaymentMode.PAYMENT)
+        {
+            id = paymentDetails.PaymentIntentId;
+        }
+        else
+        {
+            id = paymentDetails.InvoiceId;
+        }
+        if (id.IsNullOrWhiteSpace())
         { 
             return;
         }
@@ -1703,12 +1734,12 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             paymentSummary.InvoiceDetails = new List<ChatManager.UserBilling.UserBillingInvoiceDetail>();
         }
         var invoiceDetail =
-            paymentSummary.InvoiceDetails.FirstOrDefault(t => t.InvoiceId == paymentDetails.InvoiceId);
+            paymentSummary.InvoiceDetails.FirstOrDefault(t => t.InvoiceId == id);
         if (invoiceDetail == null)
         {
             invoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
             {
-                InvoiceId = paymentDetails.InvoiceId,
+                InvoiceId = id,
                 CreatedAt = paymentDetails.CreatedAt,
                 Status = paymentDetails.Status,
                 Amount = productConfig.Amount,
