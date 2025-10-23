@@ -24,4 +24,5 @@ public class StripeProduct
     [Id(3)] public decimal Amount { get; set; }
     [Id(4)] public string Currency { get; set; }
     [Id(5)] public bool IsUltimate { get; set; } = false;  // Configuration-driven Ultimate detection
+    [Id(6)] public int Credits { get; set; } = 0;
 }

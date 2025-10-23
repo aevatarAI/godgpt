@@ -22,4 +22,5 @@ public class StripeProductDto
     /// Indicates if this is an Ultimate subscription plan
     /// </summary>
     [Id(6)] public bool IsUltimate { get; set; }
+    [Id(7)] public int Credits { get; set; } = 0;
 }

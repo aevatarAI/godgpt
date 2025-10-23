@@ -141,6 +141,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         }
         
         State.Id = this.GetPrimaryKey();
+        State.UserId = Guid.Parse(userId);
         State.PriceId = priceId;
         State.Amount = session.AmountSubtotal.HasValue ? (decimal)session.AmountSubtotal.Value / 100 : 0;
         State.AmountNetTotal = session.AmountTotal.HasValue ? (decimal)session.AmountTotal.Value / 100 : 0;
@@ -163,8 +164,14 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         State.SubscriptionId = session.SubscriptionId;
         State.InvoiceId = session.InvoiceId;
         State.SessionId = session.Id;
+        State.PaymentIntentId = session.PaymentIntentId;
         State.OrderId = orderId;
         State.LastUpdated = DateTime.UtcNow;
+
+        if (State.Discounts.IsNullOrEmpty() && !session.Discounts.IsNullOrEmpty())
+        {
+            State.Discounts = await GetDiscountDetailsFromSessionAsync(session);
+        }
 
         await WriteStateAsync();
 
@@ -185,61 +192,6 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
         }
 
         return string.Empty;
-    }
-
-    private async Task<GrainResultDto<PaymentDetailsDto>> ProcessPaymentIntentSucceededAsync(Event stripeEvent)
-    {
-        var paymentIntent = stripeEvent.Data.Object as PaymentIntent;
-        if (paymentIntent == null)
-        {
-            _logger.LogError("[PaymentGAgent][ProcessPaymentIntentSucceededAsync] Failed to cast event data to PaymentIntent");
-            return new GrainResultDto<PaymentDetailsDto>
-            {
-                Success = false,
-                Message = "Failed to cast event data to PaymentIntent"
-            };
-        }
-        
-        string userId = null;
-        if (paymentIntent.Metadata.TryGetValue("internal_user_id", out var id) && !string.IsNullOrEmpty(id))
-        {
-            userId = id;
-        }
-        
-        _logger.LogInformation("[PaymentGAgent][ProcessPaymentIntentSucceededAsync] Processing successful payment {PaymentIntentId} for user {UserId}", 
-            paymentIntent.Id, userId);
-
-        bool canUpdateStatus = true;
-        if (State.Status > PaymentStatus.Processing)
-        {
-            canUpdateStatus = false;
-            _logger.LogWarning("[PaymentGAgent][ProcessCheckoutSessionCompletedAsync] Cannot update status from {CurrentStatus} to Processing as current status is finalized", 
-                State.Status);
-        }
-        
-        State.Id = this.GetPrimaryKey();
-        State.UserId = Guid.Parse(userId);
-        if (canUpdateStatus)
-        {
-            State.Status = PaymentStatus.Completed;
-            State.CompletedAt = DateTime.UtcNow;
-        }
-        State.PaymentType = PaymentType.Subscription;
-        State.Platform = PaymentPlatform.Stripe;
-        State.Amount = paymentIntent.Amount / 100m;
-        State.Currency = paymentIntent.Currency?.ToUpper() ?? "USD";
-        State.Description = $"Payment {paymentIntent.Id}";
-        State.LastUpdated = DateTime.UtcNow;
-        
-        await WriteStateAsync();
-
-        _logger.LogInformation("[PaymentGAgent][ProcessPaymentIntentSucceededAsync] Recorded payment {PaymentId} for payment intent {PaymentIntentId}", 
-            State.Id, paymentIntent.Id);
-
-        return new GrainResultDto<PaymentDetailsDto>
-        {
-            Data = State.ToDto()
-        };
     }
 
     private async Task<GrainResultDto<PaymentDetailsDto>> ProcessInvoicePaidAsync(Event stripeEvent)
@@ -615,6 +567,102 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
             PromotionCodeId = discount.PromotionCodeId,
             PromotionCode = discount.PromotionCode?.Code ?? string.Empty
         }));
+        return discountDetailsList;
+    }
+
+    /// <summary>
+    /// Retrieves discount details from a Stripe Checkout Session
+    /// This method queries promotion codes and coupons information from session discounts
+    /// </summary>
+    /// <param name="session">The Stripe Checkout Session containing discount information</param>
+    /// <returns>List of DiscountDetails containing promotion codes and coupon information</returns>
+    public async Task<List<DiscountDetails>> GetDiscountDetailsFromSessionAsync(Session session)
+    {
+        var discountDetailsList = new List<DiscountDetails>();
+        
+        if (session?.Discounts == null || !session.Discounts.Any())
+        {
+            _logger.LogInformation("[UserPaymentGrain][GetDiscountDetailsFromSessionAsync] No discounts found in session {SessionId}", 
+                session?.Id ?? "unknown");
+            return discountDetailsList;
+        }
+
+        try
+        {
+            var promotionCodeService = new PromotionCodeService(_client);
+            var couponService = new CouponService(_client);
+
+            foreach (var discount in session.Discounts)
+            {
+                var discountDetail = new DiscountDetails();
+
+                // Priority 1: If discount has a promotion code, retrieve its details (includes coupon info)
+                if (!string.IsNullOrEmpty(discount.PromotionCodeId))
+                {
+                    try
+                    {
+                        var promotionCode = await promotionCodeService.GetAsync(discount.PromotionCodeId);
+                        discountDetail.PromotionCodeId = promotionCode.Id;
+                        discountDetail.PromotionCode = promotionCode.Code;
+                        
+                        // Coupon details are included in the promotion code response
+                        if (promotionCode.Coupon != null)
+                        {
+                            discountDetail.CouponId = promotionCode.Coupon.Id;
+                            discountDetail.CouponName = promotionCode.Coupon.Name ?? string.Empty;
+                            discountDetail.AmountOff = promotionCode.Coupon.AmountOff;
+                            discountDetail.PercentOff = promotionCode.Coupon.PercentOff;
+                        }
+                        
+                        discountDetailsList.Add(discountDetail);
+
+                        _logger.LogInformation("[UserPaymentGrain][GetDiscountDetailsFromSessionAsync] Retrieved promotion code {PromotionCode} with coupon {CouponId} for session {SessionId}", 
+                            promotionCode.Code, promotionCode.Coupon?.Id ?? "none", session.Id);
+                    }
+                    catch (StripeException ex)
+                    {
+                        _logger.LogWarning(ex, "[UserPaymentGrain][GetDiscountDetailsFromSessionAsync] Failed to retrieve promotion code {PromotionCodeId}: {ErrorMessage}", 
+                            discount.PromotionCodeId, ex.Message);
+                    }
+                }
+                // Priority 2: If no promotion code but has direct coupon (rare case)
+                else if (!string.IsNullOrEmpty(discount.CouponId))
+                {
+                    try
+                    {
+                        var coupon = await couponService.GetAsync(discount.CouponId);
+                        discountDetail.CouponId = coupon.Id;
+                        discountDetail.CouponName = coupon.Name ?? string.Empty;
+                        discountDetail.AmountOff = coupon.AmountOff;
+                        discountDetail.PercentOff = coupon.PercentOff;
+                        
+                        discountDetailsList.Add(discountDetail);
+
+                        _logger.LogInformation("[UserPaymentGrain][GetDiscountDetailsFromSessionAsync] Retrieved direct coupon {CouponId} for session {SessionId}", 
+                            coupon.Id, session.Id);
+                    }
+                    catch (StripeException ex)
+                    {
+                        _logger.LogWarning(ex, "[UserPaymentGrain][GetDiscountDetailsFromSessionAsync] Failed to retrieve coupon {CouponId}: {ErrorMessage}", 
+                            discount.CouponId, ex.Message);
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("[UserPaymentGrain][GetDiscountDetailsFromSessionAsync] Discount has no promotion code or coupon ID for session {SessionId}", 
+                        session.Id);
+                }
+            }
+
+            _logger.LogInformation("[UserPaymentGrain][GetDiscountDetailsFromSessionAsync] Successfully retrieved {Count} discount details for session {SessionId}", 
+                discountDetailsList.Count, session.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserPaymentGrain][GetDiscountDetailsFromSessionAsync] Unexpected error retrieving discount details for session {SessionId}: {ErrorMessage}", 
+                session.Id, ex.Message);
+        }
+
         return discountDetailsList;
     }
     
