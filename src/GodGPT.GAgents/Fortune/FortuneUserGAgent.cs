@@ -17,6 +17,11 @@ public interface IFortuneUserGAgent : IGAgent
     
     [ReadOnly]
     Task<GetUserInfoResult> GetUserInfoAsync();
+    
+    /// <summary>
+    /// Clear user data (for testing purposes)
+    /// </summary>
+    Task<ClearUserResult> ClearUserAsync();
 }
 
 [GAgent(nameof(FortuneUserGAgent))]
@@ -58,6 +63,23 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 state.CalendarType = registerEvent.CalendarType;
                 state.CreatedAt = registerEvent.CreatedAt;
                 state.UpdatedAt = registerEvent.CreatedAt;
+                break;
+            case UserClearedEvent clearEvent:
+                // Clear all user data
+                state.UserId = string.Empty;
+                state.FirstName = string.Empty;
+                state.LastName = string.Empty;
+                state.Gender = default;
+                state.BirthDate = default;
+                state.BirthTime = default;
+                state.BirthCountry = string.Empty;
+                state.BirthCity = string.Empty;
+                state.MbtiType = null;
+                state.RelationshipStatus = null;
+                state.Interests = null;
+                state.CalendarType = default;
+                state.CreatedAt = default;
+                state.UpdatedAt = clearEvent.ClearedAt;
                 break;
         }
     }
@@ -184,6 +206,54 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 Success = false,
                 Message = "Internal error occurred"
             });
+        }
+    }
+
+    public async Task<ClearUserResult> ClearUserAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[FortuneUserGAgent][ClearUserAsync] Clearing user data for: {GrainId}", 
+                this.GetPrimaryKey());
+
+            // Check if user exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[FortuneUserGAgent][ClearUserAsync] User not found");
+                return new ClearUserResult
+                {
+                    Success = false,
+                    Message = "User not found"
+                };
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Raise event to clear state
+            RaiseEvent(new UserClearedEvent
+            {
+                ClearedAt = now
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[FortuneUserGAgent][ClearUserAsync] User data cleared successfully");
+
+            return new ClearUserResult
+            {
+                Success = true,
+                Message = "User data cleared successfully"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortuneUserGAgent][ClearUserAsync] Error clearing user data");
+            return new ClearUserResult
+            {
+                Success = false,
+                Message = "Internal error occurred"
+            };
         }
     }
 
