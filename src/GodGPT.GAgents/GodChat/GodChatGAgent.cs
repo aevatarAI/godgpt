@@ -634,7 +634,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 }
             }
 
-            // Add conversation suggestions prompt for text chat only
+            // User message without additional prefixes (timestamp now in system prompt)
             string enhancedMessage = message;
             if (!isPromptVoiceChat)
             {
@@ -656,7 +656,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             }
 
             var settings = promptSettings ?? new ExecutionPromptSettings();
-            settings.Temperature = "0.9";
+            settings.Temperature = "1.0";
             var result = await aiAgentStatusProxy.PromptWithStreamAsync(enhancedMessage, State.ChatHistory, settings,
                 context: aiChatContextDto, imageKeys: images);
             if (!result)
@@ -840,6 +840,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         foreach (var llm in llmsForRegion)
         {
             var systemPrompt = rolePrompts.IsNullOrWhiteSpace() ? State.PromptTemplate : rolePrompts;
+            
+            // Add conversation suggestions prompt and timestamp to system prompt
+            var dateInfo = $"Today's date is: {DateTime.UtcNow:yyyy-MM-dd}. Please use this date as reference for time-related questions.";
+            
             var isDailyGuide = systemPrompt == DailyGuide;
             if (isDailyGuide)
             {
@@ -849,11 +853,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             {
                 if (llm != LocalBackupModel)
                 {
-                    systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+                    systemPrompt = $"{systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}\n\n{dateInfo}";
                 }
                 else
                 {
-                    systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+                    systemPrompt = $"{oldSystemPrompt} {systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}\n\n{dateInfo}";
                 }
             }
             //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
@@ -1508,7 +1512,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
 
         var settings = promptSettings ?? new ExecutionPromptSettings();
-        settings.Temperature = "0.9";
+        settings.Temperature = "1.0";
 
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId,
             promptSettings, isHttpRequest, region);
@@ -1538,7 +1542,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
 
         var settings = promptSettings ?? new ExecutionPromptSettings();
-        settings.Temperature = "0.9";
+        settings.Temperature = "1.0";
         
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId, promptSettings, isHttpRequest, region);
         var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
@@ -2040,10 +2044,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         return new Tuple<string, string>(response, title);
     }
 
-    private string GetCustomPrompt()
-    {
-        return $"The current UTC time is: {DateTime.UtcNow}. Please answer all questions based on this UTC time.";
-    }
 
     public async Task<string> GodVoiceStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled,
         string message,
@@ -2080,9 +2080,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             
             // Set default temperature for voice chat
             var settings = promptSettings ?? new ExecutionPromptSettings();
-            settings.Temperature = "0.9";
+            settings.Temperature = "1.0";
             
-            // Start streaming with voice context
+            // Start streaming with voice context (timestamp now in system prompt)
             var promptMsg = message;
             switch (voiceLanguage)
             {
