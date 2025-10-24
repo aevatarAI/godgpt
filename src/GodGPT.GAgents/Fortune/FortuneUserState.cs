@@ -23,5 +23,6 @@ public class FortuneUserState : StateBase
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; }
     [Id(12)] public DateTime CreatedAt { get; set; }
     [Id(13)] public DateTime UpdatedAt { get; set; }
+    [Id(14)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
 }
 

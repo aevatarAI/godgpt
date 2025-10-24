@@ -95,13 +95,13 @@ public class RegisterUserRequest
     [Id(2)] public string LastName { get; set; } = string.Empty;
     [Id(3)] public GenderEnum Gender { get; set; }
     [Id(4)] public DateOnly BirthDate { get; set; }
-    [Id(5)] public TimeOnly BirthTime { get; set; }
+    [Id(5)] public TimeOnly BirthTime { get; set; } = default;
     [Id(6)] public string BirthCountry { get; set; } = string.Empty;
     [Id(7)] public string BirthCity { get; set; } = string.Empty;
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
     [Id(10)] public string? Interests { get; set; }
-    [Id(11)] public CalendarTypeEnum CalendarType { get; set; }
+    [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
 }
 
 /// <summary>
@@ -133,8 +133,9 @@ public class FortuneUserDto
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
     [Id(10)] public string? Interests { get; set; }
-    [Id(11)] public CalendarTypeEnum CalendarType { get; set; }
+    [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
     [Id(12)] public DateTime CreatedAt { get; set; }
+    [Id(13)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
 }
 
 /// <summary>
@@ -156,6 +157,28 @@ public class ClearUserResult
 {
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Update user actions request
+/// </summary>
+[GenerateSerializer]
+public class UpdateUserActionsRequest
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public List<string> Actions { get; set; } = new(); // Available actions: forecast, horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu
+}
+
+/// <summary>
+/// Update user actions result
+/// </summary>
+[GenerateSerializer]
+public class UpdateUserActionsResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public List<string> UpdatedActions { get; set; } = new();
+    [Id(3)] public DateTime UpdatedAt { get; set; }
 }
 
 #endregion
@@ -258,7 +281,7 @@ public class SubmitFeedbackRequest
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
     [Id(2)] public string? PredictionMethod { get; set; } // e.g., "horoscope", "bazi", null for overall
-    [Id(3)] public int Rating { get; set; } // 1-5 (emoji rating)
+    [Id(3)] public int Rating { get; set; } // 0-5 (emoji rating)
     [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(5)] public string? Comment { get; set; }
     [Id(6)] public string? Email { get; set; }
