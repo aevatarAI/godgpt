@@ -185,6 +185,31 @@ public class UpdateUserActionsResult
     [Id(3)] public DateTime UpdatedAt { get; set; }
 }
 
+/// <summary>
+/// Update method rating request
+/// </summary>
+[GenerateSerializer]
+public class UpdateMethodRatingRequest
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public Guid PredictionId { get; set; }
+    [Id(2)] public string PredictionMethod { get; set; } = string.Empty;
+    [Id(3)] public int Rating { get; set; } // 0-5 rating
+}
+
+/// <summary>
+/// Update method rating result
+/// </summary>
+[GenerateSerializer]
+public class UpdateMethodRatingResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public string? PredictionMethod { get; set; }
+    [Id(3)] public int UpdatedRating { get; set; }
+    [Id(4)] public DateTime UpdatedAt { get; set; }
+}
+
 #endregion
 
 #region Prediction DTOs
@@ -314,14 +339,7 @@ public class FeedbackDto
     [Id(0)] public string FeedbackId { get; set; } = string.Empty;
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public Guid PredictionId { get; set; }
-    [Id(3)] public string? PredictionMethod { get; set; } // e.g., "horoscope", "bazi", null for overall
-    [Id(4)] public int Rating { get; set; } // 1-5 (emoji rating)
-    [Id(5)] public List<string> FeedbackTypes { get; set; } = new();
-    [Id(6)] public string? Comment { get; set; }
-    [Id(7)] public string? Email { get; set; }
-    [Id(8)] public bool AgreeToContact { get; set; }
-    [Id(9)] public DateTime CreatedAt { get; set; }
-    [Id(10)] public DateTime UpdatedAt { get; set; }
+    [Id(3)] public Dictionary<string, FeedbackDetail> MethodFeedbacks { get; set; } = new();
 }
 
 #endregion
