@@ -78,7 +78,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 request.UserId, request.PredictionId);
 
             // Validate rating
-            if (request.Rating < 1 || request.Rating > 5)
+            if (request.Rating < 0 || request.Rating > 5)
             {
                 return new SubmitFeedbackResult
                 {

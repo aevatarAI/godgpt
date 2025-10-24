@@ -44,6 +44,17 @@ public class UserClearedEvent : FortuneUserEventLog
     [Id(0)] public DateTime ClearedAt { get; set; }
 }
 
+/// <summary>
+/// User actions updated event
+/// </summary>
+[GenerateSerializer]
+public class UserActionsUpdatedEvent : FortuneUserEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public List<string> Actions { get; set; } = new();
+    [Id(2)] public DateTime UpdatedAt { get; set; }
+}
+
 #endregion
 
 #region Prediction Events

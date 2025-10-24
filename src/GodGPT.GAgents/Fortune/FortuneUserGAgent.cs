@@ -19,6 +19,11 @@ public interface IFortuneUserGAgent : IGAgent
     Task<GetUserInfoResult> GetUserInfoAsync();
     
     /// <summary>
+    /// Update user selected actions
+    /// </summary>
+    Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
+    
+    /// <summary>
     /// Clear user data (for testing purposes)
     /// </summary>
     Task<ClearUserResult> ClearUserAsync();
@@ -29,6 +34,16 @@ public interface IFortuneUserGAgent : IGAgent
 public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLog>, IFortuneUserGAgent
 {
     private readonly ILogger<FortuneUserGAgent> _logger;
+    
+    /// <summary>
+    /// Valid fortune prediction actions
+    /// </summary>
+    private static readonly HashSet<string> ValidActions = new()
+    {
+        "forecast", "horoscope", "bazi", "ziwei", "constellation", 
+        "numerology", "synastry", "chineseZodiac", "mayanTotem", 
+        "humanFigure", "tarot", "zhengYu"
+    };
 
     public FortuneUserGAgent(ILogger<FortuneUserGAgent> logger)
     {
@@ -78,8 +93,13 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 state.RelationshipStatus = null;
                 state.Interests = null;
                 state.CalendarType = default;
+                state.Actions = new List<string>();
                 state.CreatedAt = default;
                 state.UpdatedAt = clearEvent.ClearedAt;
+                break;
+            case UserActionsUpdatedEvent actionsEvent:
+                state.Actions = actionsEvent.Actions;
+                state.UpdatedAt = actionsEvent.UpdatedAt;
                 break;
         }
     }
@@ -194,6 +214,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
                     CalendarType = State.CalendarType,
+                    Actions = State.Actions,
                     CreatedAt = State.CreatedAt
                 }
             });
@@ -206,6 +227,84 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 Success = false,
                 Message = "Internal error occurred"
             });
+        }
+    }
+
+    public async Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request)
+    {
+        try
+        {
+            _logger.LogDebug("[FortuneUserGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
+
+            // Check if user exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[FortuneUserGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
+                return new UpdateUserActionsResult
+                {
+                    Success = false,
+                    Message = "User not found"
+                };
+            }
+
+            // Validate that the user ID matches
+            if (State.UserId != request.UserId)
+            {
+                _logger.LogWarning("[FortuneUserGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
+                    State.UserId, request.UserId);
+                return new UpdateUserActionsResult
+                {
+                    Success = false,
+                    Message = "User ID mismatch"
+                };
+            }
+
+            // Validate actions
+            var validationResult = ValidateActions(request.Actions);
+            if (!validationResult.IsValid)
+            {
+                _logger.LogWarning("[FortuneUserGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
+                    validationResult.Message);
+                return new UpdateUserActionsResult
+                {
+                    Success = false,
+                    Message = validationResult.Message
+                };
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Raise event to update actions
+            RaiseEvent(new UserActionsUpdatedEvent
+            {
+                UserId = request.UserId,
+                Actions = request.Actions,
+                UpdatedAt = now
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[FortuneUserGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
+                request.UserId, string.Join(", ", request.Actions));
+
+            return new UpdateUserActionsResult
+            {
+                Success = true,
+                Message = string.Empty,
+                UpdatedActions = request.Actions,
+                UpdatedAt = now
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortuneUserGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
+                request.UserId);
+            return new UpdateUserActionsResult
+            {
+                Success = false,
+                Message = "Internal error occurred"
+            };
         }
     }
 
@@ -282,14 +381,36 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             return (false, "Invalid birth date");
         }
 
-        if (string.IsNullOrWhiteSpace(request.BirthCountry))
+        return (true, string.Empty);
+    }
+
+    /// <summary>
+    /// Validate actions list
+    /// </summary>
+    private (bool IsValid, string Message) ValidateActions(List<string> actions)
+    {
+        if (actions == null)
         {
-            return (false, "Birth country is required");
+            return (false, "Actions list cannot be null");
         }
 
-        if (string.IsNullOrWhiteSpace(request.BirthCity))
+        // Check for invalid actions
+        var invalidActions = actions.Where(action => !ValidActions.Contains(action)).ToList();
+        if (invalidActions.Any())
         {
-            return (false, "Birth city is required");
+            return (false, $"Invalid actions: {string.Join(", ", invalidActions)}");
+        }
+
+        // Check for duplicates
+        if (actions.Count != actions.Distinct().Count())
+        {
+            return (false, "Duplicate actions are not allowed");
+        }
+
+        // Check maximum limit (optional - you can adjust this)
+        if (actions.Count > ValidActions.Count)
+        {
+            return (false, $"Too many actions. Maximum allowed: {ValidActions.Count}");
         }
 
         return (true, string.Empty);
