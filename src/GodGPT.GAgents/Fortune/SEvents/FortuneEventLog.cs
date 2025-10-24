@@ -33,6 +33,8 @@ public class UserRegisteredEvent : FortuneUserEventLog
     [Id(10)] public string? Interests { get; set; }
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; }
     [Id(12)] public DateTime CreatedAt { get; set; }
+    [Id(13)] public string CurrentResidence { get; set; } = string.Empty;
+    [Id(14)] public string Email { get; set; } = string.Empty;
 }
 
 /// <summary>
