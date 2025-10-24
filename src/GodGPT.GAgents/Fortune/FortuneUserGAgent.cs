@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.Fortune.Dtos;
 using Aevatar.Application.Grains.Fortune.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Concurrency;
@@ -13,7 +14,7 @@ namespace Aevatar.Application.Grains.Fortune;
 /// </summary>
 public interface IFortuneUserGAgent : IGAgent
 {
-    Task<RegisterUserResult> RegisterAsync(RegisterUserRequest request);
+    Task<UpdateUserInfoResult> UpdateUserInfoAsync(UpdateUserInfoRequest request);
     
     [ReadOnly]
     Task<GetUserInfoResult> GetUserInfoAsync();
@@ -108,33 +109,32 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
         }
     }
 
-    public async Task<RegisterUserResult> RegisterAsync(RegisterUserRequest request)
+    public async Task<UpdateUserInfoResult> UpdateUserInfoAsync(UpdateUserInfoRequest request)
     {
         try
         {
-            _logger.LogDebug("[FortuneUserGAgent][RegisterAsync] Start - UserId: {UserId}", request.UserId);
-
-            // Check if user already exists
-            if (!string.IsNullOrEmpty(State.UserId))
-            {
-                _logger.LogWarning("[FortuneUserGAgent][RegisterAsync] User already exists: {UserId}", request.UserId);
-                return new RegisterUserResult
-                {
-                    Success = false,
-                    Message = "User already exists"
-                };
-            }
+            _logger.LogDebug("[FortuneUserGAgent][UpdateUserInfoAsync] Start - UserId: {UserId}", request.UserId);
 
             // Validate request
             var validationResult = ValidateRegisterRequest(request);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneUserGAgent][RegisterAsync] Validation failed: {Message}", 
+                _logger.LogWarning("[FortuneUserGAgent][UpdateUserInfoAsync] Validation failed: {Message}", 
                     validationResult.Message);
-                return new RegisterUserResult
+                return new UpdateUserInfoResult
                 {
                     Success = false,
                     Message = validationResult.Message
+                };
+            }
+            
+            if (!State.UserId.IsNullOrWhiteSpace() && State.UserId != request.UserId)
+            {
+                _logger.LogWarning("[FortuneUserGAgent][UpdateUserInfoAsync] User ID mismatch: {UserId}", request.UserId);
+                return new UpdateUserInfoResult
+                {
+                    Success = false,
+                    Message = "User ID mismatch"
                 };
             }
 
@@ -163,10 +163,10 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserGAgent][RegisterAsync] User registered successfully: {UserId}", 
+            _logger.LogInformation("[FortuneUserGAgent][UpdateUserInfoAsync] User registered successfully: {UserId}", 
                 request.UserId);
 
-            return new RegisterUserResult
+            return new UpdateUserInfoResult
             {
                 Success = true,
                 Message = string.Empty,
@@ -176,9 +176,9 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserGAgent][RegisterAsync] Error registering user: {UserId}", 
+            _logger.LogError(ex, "[FortuneUserGAgent][UpdateUserInfoAsync] Error registering user: {UserId}", 
                 request.UserId);
-            return new RegisterUserResult
+            return new UpdateUserInfoResult
             {
                 Success = false,
                 Message = "Internal error occurred"
@@ -367,24 +367,24 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
     /// <summary>
     /// Validate register request
     /// </summary>
-    private (bool IsValid, string Message) ValidateRegisterRequest(RegisterUserRequest request)
+    private (bool IsValid, string Message) ValidateRegisterRequest(UpdateUserInfoRequest infoRequest)
     {
-        if (string.IsNullOrWhiteSpace(request.UserId) || request.UserId.Length < 3 || request.UserId.Length > 50)
+        if (string.IsNullOrWhiteSpace(infoRequest.UserId) || infoRequest.UserId.Length < 3 || infoRequest.UserId.Length > 50)
         {
             return (false, "UserId must be between 3 and 50 characters");
         }
 
-        if (string.IsNullOrWhiteSpace(request.FirstName))
+        if (string.IsNullOrWhiteSpace(infoRequest.FirstName))
         {
             return (false, "First name is required");
         }
 
-        if (string.IsNullOrWhiteSpace(request.LastName))
+        if (string.IsNullOrWhiteSpace(infoRequest.LastName))
         {
             return (false, "Last name is required");
         }
 
-        if (request.BirthDate == default || request.BirthDate > DateOnly.FromDateTime(DateTime.UtcNow))
+        if (infoRequest.BirthDate == default || infoRequest.BirthDate > DateOnly.FromDateTime(DateTime.UtcNow))
         {
             return (false, "Invalid birth date");
         }

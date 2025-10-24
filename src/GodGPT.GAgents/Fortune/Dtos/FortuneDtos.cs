@@ -88,7 +88,7 @@ public enum FeedbackTypeEnum
 /// Register user request
 /// </summary>
 [GenerateSerializer]
-public class RegisterUserRequest
+public class UpdateUserInfoRequest
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FirstName { get; set; } = string.Empty;
@@ -110,7 +110,7 @@ public class RegisterUserRequest
 /// Register user result
 /// </summary>
 [GenerateSerializer]
-public class RegisterUserResult
+public class UpdateUserInfoResult
 {
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
