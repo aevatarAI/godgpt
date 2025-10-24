@@ -207,6 +207,8 @@ public class PredictionResultDto
     [Id(4)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new();
     [Id(5)] public DateTime CreatedAt { get; set; }
     [Id(6)] public bool FromCache { get; set; }
+    [Id(7)] public Dictionary<string, string> LifetimeForecast { get; set; } = new Dictionary<string, string>();
+    [Id(8)] public Dictionary<string, string> WeeklyForecast { get; set; } = new Dictionary<string, string>();
 }
 
 /// <summary>
