@@ -14,5 +14,7 @@ public class FortunePredictionState : StateBase
     [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new();
     [Id(4)] public int Energy { get; set; }
     [Id(5)] public DateTime CreatedAt { get; set; }
+    [Id(6)] public Dictionary<string, string> LifetimeForecast { get; set; } = new Dictionary<string, string>();
+    [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; } = new Dictionary<string, string>();
 }
 

@@ -59,6 +59,14 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 state.Results = generatedEvent.Results;
                 state.Energy = generatedEvent.Energy;
                 state.CreatedAt = generatedEvent.CreatedAt;
+                if (!generatedEvent.LifetimeForecast.IsNullOrEmpty())
+                {
+                    state.LifetimeForecast = generatedEvent.LifetimeForecast;
+                }
+                if (!generatedEvent.WeeklyForecast.IsNullOrEmpty())
+                {
+                    state.WeeklyForecast = generatedEvent.WeeklyForecast;
+                }
                 break;
         }
     }
@@ -135,7 +143,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             Energy = State.Energy,
             Results = State.Results,
             CreatedAt = State.CreatedAt,
-            FromCache = true
+            FromCache = true,
+            LifetimeForecast = State.LifetimeForecast,
+            WeeklyForecast = State.WeeklyForecast
         });
     }
 
@@ -208,6 +218,20 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 };
             }
 
+            var lifetimeForecast = State.LifetimeForecast ?? new Dictionary<string, string>();
+            if (parsedResults.ContainsKey("lifetimeForecast"))
+            {
+                lifetimeForecast = parsedResults["lifetimeForecast"];
+                parsedResults.Remove("lifetimeForecast");
+            }
+
+            var weeklyForecast = State.WeeklyForecast ?? new Dictionary<string, string>();
+            if (parsedResults.ContainsKey("weeklyForecast"))
+            {
+                weeklyForecast = parsedResults["weeklyForecast"];
+                parsedResults.Remove("weeklyForecast");
+            }
+
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
 
@@ -219,7 +243,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 PredictionDate = predictionDate,
                 Results = parsedResults,
                 Energy = overallEnergy,
-                CreatedAt = now
+                CreatedAt = now,
+                LifetimeForecast = lifetimeForecast,
+                WeeklyForecast = weeklyForecast
             });
 
             // Confirm events to persist state changes
@@ -240,7 +266,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     Energy = overallEnergy,
                     Results = parsedResults,
                     CreatedAt = now,
-                    FromCache = false
+                    FromCache = false,
+                    LifetimeForecast = lifetimeForecast,
+                    WeeklyForecast = weeklyForecast
                 }
             };
         }
@@ -292,12 +320,28 @@ Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, syn
 Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
 
 Return JSON (each method has summary/description + specific fields):
-{{""energy"":<0-100>,""results"":{{""lifetimeForecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""forecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
+{{""energy"":<0-100>,""results"":{{
+";
+
+        if (State.LifetimeForecast.IsNullOrEmpty())
+        {
+            prompt += $@"""lifetimeForecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},";
+        }
+
+        prompt +=
+            $@"""weeklyForecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""forecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
 
 CRITICAL RULES:
 - summary: max 10 words
-- description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)
-- lifetimeForecast: comprehensive overall lifetime prediction across all life aspects
+- description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)";
+
+        if (State.LifetimeForecast.IsNullOrEmpty())
+        {
+            prompt += $@"- lifetimeForecast: comprehensive overall lifetime prediction across all life aspects";
+        }
+        
+        prompt += $@"
+- weeklyForecast: comprehensive weekly prediction for the current week
 - forecast: comprehensive overall prediction for the specific date
 - star ratings: use ★★★☆☆ format (1-5 stars)
 - chineseZodiac: include Five Elements information naturally
