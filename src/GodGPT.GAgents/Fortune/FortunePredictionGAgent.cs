@@ -318,19 +318,17 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             : $"{userInfo.BirthDate:yyyy-MM-dd} {userInfo.BirthTime:HH:mm}";
         var calendarType = userInfo.CalendarType == CalendarTypeEnum.Solar ? "Solar" : "Lunar";
 
-        var prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
+        string prompt = string.Empty;
+        if (lifetime)
+        {
+            prompt = $@"Generate comprehensive lifetime and weekly fortune for {predictionDate:yyyy-MM-dd}.
 User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
 
-Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
+Generate ONLY lifetimeForecast and weeklyForecast - do NOT generate other prediction methods.
 Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
 
 Return JSON (each method has summary/description + specific fields):
-{{""energy"":<0-100>,""results"":{{
-";
-
-        if (lifetime)
-        {
-            prompt += $@"""lifetimeForecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]""}},""weeklyForecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]"",""focus"":""[1-5 stars]""}}}}}}
+{{""energy"":<0-100>,""results"":{{""lifetimeForecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]""}},""weeklyForecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]"",""focus"":""[1-5 stars]""}}}}}}
 
 CRITICAL RULES:
 - summary: max 10 words
@@ -339,18 +337,25 @@ CRITICAL RULES:
 - lifetimeForecast: comprehensive overall lifetime prediction across all life aspects
 - weeklyForecast: comprehensive weekly prediction for the current week
 - star ratings: use ★★★☆☆ format (1-5 stars), MUST vary based on actual prediction quality (1★=poor, 2★=below average, 3★=average, 4★=good, 5★=excellent)
+- Generate ONLY lifetimeForecast and weeklyForecast, NO other methods
 - Return valid JSON only, no additional text";
         }
         else
         {
-            prompt +=
-                $@"""weeklyForecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""forecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
+            prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
+User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
+
+Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
+Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
+
+Return JSON (each method has summary/description + specific fields):
+{{""energy"":<0-100>,""results"":{{""forecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
 
 CRITICAL RULES:
 - summary: max 10 words
 - description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)
 - forecast: comprehensive overall prediction for the specific date
-- star ratings: use ★★★☆☆ format (1-5 stars)
+- star ratings: use ★★★☆☆ format (1-5 stars), MUST vary based on actual prediction quality (1★=poor, 2★=below average, 3★=average, 4★=good, 5★=excellent)
 - chineseZodiac: include Five Elements information naturally
 - Return valid JSON only, no additional text";            
         }
