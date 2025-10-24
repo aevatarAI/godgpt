@@ -24,5 +24,7 @@ public class FortuneUserState : StateBase
     [Id(12)] public DateTime CreatedAt { get; set; }
     [Id(13)] public DateTime UpdatedAt { get; set; }
     [Id(14)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
+    [Id(15)] public string CurrentResidence { get; set; } = string.Empty;
+    [Id(16)] public string Email { get; set; } = string.Empty;
 }
 

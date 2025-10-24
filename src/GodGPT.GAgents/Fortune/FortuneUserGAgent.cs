@@ -78,6 +78,8 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 state.CalendarType = registerEvent.CalendarType;
                 state.CreatedAt = registerEvent.CreatedAt;
                 state.UpdatedAt = registerEvent.CreatedAt;
+                state.CurrentResidence = registerEvent.CurrentResidence;
+                state.Email = registerEvent.Email;
                 break;
             case UserClearedEvent clearEvent:
                 // Clear all user data
@@ -96,6 +98,8 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 state.Actions = new List<string>();
                 state.CreatedAt = default;
                 state.UpdatedAt = clearEvent.ClearedAt;
+                state.CurrentResidence = string.Empty;
+                state.Email = string.Empty;
                 break;
             case UserActionsUpdatedEvent actionsEvent:
                 state.Actions = actionsEvent.Actions;
@@ -151,7 +155,9 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 RelationshipStatus = request.RelationshipStatus,
                 Interests = request.Interests,
                 CalendarType = request.CalendarType,
-                CreatedAt = now
+                CreatedAt = now,
+                CurrentResidence = request.CurrentResidence,
+                Email = request.Email
             });
 
             // Confirm events to persist state changes
@@ -215,7 +221,9 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                     Interests = State.Interests,
                     CalendarType = State.CalendarType,
                     Actions = State.Actions,
-                    CreatedAt = State.CreatedAt
+                    CreatedAt = State.CreatedAt,
+                    CurrentResidence = State.CurrentResidence,
+                    Email = State.Email
                 }
             });
         }

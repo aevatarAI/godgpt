@@ -102,6 +102,8 @@ public class RegisterUserRequest
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
     [Id(10)] public string? Interests { get; set; }
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
+    [Id(12)] public string CurrentResidence { get; set; } = string.Empty;
+    [Id(13)] public string Email { get; set; } = string.Empty;
 }
 
 /// <summary>
@@ -136,6 +138,8 @@ public class FortuneUserDto
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
     [Id(12)] public DateTime CreatedAt { get; set; }
     [Id(13)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
+    [Id(14)] public string CurrentResidence { get; set; } = string.Empty;
+    [Id(15)] public string Email { get; set; } = string.Empty;
 }
 
 /// <summary>
