@@ -267,10 +267,13 @@ public class PredictionMethodResult
 [GenerateSerializer]
 public class PredictionFeedbackSummary
 {
-    [Id(0)] public int Rating { get; set; } // 1-5 emoji rating
-    [Id(1)] public List<string> FeedbackTypes { get; set; } = new();
-    [Id(2)] public string? Comment { get; set; }
-    [Id(3)] public DateTime CreatedAt { get; set; }
+    [Id(0)] public string PredictionMethod { get; set; }
+    [Id(1)] public int Rating { get; set; } // 1-5 emoji rating
+    [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
+    [Id(3)] public string? Comment { get; set; }
+    [Id(4)] public DateTime CreatedAt { get; set; }
+    [Id(5)] public string? Email { get; set; }
+    [Id(6)] public bool AgreeToContact { get; set; }
 }
 
 /// <summary>
