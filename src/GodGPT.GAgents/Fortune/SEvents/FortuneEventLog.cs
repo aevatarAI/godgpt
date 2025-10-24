@@ -106,7 +106,7 @@ public class FeedbackSubmittedEvent : FortuneFeedbackEventLog
     [Id(0)] public string FeedbackId { get; set; } = string.Empty;
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public Guid PredictionId { get; set; }
-    [Id(3)] public string? PredictionMethod { get; set; } // e.g., "horoscope", "bazi", null for overall
+    [Id(3)] public string PredictionMethod { get; set; }
     [Id(4)] public int Rating { get; set; }
     [Id(5)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(6)] public string? Comment { get; set; }
@@ -128,6 +128,20 @@ public class FeedbackUpdatedEvent : FortuneFeedbackEventLog
     [Id(4)] public string? Email { get; set; }
     [Id(5)] public bool AgreeToContact { get; set; }
     [Id(6)] public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// Method rating updated event
+/// </summary>
+[GenerateSerializer]
+public class MethodRatingUpdatedEvent : FortuneFeedbackEventLog
+{
+    [Id(0)] public string FeedbackId { get; set; } = string.Empty;
+    [Id(1)] public string UserId { get; set; } = string.Empty;
+    [Id(2)] public Guid PredictionId { get; set; }
+    [Id(3)] public string PredictionMethod { get; set; } = string.Empty;
+    [Id(4)] public int Rating { get; set; }
+    [Id(5)] public DateTime UpdatedAt { get; set; }
 }
 
 #endregion
