@@ -2025,6 +2025,36 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
         var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
 
+        // Check if this is a one-time purchase Credits product
+        if (productConfig.Credits > 0)
+        {
+            _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Processing Credits purchase: {Credits} credits for user {UserId}, transaction {TransactionId}", 
+                productConfig.Credits, userId, verificationResult.TransactionId);
+            
+            // Add purchased credits using transaction ID as invoice ID (similar to Apple and Stripe logic)
+            var addPurchasedCredits = await userQuotaAgent.AddPurchasedCreditsAsync(productConfig.Credits, verificationResult.TransactionId);
+            
+            if (addPurchasedCredits.Success)
+            {
+                _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Successfully added {Credits} credits for user {UserId}, transaction {TransactionId}",
+                    productConfig.Credits, userId, verificationResult.TransactionId);
+
+                // Report payment success to analytics (similar to Apple and Stripe logic)
+                await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, PurchaseType.Credits, 
+                    PaymentPlatform.GooglePlay, verificationResult.ProductId, productConfig.Currency, productConfig.Amount);
+                
+                _logger.LogInformation("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Credits purchase completed for user {UserId}, transaction {TransactionId}", 
+                    userId, verificationResult.TransactionId);
+            }
+            else
+            {
+                _logger.LogError("[UserBillingGAgent][ProcessGooglePlayPurchaseSuccessAsync] Failed to add credits for user {UserId}, transaction {TransactionId}: {ErrorMessage}",
+                    userId, verificationResult.TransactionId, addPurchasedCredits.Message);
+            }
+            return; // Credits purchase completed, no subscription processing needed
+        }
+
+        // Continue with subscription processing for non-Credits products
         var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
         
         if (!subscription.IsActive)
@@ -2752,8 +2782,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Purchase refunded",
                         userId.ToString(), signedTransactionInfo.TransactionId);
                     break;
+                
+                case AppStoreNotificationType.CONSUMPTION_REQUEST:
+                    // Handle one-time purchase of consumable items (Credits)
+                    await HandleAppleConsumablePurchaseAsync(userId, signedTransactionInfo);
+                    _logger.LogInformation("[UserBillingGAgent][HandleAppStoreNotificationAsync] {userId}, {transactionId}, Consumable purchase processed",
+                        userId.ToString(), signedTransactionInfo.TransactionId);
+                    break;
                 //---------------------------------------------------------------------
-                case AppStoreNotificationType.CONSUMPTION_REQUEST: // Handle consumption data request for refund
                 case AppStoreNotificationType.DID_FAIL_TO_RENEW: // Handle renewal failure
                 case AppStoreNotificationType.OFFER_REDEEMED: // Handle offer redemption
                 case AppStoreNotificationType.PRICE_INCREASE: // Handle price increase
@@ -5476,6 +5512,70 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     }
 
     #endregion
+
+    /// <summary>
+    /// Handles Apple consumable purchase (one-time purchase of Credits)
+    /// Similar to Stripe credits purchase processing logic
+    /// </summary>
+    /// <param name="userId">User ID</param>
+    /// <param name="signedTransactionInfo">Apple transaction information</param>
+    private async Task HandleAppleConsumablePurchaseAsync(Guid userId, AppStoreJWSTransactionDecodedPayload signedTransactionInfo)
+    {
+        try
+        {
+            _logger.LogDebug("[UserBillingGAgent][HandleAppleConsumablePurchaseAsync] Processing consumable purchase for user {UserId}, transaction {TransactionId}, product {ProductId}",
+                userId, signedTransactionInfo.TransactionId, signedTransactionInfo.ProductId);
+
+            // Get product configuration based on product ID
+            var productConfig = await GetProductConfigAsync(signedTransactionInfo.ProductId);
+            if (productConfig == null)
+            {
+                _logger.LogWarning("[UserBillingGAgent][HandleAppleConsumablePurchaseAsync] Product configuration not found for product {ProductId}",
+                    signedTransactionInfo.ProductId);
+                return;
+            }
+
+            // Verify this is a one-time purchase (credits) product
+            if (productConfig.Credits <= 0)
+            {
+                _logger.LogWarning("[UserBillingGAgent][HandleAppleConsumablePurchaseAsync] Product {ProductId} is not a credits product, credits: {Credits}",
+                    signedTransactionInfo.ProductId, productConfig.Credits);
+                return;
+            }
+
+            // Get user quota agent to add purchased credits
+            var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
+            
+            // Add purchased credits using transaction ID as invoice ID (similar to Stripe logic)
+            var addPurchasedCredits = await userQuotaGAgent.AddPurchasedCreditsAsync(productConfig.Credits, signedTransactionInfo.TransactionId);
+            
+            if (addPurchasedCredits.Success)
+            {
+                _logger.LogInformation("[UserBillingGAgent][HandleAppleConsumablePurchaseAsync] Successfully added {Credits} credits for user {UserId}, transaction {TransactionId}",
+                    productConfig.Credits, userId, signedTransactionInfo.TransactionId);
+
+                // Report payment success to analytics (similar to Stripe logic)
+                var purchaseType = PurchaseType.Credits;
+                var amount = GetActualApplePrice(signedTransactionInfo.Price);
+                
+                _ = ReportApplePaymentSuccessAsync(userId, signedTransactionInfo.TransactionId, purchaseType, PaymentPlatform.AppStore,
+                    signedTransactionInfo.ProductId, signedTransactionInfo.Currency, amount);
+                
+                _logger.LogInformation("[UserBillingGAgent][HandleAppleConsumablePurchaseAsync] Payment success reported for user {UserId}, transaction {TransactionId}, amount {Amount} {Currency}",
+                    userId, signedTransactionInfo.TransactionId, amount, signedTransactionInfo.Currency);
+            }
+            else
+            {
+                _logger.LogError("[UserBillingGAgent][HandleAppleConsumablePurchaseAsync] Failed to add credits for user {UserId}, transaction {TransactionId}: {ErrorMessage}",
+                    userId, signedTransactionInfo.TransactionId, addPurchasedCredits.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserBillingGAgent][HandleAppleConsumablePurchaseAsync] Error processing consumable purchase for user {UserId}, transaction {TransactionId}",
+                userId, signedTransactionInfo.TransactionId);
+        }
+    }
 
     /// <summary>
     /// Apple returns price multiplied by 1000, this method divides by 1000 to get the real amount.
