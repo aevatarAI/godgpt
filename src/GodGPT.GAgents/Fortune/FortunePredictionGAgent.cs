@@ -7,7 +7,6 @@ using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Options;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using Orleans;
 using Orleans.Concurrency;
 
 namespace Aevatar.Application.Grains.Fortune;
@@ -17,7 +16,7 @@ namespace Aevatar.Application.Grains.Fortune;
 /// </summary>
 public interface IFortunePredictionGAgent : IGAgent
 {
-    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo);
+    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, bool lifetime = false);
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionAsync();
@@ -71,7 +70,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         }
     }
 
-    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo)
+    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, bool lifetime = false)
     {
         try
         {
@@ -80,7 +79,31 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 userInfo.UserId, today);
 
             // Check if prediction already exists (from cache/state)
-            if (State.PredictionId != Guid.Empty && State.PredictionDate == today)
+            if (lifetime && !State.LifetimeForecast.IsNullOrEmpty())
+            {
+                _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached lifetime prediction for {UserId} {Lifetime}",
+                    userInfo.UserId, lifetime);
+
+                return new GetTodayPredictionResult
+                {
+                    Success = true,
+                    Message = string.Empty,
+                    Prediction = new PredictionResultDto
+                    {
+                        PredictionId = State.PredictionId,
+                        UserId = State.UserId,
+                        PredictionDate = State.PredictionDate,
+                        Energy = State.Energy,
+                        Results = State.Results,
+                        CreatedAt = State.CreatedAt,
+                        FromCache = true,
+                        LifetimeForecast = State.LifetimeForecast,
+                        WeeklyForecast = State.WeeklyForecast
+                    }
+                };
+                
+            } 
+            if (!lifetime && State.PredictionId != Guid.Empty && State.PredictionDate == today)
             {
                 _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached prediction for {UserId}",
                     userInfo.UserId);
@@ -103,10 +126,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             }
 
             // Generate new prediction
-            _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Generating new prediction for {UserId}",
-                userInfo.UserId);
+            _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Generating new prediction for {UserId}, {Lifetime}",
+                userInfo.UserId, lifetime);
 
-            var predictionResult = await GeneratePredictionAsync(userInfo, today);
+            var predictionResult = await GeneratePredictionAsync(userInfo, today, lifetime);
             if (!predictionResult.Success)
             {
                 return predictionResult;
@@ -152,12 +175,12 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     /// <summary>
     /// Generate new prediction using AI
     /// </summary>
-    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(FortuneUserDto userInfo, DateOnly predictionDate)
+    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(FortuneUserDto userInfo, DateOnly predictionDate, bool lifetime)
     {
         try
         {
             // Build prompt
-            var prompt = BuildPredictionPrompt(userInfo, predictionDate);
+            var prompt = BuildPredictionPrompt(userInfo, predictionDate, lifetime);
 
             _logger.LogDebug("[FortunePredictionGAgent][GeneratePredictionAsync] Calling AI with prompt for user {UserId}",
                 userInfo.UserId);
@@ -286,7 +309,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     /// <summary>
     /// Build prediction prompt for AI
     /// </summary>
-    private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate)
+    private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate, bool lifetime)
     {
         var relationshipStatus = userInfo.RelationshipStatus?.ToString() ?? "Unknown";
         var birthLocation = $"{userInfo.BirthCity}, {userInfo.BirthCountry}";
@@ -294,24 +317,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             ? $"{userInfo.BirthDate:yyyy-MM-dd}" 
             : $"{userInfo.BirthDate:yyyy-MM-dd} {userInfo.BirthTime:HH:mm}";
         var calendarType = userInfo.CalendarType == CalendarTypeEnum.Solar ? "Solar" : "Lunar";
-
-//         var prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
-// User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
-
-// Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
-// Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
-
-// Return JSON (each method has summary/description/detail + specific fields):
-// {{""energy"":<0-100>,""results"":{{""forecast"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""detail"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
-
-// CRITICAL RULES:
-// - summary: max 10 words
-// - description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)
-// - detail: MUST be 100-300 words in TWO paragraphs separated by \n\n (minimum 100 words total, do NOT write as one long paragraph)
-// - forecast: comprehensive overall prediction
-// - star ratings: use ★★★☆☆ format (1-5 stars)
-// - chineseZodiac: include Five Elements information naturally
-// - Return valid JSON only, no additional text";
 
         var prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
 User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
@@ -323,29 +328,32 @@ Return JSON (each method has summary/description + specific fields):
 {{""energy"":<0-100>,""results"":{{
 ";
 
-        if (State.LifetimeForecast.IsNullOrEmpty())
+        if (lifetime)
         {
-            prompt += $@"""lifetimeForecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},";
-        }
-
-        prompt +=
-            $@"""weeklyForecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""forecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
+            prompt += $@"""lifetimeForecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]""}},""weeklyForecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]"",""focus"":""[1-5 stars]""}}}}}}
 
 CRITICAL RULES:
 - summary: max 10 words
-- description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)";
-
-        if (State.LifetimeForecast.IsNullOrEmpty())
-        {
-            prompt += $@"- lifetimeForecast: comprehensive overall lifetime prediction across all life aspects";
-        }
-        
-        prompt += $@"
+- lifetimeForecast description: MUST be 4 paragraphs, each paragraph 30-100 words, separated by \n\n
+- weeklyForecast description: MUST be 30-100 words (single paragraph)
+- lifetimeForecast: comprehensive overall lifetime prediction across all life aspects
 - weeklyForecast: comprehensive weekly prediction for the current week
+- star ratings: use ★★★☆☆ format (1-5 stars), MUST vary based on actual prediction quality (1★=poor, 2★=below average, 3★=average, 4★=good, 5★=excellent)
+- Return valid JSON only, no additional text";
+        }
+        else
+        {
+            prompt +=
+                $@"""weeklyForecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""forecast"":{{""summary"":""..."",""description"":""..."",""love"":""★★★☆☆"",""career"":""★★★★☆"",""health"":""★★★☆☆"",""finance"":""★★★★★""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
+
+CRITICAL RULES:
+- summary: max 10 words
+- description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)
 - forecast: comprehensive overall prediction for the specific date
 - star ratings: use ★★★☆☆ format (1-5 stars)
 - chineseZodiac: include Five Elements information naturally
-- Return valid JSON only, no additional text";
+- Return valid JSON only, no additional text";            
+        }
 
         return prompt;
     }
