@@ -65,6 +65,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 if (!generatedEvent.WeeklyForecast.IsNullOrEmpty())
                 {
                     state.WeeklyForecast = generatedEvent.WeeklyForecast;
+                    state.WeeklyGeneratedDate = generatedEvent.WeeklyGeneratedDate;
                 }
                 break;
         }
@@ -79,29 +80,47 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 userInfo.UserId, today);
 
             // Check if prediction already exists (from cache/state)
-            if (lifetime && !State.LifetimeForecast.IsNullOrEmpty())
+            if (lifetime)
             {
-                _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached lifetime prediction for {UserId} {Lifetime}",
-                    userInfo.UserId, lifetime);
-
-                return new GetTodayPredictionResult
-                {
-                    Success = true,
-                    Message = string.Empty,
-                    Prediction = new PredictionResultDto
-                    {
-                        PredictionId = State.PredictionId,
-                        UserId = State.UserId,
-                        PredictionDate = State.PredictionDate,
-                        Energy = State.Energy,
-                        Results = State.Results,
-                        CreatedAt = State.CreatedAt,
-                        FromCache = true,
-                        LifetimeForecast = State.LifetimeForecast,
-                        WeeklyForecast = State.WeeklyForecast
-                    }
-                };
+                // Check if lifetime exists
+                var hasLifetime = !State.LifetimeForecast.IsNullOrEmpty();
                 
+                // Check if weekly exists and is not expired (< 7 days old)
+                var hasValidWeekly = !State.WeeklyForecast.IsNullOrEmpty() && 
+                                     State.WeeklyGeneratedDate.HasValue && 
+                                     (DateTime.UtcNow - State.WeeklyGeneratedDate.Value).TotalDays < 7;
+                
+                // If both lifetime and valid weekly exist, return from cache
+                if (hasLifetime && hasValidWeekly)
+                {
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached lifetime+weekly prediction for {UserId}",
+                        userInfo.UserId);
+
+                    return new GetTodayPredictionResult
+                    {
+                        Success = true,
+                        Message = string.Empty,
+                        Prediction = new PredictionResultDto
+                        {
+                            PredictionId = State.PredictionId,
+                            UserId = State.UserId,
+                            PredictionDate = State.PredictionDate,
+                            Energy = State.Energy,
+                            Results = State.Results,
+                            CreatedAt = State.CreatedAt,
+                            FromCache = true,
+                            LifetimeForecast = State.LifetimeForecast,
+                            WeeklyForecast = State.WeeklyForecast
+                        }
+                    };
+                }
+                
+                // If weekly expired or doesn't exist, need to regenerate
+                if (!hasValidWeekly)
+                {
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Weekly expired or missing, regenerating for {UserId}",
+                        userInfo.UserId);
+                }
             } 
             if (!lifetime && State.PredictionId != Guid.Empty && State.PredictionDate == today)
             {
@@ -268,7 +287,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 Energy = overallEnergy,
                 CreatedAt = now,
                 LifetimeForecast = lifetimeForecast,
-                WeeklyForecast = weeklyForecast
+                WeeklyForecast = weeklyForecast,
+                WeeklyGeneratedDate = weeklyForecast.IsNullOrEmpty() ? null : now // Track when weekly was generated
             });
 
             // Confirm events to persist state changes
@@ -311,18 +331,57 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     /// </summary>
     private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate, bool lifetime)
     {
-        var relationshipStatus = userInfo.RelationshipStatus?.ToString() ?? "Unknown";
-        var birthLocation = $"{userInfo.BirthCity}, {userInfo.BirthCountry}";
+        // Build user info line dynamically based on available fields
+        var userInfoParts = new List<string>();
+        
+        // Required fields
+        userInfoParts.Add($"{userInfo.FirstName} {userInfo.LastName}");
+        
+        // Birth date and time
         var birthDateTime = userInfo.BirthTime == default(TimeOnly) 
             ? $"{userInfo.BirthDate:yyyy-MM-dd}" 
             : $"{userInfo.BirthDate:yyyy-MM-dd} {userInfo.BirthTime:HH:mm}";
         var calendarType = userInfo.CalendarType == CalendarTypeEnum.Solar ? "Solar" : "Lunar";
+        userInfoParts.Add($"Birth: {birthDateTime} ({calendarType} calendar)");
+        
+        // Birth location (optional)
+        if (!string.IsNullOrWhiteSpace(userInfo.BirthCity) && !string.IsNullOrWhiteSpace(userInfo.BirthCountry))
+        {
+            userInfoParts.Add($"at {userInfo.BirthCity}, {userInfo.BirthCountry}");
+        }
+        else if (!string.IsNullOrWhiteSpace(userInfo.BirthCountry))
+        {
+            userInfoParts.Add($"in {userInfo.BirthCountry}");
+        }
+        
+        // Gender
+        userInfoParts.Add($"Gender: {userInfo.Gender}");
+        
+        // Relationship status (optional)
+        if (userInfo.RelationshipStatus.HasValue)
+        {
+            userInfoParts.Add($"Status: {userInfo.RelationshipStatus}");
+        }
+        
+        // Interests (optional)
+        if (!string.IsNullOrWhiteSpace(userInfo.Interests))
+        {
+            userInfoParts.Add($"Interests: {userInfo.Interests}");
+        }
+        
+        // MBTI (optional)
+        if (userInfo.MbtiType.HasValue)
+        {
+            userInfoParts.Add($"MBTI: {userInfo.MbtiType}");
+        }
+        
+        var userInfoLine = string.Join(", ", userInfoParts);
 
         string prompt = string.Empty;
         if (lifetime)
         {
             prompt = $@"Generate comprehensive lifetime and weekly fortune for {predictionDate:yyyy-MM-dd}.
-User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
+User: {userInfoLine}
 
 Generate ONLY lifetimeForecast and weeklyForecast - do NOT generate other prediction methods.
 Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
@@ -343,7 +402,7 @@ CRITICAL RULES:
         else
         {
             prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
-User: {userInfo.FirstName} {userInfo.LastName}, Birth: {birthDateTime} ({calendarType} calendar) at {birthLocation}, Gender: {userInfo.Gender}, Status: {relationshipStatus}, Interests: {userInfo.Interests ?? "None"}
+User: {userInfoLine}
 
 Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
 Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.

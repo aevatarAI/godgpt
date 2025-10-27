@@ -131,7 +131,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 return new SubmitFeedbackResult
                 {
                     Success = false,
-                    Message = "Rating must be between 1 and 5"
+                    Message = "Rating must be between 0 and 5"
                 };
             }
 

@@ -96,14 +96,14 @@ public class UpdateUserInfoRequest
     [Id(3)] public GenderEnum Gender { get; set; }
     [Id(4)] public DateOnly BirthDate { get; set; }
     [Id(5)] public TimeOnly BirthTime { get; set; } = default;
-    [Id(6)] public string BirthCountry { get; set; } = string.Empty;
-    [Id(7)] public string BirthCity { get; set; } = string.Empty;
+    [Id(6)] public string? BirthCountry { get; set; } // Optional
+    [Id(7)] public string? BirthCity { get; set; } // Optional
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
-    [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
-    [Id(10)] public string? Interests { get; set; }
+    [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
+    [Id(10)] public string? Interests { get; set; } // Optional
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
-    [Id(12)] public string CurrentResidence { get; set; } = string.Empty;
-    [Id(13)] public string Email { get; set; } = string.Empty;
+    [Id(12)] public string? CurrentResidence { get; set; } // Optional
+    [Id(13)] public string? Email { get; set; } // Optional
 }
 
 /// <summary>
@@ -130,16 +130,16 @@ public class FortuneUserDto
     [Id(3)] public GenderEnum Gender { get; set; }
     [Id(4)] public DateOnly BirthDate { get; set; }
     [Id(5)] public TimeOnly BirthTime { get; set; }
-    [Id(6)] public string BirthCountry { get; set; } = string.Empty;
-    [Id(7)] public string BirthCity { get; set; } = string.Empty;
+    [Id(6)] public string? BirthCountry { get; set; } // Optional
+    [Id(7)] public string? BirthCity { get; set; } // Optional
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
-    [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
-    [Id(10)] public string? Interests { get; set; }
+    [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
+    [Id(10)] public string? Interests { get; set; } // Optional
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
     [Id(12)] public DateTime CreatedAt { get; set; }
     [Id(13)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
-    [Id(14)] public string CurrentResidence { get; set; } = string.Empty;
-    [Id(15)] public string Email { get; set; } = string.Empty;
+    [Id(14)] public string? CurrentResidence { get; set; } // Optional
+    [Id(15)] public string? Email { get; set; } // Optional
 }
 
 /// <summary>
@@ -194,7 +194,7 @@ public class UpdateMethodRatingRequest
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
     [Id(2)] public string PredictionMethod { get; set; } = string.Empty;
-    [Id(3)] public int Rating { get; set; } // 0-5 rating
+    [Id(3)] public int Rating { get; set; } // 0-5 rating (frontend typically uses 0=dislike, 1=like)
 }
 
 /// <summary>
@@ -238,6 +238,7 @@ public class PredictionResultDto
     [Id(6)] public bool FromCache { get; set; }
     [Id(7)] public Dictionary<string, string> LifetimeForecast { get; set; } = new Dictionary<string, string>();
     [Id(8)] public Dictionary<string, string> WeeklyForecast { get; set; } = new Dictionary<string, string>();
+    [Id(9)] public Dictionary<string, int?> MethodRatings { get; set; } = new(); // method -> rating (0=dislike, 1=like, null=no rating)
 }
 
 /// <summary>
@@ -315,7 +316,7 @@ public class SubmitFeedbackRequest
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
     [Id(2)] public string? PredictionMethod { get; set; } // e.g., "horoscope", "bazi", null for overall
-    [Id(3)] public int Rating { get; set; } // 0-5 (emoji rating)
+    [Id(3)] public int Rating { get; set; } // 0-5 rating (frontend typically uses 0=dislike, 1=like)
     [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(5)] public string? Comment { get; set; }
     [Id(6)] public string? Email { get; set; }
