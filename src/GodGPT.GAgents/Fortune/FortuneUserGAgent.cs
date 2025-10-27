@@ -90,8 +90,8 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 state.Gender = default;
                 state.BirthDate = default;
                 state.BirthTime = default;
-                state.BirthCountry = string.Empty;
-                state.BirthCity = string.Empty;
+                state.BirthCountry = null;
+                state.BirthCity = null;
                 state.MbtiType = null;
                 state.RelationshipStatus = null;
                 state.Interests = null;
@@ -99,8 +99,8 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
                 state.Actions = new List<string>();
                 state.CreatedAt = default;
                 state.UpdatedAt = clearEvent.ClearedAt;
-                state.CurrentResidence = string.Empty;
-                state.Email = string.Empty;
+                state.CurrentResidence = null;
+                state.Email = null;
                 break;
             case UserActionsUpdatedEvent actionsEvent:
                 state.Actions = actionsEvent.Actions;
