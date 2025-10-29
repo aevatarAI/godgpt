@@ -56,6 +56,12 @@ public class GodGPTGAgentModule : AbpModule
         context.Services.AddSingleton<IGooglePayService, GooglePayService>();
         context.Services.AddSingleton<ILocalizationService, LocalizationService>();
         
+        // Register new payment services for gradual migration
+        // Using Singleton - StripeClient is confirmed thread-safe by official documentation
+        context.Services.AddSingleton<IStripePaymentService, StripePaymentService>();
+        context.Services.AddSingleton<IApplePaymentService, ApplePaymentService>();
+        // Note: Google Pay continues to use existing IGooglePayService (registered above)
+        
         // Register HttpClient factory first
         context.Services.AddHttpClient();
         

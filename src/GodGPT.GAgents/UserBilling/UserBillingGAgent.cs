@@ -51,11 +51,10 @@ public interface IUserBillingGAgent : IGAgent
      * platform:android/ios
      */
     Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto createSubscriptionDto);
-    Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto);
     Task<Guid> AddPaymentRecordAsync(ChatManager.UserBilling.PaymentSummary paymentSummary);
     Task<ChatManager.UserBilling.PaymentSummary> GetPaymentSummaryAsync(Guid paymentId);
     Task<List<PaymentSummaryDto>> GetPaymentHistoryAsync(int page = 1, int pageSize = 10);
-    Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus);
+    // Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus);
     Task<bool> HandleStripeWebhookEventAsync(string jsonPayload, string stripeSignature);
     Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto cancelSubscriptionDto);
     Task<object> RefundedSubscriptionAsync(object  obj);
@@ -125,6 +124,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IGooglePayService _googlePayService;
     
+    // New payment services for gradual migration
+    private readonly IStripePaymentService _stripePaymentService;
+    private readonly IApplePaymentService _applePaymentService;
+    
     private readonly IStripeClient _client; 
     
     public UserBillingGAgent(
@@ -133,7 +136,9 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         IOptionsMonitor<ApplePayOptions> appleOptions,
         IOptionsMonitor<GooglePayOptions> googlePayOptions,
         IHttpClientFactory httpClientFactory,
-        IGooglePayService googlePayService)
+        IGooglePayService googlePayService,
+        IStripePaymentService stripePaymentService,
+        IApplePaymentService applePaymentService)
     {
         _logger = logger;
         _stripeOptions = stripeOptions;
@@ -142,9 +147,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         _httpClientFactory = httpClientFactory;
         _googlePayService = googlePayService;
         
+        // Initialize new payment services
+        _stripePaymentService = stripePaymentService;
+        _applePaymentService = applePaymentService;
+        
         StripeConfiguration.ApiKey = _stripeOptions.CurrentValue.SecretKey;
         _client ??= new StripeClient(_stripeOptions.CurrentValue.SecretKey);
-        _logger.LogDebug("[UserBillingGAgent] Activating agent for user {UserId}", this.GetPrimaryKey().ToString());
+        _logger.LogDebug("[UserBillingGAgent] Activating agent for user {UserId} with payment services injected", this.GetPrimaryKey().ToString());
     }
     
     public override Task<string> GetDescriptionAsync()
@@ -592,176 +601,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 SessionUrl = sessionUrl,
                 SessionExpiresAt = sessionExpiresAt
             });
-        }
-    }
-
-    public async Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto createPaymentSheetDto)
-    {
-        _logger.LogInformation("[UserBillingGAgent][CreatePaymentSheetAsync] Creating payment sheet for user {UserId}",
-            createPaymentSheetDto.UserId);
-        
-        long amount;
-        string currency;
-        
-        if (createPaymentSheetDto.Amount.HasValue && !string.IsNullOrEmpty(createPaymentSheetDto.Currency))
-        {
-            amount = createPaymentSheetDto.Amount.Value;
-            currency = createPaymentSheetDto.Currency;
-            _logger.LogInformation(
-                "[UserBillingGAgent][CreatePaymentSheetAsync] Using explicitly provided amount: {Amount} {Currency}",
-                amount, currency);
-        }
-        else if (!string.IsNullOrEmpty(createPaymentSheetDto.PriceId))
-        {
-            var productConfig = await GetProductConfigAsync(createPaymentSheetDto.PriceId);
-            amount = (long)productConfig.Amount;
-            currency = productConfig.Currency;
-            _logger.LogInformation(
-                "[UserBillingGAgent][CreatePaymentSheetAsync] Using amount from product config: {Amount} {Currency}, PriceId: {PriceId}",
-                amount, currency, createPaymentSheetDto.PriceId);
-        }
-        else
-        {
-            var message = "Either Amount+Currency or PriceId must be provided";
-            _logger.LogError("[UserBillingGAgent][CreatePaymentSheetAsync] {Message}", message);
-            throw new ArgumentException(message);
-        }
-
-        var orderId = Guid.NewGuid().ToString();
-        
-        try
-        {
-            var customerId = await GetOrCreateStripeCustomerAsync(createPaymentSheetDto.UserId.ToString());
-            _logger.LogInformation(
-                "[UserBillingGAgent][CreatePaymentSheetAsync] Using customer: {CustomerId}", customerId);
-            
-            var ephemeralKeyService = new EphemeralKeyService(_client);
-            var ephemeralKeyOptions = new EphemeralKeyCreateOptions
-            {
-                Customer = customerId,
-                StripeVersion = "2025-04-30.basil",
-            };
-            
-            var ephemeralKey = await ephemeralKeyService.CreateAsync(ephemeralKeyOptions);
-            _logger.LogInformation(
-                "[UserBillingGAgent][CreatePaymentSheetAsync] Created ephemeral key with ID: {EphemeralKeyId}",
-                ephemeralKey.Id);
-            
-            var paymentIntentService = new PaymentIntentService(_client);
-            var paymentIntentOptions = new PaymentIntentCreateOptions
-            {
-                Amount = amount,
-                Currency = currency,
-                Customer = customerId,
-                Description = createPaymentSheetDto.Description,
-                Metadata = new Dictionary<string, string>
-                {
-                    { "internal_user_id", createPaymentSheetDto.UserId.ToString() },
-                    { "order_id", orderId },
-                    { "price_id", createPaymentSheetDto.PriceId},
-                    { "quantity", "1" }
-                },
-                AutomaticPaymentMethods = new PaymentIntentAutomaticPaymentMethodsOptions
-                {
-                    Enabled = true,
-                },
-            };
-            
-            if (createPaymentSheetDto.PaymentMethodTypes != null && createPaymentSheetDto.PaymentMethodTypes.Any())
-            {
-                paymentIntentOptions.PaymentMethodTypes = createPaymentSheetDto.PaymentMethodTypes;
-                _logger.LogInformation(
-                    "[UserBillingGAgent][CreatePaymentSheetAsync] Using payment method types: {PaymentMethodTypes}",
-                    string.Join(", ", createPaymentSheetDto.PaymentMethodTypes));
-            }
-            
-            var paymentIntent = await paymentIntentService.CreateAsync(paymentIntentOptions);
-            _logger.LogInformation(
-                "[UserBillingGAgent][CreatePaymentSheetAsync] Created payment intent with ID: {PaymentIntentId}",
-                paymentIntent.Id);
-            
-            if (!string.IsNullOrEmpty(createPaymentSheetDto.PriceId))
-            {
-                var productConfig = await GetProductConfigAsync(createPaymentSheetDto.PriceId);
-                var paymentGrainId = Guid.NewGuid();
-                var paymentGrain = GrainFactory.GetGrain<IUserPaymentGrain>(paymentGrainId);
-                
-                var paymentState = new UserPaymentState
-                {
-                    Id = paymentGrainId,
-                    UserId = createPaymentSheetDto.UserId,
-                    PriceId = createPaymentSheetDto.PriceId,
-                    Amount = amount,
-                    Currency = currency,
-                    PaymentType = PaymentType.OneTime,
-                    Status = PaymentStatus.Processing,
-                    Mode = PaymentMode.PAYMENT,
-                    Platform = PaymentPlatform.Stripe,
-                    Description = createPaymentSheetDto.Description ?? $"Payment sheet for {amount} {currency}",
-                    CreatedAt = DateTime.UtcNow,
-                    LastUpdated = DateTime.UtcNow,
-                    OrderId = orderId,
-                    SessionId = paymentIntent.Id 
-                };
-                
-                var initResult = await paymentGrain.InitializePaymentAsync(paymentState);
-                if (!initResult.Success)
-                {
-                    _logger.LogError(
-                        "[UserBillingGAgent][CreatePaymentSheetAsync] Failed to initialize payment grain: {ErrorMessage}",
-                        initResult.Message);
-                    throw new Exception($"Failed to initialize payment grain: {initResult.Message}");
-                }
-                
-                var paymentDetails = initResult.Data;
-                var paymentSummary = new ChatManager.UserBilling.PaymentSummary
-                {
-                    PaymentGrainId = paymentDetails.Id,
-                    OrderId = orderId,
-                    UserId = createPaymentSheetDto.UserId,
-                    Amount = amount,
-                    Currency = currency,
-                    CreatedAt = DateTime.UtcNow,
-                    Status = PaymentStatus.Processing,
-                    PaymentType = PaymentType.OneTime,
-                    Method = PaymentMethod.Card,
-                    Platform = PaymentPlatform.Stripe,
-                    SessionId = paymentIntent.Id 
-                };
-                
-                await AddPaymentRecordAsync(paymentSummary);
-                _logger.LogInformation(
-                    "[UserBillingGAgent][CreatePaymentSheetAsync] Created payment record with ID: {PaymentId}",
-                    paymentDetails.Id);
-            }
-            
-            var response = new PaymentSheetResponseDto
-            {
-                PaymentIntent = paymentIntent.ClientSecret,
-                EphemeralKey = ephemeralKey.Secret,
-                Customer = customerId,
-                PublishableKey = _stripeOptions.CurrentValue.PublishableKey
-            };
-            
-            _logger.LogInformation(
-                "[UserBillingGAgent][CreatePaymentSheetAsync] Successfully created payment sheet for order: {OrderId}",
-                orderId);
-            
-            return response;
-        }
-        catch (StripeException ex)
-        {
-            _logger.LogError(ex,
-                "[UserBillingGAgent][CreatePaymentSheetAsync] Stripe error: {ErrorMessage}",
-                ex.StripeError?.Message);
-            throw new InvalidOperationException(ex.Message);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "[UserBillingGAgent][CreatePaymentSheetAsync] Error creating payment sheet: {ErrorMessage}",
-                ex.Message);
-            throw;
         }
     }
 
@@ -1568,36 +1407,36 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             .ToList();
     }
 
-    public async Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus)
-    {
-        _logger.LogInformation(
-            "[UserBillingGAgent][UpdatePaymentStatusAsync] Updating payment status for ID {PaymentId} to {NewStatus}",
-            payment.PaymentGrainId, newStatus);
-
-        // Skip update if status is already the same
-        if (payment.Status == newStatus)
-        {
-            _logger.LogInformation(
-                "[UserBillingGAgent][UpdatePaymentStatusAsync] Payment {PaymentId} already has status {Status}",
-                payment.PaymentGrainId, newStatus);
-            return true;
-        }
-
-        RaiseEvent(new UpdatePaymentStatusLogEvent
-        {
-            PaymentId = payment.PaymentGrainId,
-            NewStatus = newStatus
-        });
-        await ConfirmEvents();
-
-        var oldStatus = payment.Status;
-    
-        _logger.LogInformation(
-            "[UserBillingGAgent][UpdatePaymentStatusAsync] Payment status updated from {OldStatus} to {NewStatus} for ID {PaymentId}",
-            oldStatus, newStatus, payment.PaymentGrainId);
-
-        return true;
-    }
+    // public async Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus)
+    // {
+    //     _logger.LogInformation(
+    //         "[UserBillingGAgent][UpdatePaymentStatusAsync] Updating payment status for ID {PaymentId} to {NewStatus}",
+    //         payment.PaymentGrainId, newStatus);
+    //
+    //     // Skip update if status is already the same
+    //     if (payment.Status == newStatus)
+    //     {
+    //         _logger.LogInformation(
+    //             "[UserBillingGAgent][UpdatePaymentStatusAsync] Payment {PaymentId} already has status {Status}",
+    //             payment.PaymentGrainId, newStatus);
+    //         return true;
+    //     }
+    //
+    //     RaiseEvent(new UpdatePaymentStatusLogEvent
+    //     {
+    //         PaymentId = payment.PaymentGrainId,
+    //         NewStatus = newStatus
+    //     });
+    //     await ConfirmEvents();
+    //
+    //     var oldStatus = payment.Status;
+    //
+    //     _logger.LogInformation(
+    //         "[UserBillingGAgent][UpdatePaymentStatusAsync] Payment status updated from {OldStatus} to {NewStatus} for ID {PaymentId}",
+    //         oldStatus, newStatus, payment.PaymentGrainId);
+    //
+    //     return true;
+    // }
 
     private async Task<PaymentDetailsDto> InitializePaymentGrainAsync(
         string orderId,
