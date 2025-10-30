@@ -4033,6 +4033,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
             case ClearAllLogEvent:
                 state.PaymentHistory.Clear();
+                state.CustomerId = string.Empty;
                 break;
 
             case UpdateExistingSubscriptionLogEvent updateSubscription:
