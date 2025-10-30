@@ -96,6 +96,11 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached lifetime+weekly prediction for {UserId}",
                         userInfo.UserId);
 
+                    // Calculate and add currentPhase
+                    var lifetimeWithPhase = new Dictionary<string, string>(State.LifetimeForecast);
+                    var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                    lifetimeWithPhase["currentPhase"] = currentPhase.ToString();
+
                     return new GetTodayPredictionResult
                     {
                         Success = true,
@@ -105,11 +110,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                             PredictionId = State.PredictionId,
                             UserId = State.UserId,
                             PredictionDate = State.PredictionDate,
-                            Energy = State.Energy,
                             Results = State.Results,
                             CreatedAt = State.CreatedAt,
                             FromCache = true,
-                            LifetimeForecast = State.LifetimeForecast,
+                            LifetimeForecast = lifetimeWithPhase,
                             WeeklyForecast = State.WeeklyForecast
                         }
                     };
@@ -136,7 +140,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                         PredictionId = State.PredictionId,
                         UserId = State.UserId,
                         PredictionDate = State.PredictionDate,
-                        Energy = State.Energy,
                         Results = State.Results,
                         CreatedAt = State.CreatedAt,
                         FromCache = true
@@ -182,7 +185,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             PredictionId = State.PredictionId,
             UserId = State.UserId,
             PredictionDate = State.PredictionDate,
-            Energy = State.Energy,
             Results = State.Results,
             CreatedAt = State.CreatedAt,
             FromCache = true,
@@ -248,30 +250,42 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             _logger.LogDebug("[FortunePredictionGAgent][GeneratePredictionAsync] Received AI response: {Response}",
                 aiResponse);
 
-            // Parse AI response
-            var (parsedResults, overallEnergy) = ParseAIResponse(aiResponse);
-            if (parsedResults == null)
+            Dictionary<string, Dictionary<string, string>>? parsedResults = null;
+            Dictionary<string, string>? lifetimeForecast = State.LifetimeForecast ?? new Dictionary<string, string>();
+            Dictionary<string, string>? weeklyForecast = State.WeeklyForecast ?? new Dictionary<string, string>();
+
+            // Parse AI response based on type
+            if (lifetime)
             {
-                _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse AI response");
-                return new GetTodayPredictionResult
+                // Parse Lifetime & Weekly
+                var (parsedLifetime, parsedWeekly) = ParseLifetimeWeeklyResponse(aiResponse);
+                if (parsedLifetime == null || parsedWeekly == null)
                 {
-                    Success = false,
-                    Message = "Failed to parse AI response"
-                };
+                    _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Lifetime/Weekly response");
+                    return new GetTodayPredictionResult
+                    {
+                        Success = false,
+                        Message = "Failed to parse AI response"
+                    };
+                }
+                
+                lifetimeForecast = parsedLifetime;
+                weeklyForecast = parsedWeekly;
+                parsedResults = new Dictionary<string, Dictionary<string, string>>(); // Empty for lifetime mode
             }
-
-            var lifetimeForecast = State.LifetimeForecast ?? new Dictionary<string, string>();
-            if (parsedResults.ContainsKey("lifetimeForecast"))
+            else
             {
-                lifetimeForecast = parsedResults["lifetimeForecast"];
-                parsedResults.Remove("lifetimeForecast");
-            }
-
-            var weeklyForecast = State.WeeklyForecast ?? new Dictionary<string, string>();
-            if (parsedResults.ContainsKey("weeklyForecast"))
-            {
-                weeklyForecast = parsedResults["weeklyForecast"];
-                parsedResults.Remove("weeklyForecast");
+                // Parse Daily (6 dimensions)
+                parsedResults = ParseDailyResponse(aiResponse);
+                if (parsedResults == null)
+                {
+                    _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Daily response");
+                    return new GetTodayPredictionResult
+                    {
+                        Success = false,
+                        Message = "Failed to parse AI response"
+                    };
+                }
             }
 
             var predictionId = Guid.NewGuid();
@@ -284,11 +298,11 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 UserId = userInfo.UserId,
                 PredictionDate = predictionDate,
                 Results = parsedResults,
-                Energy = overallEnergy,
+                Energy = 0, // Not used, kept for State compatibility
                 CreatedAt = now,
                 LifetimeForecast = lifetimeForecast,
                 WeeklyForecast = weeklyForecast,
-                WeeklyGeneratedDate = weeklyForecast.IsNullOrEmpty() ? null : now // Track when weekly was generated
+                WeeklyGeneratedDate = weeklyForecast.IsNullOrEmpty() ? null : now
             });
 
             // Confirm events to persist state changes
@@ -296,6 +310,13 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
 
             _logger.LogInformation("[FortunePredictionGAgent][GeneratePredictionAsync] Prediction generated successfully for user {UserId}",
                 userInfo.UserId);
+
+            // Add currentPhase if lifetime was generated
+            if (lifetime && lifetimeForecast != null && !lifetimeForecast.IsNullOrEmpty())
+            {
+                var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                lifetimeForecast["currentPhase"] = currentPhase.ToString();
+            }
 
             return new GetTodayPredictionResult
             {
@@ -306,7 +327,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     PredictionId = predictionId,
                     UserId = userInfo.UserId,
                     PredictionDate = predictionDate,
-                    Energy = overallEnergy,
                     Results = parsedResults,
                     CreatedAt = now,
                     FromCache = false,
@@ -380,42 +400,105 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         string prompt = string.Empty;
         if (lifetime)
         {
-            prompt = $@"Generate comprehensive lifetime and weekly fortune for {predictionDate:yyyy-MM-dd}.
+            prompt = $@"Generate lifetime and weekly fortune prediction.
 User: {userInfoLine}
+Date: {predictionDate:yyyy-MM-dd}
 
-Generate ONLY lifetimeForecast and weeklyForecast - do NOT generate other prediction methods.
-Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
-
-Return JSON (each method has summary/description + specific fields):
-{{""energy"":<0-100>,""results"":{{""lifetimeForecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]""}},""weeklyForecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]"",""focus"":""[1-5 stars]""}}}}}}
+Return JSON with lifetime and weekly predictions:
+{{
+  ""lifetime"": {{
+    ""title"": ""2-4 words"",
+    ""description"": ""30-50 words about life transformation"",
+    ""traits"": {{
+      ""fateRarity"": {{""percentage"": 2.4, ""description"": ""6-10 words""}},
+      ""mainElements"": ""Fire (火), Metal (金)"",
+      ""lifePath"": ""Leader, Mentor, Innovator""
+    }},
+    ""phases"": {{
+      ""phase1"": {{""description"": ""15-30 words""}},
+      ""phase2"": {{""description"": ""15-30 words""}},
+      ""phase3"": {{""description"": ""15-30 words""}}
+    }}
+  }},
+  ""weekly"": {{
+    ""health"": 4,
+    ""money"": 3,
+    ""career"": 4,
+    ""romance"": 5,
+    ""focus"": 3
+  }}
+}}
 
 CRITICAL RULES:
-- summary: max 10 words
-- lifetimeForecast description: MUST be 4 paragraphs, each paragraph 30-100 words, separated by \n\n
-- weeklyForecast description: MUST be 30-100 words (single paragraph)
-- lifetimeForecast: comprehensive overall lifetime prediction across all life aspects
-- weeklyForecast: comprehensive weekly prediction for the current week
-- star ratings: use ★★★☆☆ format (1-5 stars), MUST vary based on actual prediction quality (1★=poor, 2★=below average, 3★=average, 4★=good, 5★=excellent)
-- Generate ONLY lifetimeForecast and weeklyForecast, NO other methods
+- title: 2-4 words, poetic
+- description: 30-50 words
+- fateRarity.percentage: 0.1-10.0 (smaller = more rare)
+- fateRarity.description: 6-10 words
+- mainElements: String with 1-2 elements in bilingual format, e.g., ""Fire (火), Metal (金)""
+- mainElements MUST use bilingual: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
+- lifePath: String with 2-4 roles separated by commas, e.g., ""Leader, Mentor, Innovator""
+- phases: Each description 15-30 words (phase1: 0-20 years, phase2: 21-35 years, phase3: 36+ years)
+- weekly: 5 dimensions, each 0-5 integer
 - Return valid JSON only, no additional text";
         }
         else
         {
-            prompt = $@"Generate daily fortune for {predictionDate:yyyy-MM-dd}.
+            prompt = $@"Generate daily fortune prediction for {predictionDate:yyyy-MM-dd}.
 User: {userInfoLine}
 
-Analyze using 11 methods: horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu.
-Data Sources: Lunar calendar uses Purple Mountain Observatory (Chinese Academy of Sciences) astronomical calendar. Constellation sun/moon positions use NASA data.
+Analyze 6 dimensions: opportunity, bazi, astrology, tarot, lifeTheme1, lifeTheme2
 
-Return JSON (each method has summary/description + specific fields):
-{{""energy"":<0-100>,""results"":{{""forecast"":{{""summary"":""..."",""description"":""..."",""love"":""[1-5 stars]"",""career"":""[1-5 stars]"",""health"":""[1-5 stars]"",""finance"":""[1-5 stars]""}},""horoscope"":{{""summary"":""..."",""description"":""..."",""yourSign"":""..."",""risingSign"":""...""}},""bazi"":{{""summary"":""..."",""description"":""..."",""dayMaster"":""..."",""suitable"":""..."",""avoid"":""..."",""direction"":""..."",""luckyNumber"":""...""}},""ziwei"":{{""summary"":""..."",""description"":""..."",""palace"":""..."",""element"":""...""}},""constellation"":{{""summary"":""..."",""description"":""..."",""mansion"":""..."",""influence"":""...""}},""numerology"":{{""summary"":""..."",""description"":""..."",""personalDay"":""..."",""lifePath"":""..."",""luckyNumber"":""...""}},""synastry"":{{""summary"":""..."",""description"":""..."",""compatibility"":""..."",""suggestion"":""...""}},""chineseZodiac"":{{""summary"":""..."",""description"":""..."",""zodiac"":""..."",""conflict"":""..."",""harmony"":""...""}},""mayanTotem"":{{""summary"":""..."",""description"":""..."",""totem"":""..."",""tone"":""..."",""keyword"":""...""}},""humanFigure"":{{""summary"":""..."",""description"":""..."",""type"":""..."",""strategy"":""..."",""authority"":""...""}},""tarot"":{{""summary"":""..."",""description"":""..."",""top"":""..."",""left"":""..."",""right"":""..."",""interpretation"":""...""}},""zhengYu"":{{""summary"":""..."",""description"":""..."",""element"":""..."",""balance"":""..."",""guidance"":""...""}}}}}}
+Return JSON:
+{{
+  ""opportunity"": {{
+    ""color"": ""word"",
+    ""crystal"": ""word"",
+    ""number"": ""word"",
+    ""title"": ""3-5 words"",
+    ""description"": ""10-25 words""
+  }},
+  ""bazi"": {{
+    ""heavenlyStemEarthlyBranch"": ""5-15 words with bilingual elements"",
+    ""fiveElements"": ""5-15 words, MUST use format like Fire (火), Earth (土)"",
+    ""compatibility"": ""5-15 words"",
+    ""energyFlow"": ""5-15 words""
+  }},
+  ""astrology"": {{
+    ""sunSign"": ""word"",
+    ""moonSign"": ""word"",
+    ""risingSign"": ""word"",
+    ""overallFortune"": ""8.2"",
+    ""luckyElement"": ""Earth (土)"",
+    ""keywordFocus"": ""word"",
+    ""moonInfluence"": ""10-15 words""
+  }},
+  ""tarot"": {{
+    ""card"": ""Position | Card Name · Orientation"",
+    ""interpretation"": ""10-15 words""
+  }},
+  ""lifeTheme1"": {{
+    ""theme"": ""1 word (AI generates)"",
+    ""description"": ""10-15 words""
+  }},
+  ""lifeTheme2"": {{
+    ""theme"": ""1 word (AI generates)"",
+    ""description"": ""10-15 words""
+  }}
+}}
 
 CRITICAL RULES:
-- summary: max 10 words
-- description: MUST be 30-100 words (minimum 30 words required, do NOT write less than 30 words)
-- forecast: comprehensive overall prediction for the specific date
-- star ratings: use ★★★☆☆ format (1-5 stars), MUST vary based on actual prediction quality (1★=poor, 2★=below average, 3★=average, 4★=good, 5★=excellent)
-- chineseZodiac: include Five Elements information naturally
+- opportunity.title: 3-5 words
+- opportunity.description: 10-25 words
+- bazi fields: Each 5-15 words
+- bazi MUST use bilingual elements: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
+- astrology.overallFortune: 0-10 with one decimal (e.g., ""8.2"")
+- astrology.luckyElement: MUST be bilingual like ""Earth (土)""
+- astrology.moonInfluence: 10-15 words
+- tarot.card: Format ""Position | CardName · Upright/Reversed""
+- tarot.interpretation: 10-15 words
+- lifeTheme: AI freely generates theme name and content
+- lifeTheme.theme: Single word
+- lifeTheme.description: 10-15 words
 - Return valid JSON only, no additional text";            
         }
 
@@ -423,7 +506,128 @@ CRITICAL RULES:
     }
 
     /// <summary>
+    /// Calculate current life phase based on birth date
+    /// </summary>
+    private string CalculateCurrentPhase(DateOnly birthDate)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var age = today.Year - birthDate.Year;
+        
+        // Adjust if birthday hasn't occurred this year
+        if (today < birthDate.AddYears(age))
+        {
+            age--;
+        }
+        
+        if (age <= 20) return "phase1";
+        if (age <= 35) return "phase2";
+        return "phase3";
+    }
+
+    /// <summary>
+    /// Parse Lifetime & Weekly AI response
+    /// </summary>
+    private (Dictionary<string, string>?, Dictionary<string, string>?) ParseLifetimeWeeklyResponse(string aiResponse)
+    {
+        try
+        {
+            var jsonStart = aiResponse.IndexOf('{');
+            var jsonEnd = aiResponse.LastIndexOf('}');
+
+            if (jsonStart >= 0 && jsonEnd > jsonStart)
+            {
+                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
+                var response = JsonConvert.DeserializeObject<dynamic>(jsonString);
+                
+                if (response == null)
+                {
+                    return (null, null);
+                }
+
+                // Parse Lifetime
+                var lifetimeDict = new Dictionary<string, string>();
+                if (response.lifetime != null)
+                {
+                    lifetimeDict["title"] = response.lifetime.title?.ToString() ?? "";
+                    lifetimeDict["description"] = response.lifetime.description?.ToString() ?? "";
+                    
+                    // Serialize complex objects to JSON strings
+                    if (response.lifetime.traits != null)
+                    {
+                        lifetimeDict["traits"] = JsonConvert.SerializeObject(response.lifetime.traits);
+                    }
+                    if (response.lifetime.phases != null)
+                    {
+                        lifetimeDict["phases"] = JsonConvert.SerializeObject(response.lifetime.phases);
+                    }
+                }
+
+                // Parse Weekly
+                var weeklyDict = new Dictionary<string, string>();
+                if (response.weekly != null)
+                {
+                    weeklyDict["health"] = response.weekly.health?.ToString() ?? "0";
+                    weeklyDict["money"] = response.weekly.money?.ToString() ?? "0";
+                    weeklyDict["career"] = response.weekly.career?.ToString() ?? "0";
+                    weeklyDict["romance"] = response.weekly.romance?.ToString() ?? "0";
+                    weeklyDict["focus"] = response.weekly.focus?.ToString() ?? "0";
+                }
+
+                return (lifetimeDict, weeklyDict);
+            }
+
+            return (null, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortunePredictionGAgent][ParseLifetimeWeeklyResponse] Failed to parse");
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// Parse Daily AI response (6 dimensions)
+    /// </summary>
+    private Dictionary<string, Dictionary<string, string>>? ParseDailyResponse(string aiResponse)
+    {
+        try
+        {
+            var jsonStart = aiResponse.IndexOf('{');
+            var jsonEnd = aiResponse.LastIndexOf('}');
+
+            if (jsonStart >= 0 && jsonEnd > jsonStart)
+            {
+                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
+                
+                // Try to parse as direct results structure
+                var results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(jsonString);
+                if (results != null && results.Count > 0)
+                {
+                    return results;
+                }
+                
+                // Try to parse as wrapped structure with "results" key
+                var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
+                if (fullResponse != null && fullResponse.ContainsKey("results") && fullResponse["results"] != null)
+                {
+                    var resultsJson = JsonConvert.SerializeObject(fullResponse["results"]);
+                    results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(resultsJson);
+                    return results;
+                }
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortunePredictionGAgent][ParseDailyResponse] Failed to parse");
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Parse AI JSON response (structure with energy at top level and forecast in results)
+    /// [DEPRECATED] Kept for backward compatibility
     /// </summary>
     private (Dictionary<string, Dictionary<string, string>>?, int) ParseAIResponse(string aiResponse)
     {

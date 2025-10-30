@@ -232,13 +232,12 @@ public class PredictionResultDto
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public DateOnly PredictionDate { get; set; }
-    [Id(3)] public int Energy { get; set; }
-    [Id(4)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new();
-    [Id(5)] public DateTime CreatedAt { get; set; }
-    [Id(6)] public bool FromCache { get; set; }
-    [Id(7)] public Dictionary<string, string> LifetimeForecast { get; set; } = new Dictionary<string, string>();
-    [Id(8)] public Dictionary<string, string> WeeklyForecast { get; set; } = new Dictionary<string, string>();
-    [Id(9)] public Dictionary<string, int?> MethodRatings { get; set; } = new(); // method -> rating (0=dislike, 1=like, null=no rating)
+    [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new();
+    [Id(4)] public DateTime CreatedAt { get; set; }
+    [Id(5)] public bool FromCache { get; set; }
+    [Id(6)] public Dictionary<string, string> LifetimeForecast { get; set; } = new Dictionary<string, string>();
+    [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; } = new Dictionary<string, string>();
+    [Id(8)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } = null; // Method feedbacks (if exist)
 }
 
 /// <summary>
@@ -285,11 +284,10 @@ public class PredictionSummaryDto
 {
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public DateOnly PredictionDate { get; set; }
-    [Id(2)] public int Energy { get; set; }
-    [Id(3)] public string? ForecastSummary { get; set; } // Brief summary from forecast
-    [Id(4)] public Dictionary<string, PredictionMethodResult> Results { get; set; } = new(); // Prediction results with feedbacks merged
-    [Id(5)] public bool HasFeedback { get; set; }
-    [Id(6)] public DateTime CreatedAt { get; set; }
+    [Id(2)] public string? ForecastSummary { get; set; } // Brief summary from forecast
+    [Id(3)] public Dictionary<string, PredictionMethodResult> Results { get; set; } = new(); // Prediction results with feedbacks merged
+    [Id(4)] public bool HasFeedback { get; set; }
+    [Id(5)] public DateTime CreatedAt { get; set; }
 }
 
 /// <summary>
