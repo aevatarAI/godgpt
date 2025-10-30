@@ -1,7 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Aevatar.Application.Grains.Agents.ChatManager;
@@ -21,6 +19,7 @@ using Aevatar.Application.Grains.FreeTrialCode;
 using Aevatar.Application.Grains.FreeTrialCode.Dtos;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.PaymentAnalytics;
+using Aevatar.Application.Grains.UserBilling.Services;
 using Aevatar.Application.Grains.UserBilling.SEvents;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
@@ -96,14 +95,7 @@ public interface IUserBillingGAgent : IGAgent
     /// <param name="notificationData">RTDN notification data</param>
     /// <returns>Processing success</returns>
     Task<bool> HandleGooglePlayNotificationAsync(string userId, string notificationData);
-    
-    /// <summary>
-    /// Synchronize Google Play subscription status
-    /// </summary>
-    /// <param name="subscriptionId">Subscription ID</param>
-    /// <returns>Synchronization success</returns>
-    Task<bool> SyncGooglePlaySubscriptionAsync(string subscriptionId);
-    
+
     /// <summary>
     /// Process RevenueCat webhook event
     /// </summary>
@@ -122,11 +114,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     private readonly IOptionsMonitor<ApplePayOptions> _appleOptions;
     private readonly IOptionsMonitor<GooglePayOptions> _googlePayOptions;
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly IGooglePayService _googlePayService;
-    
+
     // New payment services for gradual migration
     private readonly IStripePaymentService _stripePaymentService;
     private readonly IApplePaymentService _applePaymentService;
+    private readonly IGooglePayService _googlePayService;
     
     private readonly IStripeClient _client; 
     
@@ -159,101 +151,16 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
     public override Task<string> GetDescriptionAsync()
     {
         return Task.FromResult($"UserBillingGAgent for user {this.GetPrimaryKey().ToString()}, CustomerId: {State.CustomerId}, PaymentHistory count: {State.PaymentHistory?.Count ?? 0}");
-        throw new NotImplementedException();
     }
 
     public async Task<List<StripeProductDto>> GetStripeProductsAsync()
     {
-        var products = _stripeOptions.CurrentValue.Products;
-        if (products.IsNullOrEmpty())
-        {
-            _logger.LogWarning("[UserBillingGAgent][GetStripeProductsAsync] No products configured in StripeOptions");
-            return new List<StripeProductDto>();
-        }
-
-        _logger.LogDebug("[UserBillingGAgent][GetStripeProductsAsync] Found {Count} products in configuration",
-            products.Count);
-        var productDtos = new List<StripeProductDto>();
-        foreach (var product in products)
-        {
-            var planType = (PlanType)product.PlanType;
-
-            if (planType == PlanType.Day)
-            {
-                continue;
-            }
-            
-            // Use SubscriptionHelper for consistent daily average price calculation
-            var dailyAvgPrice = "0.0";
-            if (planType != PlanType.None)
-            {
-                dailyAvgPrice = SubscriptionHelper.CalculateDailyAveragePrice(planType, product.Amount).ToString();
-            }
-
-            productDtos.Add(new StripeProductDto
-            {
-                PlanType = planType,
-                PriceId = product.PriceId,
-                Mode = product.Mode,
-                Amount = product.Amount,
-                DailyAvgPrice = dailyAvgPrice,
-                Currency = product.Currency,
-                IsUltimate = product.IsUltimate,
-                Credits = product.Credits
-            });
-        }
-        
-        _logger.LogDebug("[UserBillingGAgent][GetStripeProductsAsync] Successfully retrieved {Count} products",
-            productDtos.Count);
-        return productDtos;
+        return await _stripePaymentService.GetProductsAsync();
     }
 
     public async Task<List<AppleProductDto>> GetAppleProductsAsync()
     {
-        var products = _appleOptions.CurrentValue.Products;
-        if (products.IsNullOrEmpty())
-        {
-            _logger.LogWarning("[UserBillingGAgent][GetAppleProductsAsync] No products configured in ApplePayOptions");
-            return new List<AppleProductDto>();
-        }
-
-        _logger.LogDebug("[UserBillingGAgent][GetAppleProductsAsync] Found {Count} products in configuration",
-            products.Count);
-        var productDtos = new List<AppleProductDto>();
-        foreach (var product in products)
-        {
-            var dailyAvgPrice = string.Empty;
-            if (product.PlanType == (int)PlanType.Day)
-            {
-                dailyAvgPrice = product.Amount.ToString();
-            } else if (product.PlanType == (int)PlanType.Week)
-            {
-                dailyAvgPrice = Math.Round(product.Amount / 7, 2, MidpointRounding.ToZero).ToString();
-            }
-            else if (product.PlanType == (int)PlanType.Month)
-            {
-                dailyAvgPrice = Math.Round(product.Amount / 30, 2, MidpointRounding.ToZero).ToString();
-            }
-            else if (product.PlanType == (int)PlanType.Year)
-            {
-                dailyAvgPrice = Math.Round(product.Amount / 390, 2, MidpointRounding.ToZero).ToString();
-            }
-
-            productDtos.Add(new AppleProductDto
-            {
-                PlanType = product.PlanType,
-                ProductId = product.ProductId,
-                Name = product.Name,
-                Description = product.Description,
-                Amount = product.Amount,
-                DailyAvgPrice = dailyAvgPrice,
-                Currency = product.Currency
-            });
-        }
-        
-        _logger.LogDebug("[UserBillingGAgent][GetAppleProductsAsync] Successfully retrieved {Count} products",
-            productDtos.Count);
-        return productDtos;
+        return await _applePaymentService.GetProductsAsync();
     }
 
     public async Task<string> GetOrCreateStripeCustomerAsync(string userId = null)
@@ -263,38 +170,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             return State.CustomerId;
         }
 
-        var customerService = new CustomerService(_client);
-        CustomerCreateOptions customerOptions;
-        var customerId = string.Empty;
-        if (!string.IsNullOrEmpty(userId))
-        {
-            customerOptions = new CustomerCreateOptions
-            {
-                Metadata = new Dictionary<string, string>
-                {
-                    { "internal_user_id", userId }
-                }
-            };
-
-            var customer = await customerService.CreateAsync(customerOptions);
-            _logger.LogInformation(
-                "[UserBillingGAgent][GetOrCreateStripeCustomerAsync] Created Stripe Customer for user {UserId}: {CustomerId}",
-                userId, customer.Id);
-            customerId = customer.Id;
-        }
-        else
-        {
-            customerOptions = new CustomerCreateOptions
-            {
-                Description = "Temporarily created subscription customers"
-            };
-
-            var customer = await customerService.CreateAsync(customerOptions);
-            _logger.LogInformation(
-                "[UserBillingGAgent][GetOrCreateStripeCustomerAsync] Created temporary Stripe Customer: {CustomerId}",
-                customer.Id);
-            customerId = customer.Id;
-        }
+        var customerId = await _stripePaymentService.CreateCustomerAsync(userId);
 
         RaiseEvent(new UpdateCustomerIdLogEvent
         {
@@ -307,47 +183,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     public async Task<GetCustomerResponseDto> GetStripeCustomerAsync(string userId = null)
     {
-        try
-        {
-            var customerId = await GetOrCreateStripeCustomerAsync(userId);
-            _logger.LogInformation(
-                "[UserBillingGAgent][GetStripeCustomerAsync] {userId} Using customer: {CustomerId}",userId, customerId);
-            
-            var ephemeralKeyService = new EphemeralKeyService(_client);
-            var ephemeralKeyOptions = new EphemeralKeyCreateOptions
-            {
-                Customer = customerId,
-                StripeVersion = "2025-04-30.basil",
-            };
-            
-            var ephemeralKey = await ephemeralKeyService.CreateAsync(ephemeralKeyOptions);
-            _logger.LogInformation(
-                "[UserBillingGAgent][GetStripeCustomerAsync] {userId} Created ephemeral key with ID: {EphemeralKeyId}",
-                userId, ephemeralKey.Id);
+        var customerId = await GetOrCreateStripeCustomerAsync(userId);
+        _logger.LogInformation(
+            "[UserBillingGAgent][GetStripeCustomerAsync] {userId} Using customer: {CustomerId}",userId, customerId);
 
-            var response = new GetCustomerResponseDto()
-            {
-                EphemeralKey = ephemeralKey.Secret,
-                Customer = customerId,
-                PublishableKey = _stripeOptions.CurrentValue.PublishableKey
-            };
-            
-            return response;
-        }
-        catch (StripeException ex)
-        {
-            _logger.LogError(ex,
-                "[UserBillingGAgent][GetStripeCustomerAsync] Stripe error: {ErrorMessage}",
-                ex.StripeError?.Message);
-            throw new InvalidOperationException(ex.Message);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "[UserBillingGAgent][GetStripeCustomerAsync] error: {ErrorMessage}",
-                ex.Message);
-            throw;
-        }
+        return await _stripePaymentService.GetCustomerWithEphemeralKeyAsync(customerId);
     }
 
     public async Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto createCheckoutSessionDto)
@@ -1407,37 +1247,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             .ToList();
     }
 
-    // public async Task<bool> UpdatePaymentStatusAsync(ChatManager.UserBilling.PaymentSummary payment, PaymentStatus newStatus)
-    // {
-    //     _logger.LogInformation(
-    //         "[UserBillingGAgent][UpdatePaymentStatusAsync] Updating payment status for ID {PaymentId} to {NewStatus}",
-    //         payment.PaymentGrainId, newStatus);
-    //
-    //     // Skip update if status is already the same
-    //     if (payment.Status == newStatus)
-    //     {
-    //         _logger.LogInformation(
-    //             "[UserBillingGAgent][UpdatePaymentStatusAsync] Payment {PaymentId} already has status {Status}",
-    //             payment.PaymentGrainId, newStatus);
-    //         return true;
-    //     }
-    //
-    //     RaiseEvent(new UpdatePaymentStatusLogEvent
-    //     {
-    //         PaymentId = payment.PaymentGrainId,
-    //         NewStatus = newStatus
-    //     });
-    //     await ConfirmEvents();
-    //
-    //     var oldStatus = payment.Status;
-    //
-    //     _logger.LogInformation(
-    //         "[UserBillingGAgent][UpdatePaymentStatusAsync] Payment status updated from {OldStatus} to {NewStatus} for ID {PaymentId}",
-    //         oldStatus, newStatus, payment.PaymentGrainId);
-    //
-    //     return true;
-    // }
-
     private async Task<PaymentDetailsDto> InitializePaymentGrainAsync(
         string orderId,
         CreateCheckoutSessionDto createCheckoutSessionDto,
@@ -2008,213 +1817,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             PaymentPlatform.GooglePlay, verificationResult.ProductId, productConfig.Currency, productConfig.Amount);
         
         await ProcessInviteeSubscriptionAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate, verificationResult.TransactionId);
-    }
-
-    private async Task ReportPaymentSuccessAsync(Guid userId, string transactionId, PaymentPlatform platform)
-    {
-        try
-        {
-            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>($"payment-analytics-{platform}");
-            var analyticsResult = await analyticsGrain.ReportPaymentSuccessAsync(platform, transactionId, userId.ToString());
-
-            if (analyticsResult.IsSuccess)
-            {
-                _logger.LogInformation($"[UserBillingGAgent][ReportPaymentSuccessAsync] Successfully reported {platform} payment analytics for user {userId}, TransactionId {transactionId}.");
-            }
-            else
-            {
-                _logger.LogWarning($"[UserBillingGAgent][ReportPaymentSuccessAsync] Failed to report {platform} payment analytics for user {userId}, TransactionId {transactionId}: {analyticsResult.ErrorMessage}");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][ReportPaymentSuccessAsync] Exception while reporting {Platform} payment analytics for user {UserId}, transaction {TransactionId}", platform, userId, transactionId);
-        }
-    }
-
-    private async Task ProcessGooglePayPurchaseSuccessAsync(Guid userId, PaymentVerificationResultDto verificationResult)
-    {
-        _logger.LogInformation("[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Processing successful Google Pay Web payment for user {UserId}, product {ProductId}", userId, verificationResult.ProductId);
-
-        try
-        {
-            // Get product configuration
-            var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
-            if (productConfig == null)
-            {
-                _logger.LogError("[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Could not find product configuration for ProductId: {ProductId}", verificationResult.ProductId);
-                return;
-            }
-
-            // Create payment summary
-            var paymentSummary = await CreateOrUpdateGooglePayPaymentSummaryAsync(userId, verificationResult);
-
-            // Update user quota
-            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
-            var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
-
-            // Reset rate limits if this is a new subscription
-            if (!subscription.IsActive)
-            {
-                await userQuotaAgent.ResetRateLimitsAsync();
-            }
-
-            // Update subscription details - use consistent time calculation logic
-            if (subscription.IsActive)
-            {
-                // Existing active subscription - use cumulative approach (same as other methods)
-                if (SubscriptionHelper.GetPlanTypeLogicalOrder(subscription.PlanType) <= 
-                    SubscriptionHelper.GetPlanTypeLogicalOrder((PlanType)productConfig.PlanType))
-                {
-                    subscription.PlanType = (PlanType)productConfig.PlanType;
-                }
-                subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.EndDate);
-            }
-            else
-            {
-                // New subscription - use system time for consistency
-                subscription.IsActive = true;
-                subscription.PlanType = (PlanType)productConfig.PlanType;
-                subscription.StartDate = DateTime.UtcNow;
-                subscription.EndDate = GetSubscriptionEndDate(subscription.PlanType, subscription.StartDate);
-            }
-            subscription.Status = PaymentStatus.Completed;
-            
-            if (subscription.SubscriptionIds == null)
-            {
-                subscription.SubscriptionIds = new List<string>();
-            }
-            
-            if (!subscription.SubscriptionIds.Contains(paymentSummary.SubscriptionId))
-            {
-                subscription.SubscriptionIds.Add(paymentSummary.SubscriptionId);
-            }
-
-            await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
-
-            // Fix: Handle subscription activation - only Ultimate changes affect Premium subscription time 
-            await SyncOtherSubscriptionTimesAsync(userId, userQuotaAgent, (PlanType)productConfig.PlanType, productConfig.IsUltimate, true);
-
-            // Report payment success for analytics
-            await ReportGooglePaymentSuccessAsync(userId, verificationResult.TransactionId, PurchaseType.Subscription,
-                PaymentPlatform.GooglePlay, verificationResult.ProductId, productConfig.Currency, productConfig.Amount);
-
-            // Process invitee benefits if applicable
-            await ProcessInviteeSubscriptionAsync(userId, (PlanType)productConfig.PlanType, productConfig.IsUltimate, verificationResult.TransactionId);
-
-            _logger.LogInformation("[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Successfully processed Google Pay Web payment for user {UserId}", userId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][ProcessGooglePayPurchaseSuccessAsync] Error processing Google Pay Web payment for user {UserId}", userId);
-            throw;
-        }
-    }
-
-    private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult)
-    {
-        // Use RevenueCat's actual fields for consistent lookup
-        var originalTransactionId = verificationResult.OriginalTransactionId; // RevenueCat's original_transaction_id (stable subscription identifier)
-        var currentTransactionId = verificationResult.TransactionId;           // RevenueCat's transaction_id (current transaction)
-        
-        var existingPayment = State.PaymentHistory.FirstOrDefault(p => 
-            p.Platform == PaymentPlatform.GooglePlay && 
-            (p.OrderId == originalTransactionId ||        // OrderId stored as OriginalTransactionId (stable)
-             p.SubscriptionId == originalTransactionId || // SubscriptionId stored as OriginalTransactionId (stable)
-             p.OrderId == currentTransactionId ||         // Legacy: OrderId stored as current TransactionId
-             p.InvoiceDetails.Any(i => i.InvoiceId == currentTransactionId) ||  // Always match by current TransactionId
-             p.InvoiceDetails.Any(i => i.InvoiceId == originalTransactionId))); // Also try matching by OriginalTransactionId
-
-        var productConfig = await GetGooglePayProductConfigAsync(verificationResult.ProductId);
-
-        if (existingPayment != null)
-        {
-            // Check if this specific transaction already exists
-            var existingInvoice = existingPayment.InvoiceDetails.FirstOrDefault(i => i.InvoiceId == currentTransactionId);
-            
-            if (existingInvoice != null)
-            {
-                _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Transaction already processed: {TransactionId}", currentTransactionId);
-                return existingPayment; // Duplicate transaction, return existing
-            }
-            
-            // This should not happen for INITIAL_PURCHASE - it suggests incorrect event routing
-            _logger.LogWarning("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Found existing payment for INITIAL_PURCHASE event. This may indicate event routing issue. TransactionId: {TransactionId}, ExistingOrderId: {OrderId}", 
-                currentTransactionId, existingPayment.OrderId);
-            
-            // For safety, add new invoice detail instead of updating existing ones
-            var newInvoiceDetail = new ChatManager.UserBilling.UserBillingInvoiceDetail
-            {
-                InvoiceId = currentTransactionId,
-                PriceId = verificationResult.ProductId,
-                Status = PaymentStatus.Completed,
-                CreatedAt = DateTime.UtcNow,
-                CompletedAt = DateTime.UtcNow,
-                SubscriptionStartDate = DateTime.UtcNow,
-                SubscriptionEndDate = DateTime.UtcNow.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType)),
-                MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
-                Amount = productConfig.Amount,
-                PlanType = (PlanType)productConfig.PlanType,
-                PurchaseToken = verificationResult.OriginalTransactionId // Fix: Use OriginalTransactionId for consistency
-            };
-            
-            existingPayment.InvoiceDetails.Add(newInvoiceDetail);
-            existingPayment.SubscriptionEndDate = newInvoiceDetail.SubscriptionEndDate;
-            
-            RaiseEvent(new UpdatePaymentLogEvent { PaymentId = existingPayment.PaymentGrainId, PaymentSummary = existingPayment });
-            await ConfirmEvents();
-            return existingPayment;
-        }
-        else
-        {
-            _logger.LogInformation("[UserBillingGAgent][CreateOrUpdateGooglePayPaymentSummaryAsync] Creating new Google Pay payment for transaction: {TransactionId}", currentTransactionId);
-
-            // Fix: Use fixed-day calculation instead of RevenueCat webhook dates
-            var subscriptionStartDate = DateTime.UtcNow;
-            var subscriptionEndDate = DateTime.UtcNow.AddDays(GetDaysForPlanType((PlanType)productConfig.PlanType));
-
-            var newPaymentSummary = new ChatManager.UserBilling.PaymentSummary
-            {
-                PaymentGrainId = Guid.NewGuid(),
-                OrderId = verificationResult.OriginalTransactionId, // Use RevenueCat's original_transaction_id for consistent subscription matching
-                UserId = userId,
-                PriceId = verificationResult.ProductId,
-                PlanType = (PlanType)productConfig.PlanType,
-                MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
-                Amount = productConfig.Amount,
-                Currency = productConfig.Currency,
-                CreatedAt = DateTime.UtcNow,
-                Platform = PaymentPlatform.GooglePlay,
-                PaymentType = productConfig.IsSubscription ? PaymentType.Subscription : PaymentType.OneTime,
-                InvoiceDetails = new List<UserBillingInvoiceDetail>
-                {
-                    new UserBillingInvoiceDetail
-                    {
-                        InvoiceId = currentTransactionId, // Current transaction ID for invoice details
-                        PriceId = verificationResult.ProductId,
-                        Status = PaymentStatus.Completed,
-                        CreatedAt = DateTime.UtcNow,
-                        CompletedAt = DateTime.UtcNow,
-                        SubscriptionStartDate = subscriptionStartDate,
-                        SubscriptionEndDate = subscriptionEndDate,
-                        MembershipLevel = SubscriptionHelper.GetMembershipLevel(productConfig.IsUltimate),
-                        Amount = productConfig.Amount,
-                        PlanType = (PlanType)productConfig.PlanType,
-                        PurchaseToken = verificationResult.OriginalTransactionId // Store RevenueCat's original_transaction_id for subscription matching
-                    }
-                },
-                SubscriptionId = verificationResult.OriginalTransactionId, // Use RevenueCat's original_transaction_id as stable subscription identifier
-                SubscriptionStartDate = subscriptionStartDate,
-                SubscriptionEndDate = subscriptionEndDate
-            };
-
-            var paymentId = await AddPaymentRecordAsync(newPaymentSummary);
-
-            RaiseEvent(new AddPaymentLogEvent { PaymentSummary = newPaymentSummary });
-            await ConfirmEvents();
-            
-            return newPaymentSummary;
-        }
     }
 
     private async Task ReportGooglePaymentSuccessAsync(Guid userId, string transactionId, PurchaseType purchaseType,
@@ -4000,65 +3602,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         return _googlePayService;
     }
 
-
-
-    /// <summary>
-    /// Internal Google Play verification method (used by transaction verification and webhook)
-    /// </summary>
-    private async Task<PaymentVerificationResultDto> VerifyGooglePlayPurchaseAsync(GooglePlayVerificationDto request)
-    {
-        if (request == null || string.IsNullOrEmpty(request.UserId) || !Guid.TryParse(request.UserId, out var userGuid))
-        {
-            _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] Invalid request: UserId is missing or invalid.");
-            return new PaymentVerificationResultDto { IsValid = false, Message = "Invalid UserId.", ErrorCode = "INVALID_INPUT" };
-        }
-
-        try
-        {
-            _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] Verifying Google Play purchase for user: {UserId}, productId: {ProductId}", request.UserId, request.ProductId);
-
-            var googlePayService = GetGooglePayService();
-            var verificationResult = await googlePayService.VerifyGooglePlayPurchaseAsync(request);
-
-            if (verificationResult != null && verificationResult.IsValid)
-            {
-                _logger.LogInformation("[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] Google Play purchase successful for user {UserId}. TransactionId: {TransactionId}", request.UserId, verificationResult.TransactionId);
-                await ProcessGooglePlayPurchaseSuccessAsync(userGuid, verificationResult);
-            }
-            else
-            {
-                _logger.LogWarning("[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] Google Play purchase verification failed for user {UserId}. Reason: {Message}", request.UserId, verificationResult?.Message);
-            }
-
-            return verificationResult ?? new PaymentVerificationResultDto 
-            { 
-                IsValid = false, 
-                Message = "Verification service returned null result", 
-                ErrorCode = "VERIFICATION_FAILED" 
-            };
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("IGooglePayService"))
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] IGooglePayService not available for user {UserId}", request.UserId);
-            return new PaymentVerificationResultDto
-            {
-                IsValid = false,
-                Message = "Invalid token",  // Return expected error message for tests
-                ErrorCode = "SERVICE_UNAVAILABLE"
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][VerifyGooglePlayPurchaseAsync] Error verifying Google Play purchase for user {UserId}", request.UserId);
-            return new PaymentVerificationResultDto
-            {
-                IsValid = false,
-                Message = "Invalid token",  // Return expected error message for tests
-                ErrorCode = "INTERNAL_ERROR"
-            };
-        }
-    }
-
     public async Task<PaymentVerificationResultDto> VerifyGooglePlayTransactionAsync(GooglePlayTransactionVerificationDto request)
     {
         if (request == null || string.IsNullOrEmpty(request.UserId) || !Guid.TryParse(request.UserId, out var userGuid))
@@ -4176,50 +3719,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 Message = "An error occurred during verification",
                 ErrorCode = "VERIFICATION_ERROR"
             };
-        }
-    }
-
-    /// <summary>
-    /// Get purchase token by transaction ID (needed for Google Play API verification)
-    /// </summary>
-    private async Task<string> GetPurchaseTokenByTransactionIdAsync(string transactionId)
-    {
-        try
-        {
-            _logger.LogInformation("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Looking up purchase token for transaction: {TransactionId}", transactionId);
-            
-            // Option 1: Check stored payment records for purchaseToken
-            // Look for the purchaseToken in the invoice details
-            var existingPayment = await GetPaymentSummaryByTransactionIdAsync(transactionId);
-            if (existingPayment != null && existingPayment.InvoiceDetails != null)
-            {
-                // Check if any invoice detail contains the purchase token
-                var invoiceWithPurchaseToken = existingPayment.InvoiceDetails
-                    .FirstOrDefault(detail => !string.IsNullOrEmpty(detail.PurchaseToken));
-                
-                if (invoiceWithPurchaseToken != null)
-                {
-                    _logger.LogInformation("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Found stored purchase token for transaction: {TransactionId}", transactionId);
-                    return invoiceWithPurchaseToken.PurchaseToken;
-                }
-            }
-
-            // Option 2: Query RevenueCat API to get the original Google Play purchase token
-            var userId = this.GetPrimaryKey().ToString();
-            var revenueCatTransaction = await QueryRevenueCatForTransactionAsync(transactionId, userId);
-            if (revenueCatTransaction != null && !string.IsNullOrEmpty(revenueCatTransaction.PurchaseToken))
-            {
-                _logger.LogInformation("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Found purchase token via RevenueCat for transaction: {TransactionId}", transactionId);
-                return revenueCatTransaction.PurchaseToken;
-            }
-
-            _logger.LogWarning("[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Purchase token not found for transaction: {TransactionId}", transactionId);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][GetPurchaseTokenByTransactionIdAsync] Error looking up purchase token for transaction: {TransactionId}", transactionId);
-            return null;
         }
     }
 
@@ -4459,7 +3958,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
-            private async Task<bool> HandleSubscriptionNotification(Guid userId, SubscriptionNotification notification)
+    private async Task<bool> HandleSubscriptionNotification(Guid userId, SubscriptionNotification notification)
     {
         var purchaseToken = notification.PurchaseToken;
         var productId = notification.SubscriptionId;
@@ -4512,7 +4011,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         return true;
     }
 
-            private async Task<bool> HandleVoidedPurchaseNotification(Guid userId, VoidedPurchaseNotification notification)
+    private async Task<bool> HandleVoidedPurchaseNotification(Guid userId, VoidedPurchaseNotification notification)
     {
         _logger.LogInformation("[UserBillingGAgent][HandleVoidedPurchaseNotification] Received Voided Purchase Notification. PurchaseToken: {PurchaseToken}, OrderId: {OrderId}", notification.PurchaseToken, notification.OrderId);
         await UpdateGooglePlaySubscriptionStatusAsync(userId, notification.PurchaseToken, PaymentStatus.Refunded, true);
@@ -4563,26 +4062,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
-    public async Task<bool> SyncGooglePlaySubscriptionAsync(string subscriptionId)
-    {
-        try
-        {
-            _logger.LogInformation("[UserBillingGAgent][SyncGooglePlaySubscriptionAsync] Syncing Google Play subscription: {SubscriptionId}",
-                subscriptionId);
-
-            // TODO: Implement Google Play subscription synchronization
-            // This should query the Google Play API for the latest subscription status
-            
-            _logger.LogWarning("[UserBillingGAgent][SyncGooglePlaySubscriptionAsync] Google Play subscription sync not yet implemented");
-            return false;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][SyncGooglePlaySubscriptionAsync] Error syncing Google Play subscription");
-            return false;
-        }
-    }
-    
     public async Task<bool> ProcessRevenueCatWebhookEventAsync(Guid userId, string eventType, PaymentVerificationResultDto verificationResult)
     {
         try
@@ -4709,7 +4188,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
     }
 
-        private async Task ProcessRevenueCatCancellationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
+    private async Task ProcessRevenueCatCancellationAsync(Guid userId, PaymentVerificationResultDto verificationResult)
     {
         _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatCancellationAsync] Processing subscription cancellation for user {UserId}, TransactionId: {TransactionId}, OriginalTransactionId: {OriginalTransactionId}, Price: {Price}",
             userId, verificationResult.TransactionId, verificationResult.OriginalTransactionId, verificationResult.PriceInPurchasedCurrency);
@@ -4857,45 +4336,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         
         return null;
-    }
-
-    private async Task ReportGooglePayRefundAsync(Guid userId, string transactionId, string refundReason, string currency, decimal refundAmount)
-    {
-        _logger.LogInformation("[UserBillingGAgent][ReportGooglePayRefundAsync] Reporting Google Pay refund to analytics: UserId={UserId}, TransactionId={TransactionId}, RefundReason={RefundReason}, RefundAmount={RefundAmount} {Currency}",
-            userId, transactionId, refundReason, refundAmount, currency);
-        
-        try
-        {
-            var analyticsGrain = GrainFactory.GetGrain<IPaymentAnalyticsGrain>("payment-analytics" + PaymentPlatform.GooglePlay);
-            var analyticsResult = await analyticsGrain.ReportRefundEventAsync(
-                PaymentPlatform.GooglePlay,
-                transactionId,
-                userId.ToString(),
-                refundReason,
-                currency,
-                refundAmount
-            );
-
-            if (analyticsResult.IsSuccess)
-            {
-                _logger.LogInformation(
-                    "[UserBillingGAgent][ReportGooglePayRefundAsync] Successfully reported Google Pay refund analytics for user {UserId}, TransactionId {TransactionId}",
-                    userId, transactionId);
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "[UserBillingGAgent][ReportGooglePayRefundAsync] Failed to report Google Pay refund analytics for user {UserId}, TransactionId {TransactionId}: {ErrorMessage}",
-                    userId, transactionId, analyticsResult.ErrorMessage);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "[UserBillingGAgent][ReportGooglePayRefundAsync] Exception while reporting Google Pay refund analytics for user {UserId}, TransactionId {TransactionId}",
-                userId, transactionId);
-            // Don't throw - analytics reporting shouldn't block payment processing
-        }
     }
 
     private async Task ProcessRevenueCatRenewalAsync(Guid userId, PaymentVerificationResultDto verificationResult)
@@ -5251,45 +4691,6 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         catch (Exception ex)
         {
             _logger.LogError(ex, "[UserBillingGAgent][UpdateUserQuotaOnRefundAsync] Error updating user quota for refund. UserId: {UserId}", userId);
-        }
-    }
-
-    /// <summary>
-    /// Update user quota when a subscription expires
-    /// </summary>
-    private async Task UpdateUserQuotaOnExpirationAsync(Guid userId, ChatManager.UserBilling.PaymentSummary paymentSummary)
-    {
-        try
-        {
-            // Get product configuration to determine subscription type
-            var productConfig = await GetGooglePayProductConfigAsync(paymentSummary.PriceId);
-            if (productConfig == null)
-            {
-                _logger.LogWarning("[UserBillingGAgent][UpdateUserQuotaOnExpirationAsync] Product configuration not found for PriceId: {PriceId}", paymentSummary.PriceId);
-                return;
-            }
-
-            var userQuotaAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
-            var subscription = await userQuotaAgent.GetSubscriptionAsync(productConfig.IsUltimate);
-
-            // Remove the subscription ID from the active list
-            if (subscription.SubscriptionIds != null && subscription.SubscriptionIds.Contains(paymentSummary.SubscriptionId))
-            {
-                subscription.SubscriptionIds.Remove(paymentSummary.SubscriptionId);
-            }
-
-            // Deactivate the subscription due to expiration
-            subscription.IsActive = false;
-            subscription.Status = PaymentStatus.Cancelled;
-
-            await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
-
-            _logger.LogInformation("[UserBillingGAgent][UpdateUserQuotaOnExpirationAsync] Updated user quota for expiration. UserId: {UserId}, SubscriptionId: {SubscriptionId}, IsActive: {IsActive}", 
-                userId, paymentSummary.SubscriptionId, subscription.IsActive);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[UserBillingGAgent][UpdateUserQuotaOnExpirationAsync] Error updating user quota for expiration. UserId: {UserId}", userId);
         }
     }
 
