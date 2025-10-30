@@ -170,3 +170,73 @@ public class StatsSnapshotEvent : FortuneStatsSnapshotEventLog
 
 #endregion
 
+#region User Profile Events (V2)
+
+/// <summary>
+/// Base event log for Fortune User Profile GAgent (V2)
+/// </summary>
+[GenerateSerializer]
+public abstract class FortuneUserProfileEventLog : StateLogEventBase<FortuneUserProfileEventLog>
+{
+}
+
+/// <summary>
+/// User profile updated event (V2)
+/// </summary>
+[GenerateSerializer]
+public class UserProfileUpdatedEvent : FortuneUserProfileEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string FullName { get; set; } = string.Empty;
+    [Id(2)] public GenderEnum Gender { get; set; }
+    [Id(3)] public DateOnly BirthDate { get; set; }
+    [Id(4)] public TimeOnly BirthTime { get; set; }
+    [Id(5)] public string? BirthCountry { get; set; }
+    [Id(6)] public string? BirthCity { get; set; }
+    [Id(7)] public MbtiTypeEnum? MbtiType { get; set; }
+    [Id(8)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
+    [Id(9)] public string? Interests { get; set; }
+    [Id(10)] public CalendarTypeEnum CalendarType { get; set; }
+    [Id(11)] public DateTime UpdatedAt { get; set; }
+    [Id(12)] public string? CurrentResidence { get; set; }
+    [Id(13)] public string? Email { get; set; }
+}
+
+/// <summary>
+/// User profile actions updated event (V2)
+/// </summary>
+[GenerateSerializer]
+public class UserProfileActionsUpdatedEvent : FortuneUserProfileEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public List<string> Actions { get; set; } = new();
+    [Id(2)] public DateTime UpdatedAt { get; set; }
+}
+
+#endregion
+
+#region Prediction History Events
+
+/// <summary>
+/// Base event log for Fortune Prediction History GAgent
+/// </summary>
+[GenerateSerializer]
+public abstract class FortunePredictionHistoryEventLog : StateLogEventBase<FortunePredictionHistoryEventLog>
+{
+}
+
+/// <summary>
+/// Prediction added to history event
+/// </summary>
+[GenerateSerializer]
+public class PredictionAddedToHistoryEvent : FortunePredictionHistoryEventLog
+{
+    [Id(0)] public Guid PredictionId { get; set; }
+    [Id(1)] public DateOnly PredictionDate { get; set; }
+    [Id(2)] public int Energy { get; set; }
+    [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new();
+    [Id(4)] public DateTime CreatedAt { get; set; }
+}
+
+#endregion
+
