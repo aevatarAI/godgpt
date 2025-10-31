@@ -18,49 +18,6 @@ public interface IApplePaymentService
     /// <param name="options">Apple Pay configuration options</param>
     /// <returns>List of Apple products</returns>
     Task<List<AppleProductDto>> GetProductsAsync();
-
-    /// <summary>
-    /// Create App Store subscription
-    /// </summary>
-    /// <param name="dto">App Store subscription creation parameters</param>
-    /// <param name="options">Apple Pay configuration options</param>
-    /// <returns>App Store subscription response</returns>
-    Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto dto, ApplePayOptions options);
-
-    /// <summary>
-    /// Process App Store notification
-    /// </summary>
-    /// <param name="userId">User ID</param>
-    /// <param name="jsonPayload">Notification JSON payload</param>
-    /// <param name="options">Apple Pay configuration options</param>
-    /// <returns>Payment verification result</returns>
-    Task<PaymentVerificationResultDto> ProcessAppStoreNotificationAsync(Guid userId, string jsonPayload, ApplePayOptions options);
-
-    /// <summary>
-    /// Get App Store transaction information
-    /// </summary>
-    /// <param name="transactionId">Transaction ID</param>
-    /// <param name="environment">App Store environment (sandbox/production)</param>
-    /// <param name="options">Apple Pay configuration options</param>
-    /// <returns>Transaction decoded payload</returns>
-    Task<AppStoreJWSTransactionDecodedPayload> GetAppStoreTransactionInfoAsync(string transactionId, string environment, ApplePayOptions options);
-
-    /// <summary>
-    /// Verify App Store receipt
-    /// </summary>
-    /// <param name="receiptData">Receipt data</param>
-    /// <param name="options">Apple Pay configuration options</param>
-    /// <returns>Payment verification result</returns>
-    Task<PaymentVerificationResultDto> VerifyAppStoreReceiptAsync(string receiptData, ApplePayOptions options);
-
-    /// <summary>
-    /// Process App Store subscription renewal
-    /// </summary>
-    /// <param name="userId">User ID</param>
-    /// <param name="transactionInfo">Transaction information</param>
-    /// <param name="options">Apple Pay configuration options</param>
-    /// <returns>Processing success</returns>
-    Task<bool> ProcessSubscriptionRenewalAsync(Guid userId, AppStoreJWSTransactionDecodedPayload transactionInfo, ApplePayOptions options);
 }
 
 
@@ -125,35 +82,5 @@ public class ApplePaymentService : IApplePaymentService
         _logger.LogDebug("[ApplePaymentService][GetProductsAsync] Successfully retrieved {Count} products",
             productDtos.Count);
         return productDtos;
-    }
-
-    public async Task<AppStoreSubscriptionResponseDto> CreateAppStoreSubscriptionAsync(CreateAppStoreSubscriptionDto dto, ApplePayOptions options)
-    {
-        _logger.LogDebug("[ApplePaymentService][CreateAppStoreSubscriptionAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
-    }
-
-    public async Task<PaymentVerificationResultDto> ProcessAppStoreNotificationAsync(Guid userId, string jsonPayload, ApplePayOptions options)
-    {
-        _logger.LogDebug("[ApplePaymentService][ProcessAppStoreNotificationAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
-    }
-
-    public async Task<AppStoreJWSTransactionDecodedPayload> GetAppStoreTransactionInfoAsync(string transactionId, string environment, ApplePayOptions options)
-    {
-        _logger.LogDebug("[ApplePaymentService][GetAppStoreTransactionInfoAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
-    }
-
-    public async Task<PaymentVerificationResultDto> VerifyAppStoreReceiptAsync(string receiptData, ApplePayOptions options)
-    {
-        _logger.LogDebug("[ApplePaymentService][VerifyAppStoreReceiptAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
-    }
-
-    public async Task<bool> ProcessSubscriptionRenewalAsync(Guid userId, AppStoreJWSTransactionDecodedPayload transactionInfo, ApplePayOptions options)
-    {
-        _logger.LogDebug("[ApplePaymentService][ProcessSubscriptionRenewalAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
     }
 }

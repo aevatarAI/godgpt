@@ -33,47 +33,6 @@ public interface IStripePaymentService
     /// <param name="customerId">Customer ID</param>
     /// <returns>Customer response with ephemeral key</returns>
     Task<GetCustomerResponseDto> GetCustomerWithEphemeralKeyAsync(string customerId);
-
-    /// <summary>
-    /// Create Stripe checkout session
-    /// </summary>
-    /// <param name="dto">Checkout session creation parameters</param>
-    /// <param name="options">Stripe configuration options</param>
-    /// <returns>Session URL or client secret</returns>
-    Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto dto, StripeOptions options);
-
-    /// <summary>
-    /// Create Stripe subscription
-    /// </summary>
-    /// <param name="dto">Subscription creation parameters</param>
-    /// <param name="options">Stripe configuration options</param>
-    /// <returns>Subscription response</returns>
-    Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto dto, StripeOptions options);
-
-    /// <summary>
-    /// Create Stripe payment sheet
-    /// </summary>
-    /// <param name="dto">Payment sheet creation parameters</param>
-    /// <param name="options">Stripe configuration options</param>
-    /// <returns>Payment sheet response</returns>
-    Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto dto, StripeOptions options);
-
-    /// <summary>
-    /// Process Stripe webhook event
-    /// </summary>
-    /// <param name="jsonPayload">Webhook JSON payload</param>
-    /// <param name="signature">Stripe signature</param>
-    /// <param name="options">Stripe configuration options</param>
-    /// <returns>Payment verification result</returns>
-    Task<PaymentVerificationResultDto> ProcessWebhookEventAsync(string jsonPayload, string signature, StripeOptions options);
-
-    /// <summary>
-    /// Cancel Stripe subscription
-    /// </summary>
-    /// <param name="dto">Cancellation parameters</param>
-    /// <param name="options">Stripe configuration options</param>
-    /// <returns>Cancellation response</returns>
-    Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto dto, StripeOptions options);
 }
 
 
@@ -225,35 +184,5 @@ public class StripePaymentService : IStripePaymentService
                 ex.Message);
             throw;
         }
-    }
-
-    public async Task<string> CreateCheckoutSessionAsync(CreateCheckoutSessionDto dto, StripeOptions options)
-    {
-        _logger.LogDebug("[StripePaymentService][CreateCheckoutSessionAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
-    }
-
-    public async Task<SubscriptionResponseDto> CreateSubscriptionAsync(CreateSubscriptionDto dto, StripeOptions options)
-    {
-        _logger.LogDebug("[StripePaymentService][CreateSubscriptionAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
-    }
-
-    public async Task<PaymentSheetResponseDto> CreatePaymentSheetAsync(CreatePaymentSheetDto dto, StripeOptions options)
-    {
-        _logger.LogDebug("[StripePaymentService][CreatePaymentSheetAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
-    }
-
-    public async Task<PaymentVerificationResultDto> ProcessWebhookEventAsync(string jsonPayload, string signature, StripeOptions options)
-    {
-        _logger.LogDebug("[StripePaymentService][ProcessWebhookEventAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
-    }
-
-    public async Task<CancelSubscriptionResponseDto> CancelSubscriptionAsync(CancelSubscriptionDto dto, StripeOptions options)
-    {
-        _logger.LogDebug("[StripePaymentService][CancelSubscriptionAsync] Method not yet implemented");
-        throw new NotImplementedException("Method will be implemented during migration");
     }
 }
