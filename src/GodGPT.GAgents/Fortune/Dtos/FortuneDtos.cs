@@ -129,13 +129,13 @@ public class FortuneUserDto
     [Id(2)] public string LastName { get; set; } = string.Empty;
     [Id(3)] public GenderEnum Gender { get; set; }
     [Id(4)] public DateOnly BirthDate { get; set; }
-    [Id(5)] public TimeOnly BirthTime { get; set; }
+    [Id(5)] public TimeOnly? BirthTime { get; set; } // Optional
     [Id(6)] public string? BirthCountry { get; set; } // Optional
     [Id(7)] public string? BirthCity { get; set; } // Optional
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
     [Id(10)] public string? Interests { get; set; } // Optional
-    [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
+    [Id(11)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
     [Id(12)] public DateTime CreatedAt { get; set; }
     [Id(13)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
     [Id(14)] public string? CurrentResidence { get; set; } // Optional

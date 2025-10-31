@@ -357,12 +357,21 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         // Required fields
         userInfoParts.Add($"{userInfo.FirstName} {userInfo.LastName}");
         
-        // Birth date and time
-        var birthDateTime = userInfo.BirthTime == default(TimeOnly) 
-            ? $"{userInfo.BirthDate:yyyy-MM-dd}" 
-            : $"{userInfo.BirthDate:yyyy-MM-dd} {userInfo.BirthTime:HH:mm}";
-        var calendarType = userInfo.CalendarType == CalendarTypeEnum.Solar ? "Solar" : "Lunar";
-        userInfoParts.Add($"Birth: {birthDateTime} ({calendarType} calendar)");
+        // Birth date and time (only include time if provided)
+        var birthDateStr = $"Birth: {userInfo.BirthDate:yyyy-MM-dd}";
+        if (userInfo.BirthTime.HasValue)
+        {
+            birthDateStr += $" {userInfo.BirthTime.Value:HH:mm}";
+        }
+        
+        // Calendar type (only include if provided)
+        if (userInfo.CalendarType.HasValue)
+        {
+            var calendarType = userInfo.CalendarType.Value == CalendarTypeEnum.Solar ? "Solar" : "Lunar";
+            birthDateStr += $" ({calendarType} calendar)";
+        }
+        
+        userInfoParts.Add(birthDateStr);
         
         // Birth location (optional)
         if (!string.IsNullOrWhiteSpace(userInfo.BirthCity) && !string.IsNullOrWhiteSpace(userInfo.BirthCountry))
