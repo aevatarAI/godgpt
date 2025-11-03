@@ -727,7 +727,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     public async Task ClearAllAsync()
     {
-        RaiseEvent(new ClearAllLogEvent());
+        RaiseEvent(new ClearAllLogEvent { ClearTime = DateTime.UtcNow });
         await ConfirmEvents();
     }
 
@@ -2614,6 +2614,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 ? DateTimeOffset.FromUnixTimeMilliseconds(transactionInfo.ExpiresDate.Value).DateTime 
                 : purchaseDate.AddDays(30); // Default 30 days if no expiration date
             
+            // Check if payment time is before last clear time
+            if (State.LastClearTime != null && State.LastClearTime.HasValue && purchaseDate < State.LastClearTime.Value)
+            {
+                _logger.LogWarning("[UserBillingGAgent][VerifyAppStoreTransactionAsync] Transaction payment time {PaymentTime} is before last clear time {ClearTime}, rejecting transaction",
+                    purchaseDate, State.LastClearTime.Value);
+                return new VerifyReceiptResponseDto { IsValid = false, Error = "Transaction payment time is before last clear time" };
+            }
+            
             // If there is a user ID, create or update subscription
             if (!string.IsNullOrEmpty(requestDto.UserId) && Guid.TryParse(requestDto.UserId, out var userId) && savePaymentEnabled)
             {
@@ -3508,9 +3516,10 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 }
                 break;
 
-            case ClearAllLogEvent:
+            case ClearAllLogEvent clearAllEvent:
                 state.PaymentHistory.Clear();
                 state.CustomerId = string.Empty;
+                state.LastClearTime = clearAllEvent.ClearTime;
                 break;
 
             case UpdateExistingSubscriptionLogEvent updateSubscription:
