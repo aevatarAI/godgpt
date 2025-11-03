@@ -213,6 +213,19 @@ public class UserProfileActionsUpdatedEvent : FortuneUserProfileEventLog
     [Id(2)] public DateTime UpdatedAt { get; set; }
 }
 
+/// <summary>
+/// Profile insights generated event (Astrology, Bazi, Zodiac)
+/// </summary>
+[GenerateSerializer]
+public class ProfileInsightsGeneratedEvent : FortuneUserProfileEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public Dictionary<string, string> Astrology { get; set; } = new();
+    [Id(2)] public Dictionary<string, string> Bazi { get; set; } = new();
+    [Id(3)] public Dictionary<string, string> Zodiac { get; set; } = new();
+    [Id(4)] public DateTime GeneratedAt { get; set; }
+}
+
 #endregion
 
 #region Prediction History Events
