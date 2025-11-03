@@ -19,6 +19,8 @@ public interface IFortuneUserProfileGAgent : IGAgent
     Task<GetUserProfileResult> GetUserProfileAsync();
     
     Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
+    
+    Task<GenerateProfileInsightsResult> GenerateProfileInsightsAsync(string aiResponse);
 }
 
 [GAgent(nameof(FortuneUserProfileGAgent))]
@@ -78,6 +80,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             case UserProfileActionsUpdatedEvent actionsEvent:
                 state.Actions = actionsEvent.Actions;
                 state.UpdatedAt = actionsEvent.UpdatedAt;
+                break;
+            case ProfileInsightsGeneratedEvent insightsEvent:
+                state.Astrology = insightsEvent.Astrology;
+                state.Bazi = insightsEvent.Bazi;
+                state.Zodiac = insightsEvent.Zodiac;
+                state.InsightsGeneratedAt = insightsEvent.GeneratedAt;
                 break;
         }
     }
@@ -194,7 +202,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                     Actions = State.Actions,
                     CreatedAt = State.CreatedAt,
                     CurrentResidence = State.CurrentResidence,
-                    Email = State.Email
+                    Email = State.Email,
+                    Astrology = State.Astrology,
+                    Bazi = State.Bazi,
+                    Zodiac = State.Zodiac,
+                    InsightsGeneratedAt = State.InsightsGeneratedAt,
+                    UpdatedAt = State.UpdatedAt
                 }
             });
         }
@@ -340,6 +353,146 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
 
         return (true, string.Empty);
+    }
+
+    public async Task<GenerateProfileInsightsResult> GenerateProfileInsightsAsync(string aiResponse)
+    {
+        try
+        {
+            _logger.LogDebug("[FortuneUserProfileGAgent][GenerateProfileInsightsAsync] Parsing AI response for user: {UserId}", 
+                State.UserId);
+
+            // Parse AI response to extract three parts: astrology, bazi, zodiac
+            var (astrology, bazi, zodiac) = ParseProfileInsightsResponse(aiResponse);
+
+            if (astrology == null || bazi == null || zodiac == null)
+            {
+                _logger.LogError("[FortuneUserProfileGAgent][GenerateProfileInsightsAsync] Failed to parse insights");
+                return new GenerateProfileInsightsResult
+                {
+                    Success = false,
+                    Message = "Failed to parse AI response"
+                };
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Raise event to save insights
+            RaiseEvent(new ProfileInsightsGeneratedEvent
+            {
+                UserId = State.UserId,
+                Astrology = astrology,
+                Bazi = bazi,
+                Zodiac = zodiac,
+                GeneratedAt = now
+            });
+
+            await ConfirmEvents();
+
+            _logger.LogInformation("[FortuneUserProfileGAgent][GenerateProfileInsightsAsync] Insights generated successfully for user: {UserId}", 
+                State.UserId);
+
+            return new GenerateProfileInsightsResult
+            {
+                Success = true,
+                Message = string.Empty,
+                Astrology = astrology,
+                Bazi = bazi,
+                Zodiac = zodiac,
+                GeneratedAt = now
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortuneUserProfileGAgent][GenerateProfileInsightsAsync] Error generating insights");
+            return new GenerateProfileInsightsResult
+            {
+                Success = false,
+                Message = "Internal error occurred"
+            };
+        }
+    }
+
+    /// <summary>
+    /// Parse AI response to extract profile insights (astrology, bazi, zodiac)
+    /// </summary>
+    private (Dictionary<string, string>?, Dictionary<string, string>?, Dictionary<string, string>?) ParseProfileInsightsResponse(string aiResponse)
+    {
+        try
+        {
+            var jsonStart = aiResponse.IndexOf('{');
+            var jsonEnd = aiResponse.LastIndexOf('}');
+
+            if (jsonStart >= 0 && jsonEnd > jsonStart)
+            {
+                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
+                var response = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
+                
+                if (response == null)
+                {
+                    return (null, null, null);
+                }
+
+                // Extract and serialize each section
+                var astrology = new Dictionary<string, string>();
+                var bazi = new Dictionary<string, string>();
+                var zodiac = new Dictionary<string, string>();
+
+                // Parse Astrology
+                if (response.ContainsKey("astrology") && response["astrology"] != null)
+                {
+                    var astrologyJson = Newtonsoft.Json.JsonConvert.SerializeObject(response["astrology"]);
+                    var astrologyObj = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(astrologyJson);
+                    
+                    if (astrologyObj != null)
+                    {
+                        foreach (var kvp in astrologyObj)
+                        {
+                            astrology[kvp.Key] = kvp.Value is string str ? str : Newtonsoft.Json.JsonConvert.SerializeObject(kvp.Value);
+                        }
+                    }
+                }
+
+                // Parse Bazi
+                if (response.ContainsKey("bazi") && response["bazi"] != null)
+                {
+                    var baziJson = Newtonsoft.Json.JsonConvert.SerializeObject(response["bazi"]);
+                    var baziObj = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(baziJson);
+                    
+                    if (baziObj != null)
+                    {
+                        foreach (var kvp in baziObj)
+                        {
+                            bazi[kvp.Key] = kvp.Value is string str ? str : Newtonsoft.Json.JsonConvert.SerializeObject(kvp.Value);
+                        }
+                    }
+                }
+
+                // Parse Zodiac
+                if (response.ContainsKey("zodiac") && response["zodiac"] != null)
+                {
+                    var zodiacJson = Newtonsoft.Json.JsonConvert.SerializeObject(response["zodiac"]);
+                    var zodiacObj = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(zodiacJson);
+                    
+                    if (zodiacObj != null)
+                    {
+                        foreach (var kvp in zodiacObj)
+                        {
+                            zodiac[kvp.Key] = kvp.Value is string str ? str : Newtonsoft.Json.JsonConvert.SerializeObject(kvp.Value);
+                        }
+                    }
+                }
+
+                return (astrology, bazi, zodiac);
+            }
+
+            return (null, null, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortuneUserProfileGAgent][ParseProfileInsightsResponse] Failed to parse");
+            return (null, null, null);
+        }
     }
 }
 

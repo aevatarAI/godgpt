@@ -140,6 +140,7 @@ public class FortuneUserDto
     [Id(13)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
     [Id(14)] public string? CurrentResidence { get; set; } // Optional
     [Id(15)] public string? Email { get; set; } // Optional
+    [Id(16)] public DateTime UpdatedAt { get; set; } // Track profile updates for prediction regeneration
 }
 
 /// <summary>

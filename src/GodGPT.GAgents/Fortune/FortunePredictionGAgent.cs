@@ -58,6 +58,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 state.Results = generatedEvent.Results;
                 state.Energy = generatedEvent.Energy;
                 state.CreatedAt = generatedEvent.CreatedAt;
+                state.ProfileUpdatedAt = generatedEvent.ProfileUpdatedAt;
                 if (!generatedEvent.LifetimeForecast.IsNullOrEmpty())
                 {
                     state.LifetimeForecast = generatedEvent.LifetimeForecast;
@@ -90,8 +91,11 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                                      State.WeeklyGeneratedDate.HasValue && 
                                      (DateTime.UtcNow - State.WeeklyGeneratedDate.Value).TotalDays < 7;
                 
-                // If both lifetime and valid weekly exist, return from cache
-                if (hasLifetime && hasValidWeekly)
+                // Check if profile has been updated since prediction was generated
+                var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
+                
+                // If both lifetime and valid weekly exist AND profile hasn't changed, return from cache
+                if (hasLifetime && hasValidWeekly && profileNotChanged)
                 {
                     _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached lifetime+weekly prediction for {UserId}",
                         userInfo.UserId);
@@ -119,32 +123,50 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     };
                 }
                 
-                // If weekly expired or doesn't exist, need to regenerate
+                // Log reason for regeneration
                 if (!hasValidWeekly)
                 {
                     _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Weekly expired or missing, regenerating for {UserId}",
                         userInfo.UserId);
                 }
+                if (!profileNotChanged)
+                {
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating prediction for {UserId}",
+                        userInfo.UserId);
+                }
             } 
+            
+            // Check daily prediction cache
             if (!lifetime && State.PredictionId != Guid.Empty && State.PredictionDate == today)
             {
-                _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached prediction for {UserId}",
-                    userInfo.UserId);
-
-                return new GetTodayPredictionResult
+                // Check if profile has been updated since prediction was generated
+                var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
+                
+                if (profileNotChanged)
                 {
-                    Success = true,
-                    Message = string.Empty,
-                    Prediction = new PredictionResultDto
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached prediction for {UserId}",
+                        userInfo.UserId);
+
+                    return new GetTodayPredictionResult
                     {
-                        PredictionId = State.PredictionId,
-                        UserId = State.UserId,
-                        PredictionDate = State.PredictionDate,
-                        Results = State.Results,
-                        CreatedAt = State.CreatedAt,
-                        FromCache = true
-                    }
-                };
+                        Success = true,
+                        Message = string.Empty,
+                        Prediction = new PredictionResultDto
+                        {
+                            PredictionId = State.PredictionId,
+                            UserId = State.UserId,
+                            PredictionDate = State.PredictionDate,
+                            Results = State.Results,
+                            CreatedAt = State.CreatedAt,
+                            FromCache = true
+                        }
+                    };
+                }
+                else
+                {
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating daily prediction for {UserId}",
+                        userInfo.UserId);
+                }
             }
 
             // Generate new prediction
@@ -302,7 +324,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 CreatedAt = now,
                 LifetimeForecast = lifetimeForecast,
                 WeeklyForecast = weeklyForecast,
-                WeeklyGeneratedDate = weeklyForecast.IsNullOrEmpty() ? null : now
+                WeeklyGeneratedDate = weeklyForecast.IsNullOrEmpty() ? null : now,
+                ProfileUpdatedAt = userInfo.UpdatedAt
             });
 
             // Confirm events to persist state changes
