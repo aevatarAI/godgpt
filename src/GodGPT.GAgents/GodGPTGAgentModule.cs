@@ -10,6 +10,7 @@ using Microsoft.Extensions.Options;
 using Volo.Abp.AutoMapper;
 using Volo.Abp.Modularity;
 using Aevatar.Application.Grains.ChatManager.UserBilling;
+using Aevatar.Application.Grains.UserBilling.Services;
 using GodGPT.GAgents.Awakening.Options;
 using GodGPT.GAgents.SpeechChat;
 using GodGPT.GAgents.DailyPush;
@@ -55,6 +56,12 @@ public class GodGPTGAgentModule : AbpModule
         context.Services.AddSingleton<ISpeechService, SpeechService>();
         context.Services.AddSingleton<IGooglePayService, GooglePayService>();
         context.Services.AddSingleton<ILocalizationService, LocalizationService>();
+        
+        // Register new payment services for gradual migration
+        // Using Singleton - StripeClient is confirmed thread-safe by official documentation
+        context.Services.AddSingleton<IStripePaymentService, StripePaymentService>();
+        context.Services.AddSingleton<IApplePaymentService, ApplePaymentService>();
+        // Note: Google Pay continues to use existing IGooglePayService (registered above)
         
         // Register HttpClient factory first
         context.Services.AddHttpClient();
