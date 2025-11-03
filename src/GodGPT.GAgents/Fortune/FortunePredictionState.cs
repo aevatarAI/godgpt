@@ -17,5 +17,6 @@ public class FortunePredictionState : StateBase
     [Id(6)] public Dictionary<string, string> LifetimeForecast { get; set; } = new Dictionary<string, string>();
     [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; } = new Dictionary<string, string>();
     [Id(8)] public DateTime? WeeklyGeneratedDate { get; set; } // Track when weekly was generated for expiration check
+    [Id(9)] public DateTime? ProfileUpdatedAt { get; set; } // Track profile update time to detect when prediction needs regeneration
 }
 

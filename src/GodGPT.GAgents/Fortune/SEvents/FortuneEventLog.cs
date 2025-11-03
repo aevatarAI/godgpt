@@ -84,6 +84,7 @@ public class PredictionGeneratedEvent : FortunePredictionEventLog
     [Id(6)] public Dictionary<string, string> LifetimeForecast { get; set; }
     [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; }
     [Id(8)] public DateTime? WeeklyGeneratedDate { get; set; }
+    [Id(9)] public DateTime? ProfileUpdatedAt { get; set; }
 }
 
 #endregion

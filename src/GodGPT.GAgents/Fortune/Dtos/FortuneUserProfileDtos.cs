@@ -60,6 +60,7 @@ public class FortuneUserProfileDto
     [Id(16)] public Dictionary<string, string> Bazi { get; set; } = new();
     [Id(17)] public Dictionary<string, string> Zodiac { get; set; } = new();
     [Id(18)] public DateTime? InsightsGeneratedAt { get; set; }
+    [Id(19)] public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>

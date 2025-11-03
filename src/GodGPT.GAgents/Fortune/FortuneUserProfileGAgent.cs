@@ -206,7 +206,8 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                     Astrology = State.Astrology,
                     Bazi = State.Bazi,
                     Zodiac = State.Zodiac,
-                    InsightsGeneratedAt = State.InsightsGeneratedAt
+                    InsightsGeneratedAt = State.InsightsGeneratedAt,
+                    UpdatedAt = State.UpdatedAt
                 }
             });
         }
