@@ -490,10 +490,10 @@ Return JSON:
     ""description"": ""10-25 words""
   }},
   ""bazi"": {{
-    ""heavenlyStemEarthlyBranch"": ""5-15 words with bilingual elements"",
-    ""fiveElements"": ""5-15 words, MUST use format like Fire (火), Earth (土)"",
-    ""compatibility"": ""5-15 words"",
-    ""energyFlow"": ""5-15 words""
+    ""heavenlyStemEarthlyBranch"": ""10-15 words explanatory content with bilingual elements"",
+    ""fiveElements"": ""10-15 words explanatory content, MUST use format like Fire (火), Earth (土)"",
+    ""compatibility"": ""10-15 words explanatory content"",
+    ""energyFlow"": ""10-15 words explanatory content""
   }},
   ""astrology"": {{
     ""sunSign"": ""word"",
@@ -506,31 +506,31 @@ Return JSON:
   }},
   ""tarot"": {{
     ""card"": ""Position | Card Name · Orientation"",
-    ""interpretation"": ""10-15 words""
+    ""interpretation"": ""25-30 words""
   }},
   ""lifeTheme1"": {{
     ""theme"": ""1 word (AI generates)"",
-    ""description"": ""10-15 words""
+    ""description"": ""30+ words""
   }},
   ""lifeTheme2"": {{
     ""theme"": ""1 word (AI generates)"",
-    ""description"": ""10-15 words""
+    ""description"": ""30+ words""
   }}
 }}
 
 CRITICAL RULES:
 - opportunity.title: 3-5 words
 - opportunity.description: 10-25 words
-- bazi fields: Each 5-15 words
+- bazi fields: Each 10-15 words EXPLANATORY content (explain meaning, not just list)
 - bazi MUST use bilingual elements: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
 - astrology.overallFortune: 0-10 with one decimal (e.g., ""8.2"")
 - astrology.luckyElement: MUST be bilingual like ""Earth (土)""
 - astrology.moonInfluence: 10-15 words
 - tarot.card: Format ""Position | CardName · Upright/Reversed""
-- tarot.interpretation: 10-15 words
+- tarot.interpretation: 25-30 words
 - lifeTheme: AI freely generates theme name and content
 - lifeTheme.theme: Single word
-- lifeTheme.description: 10-15 words
+- lifeTheme.description: 30+ words (detailed explanation)
 - Return valid JSON only, no additional text";            
         }
 
