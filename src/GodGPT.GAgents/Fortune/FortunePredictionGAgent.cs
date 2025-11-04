@@ -432,94 +432,160 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         string prompt = string.Empty;
         if (lifetime)
         {
-            prompt = $@"Generate lifetime and weekly fortune prediction.
+            prompt = $@"Generate lifetime and weekly fortune prediction based on user's birth info and current date.
 User: {userInfoLine}
 Date: {predictionDate:yyyy-MM-dd}
 
-Return JSON with lifetime and weekly predictions:
+REQUIRED FORMAT:
 {{
   ""lifetime"": {{
-    ""title"": ""2-4 words"",
-    ""description"": ""30-50 words about life transformation"",
+    ""title"": ""[2-4 poetic words]"",
+    ""description"": ""[30-50 words about life transformation]"",
     ""traits"": {{
-      ""fateRarity"": {{""percentage"": 2.4, ""description"": ""6-10 words""}},
-      ""mainElements"": ""Fire (火), Metal (金)"",
-      ""lifePath"": ""Leader, Mentor, Innovator""
+      ""fateRarity"": {{""percentage"": [0.1-10.0], ""description"": ""[6-10 words]""}},
+      ""mainElements"": ""[1-2 bilingual elements]"",
+      ""lifePath"": ""[2-4 roles]""
     }},
     ""phases"": {{
-      ""phase1"": {{""description"": ""15-30 words""}},
-      ""phase2"": {{""description"": ""15-30 words""}},
-      ""phase3"": {{""description"": ""15-30 words""}}
+      ""phase1"": {{""description"": ""[15-30 words for 0-20yrs]""}},
+      ""phase2"": {{""description"": ""[15-30 words for 21-35yrs]""}},
+      ""phase3"": {{""description"": ""[15-30 words for 36+yrs]""}}
+    }}
+  }},
+  ""weekly"": {{
+    ""health"": [0-5],
+    ""money"": [0-5],
+    ""career"": [0-5],
+    ""romance"": [0-5],
+    ""focus"": [0-5]
+  }}
+}}
+
+RULES:
+- title: 2-4 words, MUST be poetic and captivating to inspire curiosity
+- description: 30-50 words with emotional resonance, focus on LIFE WISDOM and personal growth guidance (not just events)
+- fateRarity.percentage: 0.1-10.0 (smaller=rarer), description: 6-10 words
+- mainElements: 1-2 bilingual elements from ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
+- lifePath: 2-4 roles comma-separated
+- phases: 15-30 words each (phase1: 0-20yrs, phase2: 21-35yrs, phase3: 36+yrs)
+- weekly: integers 0-5
+
+EXAMPLE (for reference style only, generate unique content):
+{{
+  ""lifetime"": {{
+    ""title"": ""Phoenix Rising Journey"",
+    ""description"": ""Your life path reveals a transformative journey from introspection to leadership. Early challenges forge resilience, midlife brings creative breakthroughs, and later years see wisdom shared with profound impact on others."",
+    ""traits"": {{
+      ""fateRarity"": {{""percentage"": 2.3, ""description"": ""Rare phoenix transformation pattern""}},
+      ""mainElements"": ""Fire (火), Metal (金)"",
+      ""lifePath"": ""Innovator, Mentor, Visionary""
+    }},
+    ""phases"": {{
+      ""phase1"": {{""description"": ""Early years focus on building foundations and self-discovery. Embrace learning opportunities and develop inner strength through challenges.""}},
+      ""phase2"": {{""description"": ""Mid-life brings creative breakthroughs and professional recognition. Balance ambition with personal relationships for sustained growth.""}},
+      ""phase3"": {{""description"": ""Later years emphasize wisdom sharing and legacy building. Your experiences become valuable teachings that inspire future generations.""}}
     }}
   }},
   ""weekly"": {{
     ""health"": 4,
     ""money"": 3,
-    ""career"": 4,
-    ""romance"": 5,
+    ""career"": 5,
+    ""romance"": 4,
     ""focus"": 3
   }}
-}}
-
-RULES:
-- title: 2-4 words poetic, description: 30-50 words
-- fateRarity: percentage 0.1-10.0 (smaller=rarer), description 6-10 words
-- mainElements: 1-2 bilingual elements: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
-- lifePath: 2-4 roles e.g., ""Leader, Mentor, Innovator""
-- phases: 15-30 words each (phase1: 0-20yrs, phase2: 21-35yrs, phase3: 36+yrs)
-- weekly: integers 0-5";
+}}";
         }
         else
         {
-            prompt = $@"Generate daily fortune prediction for {predictionDate:yyyy-MM-dd}.
+            prompt = $@"Generate daily fortune prediction for {predictionDate:yyyy-MM-dd} based on user's profile.
 User: {userInfoLine}
 
 Analyze 6 dimensions: opportunity, bazi, astrology, tarot, lifeTheme1, lifeTheme2
 
-Return JSON:
+REQUIRED FORMAT:
 {{
   ""opportunity"": {{
-    ""color"": ""Blue"",
-    ""crystal"": ""Amethyst"",
-    ""number"": ""Seven"",
-    ""title"": ""3-5 words"",
-    ""description"": ""10-25 words""
+    ""color"": ""[capitalized word]"",
+    ""crystal"": ""[capitalized word]"",
+    ""number"": ""[capitalized word NOT digit]"",
+    ""title"": ""[3-5 words]"",
+    ""description"": ""[10-25 words]""
   }},
   ""bazi"": {{
-    ""heavenlyStemEarthlyBranch"": ""10-15 words explanatory content with bilingual elements"",
-    ""fiveElements"": ""10-15 words explanatory content, MUST use format like Fire (火), Earth (土)"",
-    ""compatibility"": ""10-15 words explanatory content"",
-    ""energyFlow"": ""10-15 words explanatory content""
+    ""heavenlyStemEarthlyBranch"": ""[10-15 words explanatory]"",
+    ""fiveElements"": ""[10-15 words with bilingual]"",
+    ""compatibility"": ""[10-15 words explanatory]"",
+    ""energyFlow"": ""[10-15 words explanatory]""
   }},
   ""astrology"": {{
-    ""sunSign"": ""word"",
-    ""moonSign"": ""word"",
-    ""risingSign"": ""word"",
-    ""overallFortune"": ""8.2"",
-    ""luckyElement"": ""Earth (土)"",
-    ""keywordFocus"": ""word"",
-    ""moonInfluence"": ""10-15 words""
+    ""sunSign"": ""[sign name]"",
+    ""moonSign"": ""[sign name]"",
+    ""risingSign"": ""[sign name]"",
+    ""overallFortune"": ""[0-10.0]"",
+    ""luckyElement"": ""[bilingual]"",
+    ""keywordFocus"": ""[word/phrase]"",
+    ""moonInfluence"": ""[10-15 words]""
   }},
   ""tarot"": {{
-    ""card"": ""Position | Card Name · Orientation"",
-    ""interpretation"": ""25-30 words""
+    ""card"": ""[Position | Name · Orientation]"",
+    ""interpretation"": ""[25-30 words]""
   }},
   ""lifeTheme1"": {{
-    ""theme"": ""1 word (AI generates)"",
-    ""description"": ""30+ words""
+    ""theme"": ""[1 word]"",
+    ""description"": ""[30+ words]""
   }},
   ""lifeTheme2"": {{
-    ""theme"": ""1 word (AI generates)"",
-    ""description"": ""30+ words""
+    ""theme"": ""[1 word]"",
+    ""description"": ""[30+ words]""
   }}
 }}
 
 RULES:
-- opportunity: color/crystal/number use capitalized English words (e.g., ""Blue"", ""Amethyst"", ""Seven"" NOT ""7""), title 3-5 words, description 10-25 words
+- opportunity.title: 3-5 words, DIRECT and actionable
+- opportunity.description: 10-25 words, clearly state what TO DO and what to AVOID today
+- opportunity: color/crystal/number use capitalized English words (NOT digits)
 - bazi: 10-15 words explanatory per field, bilingual elements: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
-- astrology: overallFortune 0-10 with decimal, luckyElement bilingual, moonInfluence 10-15 words
+- astrology: calculate signs based on date, overallFortune 0-10 with decimal, luckyElement bilingual, moonInfluence 10-15 words
 - tarot: card format ""Position | CardName · Upright/Reversed"", interpretation 25-30 words
-- lifeTheme: theme 1 word, description 30+ words";            
+- lifeTheme: AI generates theme (1 word), description 30+ words
+
+EXAMPLE (for reference style only, generate unique content based on user & date):
+{{
+  ""opportunity"": {{
+    ""color"": ""Emerald"",
+    ""crystal"": ""Amethyst"",
+    ""number"": ""Seven"",
+    ""title"": ""Act on Creative Ideas"",
+    ""description"": ""DO: Start new projects, make bold decisions, trust your intuition. AVOID: Hesitation, overthinking, delaying important conversations.""
+  }},
+  ""bazi"": {{
+    ""heavenlyStemEarthlyBranch"": ""Today's pillar combines Yang Wood (甲) with Tiger (寅), bringing dynamic energy and entrepreneurial spirit to your actions."",
+    ""fiveElements"": ""Fire (火) strengthens Earth (土) today, creating stable foundation for long-term projects while maintaining passionate drive forward."",
+    ""compatibility"": ""Strong harmony with Metal (金) signs today. Collaborative efforts with methodical partners yield unexpected breakthroughs and mutual growth."",
+    ""energyFlow"": ""Water (水) feeds Wood (木) in morning hours, bringing clarity to thoughts. Afternoon sees Fire (火) ascendance empowering decisive action.""
+  }},
+  ""astrology"": {{
+    ""sunSign"": ""Leo"",
+    ""moonSign"": ""Cancer"",
+    ""risingSign"": ""Sagittarius"",
+    ""overallFortune"": ""8.2"",
+    ""luckyElement"": ""Earth (土)"",
+    ""keywordFocus"": ""Transformation"",
+    ""moonInfluence"": ""Moon in Cancer heightens emotional intuition today. Trust feelings in relationships while maintaining practical boundaries for balance.""
+  }},
+  ""tarot"": {{
+    ""card"": ""Future | The Empress · Upright"",
+    ""interpretation"": ""The Empress appears upright in your future position, signaling abundant creativity and nurturing energy flowing into your life. New projects initiated now will flourish with patient care and attention.""
+  }},
+  ""lifeTheme1"": {{
+    ""theme"": ""Growth"",
+    ""description"": ""Personal growth takes center stage as you encounter situations testing your adaptability and resilience. Embrace challenges as teachers rather than obstacles. Each difficulty overcome adds another layer to your evolving wisdom and strengthens your capacity for future achievements.""
+  }},
+  ""lifeTheme2"": {{
+    ""theme"": ""Connection"",
+    ""description"": ""Meaningful connections emerge through authentic self-expression today. Let go of masks and pretense to attract relationships aligned with your true values. Vulnerability becomes your strength as others respond to your genuine presence with their own openness and trust.""
+  }}
+}}";            
         }
 
         return prompt;
