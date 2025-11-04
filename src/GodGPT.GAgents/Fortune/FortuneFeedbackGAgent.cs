@@ -53,39 +53,10 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
         switch (@event)
         {
             case FeedbackSubmittedEvent submittedEvent:
-                // Update main state fields (for backward compatibility)
                 state.FeedbackId = submittedEvent.FeedbackId;
                 state.UserId = submittedEvent.UserId;
                 state.PredictionId = submittedEvent.PredictionId;
-                
-                // Update MethodFeedbacks dictionary
-                var updateMethodKey = submittedEvent.PredictionMethod;
-                if (state.MethodFeedbacks.TryGetValue(updateMethodKey, out var existingFeedback))
-                {
-                    // Update existing feedback
-                    existingFeedback.PredictionMethod = submittedEvent.PredictionMethod;
-                    existingFeedback.Rating = submittedEvent.Rating;
-                    existingFeedback.FeedbackTypes = submittedEvent.FeedbackTypes;
-                    existingFeedback.Comment = submittedEvent.Comment;
-                    existingFeedback.Email = submittedEvent.Email;
-                    existingFeedback.AgreeToContact = submittedEvent.AgreeToContact;
-                    existingFeedback.UpdatedAt = submittedEvent.CreatedAt;
-                }
-                else
-                {
-                    // Create new feedback if not exists
-                    state.MethodFeedbacks[updateMethodKey] = new FeedbackDetail
-                    {
-                        PredictionMethod = submittedEvent.PredictionMethod,
-                        Rating = submittedEvent.Rating,
-                        FeedbackTypes = submittedEvent.FeedbackTypes,
-                        Comment = submittedEvent.Comment,
-                        Email = submittedEvent.Email,
-                        AgreeToContact = submittedEvent.AgreeToContact,
-                        CreatedAt = submittedEvent.CreatedAt,
-                        UpdatedAt = submittedEvent.CreatedAt
-                    };
-                }
+                state.MethodFeedbacks[submittedEvent.PredictionMethod] = submittedEvent.FeedbackDetail;
                 break;
 
             case FeedbackUpdatedEvent updatedEvent:
@@ -95,25 +66,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 state.FeedbackId = ratingUpdatedEvent.FeedbackId;
                 state.UserId = ratingUpdatedEvent.UserId;
                 state.PredictionId = ratingUpdatedEvent.PredictionId;
-                
-                var ratingMethodKey = ratingUpdatedEvent.PredictionMethod;
-                if (state.MethodFeedbacks.TryGetValue(ratingMethodKey, out var ratingFeedback))
-                {
-                    // Update existing feedback
-                    ratingFeedback.Rating = ratingUpdatedEvent.Rating;
-                    ratingFeedback.UpdatedAt = ratingUpdatedEvent.UpdatedAt;
-                }
-                else
-                {
-                    // Create new feedback detail if not exists
-                    state.MethodFeedbacks[ratingMethodKey] = new FeedbackDetail
-                    {
-                        PredictionMethod = ratingUpdatedEvent.PredictionMethod,
-                        Rating = ratingUpdatedEvent.Rating,                       
-                        CreatedAt = ratingUpdatedEvent.UpdatedAt,
-                        UpdatedAt = ratingUpdatedEvent.UpdatedAt
-                    };
-                }
+                state.MethodFeedbacks[ratingUpdatedEvent.PredictionMethod] = ratingUpdatedEvent.FeedbackDetail;
                 break;
         }
     }
@@ -135,111 +88,89 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 };
             }
 
-            // Validate prediction method if specified
-            if (!string.IsNullOrEmpty(request.PredictionMethod))
+            // Validate prediction method is required
+            if (string.IsNullOrEmpty(request.PredictionMethod))
             {
-                // Daily prediction feedbackable dimensions
-                var validMethods = new[]
+                return new SubmitFeedbackResult
                 {
-                    "opportunity",   // Today's opportunity (color, crystal, number, description)
-                    "bazi",          // Ba Zi (八字)
-                    "astrology",     // Astrology Overview (星座)
-                    "tarot",         // Tarot Spread (塔罗)
-                    "lifeTheme1",    // Life Theme 1 (人生主题1)
-                    "lifeTheme2"     // Life Theme 2 (人生主题2)
+                    Success = false,
+                    Message = "PredictionMethod is required"
                 };
+            }
 
-                if (!validMethods.Contains(request.PredictionMethod))
+            // Validate prediction method
+            var validMethods = new[]
+            {
+                "opportunity",   // Today's opportunity (color, crystal, number, description)
+                "bazi",          // Ba Zi (八字)
+                "astrology",     // Astrology Overview (星座)
+                "tarot",         // Tarot Spread (塔罗)
+                "lifeTheme1",    // Life Theme 1 (人生主题1)
+                "lifeTheme2"     // Life Theme 2 (人生主题2)
+            };
+
+            if (!validMethods.Contains(request.PredictionMethod))
+            {
+                return new SubmitFeedbackResult
                 {
-                    return new SubmitFeedbackResult
-                    {
-                        Success = false,
-                        Message = $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}"
-                    };
-                }
+                    Success = false,
+                    Message = $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}"
+                };
             }
 
             var now = DateTime.UtcNow;
+            var methodKey = request.PredictionMethod;
+            
+            // Build complete FeedbackDetail object
+            FeedbackDetail newFeedbackDetail;
+            if (State.MethodFeedbacks.TryGetValue(methodKey, out var existingFeedback))
+            {
+                // Update existing feedback with new values
+                newFeedbackDetail = new FeedbackDetail
+                {
+                    PredictionMethod = methodKey,
+                    Rating = request.Rating,
+                    FeedbackTypes = request.FeedbackTypes,
+                    Comment = request.Comment,
+                    Email = request.Email,
+                    AgreeToContact = request.AgreeToContact,
+                    CreatedAt = existingFeedback.CreatedAt,
+                    UpdatedAt = now
+                };
+            }
+            else
+            {
+                // Create new feedback
+                newFeedbackDetail = new FeedbackDetail
+                {
+                    PredictionMethod = methodKey,
+                    Rating = request.Rating,
+                    FeedbackTypes = request.FeedbackTypes,
+                    Comment = request.Comment,
+                    Email = request.Email,
+                    AgreeToContact = request.AgreeToContact,
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+            }
 
-            // // Check if this request is trying to submit detailed feedback
-            // var requestHasDetails = request.FeedbackTypes.Any() || 
-            //                        !string.IsNullOrEmpty(request.Comment) || 
-            //                        !string.IsNullOrEmpty(request.Email) || 
-            //                        request.AgreeToContact;
-            //
-            // // Check if feedback already exists
-            // if (!string.IsNullOrEmpty(State.FeedbackId))
-            // {
-            //     // Check if existing feedback has detailed information
-            //     var existingHasDetails = State.FeedbackTypes.Any() || 
-            //                             !string.IsNullOrEmpty(State.Comment) || 
-            //                             !string.IsNullOrEmpty(State.Email) || 
-            //                             State.AgreeToContact;
-            //
-            //     // If request tries to submit detailed info and details already exist, reject
-            //     if (requestHasDetails && existingHasDetails)
-            //     {
-            //         _logger.LogWarning("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Cannot modify detailed feedback: {FeedbackId}",
-            //             State.FeedbackId);
-            //
-            //         return new SubmitFeedbackResult
-            //         {
-            //             Success = false,
-            //             Message = "Detailed feedback already submitted and cannot be modified. You can only update the rating."
-            //         };
-            //     }
-            //
-            //     // Allow update:
-            //     // - Rating-only update is always allowed
-            //     // - Adding details for the first time is allowed (upgrade from simple to detailed)
-            //     _logger.LogInformation("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Updating feedback: {FeedbackId}, RatingOnly: {RatingOnly}",
-            //         State.FeedbackId, !requestHasDetails);
-            //
-            //     // Raise update event
-            //     // If rating-only update, preserve existing details; otherwise update all fields
-            //     RaiseEvent(new FeedbackUpdatedEvent
-            //     {
-            //         PredictionMethod = request.PredictionMethod,
-            //         Rating = request.Rating,
-            //         FeedbackTypes = requestHasDetails ? request.FeedbackTypes : State.FeedbackTypes,
-            //         Comment = requestHasDetails ? request.Comment : State.Comment,
-            //         Email = requestHasDetails ? request.Email : State.Email,
-            //         AgreeToContact = requestHasDetails ? request.AgreeToContact : State.AgreeToContact,
-            //         UpdatedAt = now
-            //     });
-            //
-            //     await ConfirmEvents();
-            //
-            //     return new SubmitFeedbackResult
-            //     {
-            //         Success = true,
-            //         Message = string.Empty,
-            //         FeedbackId = State.FeedbackId
-            //     };
-            // }
-
-            // Create new feedback
             var feedbackId = State.FeedbackId;
             if (feedbackId.IsNullOrEmpty())
             {
                 feedbackId = Guid.NewGuid().ToString();
             }
 
-            _logger.LogInformation("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Creating new feedback: {FeedbackId}",
+            _logger.LogInformation("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Submitting feedback: {FeedbackId}",
                 feedbackId);
 
-            // Raise submitted event
+            // Raise submitted event with complete FeedbackDetail
             RaiseEvent(new FeedbackSubmittedEvent
             {
                 FeedbackId = feedbackId,
                 UserId = request.UserId,
                 PredictionId = request.PredictionId,
-                PredictionMethod =  request.PredictionMethod ?? "overall",
-                Rating = request.Rating,
-                FeedbackTypes = request.FeedbackTypes,
-                Comment = request.Comment,
-                Email = request.Email,
-                AgreeToContact = request.AgreeToContact,
+                PredictionMethod = methodKey,
+                FeedbackDetail = newFeedbackDetail,
                 CreatedAt = now
             });
 
@@ -329,22 +260,53 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 };
             }
 
-            // Check if feedback exists
+            var methodKey = request.PredictionMethod;
+            var now = DateTime.UtcNow;
+            
+            // Build complete FeedbackDetail object
+            FeedbackDetail newFeedbackDetail;
+            if (State.MethodFeedbacks.TryGetValue(methodKey, out var existingFeedback))
+            {
+                // Update existing feedback with new rating
+                newFeedbackDetail = new FeedbackDetail
+                {
+                    PredictionMethod = existingFeedback.PredictionMethod,
+                    Rating = request.Rating,
+                    FeedbackTypes = existingFeedback.FeedbackTypes,
+                    Comment = existingFeedback.Comment,
+                    Email = existingFeedback.Email,
+                    AgreeToContact = existingFeedback.AgreeToContact,
+                    CreatedAt = existingFeedback.CreatedAt,
+                    UpdatedAt = now
+                };
+            }
+            else
+            {
+                // Create new feedback with only rating
+                newFeedbackDetail = new FeedbackDetail
+                {
+                    PredictionMethod = methodKey,
+                    Rating = request.Rating,
+                    FeedbackTypes = new List<string>(),
+                    CreatedAt = now,
+                    UpdatedAt = now
+                };
+            }
+
             var feedbackId = State.FeedbackId;
-            if (string.IsNullOrEmpty(State.FeedbackId))
+            if (string.IsNullOrEmpty(feedbackId))
             {
                 feedbackId = Guid.NewGuid().ToString();
             }
-            var methodKey = string.IsNullOrEmpty(request.PredictionMethod) ? "overall" : request.PredictionMethod;
-            var now = DateTime.UtcNow;
-            // Raise event to update rating
+            
+            // Raise event with complete FeedbackDetail
             RaiseEvent(new MethodRatingUpdatedEvent
             {
                 FeedbackId = feedbackId,
                 UserId = request.UserId,
                 PredictionId = request.PredictionId,
                 PredictionMethod = methodKey,
-                Rating = request.Rating,
+                FeedbackDetail = newFeedbackDetail,
                 UpdatedAt = now
             });
 
@@ -392,6 +354,28 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
         if (request.Rating < 0 || request.Rating > 5)
         {
             return (false, "Rating must be between 0 and 5");
+        }
+
+        // Validate prediction method is required
+        if (string.IsNullOrEmpty(request.PredictionMethod))
+        {
+            return (false, "PredictionMethod is required");
+        }
+
+        // Validate prediction method
+        var validMethods = new[]
+        {
+            "opportunity",   // Today's opportunity
+            "bazi",          // Ba Zi (八字)
+            "astrology",     // Astrology Overview (星座)
+            "tarot",         // Tarot Spread (塔罗)
+            "lifeTheme1",    // Life Theme 1 (人生主题1)
+            "lifeTheme2"     // Life Theme 2 (人生主题2)
+        };
+
+        if (!validMethods.Contains(request.PredictionMethod))
+        {
+            return (false, $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}");
         }
 
         return (true, string.Empty);
