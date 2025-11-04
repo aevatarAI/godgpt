@@ -280,7 +280,7 @@ public class PredictionFavouritedEvent : FortuneFavouriteEventLog
 public class PredictionUnfavouritedEvent : FortuneFavouriteEventLog
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
-    [Id(1)] public DateOnly Date { get; set; }
+    [Id(1)] public Guid PredictionId { get; set; }
     [Id(2)] public DateTime UnfavouritedAt { get; set; }
 }
 

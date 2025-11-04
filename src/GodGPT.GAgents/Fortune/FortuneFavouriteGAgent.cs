@@ -19,7 +19,7 @@ public interface IFortuneFavouriteGAgent : IGAgent
     Task<GetFavouritesResult> GetFavouritesAsync();
     
     [ReadOnly]
-    Task<bool> IsFavouriteAsync(DateOnly date);
+    Task<bool> IsFavouriteAsync(Guid predictionId);
 }
 
 [GAgent(nameof(FortuneFavouriteGAgent))]
@@ -50,13 +50,13 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
         {
             case PredictionFavouritedEvent favouritedEvent:
                 state.UserId = favouritedEvent.UserId;
-                state.Favourites[favouritedEvent.Date] = favouritedEvent.FavouriteDetail;
+                state.Favourites[favouritedEvent.PredictionId] = favouritedEvent.FavouriteDetail;
                 state.LastUpdatedAt = favouritedEvent.FavouritedAt;
                 break;
                 
             case PredictionUnfavouritedEvent unfavouritedEvent:
                 state.UserId = unfavouritedEvent.UserId;
-                state.Favourites.Remove(unfavouritedEvent.Date);
+                state.Favourites.Remove(unfavouritedEvent.PredictionId);
                 state.LastUpdatedAt = unfavouritedEvent.UnfavouritedAt;
                 break;
         }
@@ -66,8 +66,8 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
     {
         try
         {
-            _logger.LogDebug("[FortuneFavouriteGAgent][ToggleFavouriteAsync] Start - UserId: {UserId}, Date: {Date}, IsFavourite: {IsFavourite}",
-                request.UserId, request.Date, request.IsFavourite);
+            _logger.LogDebug("[FortuneFavouriteGAgent][ToggleFavouriteAsync] Start - UserId: {UserId}, PredictionId: {PredictionId}, Date: {Date}, IsFavourite: {IsFavourite}",
+                request.UserId, request.PredictionId, request.Date, request.IsFavourite);
 
             // Validate request
             var validationResult = ValidateToggleRequest(request);
@@ -83,13 +83,13 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
             }
 
             var now = DateTime.UtcNow;
-            var isCurrentlyFavourite = State.Favourites.ContainsKey(request.Date);
+            var isCurrentlyFavourite = State.Favourites.ContainsKey(request.PredictionId);
 
             // Check if action is needed
             if (request.IsFavourite == isCurrentlyFavourite)
             {
-                _logger.LogInformation("[FortuneFavouriteGAgent][ToggleFavouriteAsync] No change needed - Date: {Date}, IsFavourite: {IsFavourite}",
-                    request.Date, request.IsFavourite);
+                _logger.LogInformation("[FortuneFavouriteGAgent][ToggleFavouriteAsync] No change needed - PredictionId: {PredictionId}, IsFavourite: {IsFavourite}",
+                    request.PredictionId, request.IsFavourite);
                 return new ToggleFavouriteResult
                 {
                     Success = true,
@@ -136,15 +136,15 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
                 RaiseEvent(new PredictionUnfavouritedEvent
                 {
                     UserId = request.UserId,
-                    Date = request.Date,
+                    PredictionId = request.PredictionId,
                     UnfavouritedAt = now
                 });
             }
 
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneFavouriteGAgent][ToggleFavouriteAsync] Success - UserId: {UserId}, Date: {Date}, IsFavourite: {IsFavourite}",
-                request.UserId, request.Date, request.IsFavourite);
+            _logger.LogInformation("[FortuneFavouriteGAgent][ToggleFavouriteAsync] Success - UserId: {UserId}, PredictionId: {PredictionId}, IsFavourite: {IsFavourite}",
+                request.UserId, request.PredictionId, request.IsFavourite);
 
             return new ToggleFavouriteResult
             {
@@ -205,12 +205,12 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
         }
     }
 
-    public Task<bool> IsFavouriteAsync(DateOnly date)
+    public Task<bool> IsFavouriteAsync(Guid predictionId)
     {
         try
         {
-            _logger.LogDebug("[FortuneFavouriteGAgent][IsFavouriteAsync] Checking if date is favourite: {Date}", date);
-            return Task.FromResult(State.Favourites.ContainsKey(date));
+            _logger.LogDebug("[FortuneFavouriteGAgent][IsFavouriteAsync] Checking if prediction is favourite: {PredictionId}", predictionId);
+            return Task.FromResult(State.Favourites.ContainsKey(predictionId));
         }
         catch (Exception ex)
         {
