@@ -250,3 +250,39 @@ public class PredictionAddedToHistoryEvent : FortunePredictionHistoryEventLog
 
 #endregion
 
+#region Favourite Events
+
+/// <summary>
+/// Base event log for Fortune Favourite GAgent
+/// </summary>
+[GenerateSerializer]
+public abstract class FortuneFavouriteEventLog : StateLogEventBase<FortuneFavouriteEventLog>
+{
+}
+
+/// <summary>
+/// Prediction favourited event
+/// </summary>
+[GenerateSerializer]
+public class PredictionFavouritedEvent : FortuneFavouriteEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public DateOnly Date { get; set; }
+    [Id(2)] public Guid PredictionId { get; set; }
+    [Id(3)] public FavouriteDetail FavouriteDetail { get; set; } = new();
+    [Id(4)] public DateTime FavouritedAt { get; set; }
+}
+
+/// <summary>
+/// Prediction unfavourited event
+/// </summary>
+[GenerateSerializer]
+public class PredictionUnfavouritedEvent : FortuneFavouriteEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public DateOnly Date { get; set; }
+    [Id(2)] public DateTime UnfavouritedAt { get; set; }
+}
+
+#endregion
+

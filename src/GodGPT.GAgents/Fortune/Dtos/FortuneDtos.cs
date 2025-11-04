@@ -388,3 +388,53 @@ public class GetRecommendationsResult
 
 #endregion
 
+#region Favourite DTOs
+
+/// <summary>
+/// Toggle favourite request
+/// </summary>
+[GenerateSerializer]
+public class ToggleFavouriteRequest
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public DateOnly Date { get; set; }
+    [Id(2)] public Guid PredictionId { get; set; }
+    [Id(3)] public bool IsFavourite { get; set; }  // true = add, false = remove
+}
+
+/// <summary>
+/// Toggle favourite result
+/// </summary>
+[GenerateSerializer]
+public class ToggleFavouriteResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public bool IsFavourite { get; set; }
+    [Id(3)] public DateTime? UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// Get favourites result
+/// </summary>
+[GenerateSerializer]
+public class GetFavouritesResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public List<FavouriteItemDto> Favourites { get; set; } = new();
+}
+
+/// <summary>
+/// Favourite item DTO
+/// </summary>
+[GenerateSerializer]
+public class FavouriteItemDto
+{
+    [Id(0)] public DateOnly Date { get; set; }
+    [Id(1)] public Guid PredictionId { get; set; }
+    [Id(2)] public DateTime FavouritedAt { get; set; }
+}
+
+#endregion
+
