@@ -1443,6 +1443,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             return;
         }
 
+        var mode = productConfig.Mode ?? PaymentMode.SUBSCRIPTION;
+        if (mode == PaymentMode.PAYMENT)
+        {
+            _logger.LogInformation(
+                "[UserBillingGAgent][ValidateSubscriptionUpgradePath] mode = {Mode}, skipping subscription path validation", mode);
+            return;
+        }
+
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(parsedUserId);
         var currentSubscription = await userQuotaGAgent.GetSubscriptionAsync(productConfig.IsUltimate);
 
