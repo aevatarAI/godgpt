@@ -138,11 +138,15 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             // Validate prediction method if specified
             if (!string.IsNullOrEmpty(request.PredictionMethod))
             {
+                // Daily prediction feedbackable dimensions
                 var validMethods = new[]
                 {
-                    "forecast", "horoscope", "bazi", "ziwei", "constellation",
-                    "numerology", "synastry", "chineseZodiac", "mayanTotem",
-                    "humanFigure", "tarot", "zhengYu"
+                    "opportunity",   // Today's opportunity (color, crystal, number, description)
+                    "bazi",          // Ba Zi (八字)
+                    "astrology",     // Astrology Overview (星座)
+                    "tarot",         // Tarot Spread (塔罗)
+                    "lifeTheme1",    // Life Theme 1 (人生主题1)
+                    "lifeTheme2"     // Life Theme 2 (人生主题2)
                 };
 
                 if (!validMethods.Contains(request.PredictionMethod))
