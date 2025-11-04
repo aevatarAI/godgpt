@@ -19,7 +19,7 @@ public interface IFortuneFavouriteGAgent : IGAgent
     Task<GetFavouritesResult> GetFavouritesAsync();
     
     [ReadOnly]
-    Task<bool> IsFavouriteAsync(DateOnly date);
+    Task<bool> IsFavouriteAsync(Guid predictionId);
 }
 
 [GAgent(nameof(FortuneFavouriteGAgent))]
