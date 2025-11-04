@@ -12,7 +12,7 @@ public class FortuneFeedbackState : StateBase
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public Guid PredictionId { get; set; }
     [Obsolete]
-    [Id(3)] public string? PredictionMethod { get; set; } // e.g., "horoscope", "bazi", null for overall
+    [Id(3)] public string? PredictionMethod { get; set; } // e.g., "opportunity", "bazi", "astrology", "tarot" (Obsolete)
     [Obsolete]
     [Id(4)] public int Rating { get; set; }
     [Obsolete]
@@ -36,7 +36,7 @@ public class FortuneFeedbackState : StateBase
 [GenerateSerializer]
 public class FeedbackDetail
 {
-    [Id(0)] public string PredictionMethod { get; set; } // e.g., "horoscope", "bazi", null for overall
+    [Id(0)] public string PredictionMethod { get; set; } // e.g., "opportunity", "bazi", "astrology", "tarot"
     [Id(1)] public int Rating { get; set; }
     [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(3)] public string? Comment { get; set; }

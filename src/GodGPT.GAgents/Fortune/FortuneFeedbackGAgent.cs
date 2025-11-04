@@ -88,32 +88,38 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 };
             }
 
-            // Validate prediction method if specified
-            if (!string.IsNullOrEmpty(request.PredictionMethod))
+            // Validate prediction method is required
+            if (string.IsNullOrEmpty(request.PredictionMethod))
             {
-                // Daily prediction feedbackable dimensions
-                var validMethods = new[]
+                return new SubmitFeedbackResult
                 {
-                    "opportunity",   // Today's opportunity (color, crystal, number, description)
-                    "bazi",          // Ba Zi (八字)
-                    "astrology",     // Astrology Overview (星座)
-                    "tarot",         // Tarot Spread (塔罗)
-                    "lifeTheme1",    // Life Theme 1 (人生主题1)
-                    "lifeTheme2"     // Life Theme 2 (人生主题2)
+                    Success = false,
+                    Message = "PredictionMethod is required"
                 };
+            }
 
-                if (!validMethods.Contains(request.PredictionMethod))
+            // Validate prediction method
+            var validMethods = new[]
+            {
+                "opportunity",   // Today's opportunity (color, crystal, number, description)
+                "bazi",          // Ba Zi (八字)
+                "astrology",     // Astrology Overview (星座)
+                "tarot",         // Tarot Spread (塔罗)
+                "lifeTheme1",    // Life Theme 1 (人生主题1)
+                "lifeTheme2"     // Life Theme 2 (人生主题2)
+            };
+
+            if (!validMethods.Contains(request.PredictionMethod))
+            {
+                return new SubmitFeedbackResult
                 {
-                    return new SubmitFeedbackResult
-                    {
-                        Success = false,
-                        Message = $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}"
-                    };
-                }
+                    Success = false,
+                    Message = $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}"
+                };
             }
 
             var now = DateTime.UtcNow;
-            var methodKey = request.PredictionMethod ?? "overall";
+            var methodKey = request.PredictionMethod;
             
             // Build complete FeedbackDetail object
             FeedbackDetail newFeedbackDetail;
@@ -254,7 +260,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 };
             }
 
-            var methodKey = string.IsNullOrEmpty(request.PredictionMethod) ? "overall" : request.PredictionMethod;
+            var methodKey = request.PredictionMethod;
             var now = DateTime.UtcNow;
             
             // Build complete FeedbackDetail object
@@ -350,23 +356,26 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             return (false, "Rating must be between 0 and 5");
         }
 
-        // Validate prediction method
-        if (!string.IsNullOrEmpty(request.PredictionMethod))
+        // Validate prediction method is required
+        if (string.IsNullOrEmpty(request.PredictionMethod))
         {
-            var validMethods = new[]
-            {
-                "opportunity",   // Today's opportunity
-                "bazi",          // Ba Zi (八字)
-                "astrology",     // Astrology Overview (星座)
-                "tarot",         // Tarot Spread (塔罗)
-                "lifeTheme1",    // Life Theme 1 (人生主题1)
-                "lifeTheme2"     // Life Theme 2 (人生主题2)
-            };
+            return (false, "PredictionMethod is required");
+        }
 
-            if (!validMethods.Contains(request.PredictionMethod))
-            {
-                return (false, $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}");
-            }
+        // Validate prediction method
+        var validMethods = new[]
+        {
+            "opportunity",   // Today's opportunity
+            "bazi",          // Ba Zi (八字)
+            "astrology",     // Astrology Overview (星座)
+            "tarot",         // Tarot Spread (塔罗)
+            "lifeTheme1",    // Life Theme 1 (人生主题1)
+            "lifeTheme2"     // Life Theme 2 (人生主题2)
+        };
+
+        if (!validMethods.Contains(request.PredictionMethod))
+        {
+            return (false, $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}");
         }
 
         return (true, string.Empty);
