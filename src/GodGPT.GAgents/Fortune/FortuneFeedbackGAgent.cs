@@ -394,6 +394,25 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             return (false, "Rating must be between 0 and 5");
         }
 
+        // Validate prediction method
+        if (!string.IsNullOrEmpty(request.PredictionMethod))
+        {
+            var validMethods = new[]
+            {
+                "opportunity",   // Today's opportunity
+                "bazi",          // Ba Zi (八字)
+                "astrology",     // Astrology Overview (星座)
+                "tarot",         // Tarot Spread (塔罗)
+                "lifeTheme1",    // Life Theme 1 (人生主题1)
+                "lifeTheme2"     // Life Theme 2 (人生主题2)
+            };
+
+            if (!validMethods.Contains(request.PredictionMethod))
+            {
+                return (false, $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}");
+            }
+        }
+
         return (true, string.Empty);
     }
 }
