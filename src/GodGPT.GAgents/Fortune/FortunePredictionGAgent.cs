@@ -509,7 +509,7 @@ REQUIRED FORMAT:
     ""crystal"": ""[capitalized word]"",
     ""number"": ""[capitalized word NOT digit]"",
     ""title"": ""[3-5 words]"",
-    ""description"": ""[10-25 words]""
+    ""description"": ""[10-20 words]""
   }},
   ""bazi"": {{
     ""heavenlyStemEarthlyBranch"": ""[10-15 words explanatory]"",
