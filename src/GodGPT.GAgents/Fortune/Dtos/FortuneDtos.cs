@@ -195,7 +195,7 @@ public class UpdateMethodRatingRequest
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
     [Id(2)] public string PredictionMethod { get; set; } = string.Empty;
-    [Id(3)] public int Rating { get; set; } // 0-5 rating (frontend typically uses 0=dislike, 1=like)
+    [Id(3)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
 }
 
 /// <summary>
@@ -269,7 +269,7 @@ public class PredictionMethodResult
 public class PredictionFeedbackSummary
 {
     [Id(0)] public string PredictionMethod { get; set; }
-    [Id(1)] public int Rating { get; set; } // 1-5 emoji rating
+    [Id(1)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
     [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(3)] public string? Comment { get; set; }
     [Id(4)] public DateTime CreatedAt { get; set; }
@@ -315,7 +315,7 @@ public class SubmitFeedbackRequest
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
     [Id(2)] public string? PredictionMethod { get; set; } // Required: "opportunity", "bazi", "astrology", "tarot", "lifeTheme1", "lifeTheme2"
-    [Id(3)] public int Rating { get; set; } // 0-5 rating (frontend typically uses 0=dislike, 1=like)
+    [Id(3)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
     [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(5)] public string? Comment { get; set; }
     [Id(6)] public string? Email { get; set; }
@@ -384,6 +384,56 @@ public class GetRecommendationsResult
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
     [Id(2)] public List<RecommendationItemDto> Recommendations { get; set; } = new();
+}
+
+#endregion
+
+#region Favourite DTOs
+
+/// <summary>
+/// Toggle favourite request
+/// </summary>
+[GenerateSerializer]
+public class ToggleFavouriteRequest
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public DateOnly Date { get; set; }
+    [Id(2)] public Guid PredictionId { get; set; }
+    [Id(3)] public bool IsFavourite { get; set; }  // true = add, false = remove
+}
+
+/// <summary>
+/// Toggle favourite result
+/// </summary>
+[GenerateSerializer]
+public class ToggleFavouriteResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public bool IsFavourite { get; set; }
+    [Id(3)] public DateTime? UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// Get favourites result
+/// </summary>
+[GenerateSerializer]
+public class GetFavouritesResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public List<FavouriteItemDto> Favourites { get; set; } = new();
+}
+
+/// <summary>
+/// Favourite item DTO
+/// </summary>
+[GenerateSerializer]
+public class FavouriteItemDto
+{
+    [Id(0)] public DateOnly Date { get; set; }
+    [Id(1)] public Guid PredictionId { get; set; }
+    [Id(2)] public DateTime FavouritedAt { get; set; }
 }
 
 #endregion

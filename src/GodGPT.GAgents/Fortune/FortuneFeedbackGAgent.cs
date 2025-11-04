@@ -79,12 +79,12 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 request.UserId, request.PredictionId);
 
             // Validate rating
-            if (request.Rating < 0 || request.Rating > 5)
+            if (request.Rating < 0 || request.Rating > 1)
             {
                 return new SubmitFeedbackResult
                 {
                     Success = false,
-                    Message = "Rating must be between 0 and 5"
+                    Message = "Rating must be 0 or 1"
                 };
             }
 
@@ -263,6 +263,21 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             var methodKey = request.PredictionMethod;
             var now = DateTime.UtcNow;
             
+            // Log current state before update
+            _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Current State - FeedbackId: {FeedbackId}, UserId: {UserId}, PredictionId: {PredictionId}, MethodFeedbacks Count: {Count}",
+                State.FeedbackId, State.UserId, State.PredictionId, State.MethodFeedbacks.Count);
+            
+            if (State.MethodFeedbacks.TryGetValue(methodKey, out var existingFeedbackCheck))
+            {
+                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Existing feedback found for method {Method}: Rating={Rating}",
+                    methodKey, existingFeedbackCheck.Rating);
+            }
+            else
+            {
+                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] No existing feedback for method {Method}",
+                    methodKey);
+            }
+            
             // Build complete FeedbackDetail object
             FeedbackDetail newFeedbackDetail;
             if (State.MethodFeedbacks.TryGetValue(methodKey, out var existingFeedback))
@@ -279,6 +294,8 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                     CreatedAt = existingFeedback.CreatedAt,
                     UpdatedAt = now
                 };
+                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Updating existing feedback: OldRating={OldRating}, NewRating={NewRating}",
+                    existingFeedback.Rating, request.Rating);
             }
             else
             {
@@ -291,6 +308,8 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                     CreatedAt = now,
                     UpdatedAt = now
                 };
+                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Creating new feedback: Rating={Rating}",
+                    request.Rating);
             }
 
             var feedbackId = State.FeedbackId;
@@ -312,6 +331,16 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
 
             // Confirm events to persist state changes
             await ConfirmEvents();
+
+            // Log final state after update
+            _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] After ConfirmEvents - State.MethodFeedbacks Count: {Count}",
+                State.MethodFeedbacks.Count);
+            
+            if (State.MethodFeedbacks.TryGetValue(methodKey, out var finalFeedback))
+            {
+                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Final feedback state for method {Method}: Rating={Rating}, UpdatedAt={UpdatedAt}",
+                    methodKey, finalFeedback.Rating, finalFeedback.UpdatedAt);
+            }
 
             _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Rating updated successfully - Method: {PredictionMethod}, Rating: {Rating}",
                 request.PredictionMethod, request.Rating);
@@ -351,9 +380,9 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             return (false, "PredictionId is required");
         }
 
-        if (request.Rating < 0 || request.Rating > 5)
+        if (request.Rating < 0 || request.Rating > 1)
         {
-            return (false, "Rating must be between 0 and 5");
+            return (false, "Rating must be 0 or 1");
         }
 
         // Validate prediction method is required

@@ -37,7 +37,7 @@ public class FortuneFeedbackState : StateBase
 public class FeedbackDetail
 {
     [Id(0)] public string PredictionMethod { get; set; } // e.g., "opportunity", "bazi", "astrology", "tarot"
-    [Id(1)] public int Rating { get; set; }
+    [Id(1)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
     [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(3)] public string? Comment { get; set; }
     [Id(4)] public string? Email { get; set; }
