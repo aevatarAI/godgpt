@@ -79,12 +79,12 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 request.UserId, request.PredictionId);
 
             // Validate rating
-            if (request.Rating < 0 || request.Rating > 5)
+            if (request.Rating < 0 || request.Rating > 1)
             {
                 return new SubmitFeedbackResult
                 {
                     Success = false,
-                    Message = "Rating must be between 0 and 5"
+                    Message = "Rating must be 0 or 1"
                 };
             }
 
@@ -380,9 +380,9 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             return (false, "PredictionId is required");
         }
 
-        if (request.Rating < 0 || request.Rating > 5)
+        if (request.Rating < 0 || request.Rating > 1)
         {
-            return (false, "Rating must be between 0 and 5");
+            return (false, "Rating must be 0 or 1");
         }
 
         // Validate prediction method is required

@@ -195,7 +195,7 @@ public class UpdateMethodRatingRequest
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
     [Id(2)] public string PredictionMethod { get; set; } = string.Empty;
-    [Id(3)] public int Rating { get; set; } // 0-5 rating (frontend typically uses 0=dislike, 1=like)
+    [Id(3)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
 }
 
 /// <summary>
@@ -269,7 +269,7 @@ public class PredictionMethodResult
 public class PredictionFeedbackSummary
 {
     [Id(0)] public string PredictionMethod { get; set; }
-    [Id(1)] public int Rating { get; set; } // 1-5 emoji rating
+    [Id(1)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
     [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(3)] public string? Comment { get; set; }
     [Id(4)] public DateTime CreatedAt { get; set; }
@@ -315,7 +315,7 @@ public class SubmitFeedbackRequest
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
     [Id(2)] public string? PredictionMethod { get; set; } // Required: "opportunity", "bazi", "astrology", "tarot", "lifeTheme1", "lifeTheme2"
-    [Id(3)] public int Rating { get; set; } // 0-5 rating (frontend typically uses 0=dislike, 1=like)
+    [Id(3)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
     [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(5)] public string? Comment { get; set; }
     [Id(6)] public string? Email { get; set; }
