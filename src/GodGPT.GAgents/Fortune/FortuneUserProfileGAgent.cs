@@ -494,5 +494,110 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             return (null, null, null);
         }
     }
+
+    /// <summary>
+    /// Build AI prompt for profile insights generation
+    /// </summary>
+    public static string BuildProfileInsightsPrompt(FortuneUserProfileDto profile)
+    {
+        // Build user info
+        var userInfoParts = new List<string>();
+        userInfoParts.Add($"Name: {profile.FullName}");
+        userInfoParts.Add($"Birth Date: {profile.BirthDate:yyyy-MM-dd}");
+        
+        if (profile.BirthTime.HasValue)
+        {
+            userInfoParts.Add($"Birth Time: {profile.BirthTime.Value:HH:mm}");
+        }
+        
+        if (!string.IsNullOrWhiteSpace(profile.BirthCity) && !string.IsNullOrWhiteSpace(profile.BirthCountry))
+        {
+            userInfoParts.Add($"Birth Place: {profile.BirthCity}, {profile.BirthCountry}");
+        }
+        else if (!string.IsNullOrWhiteSpace(profile.BirthCountry))
+        {
+            userInfoParts.Add($"Birth Country: {profile.BirthCountry}");
+        }
+        
+        userInfoParts.Add($"Gender: {profile.Gender}");
+        
+        if (profile.CalendarType.HasValue)
+        {
+            var calendarType = profile.CalendarType.Value == CalendarTypeEnum.Solar ? "Solar" : "Lunar";
+            userInfoParts.Add($"Calendar Type: {calendarType}");
+        }
+        
+        var userInfo = string.Join(", ", userInfoParts);
+
+        // Calculate Chinese Zodiac year
+        var birthYear = profile.BirthDate.Year;
+        var zodiacAnimals = new[] { "Rat", "Ox", "Tiger", "Rabbit", "Dragon", "Snake", "Horse", "Goat", "Monkey", "Rooster", "Dog", "Pig" };
+        var zodiacAnimal = zodiacAnimals[(birthYear - 4) % 12];
+
+        var prompt = $@"Generate comprehensive profile insights based on birth information.
+User Info: {userInfo}
+Birth Year Zodiac: {zodiacAnimal}
+
+You MUST return valid JSON with three sections: astrology, bazi, and zodiac.
+
+REQUIRED FORMAT:
+{{
+  ""astrology"": {{
+    ""signPlacements"": ""{{\\""sunSign\\"": \\""[calculate]\\"", \\""moonSign\\"": \\""[calculate]\\"", \\""risingSign\\"": \\""[calculate]\\""}}"",
+    ""significance"": ""{{\\""title\\"": \\""[Planet] in [Sign]\\"", \\""description\\"": \\""[10-30 words]\\""}}""
+  }},
+  ""bazi"": {{
+    ""structure"": ""[Weak/Strong Self, Prosperous/Weak Wealth (身弱/身强财旺/财弱)]"",
+    ""fourPillarsChart"": ""{{\\""hourPillar\\"":{{\\""heavenlyStem\\"": \\""[天干]\\"", \\""earthlyBranch\\"": \\""[地支]\\""}}, \\""dayPillar\\"":{{...}}, \\""monthPillar\\"":{{...}}, \\""yearPillar\\"":{{...}}}}"",
+    ""energyFlow"": ""{{\\""dayMaster\\"": \\""[element]\\"", \\""usefulGods\\"": \\""[elements]\\"", \\""structure\\"": \\""[2-3 words]\\""}}""
+    ""bodyStrength"": ""{{\\""result\\"": \\""[身强/身弱]\\"", \\""summary\\"": \\""[10-30 words]\\"", \\""overcontrollingElements\\"": \\""[10-30 words]\\"", \\""advice\\"": \\""[10-30 words]\\""}}""
+    ""fiveElements"": ""{{\\""metal\\"": [1-10], \\""wood\\"": [1-10], \\""water\\"": [1-10], \\""fire\\"": [1-10], \\""earth\\"": [1-10], \\""overview\\"": \\""[10-30 words]\\""}}""
+    ""tenTransformations"": ""{{\\""thePeer\\"": [1-3], \\""theChallenger\\"": [1-3], \\""thePerformer\\"": [1-3], \\""theInnovator\\"": [1-3], \\""theInvestor\\"": [1-3], \\""theWorker\\"": [1-3], \\""thePioneer\\"": [1-3], \\""theAdministrator\\"": [1-3], \\""theScholar\\"": [1-3], \\""theGuardian\\"": [1-3]}}""
+    ""dayMasterDescription"": ""[10-30 words]""
+  }},
+  ""zodiac"": {{
+    ""yourSign"": ""[50-100 words combining sign and personality]"",
+    ""animalSpirit"": ""[50-100 words combining symbolism and characteristics]"",
+    ""element"": ""[50-100 words combining element and animal]"",
+    ""quickTraits"": ""{{\\""trait\\"": \\""[10-20 words]\\"", \\""personality\\"": \\""[10-20 words]\\"", \\""caution\\"": \\""[10-20 words]\\""}}""
+    ""luckySet"": ""{{\\""colours\\"": [\\""[Color 色]\\"", \\""[Color 色]\\""], \\""numbers\\"": [[number], [number]], \\""days\\"": [\\""[Animal 支]\\"", \\""[Animal 支]\\""]}}""
+  }}
+}}
+
+RULES:
+- Astrology: Calculate Sun/Moon/Rising signs. significance.title: ""[Planet] in [Sign]"", description: 10-30 words
+- Bazi: 
+  * bodyStrength.result: ""身弱 (Weak Self)"" OR ""身强 (Strong Self)""
+  * structure: ""[Weak/Strong] Self, [Prosperous/Weak] Wealth (身弱/身强财旺/财弱)"" - MUST match bodyStrength.result
+  * Four Pillars: use 天干 (甲乙丙丁戊己庚辛壬癸) and 地支 (子丑寅卯辰巳午未申酉戌亥)
+  * fiveElements: 1-10, tenTransformations: 1-3, text: 10-30 words
+- Zodiac: Animal {zodiacAnimal}, Element by year digit (0-1:Metal, 2-3:Water, 4-5:Wood, 6-7:Fire, 8-9:Earth). yourSign/animalSpirit/element: 50-100 words each, quickTraits: 10-20 words, luckySet: 2-3 items
+
+EXAMPLE (for reference style only, generate unique content based on user):
+{{
+  ""astrology"": {{
+    ""signPlacements"": ""{{\\""sunSign\\"": \\""Leo\\"", \\""moonSign\\"": \\""Cancer\\"", \\""risingSign\\"": \\""Sagittarius\\""}}"",
+    ""significance"": ""{{\\""title\\"": \\""Sun in Leo\\"", \\""description\\"": \\""Natural leadership qualities shine through creative self-expression. Confidence and warmth attract others while maintaining generous spirit and dramatic flair.\\""}}""
+  }},
+  ""bazi"": {{
+    ""structure"": ""Strong Self, Prosperous Wealth (身强财旺)"",
+    ""fourPillarsChart"": ""{{\\""hourPillar\\"":{{\\""heavenlyStem\\"": \\""甲\\"", \\""earthlyBranch\\"": \\""申\\""}}, \\""dayPillar\\"":{{\\""heavenlyStem\\"": \\""壬\\"", \\""earthlyBranch\\"": \\""子\\""}}, \\""monthPillar\\"":{{\\""heavenlyStem\\"": \\""丙\\"", \\""earthlyBranch\\"": \\""午\\""}}, \\""yearPillar\\"":{{\\""heavenlyStem\\"": \\""庚\\"", \\""earthlyBranch\\"": \\""子\\""}}}}"",
+    ""energyFlow"": ""{{\\""dayMaster\\"": \\""Ren Water (壬水)\\"", \\""usefulGods\\"": \\""Wood & Fire (木火)\\"", \\""structure\\"": \\""Strong Self\\""}}""
+    ""bodyStrength"": ""{{\\""result\\"": \\""身强 (Strong Self)\\"", \\""summary\\"": \\""Abundant Water element creates powerful self-reliance and adaptability. Natural flow of energy supports ambitious pursuits.\\"", \\""overcontrollingElements\\"": \\""Excess Metal strengthening Water. Balance through Wood expression channels this productive energy effectively.\\"", \\""advice\\"": \\""Channel strong will into creative projects. Embrace leadership roles while remaining flexible to changing circumstances.\\""}}""
+    ""fiveElements"": ""{{\\""metal\\"": 6, \\""wood\\"": 4, \\""water\\"": 8, \\""fire\\"": 3, \\""earth\\"": 2, \\""overview\\"": \\""Water-dominant chart with Metal support creates adaptable personality. Benefits from Wood outlets for creative expression and Fire warmth in relationships.\\""}}""
+    ""tenTransformations"": ""{{\\""thePeer\\"": 3, \\""theChallenger\\"": 1, \\""thePerformer\\"": 2, \\""theInnovator\\"": 2, \\""theInvestor\\"": 1, \\""theWorker\\"": 1, \\""thePioneer\\"": 2, \\""theAdministrator\\"": 1, \\""theScholar\\"": 2, \\""theGuardian\\"": 2}}""
+    ""dayMasterDescription"": ""Ren Water person flows like mighty river - powerful yet adaptable. Natural wisdom and depth attract others seeking guidance and understanding.""
+  }},
+  ""zodiac"": {{
+    ""yourSign"": ""Water Horse (水马) - Dynamic spirit meets intuitive wisdom in this compelling combination. Water Horses possess remarkable adaptability paired with passionate drive, creating individuals who pursue ambitious goals while maintaining emotional intelligence and social grace throughout their journey."",
+    ""animalSpirit"": ""Horse (马) - Symbol of freedom, vitality, and forward momentum in Chinese tradition. Horse spirit represents independence, enthusiasm, and natural charisma. Those born under this sign embody restless energy seeking adventure, combined with loyalty to chosen paths and people."",
+    ""element"": ""Water (水) - Flowing element brings intuition, wisdom, and emotional depth to Horse's fiery nature. Water moderates impulsiveness with reflection, adds diplomatic skills to natural directness, and creates unique blend of passionate pursuit tempered by thoughtful consideration of consequences."",
+    ""quickTraits"": ""{{\\""trait\\"": \\""Adventurous spirit balanced by emotional intelligence and strong intuitive sense\\"", \\""personality\\"": \\""Charismatic leader who inspires others while maintaining deep empathy and understanding\\"", \\""caution\\"": \\""Guard against restlessness and rushing decisions. Take time for reflection despite urge for immediate action\\""}}""
+    ""luckySet"": ""{{\\""colours\\"": [\\""Blue 蓝\\"", \\""Green 绿\\"", \\""Red 红\\""], \\""numbers\\"": [2, 3, 7], \\""days\\"": [\\""Tiger 虎\\"", \\""Dog 戌\\"", \\""Goat 未\\""]}}""
+  }}
+}}";
+
+        return prompt;
+    }
 }
 
