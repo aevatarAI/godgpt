@@ -572,8 +572,9 @@ RULES:
   * Four Pillars - EACH cell needs 5 fields (heavenlyStem or earthlyBranch):
     - heavenlyStem: yinYang (陽/陰 in traditional Chinese), element (木/火/土/金/水), character (甲乙丙丁戊己庚辛壬癸), pinyin (Jia/Yi/Bing/Ding/Wu/Ji/Geng/Xin/Ren/Gui - no brackets), direction (East 1/East 3/South 1/South 3/Centre/West 1/West 3/North 1/North 3)
     - earthlyBranch: yinYang (陽/陰), element (木/火/土/金/水), character (子丑寅卯辰巳午未申酉戌亥), pinyin (Zi/Chou/Yin/Mao/Chen/Si/Wu/Wei/Shen/You/Xu/Hai - no brackets), zodiac (Rat/Ox/Tiger/Rabbit/Dragon/Snake/Horse/Goat/Monkey/Rooster/Dog/Pig)
-  * Heavenly Stems mapping: 甲-陽木-Jia-East 1, 乙-陰木-Yi-East 3, 丙-陽火-Bing-South 1, 丁-陰火-Ding-South 3, 戊-陽土-Wu-Centre, 己-陰土-Ji-Centre, 庚-陽金-Geng-West 1, 辛-陰金-Xin-West 3, 壬-陽水-Ren-North 1, 癸-陰水-Gui-North 3
-  * Earthly Branches mapping: 子-陽水-Zi-Rat, 丑-陰土-Chou-Ox, 寅-陽木-Yin-Tiger, 卯-陰木-Mao-Rabbit, 辰-陽土-Chen-Dragon, 巳-陰火-Si-Snake, 午-陽火-Wu-Horse, 未-陰土-Wei-Goat, 申-陽金-Shen-Monkey, 酉-陰金-You-Rooster, 戌-陽土-Xu-Dog, 亥-陰水-Hai-Pig
+  * WARNING - FIXED MAPPINGS (DO NOT MIX): Each character MUST use its corresponding yinYang+element+pinyin+direction/zodiac from tables below
+  * Heavenly Stems - FIXED mapping: 甲-陽木-Jia-East 1, 乙-陰木-Yi-East 3, 丙-陽火-Bing-South 1, 丁-陰火-Ding-South 3, 戊-陽土-Wu-Centre, 己-陰土-Ji-Centre, 庚-陽金-Geng-West 1, 辛-陰金-Xin-West 3, 壬-陽水-Ren-North 1, 癸-陰水-Gui-North 3
+  * Earthly Branches - FIXED mapping: 子-陽水-Zi-Rat, 丑-陰土-Chou-Ox, 寅-陽木-Yin-Tiger, 卯-陰木-Mao-Rabbit, 辰-陽土-Chen-Dragon, 巳-陰火-Si-Snake, 午-陽火-Wu-Horse, 未-陰土-Wei-Goat, 申-陽金-Shen-Monkey, 酉-陰金-You-Rooster, 戌-陽土-Xu-Dog, 亥-陰水-Hai-Pig
   * fiveElements: 1-10, tenTransformations: 1-3, text: 10-30 words
 - Zodiac: Animal {zodiacAnimal}, Element by year digit (0-1:Metal, 2-3:Water, 4-5:Wood, 6-7:Fire, 8-9:Earth). yourSign/animalSpirit/element: 50-100 words each, quickTraits: 10-20 words, luckySet: 2-3 items
 
