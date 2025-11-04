@@ -461,17 +461,13 @@ Return JSON with lifetime and weekly predictions:
   }}
 }}
 
-CRITICAL RULES:
-- title: 2-4 words, poetic
-- description: 30-50 words
-- fateRarity.percentage: 0.1-10.0 (smaller = more rare)
-- fateRarity.description: 6-10 words
-- mainElements: String with 1-2 elements in bilingual format, e.g., ""Fire (火), Metal (金)""
-- mainElements MUST use bilingual: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
-- lifePath: String with 2-4 roles separated by commas, e.g., ""Leader, Mentor, Innovator""
-- phases: Each description 15-30 words (phase1: 0-20 years, phase2: 21-35 years, phase3: 36+ years)
-- weekly: 5 dimensions, each 0-5 integer
-- Return valid JSON only, no additional text";
+RULES:
+- title: 2-4 words poetic, description: 30-50 words
+- fateRarity: percentage 0.1-10.0 (smaller=rarer), description 6-10 words
+- mainElements: 1-2 bilingual elements: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
+- lifePath: 2-4 roles e.g., ""Leader, Mentor, Innovator""
+- phases: 15-30 words each (phase1: 0-20yrs, phase2: 21-35yrs, phase3: 36+yrs)
+- weekly: integers 0-5";
         }
         else
         {
@@ -483,9 +479,9 @@ Analyze 6 dimensions: opportunity, bazi, astrology, tarot, lifeTheme1, lifeTheme
 Return JSON:
 {{
   ""opportunity"": {{
-    ""color"": ""word"",
-    ""crystal"": ""word"",
-    ""number"": ""word"",
+    ""color"": ""Blue"",
+    ""crystal"": ""Amethyst"",
+    ""number"": ""Seven"",
     ""title"": ""3-5 words"",
     ""description"": ""10-25 words""
   }},
@@ -518,20 +514,12 @@ Return JSON:
   }}
 }}
 
-CRITICAL RULES:
-- opportunity.title: 3-5 words
-- opportunity.description: 10-25 words
-- bazi fields: Each 10-15 words EXPLANATORY content (explain meaning, not just list)
-- bazi MUST use bilingual elements: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
-- astrology.overallFortune: 0-10 with one decimal (e.g., ""8.2"")
-- astrology.luckyElement: MUST be bilingual like ""Earth (土)""
-- astrology.moonInfluence: 10-15 words
-- tarot.card: Format ""Position | CardName · Upright/Reversed""
-- tarot.interpretation: 25-30 words
-- lifeTheme: AI freely generates theme name and content
-- lifeTheme.theme: Single word
-- lifeTheme.description: 30+ words (detailed explanation)
-- Return valid JSON only, no additional text";            
+RULES:
+- opportunity: color/crystal/number use capitalized English words (e.g., ""Blue"", ""Amethyst"", ""Seven"" NOT ""7""), title 3-5 words, description 10-25 words
+- bazi: 10-15 words explanatory per field, bilingual elements: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
+- astrology: overallFortune 0-10 with decimal, luckyElement bilingual, moonInfluence 10-15 words
+- tarot: card format ""Position | CardName · Upright/Reversed"", interpretation 25-30 words
+- lifeTheme: theme 1 word, description 30+ words";            
         }
 
         return prompt;
