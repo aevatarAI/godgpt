@@ -573,27 +573,27 @@ RULES:
   * fiveElements: 1-10, tenTransformations: 1-3, text: 10-30 words
 - Zodiac: Animal {zodiacAnimal}, Element by year digit (0-1:Metal, 2-3:Water, 4-5:Wood, 6-7:Fire, 8-9:Earth). yourSign/animalSpirit/element: 50-100 words each, quickTraits: 10-20 words, luckySet: 2-3 items
 
-EXAMPLE (for reference style only, generate unique content based on user):
+EXAMPLE (format reference):
 {{
   ""astrology"": {{
     ""signPlacements"": ""{{\\""sunSign\\"": \\""Leo\\"", \\""moonSign\\"": \\""Cancer\\"", \\""risingSign\\"": \\""Sagittarius\\""}}"",
-    ""significance"": ""{{\\""title\\"": \\""Sun in Leo\\"", \\""description\\"": \\""Natural leadership qualities shine through creative self-expression. Confidence and warmth attract others while maintaining generous spirit and dramatic flair.\\""}}""
+    ""significance"": ""{{\\""title\\"": \\""Sun in Leo\\"", \\""description\\"": \\""[10-30 words]\\""}}""
   }},
   ""bazi"": {{
     ""structure"": ""Strong Self, Prosperous Wealth (身强财旺)"",
     ""fourPillarsChart"": ""{{\\""hourPillar\\"":{{\\""heavenlyStem\\"": \\""甲\\"", \\""earthlyBranch\\"": \\""申\\""}}, \\""dayPillar\\"":{{\\""heavenlyStem\\"": \\""壬\\"", \\""earthlyBranch\\"": \\""子\\""}}, \\""monthPillar\\"":{{\\""heavenlyStem\\"": \\""丙\\"", \\""earthlyBranch\\"": \\""午\\""}}, \\""yearPillar\\"":{{\\""heavenlyStem\\"": \\""庚\\"", \\""earthlyBranch\\"": \\""子\\""}}}}"",
     ""energyFlow"": ""{{\\""dayMaster\\"": \\""Ren Water (壬水)\\"", \\""usefulGods\\"": \\""Wood & Fire (木火)\\"", \\""structure\\"": \\""Strong Self\\""}}""
-    ""bodyStrength"": ""{{\\""result\\"": \\""身强 (Strong Self)\\"", \\""summary\\"": \\""Abundant Water element creates powerful self-reliance and adaptability. Natural flow of energy supports ambitious pursuits.\\"", \\""overcontrollingElements\\"": \\""Excess Metal strengthening Water. Balance through Wood expression channels this productive energy effectively.\\"", \\""advice\\"": \\""Channel strong will into creative projects. Embrace leadership roles while remaining flexible to changing circumstances.\\""}}""
-    ""fiveElements"": ""{{\\""metal\\"": 6, \\""wood\\"": 4, \\""water\\"": 8, \\""fire\\"": 3, \\""earth\\"": 2, \\""overview\\"": \\""Water-dominant chart with Metal support creates adaptable personality. Benefits from Wood outlets for creative expression and Fire warmth in relationships.\\""}}""
+    ""bodyStrength"": ""{{\\""result\\"": \\""身强 (Strong Self)\\"", \\""summary\\"": \\""[10-30 words]\\"", \\""overcontrollingElements\\"": \\""[10-30 words]\\"", \\""advice\\"": \\""[10-30 words]\\""}}""
+    ""fiveElements"": ""{{\\""metal\\"": 6, \\""wood\\"": 4, \\""water\\"": 8, \\""fire\\"": 3, \\""earth\\"": 2, \\""overview\\"": \\""[10-30 words]\\""}}""
     ""tenTransformations"": ""{{\\""thePeer\\"": 3, \\""theChallenger\\"": 1, \\""thePerformer\\"": 2, \\""theInnovator\\"": 2, \\""theInvestor\\"": 1, \\""theWorker\\"": 1, \\""thePioneer\\"": 2, \\""theAdministrator\\"": 1, \\""theScholar\\"": 2, \\""theGuardian\\"": 2}}""
-    ""dayMasterDescription"": ""Ren Water person flows like mighty river - powerful yet adaptable. Natural wisdom and depth attract others seeking guidance and understanding.""
+    ""dayMasterDescription"": ""[10-30 words]""
   }},
   ""zodiac"": {{
-    ""yourSign"": ""Water Horse (水马) - Dynamic spirit meets intuitive wisdom in this compelling combination. Water Horses possess remarkable adaptability paired with passionate drive, creating individuals who pursue ambitious goals while maintaining emotional intelligence and social grace throughout their journey."",
-    ""animalSpirit"": ""Horse (马) - Symbol of freedom, vitality, and forward momentum in Chinese tradition. Horse spirit represents independence, enthusiasm, and natural charisma. Those born under this sign embody restless energy seeking adventure, combined with loyalty to chosen paths and people."",
-    ""element"": ""Water (水) - Flowing element brings intuition, wisdom, and emotional depth to Horse's fiery nature. Water moderates impulsiveness with reflection, adds diplomatic skills to natural directness, and creates unique blend of passionate pursuit tempered by thoughtful consideration of consequences."",
-    ""quickTraits"": ""{{\\""trait\\"": \\""Adventurous spirit balanced by emotional intelligence and strong intuitive sense\\"", \\""personality\\"": \\""Charismatic leader who inspires others while maintaining deep empathy and understanding\\"", \\""caution\\"": \\""Guard against restlessness and rushing decisions. Take time for reflection despite urge for immediate action\\""}}""
-    ""luckySet"": ""{{\\""colours\\"": [\\""Blue 蓝\\"", \\""Green 绿\\"", \\""Red 红\\""], \\""numbers\\"": [2, 3, 7], \\""days\\"": [\\""Tiger 虎\\"", \\""Dog 戌\\"", \\""Goat 未\\""]}}""
+    ""yourSign"": ""Water Horse (水马) - [50-100 words]"",
+    ""animalSpirit"": ""Horse (马) - [50-100 words]"",
+    ""element"": ""Water (水) - [50-100 words]"",
+    ""quickTraits"": ""{{\\""trait\\"": \\""[10-20 words]\\"", \\""personality\\"": \\""[10-20 words]\\"", \\""caution\\"": \\""[10-20 words]\\""}}""
+    ""luckySet"": ""{{\\""colours\\"": [\\""Blue 蓝\\"", \\""Green 绿\\""], \\""numbers\\"": [2, 3], \\""days\\"": [\\""Tiger 虎\\"", \\""Dog 戌\\""]}}""
   }}
 }}";
 

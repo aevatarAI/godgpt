@@ -470,20 +470,20 @@ RULES:
 - phases: 15-30 words each (phase1: 0-20yrs, phase2: 21-35yrs, phase3: 36+yrs)
 - weekly: integers 0-5
 
-EXAMPLE (for reference style only, generate unique content):
+EXAMPLE (format reference):
 {{
   ""lifetime"": {{
     ""title"": ""Phoenix Rising Journey"",
-    ""description"": ""Your life path reveals a transformative journey from introspection to leadership. Early challenges forge resilience, midlife brings creative breakthroughs, and later years see wisdom shared with profound impact on others."",
+    ""description"": ""[30-50 words about life wisdom]"",
     ""traits"": {{
-      ""fateRarity"": {{""percentage"": 2.3, ""description"": ""Rare phoenix transformation pattern""}},
+      ""fateRarity"": {{""percentage"": 2.3, ""description"": ""[6-10 words]""}},
       ""mainElements"": ""Fire (火), Metal (金)"",
       ""lifePath"": ""Innovator, Mentor, Visionary""
     }},
     ""phases"": {{
-      ""phase1"": {{""description"": ""Early years focus on building foundations and self-discovery. Embrace learning opportunities and develop inner strength through challenges.""}},
-      ""phase2"": {{""description"": ""Mid-life brings creative breakthroughs and professional recognition. Balance ambition with personal relationships for sustained growth.""}},
-      ""phase3"": {{""description"": ""Later years emphasize wisdom sharing and legacy building. Your experiences become valuable teachings that inspire future generations.""}}
+      ""phase1"": {{""description"": ""[15-30 words for 0-20yrs]""}},
+      ""phase2"": {{""description"": ""[15-30 words for 21-35yrs]""}},
+      ""phase3"": {{""description"": ""[15-30 words for 36+yrs]""}}
     }}
   }},
   ""weekly"": {{
@@ -549,20 +549,20 @@ RULES:
 - tarot: card format ""Position | CardName · Upright/Reversed"", interpretation 25-30 words
 - lifeTheme: AI generates theme (1 word), description 30+ words
 
-EXAMPLE (for reference style only, generate unique content based on user & date):
+EXAMPLE (format reference):
 {{
   ""opportunity"": {{
     ""color"": ""Emerald"",
     ""crystal"": ""Amethyst"",
     ""number"": ""Seven"",
     ""title"": ""Act on Creative Ideas"",
-    ""description"": ""DO: Start new projects, make bold decisions, trust your intuition. AVOID: Hesitation, overthinking, delaying important conversations.""
+    ""description"": ""DO: [action]. AVOID: [caution].""
   }},
   ""bazi"": {{
-    ""heavenlyStemEarthlyBranch"": ""Today's pillar combines Yang Wood (甲) with Tiger (寅), bringing dynamic energy and entrepreneurial spirit to your actions."",
-    ""fiveElements"": ""Fire (火) strengthens Earth (土) today, creating stable foundation for long-term projects while maintaining passionate drive forward."",
-    ""compatibility"": ""Strong harmony with Metal (金) signs today. Collaborative efforts with methodical partners yield unexpected breakthroughs and mutual growth."",
-    ""energyFlow"": ""Water (水) feeds Wood (木) in morning hours, bringing clarity to thoughts. Afternoon sees Fire (火) ascendance empowering decisive action.""
+    ""heavenlyStemEarthlyBranch"": ""[combine 天干 like 甲/乙/丙 with 地支 like 寅/卯/辰]"",
+    ""fiveElements"": ""[use bilingual: Fire (火), Metal (金), Water (水), Wood (木), Earth (土)]"",
+    ""compatibility"": ""[10-15 words]"",
+    ""energyFlow"": ""[10-15 words]""
   }},
   ""astrology"": {{
     ""sunSign"": ""Leo"",
@@ -571,19 +571,19 @@ EXAMPLE (for reference style only, generate unique content based on user & date)
     ""overallFortune"": ""8.2"",
     ""luckyElement"": ""Earth (土)"",
     ""keywordFocus"": ""Transformation"",
-    ""moonInfluence"": ""Moon in Cancer heightens emotional intuition today. Trust feelings in relationships while maintaining practical boundaries for balance.""
+    ""moonInfluence"": ""[10-15 words]""
   }},
   ""tarot"": {{
     ""card"": ""Future | The Empress · Upright"",
-    ""interpretation"": ""The Empress appears upright in your future position, signaling abundant creativity and nurturing energy flowing into your life. New projects initiated now will flourish with patient care and attention.""
+    ""interpretation"": ""[25-30 words]""
   }},
   ""lifeTheme1"": {{
     ""theme"": ""Growth"",
-    ""description"": ""Personal growth takes center stage as you encounter situations testing your adaptability and resilience. Embrace challenges as teachers rather than obstacles. Each difficulty overcome adds another layer to your evolving wisdom and strengthens your capacity for future achievements.""
+    ""description"": ""[30+ words]""
   }},
   ""lifeTheme2"": {{
     ""theme"": ""Connection"",
-    ""description"": ""Meaningful connections emerge through authentic self-expression today. Let go of masks and pretense to attract relationships aligned with your true values. Vulnerability becomes your strength as others respond to your genuine presence with their own openness and trust.""
+    ""description"": ""[30+ words]""
   }}
 }}";            
         }
