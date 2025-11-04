@@ -21,8 +21,8 @@ public class FortuneFavouriteState : StateBase
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     
-    // Key: DateOnly (date), Value: FavouriteDetail
-    [Id(1)] public Dictionary<DateOnly, FavouriteDetail> Favourites { get; set; } = new();
+    // Key: PredictionId (Guid), Value: FavouriteDetail
+    [Id(1)] public Dictionary<Guid, FavouriteDetail> Favourites { get; set; } = new();
     
     [Id(2)] public DateTime LastUpdatedAt { get; set; }
 }
