@@ -454,6 +454,10 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             if (jsonStart >= 0 && jsonEnd > jsonStart)
             {
                 var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
+                
+                // Log the raw AI response for debugging
+                _logger.LogDebug("[FortuneUserProfileGAgent][ParseProfileInsightsResponse] Raw JSON: {Json}", jsonString.Length > 500 ? jsonString.Substring(0, 500) + "..." : jsonString);
+                
                 var response = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
                 
                 if (response == null)
@@ -593,6 +597,7 @@ REQUIRED FORMAT:
 }}
 
 RULES:
+- CRITICAL: Return ONLY valid JSON. NO special characters (+, &, #, etc.) outside of quoted strings. Ensure all nested JSON strings are properly escaped.
 - Astrology: Calculate Sun/Moon/Rising signs. significance.title: ""[Planet] in [Sign]"", description: 10-30 words
 - Bazi: 
   * bodyStrength.result: ""身弱 (Weak Self)"" OR ""身强 (Strong Self)""
