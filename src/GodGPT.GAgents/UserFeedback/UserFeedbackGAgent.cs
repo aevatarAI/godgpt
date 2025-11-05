@@ -165,7 +165,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                 ContactRequested = request.ContactRequested,
                 Email = request.Email?.Trim() ?? string.Empty,
                 SubmittedAt = DateTime.UtcNow,
-                ReasonTextsEnglish = englishReasonTexts
+                ReasonTextsEnglish = englishReasonTexts,
+                Subscription = request.Subscription
             };
 
             // Raise event to update state

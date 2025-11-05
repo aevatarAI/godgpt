@@ -34,6 +34,16 @@ public class SubmitFeedbackRequest
     [Id(4)] public string Email { get; set; } = string.Empty;
 
     [Id(5)] public bool SkippedFeedback { get; set; } = false;
+    [Id(6)] public UserSubscription? Subscription { get; set; } = null;
+}
+
+[GenerateSerializer]
+public class UserSubscription
+{
+    [Id(0)] public PlanType PlanType { get; set; }
+    [Id(1)] public bool IsUltimate { get; set; }
+    [Id(2)] public DateTime StartDate { get; set; }
+    [Id(3)] public DateTime EndDate { get; set; }
 }
 
 /// <summary>
