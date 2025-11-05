@@ -584,7 +584,7 @@ REQUIRED FORMAT:
     ""dayMasterDescription"": ""[10-30 words]""
   }},
   ""zodiac"": {{
-    ""yourSign"": ""[50-100 words combining sign and personality]"",
+    ""yourSign"": ""[combining element and animal]"",
     ""animalSpirit"": ""[50-100 words combining symbolism and characteristics]"",
     ""element"": ""[50-100 words combining element and animal]"",
     ""quickTraits"": ""{{\\""trait\\"": \\""[10-20 words]\\"", \\""personality\\"": \\""[10-20 words]\\"", \\""caution\\"": \\""[10-20 words]\\""}}""
@@ -604,7 +604,7 @@ RULES:
   * Heavenly Stems - FIXED mapping: 甲-陽木-Jia-East 1, 乙-陰木-Yi-East 3, 丙-陽火-Bing-South 1, 丁-陰火-Ding-South 3, 戊-陽土-Wu-Centre, 己-陰土-Ji-Centre, 庚-陽金-Geng-West 1, 辛-陰金-Xin-West 3, 壬-陽水-Ren-North 1, 癸-陰水-Gui-North 3
   * Earthly Branches - FIXED mapping: 子-陽水-Zi-Rat, 丑-陰土-Chou-Ox, 寅-陽木-Yin-Tiger, 卯-陰木-Mao-Rabbit, 辰-陽土-Chen-Dragon, 巳-陰火-Si-Snake, 午-陽火-Wu-Horse, 未-陰土-Wei-Goat, 申-陽金-Shen-Monkey, 酉-陰金-You-Rooster, 戌-陽土-Xu-Dog, 亥-陰水-Hai-Pig
   * fiveElements: 1-10, tenTransformations: 1-3, text: 10-30 words
-- Zodiac: Animal {zodiacAnimal}, Element by year digit (0-1:Metal, 2-3:Water, 4-5:Wood, 6-7:Fire, 8-9:Earth). yourSign/animalSpirit/element: 50-100 words each, quickTraits: 10-20 words, luckySet: 2-3 items
+- Zodiac: Animal {zodiacAnimal}, Element by year digit (0-1:Metal, 2-3:Water, 4-5:Wood, 6-7:Fire, 8-9:Earth). animalSpirit/element: 50-100 words each, quickTraits: 10-20 words, luckySet: 2-3 items
 
 EXAMPLE (format reference):
 {{
@@ -622,7 +622,7 @@ EXAMPLE (format reference):
     ""dayMasterDescription"": ""[10-30 words]""
   }},
   ""zodiac"": {{
-    ""yourSign"": ""Water Horse (水马) - [50-100 words]"",
+    ""yourSign"": ""Water Horse (水马)"",
     ""animalSpirit"": ""Horse (马) - [50-100 words]"",
     ""element"": ""Water (水) - [50-100 words]"",
     ""quickTraits"": ""{{\\""trait\\"": \\""[10-20 words]\\"", \\""personality\\"": \\""[10-20 words]\\"", \\""caution\\"": \\""[10-20 words]\\""}}""
