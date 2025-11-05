@@ -266,7 +266,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                     Response = State.CurrentFeedback.Response,
                     ContactRequested = State.CurrentFeedback.ContactRequested,
                     Email = State.CurrentFeedback.Email,
-                    SubmittedAt = State.CurrentFeedback.SubmittedAt
+                    SubmittedAt = State.CurrentFeedback.SubmittedAt,
+                    Subscription = State.CurrentFeedback.Subscription
             });
         }
         
@@ -284,7 +285,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                     Response = archivedFeedback.Response,
                     ContactRequested = archivedFeedback.ContactRequested,
                     Email = archivedFeedback.Email,
-                    SubmittedAt = archivedFeedback.SubmittedAt
+                    SubmittedAt = archivedFeedback.SubmittedAt,
+                    Subscription = archivedFeedback.Subscription
                 });
             }
         }

@@ -152,6 +152,7 @@ public class FeedbackHistoryItem
     /// Submission time
     /// </summary>
     [Id(6)] public DateTime SubmittedAt { get; set; }
+    [Id(7)] public UserSubscription? Subscription { get; set; } = null;
 }
 
 /// <summary>
