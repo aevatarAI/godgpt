@@ -87,4 +87,5 @@ public class PaymentSummaryDto
     [Id(16)] public decimal? AmountNetTotal { get; set; }
     [Id(17)] public bool IsTrial { get; set; }
     [Id(18)] public string? TrialCode { get; set; }
+    [Id(19)] public PaymentType PaymentType { get; set; }
 }
