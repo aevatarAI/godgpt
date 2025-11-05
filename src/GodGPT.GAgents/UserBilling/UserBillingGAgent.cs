@@ -1004,8 +1004,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task<Tuple<DateTime, DateTime>> CalculateSubscriptionDurationAsync(Guid userId, StripeProduct productConfig)
     {
-        DateTime subscriptionStartDate;
-        DateTime subscriptionEndDate;
+        DateTime subscriptionStartDate = default;
+        DateTime subscriptionEndDate = default;
+
+        if (productConfig.PlanType == (int) PlanType.None && productConfig.Mode == PaymentMode.PAYMENT)
+        {
+            return new Tuple<DateTime, DateTime>(subscriptionStartDate, subscriptionEndDate);
+        }
+        
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(userId);
         
         // Use unified subscription interface
@@ -1189,7 +1195,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                     PriceId = paymentSummary.PriceId,
                     AppStoreEnvironment = paymentSummary.AppStoreEnvironment,
                     MembershipLevel = paymentSummary.MembershipLevel,
-                    AmountNetTotal = paymentSummary.AmountNetTotal
+                    AmountNetTotal = paymentSummary.AmountNetTotal,
+                    PaymentType = paymentSummary.PaymentType
                 });
             }
             else
@@ -1223,7 +1230,8 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                             ? paymentSummary.AmountNetTotal
                             : invoiceDetail.AmountNetTotal,
                         IsTrial = invoiceDetail.IsTrial,
-                        TrialCode = invoiceDetail.TrialCode
+                        TrialCode = invoiceDetail.TrialCode,
+                        PaymentType = paymentSummary.PaymentType
                     };
                     if (payment.AmountNetTotal == null)
                     {
