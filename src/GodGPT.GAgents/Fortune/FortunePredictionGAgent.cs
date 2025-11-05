@@ -439,8 +439,8 @@ Date: {predictionDate:yyyy-MM-dd}
 REQUIRED FORMAT:
 {{
   ""lifetime"": {{
-    ""title"": ""[2-4 poetic words]"",
-    ""description"": ""[30-50 words about life transformation]"",
+    ""title"": ""You are [archetype]"",
+    ""description"": ""[30-50 words about life purpose and goals]"",
     ""traits"": {{
       ""fateRarity"": {{""percentage"": [0.1-10.0], ""description"": ""[6-10 words]""}},
       ""mainElements"": ""[1-2 bilingual elements]"",
@@ -462,8 +462,8 @@ REQUIRED FORMAT:
 }}
 
 RULES:
-- title: 2-4 words, MUST be poetic and captivating to inspire curiosity
-- description: 30-50 words with emotional resonance, focus on LIFE WISDOM and personal growth guidance (not just events)
+- title: MUST follow format ""You are [Archetype]"" where Archetype is a broad life role (e.g. Leader, Explorer, Creator, Healer, Builder, Visionary, Guardian, Catalyst)
+- description: 30-50 words focusing on LIFE PURPOSE and GOALS - describe what this person is meant to achieve in life, their mission, and the impact they're destined to create
 - fateRarity.percentage: 0.1-10.0 (smaller=rarer), description: 6-10 words
 - mainElements: 1-2 bilingual elements from ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
 - lifePath: 2-4 roles comma-separated
@@ -473,8 +473,8 @@ RULES:
 EXAMPLE (format reference):
 {{
   ""lifetime"": {{
-    ""title"": ""Phoenix Rising Journey"",
-    ""description"": ""[30-50 words about life wisdom]"",
+    ""title"": ""You are a Visionary"",
+    ""description"": ""Your life purpose is to inspire innovation and lead transformative change. Your goals center on creating lasting impact through bold ideas, empowering others to see new possibilities, and building bridges between tradition and progress."",
     ""traits"": {{
       ""fateRarity"": {{""percentage"": 2.3, ""description"": ""[6-10 words]""}},
       ""mainElements"": ""Fire (火), Metal (金)"",

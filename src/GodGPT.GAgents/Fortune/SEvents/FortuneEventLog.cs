@@ -223,6 +223,15 @@ public class ProfileInsightsGeneratedEvent : FortuneUserProfileEventLog
     [Id(4)] public DateTime GeneratedAt { get; set; }
 }
 
+/// <summary>
+/// User profile cleared event (for testing)
+/// </summary>
+[GenerateSerializer]
+public class UserProfileClearedEvent : FortuneUserProfileEventLog
+{
+    [Id(0)] public DateTime ClearedAt { get; set; }
+}
+
 #endregion
 
 #region Prediction History Events

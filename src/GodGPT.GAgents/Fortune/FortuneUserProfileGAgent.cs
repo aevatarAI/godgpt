@@ -21,6 +21,11 @@ public interface IFortuneUserProfileGAgent : IGAgent
     Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
     
     Task<GenerateProfileInsightsResult> GenerateProfileInsightsAsync(string aiResponse);
+    
+    /// <summary>
+    /// Clear user profile data (for testing purposes)
+    /// </summary>
+    Task<ClearUserResult> ClearUserAsync();
 }
 
 [GAgent(nameof(FortuneUserProfileGAgent))]
@@ -86,6 +91,29 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 state.Bazi = insightsEvent.Bazi;
                 state.Zodiac = insightsEvent.Zodiac;
                 state.InsightsGeneratedAt = insightsEvent.GeneratedAt;
+                break;
+            case UserProfileClearedEvent clearEvent:
+                // Clear all user profile data
+                state.UserId = string.Empty;
+                state.FullName = string.Empty;
+                state.Gender = default;
+                state.BirthDate = default;
+                state.BirthTime = null;
+                state.BirthCountry = null;
+                state.BirthCity = null;
+                state.MbtiType = null;
+                state.RelationshipStatus = null;
+                state.Interests = null;
+                state.CalendarType = null;
+                state.CurrentResidence = null;
+                state.Email = null;
+                state.Actions = new List<string>();
+                state.Astrology = new Dictionary<string, string>();
+                state.Bazi = new Dictionary<string, string>();
+                state.Zodiac = new Dictionary<string, string>();
+                state.CreatedAt = default;
+                state.UpdatedAt = clearEvent.ClearedAt;
+                state.InsightsGeneratedAt = null;
                 break;
         }
     }
@@ -544,7 +572,7 @@ REQUIRED FORMAT:
 {{
   ""astrology"": {{
     ""signPlacements"": ""{{\\""sunSign\\"": \\""[calculate]\\"", \\""moonSign\\"": \\""[calculate]\\"", \\""risingSign\\"": \\""[calculate]\\""}}"",
-    ""significance"": ""{{\\""title\\"": \\""[Planet] in [Sign]\\"", \\""description\\"": \\""[10-30 words]\\""}}""
+    ""significance"": ""{{\\""title\\"": \\""[Planet] in [Sign]\\"", \\""description\\"": \\""[30-50 words]\\""}}""
   }},
   ""bazi"": {{
     ""structure"": ""[Weak/Strong Self, Prosperous/Weak Wealth (身弱/身强财旺/财弱)]"",
@@ -556,7 +584,7 @@ REQUIRED FORMAT:
     ""dayMasterDescription"": ""[10-30 words]""
   }},
   ""zodiac"": {{
-    ""yourSign"": ""[50-100 words combining sign and personality]"",
+    ""yourSign"": ""[combining element and animal]"",
     ""animalSpirit"": ""[50-100 words combining symbolism and characteristics]"",
     ""element"": ""[50-100 words combining element and animal]"",
     ""quickTraits"": ""{{\\""trait\\"": \\""[10-20 words]\\"", \\""personality\\"": \\""[10-20 words]\\"", \\""caution\\"": \\""[10-20 words]\\""}}""
@@ -576,7 +604,7 @@ RULES:
   * Heavenly Stems - FIXED mapping: 甲-陽木-Jia-East 1, 乙-陰木-Yi-East 3, 丙-陽火-Bing-South 1, 丁-陰火-Ding-South 3, 戊-陽土-Wu-Centre, 己-陰土-Ji-Centre, 庚-陽金-Geng-West 1, 辛-陰金-Xin-West 3, 壬-陽水-Ren-North 1, 癸-陰水-Gui-North 3
   * Earthly Branches - FIXED mapping: 子-陽水-Zi-Rat, 丑-陰土-Chou-Ox, 寅-陽木-Yin-Tiger, 卯-陰木-Mao-Rabbit, 辰-陽土-Chen-Dragon, 巳-陰火-Si-Snake, 午-陽火-Wu-Horse, 未-陰土-Wei-Goat, 申-陽金-Shen-Monkey, 酉-陰金-You-Rooster, 戌-陽土-Xu-Dog, 亥-陰水-Hai-Pig
   * fiveElements: 1-10, tenTransformations: 1-3, text: 10-30 words
-- Zodiac: Animal {zodiacAnimal}, Element by year digit (0-1:Metal, 2-3:Water, 4-5:Wood, 6-7:Fire, 8-9:Earth). yourSign/animalSpirit/element: 50-100 words each, quickTraits: 10-20 words, luckySet: 2-3 items
+- Zodiac: Animal {zodiacAnimal}, Element by year digit (0-1:Metal, 2-3:Water, 4-5:Wood, 6-7:Fire, 8-9:Earth). animalSpirit/element: 50-100 words each, quickTraits: 10-20 words, luckySet: 2-3 items
 
 EXAMPLE (format reference):
 {{
@@ -594,7 +622,7 @@ EXAMPLE (format reference):
     ""dayMasterDescription"": ""[10-30 words]""
   }},
   ""zodiac"": {{
-    ""yourSign"": ""Water Horse (水马) - [50-100 words]"",
+    ""yourSign"": ""Water Horse (水马)"",
     ""animalSpirit"": ""Horse (马) - [50-100 words]"",
     ""element"": ""Water (水) - [50-100 words]"",
     ""quickTraits"": ""{{\\""trait\\"": \\""[10-20 words]\\"", \\""personality\\"": \\""[10-20 words]\\"", \\""caution\\"": \\""[10-20 words]\\""}}""
@@ -603,6 +631,54 @@ EXAMPLE (format reference):
 }}";
 
         return prompt;
+    }
+
+    public async Task<ClearUserResult> ClearUserAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[FortuneUserProfileGAgent][ClearUserAsync] Clearing user profile data for: {GrainId}", 
+                this.GetPrimaryKey());
+
+            // Check if user exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[FortuneUserProfileGAgent][ClearUserAsync] User profile not found");
+                return new ClearUserResult
+                {
+                    Success = false,
+                    Message = "User profile not found"
+                };
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Raise event to clear state
+            RaiseEvent(new UserProfileClearedEvent
+            {
+                ClearedAt = now
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[FortuneUserProfileGAgent][ClearUserAsync] User profile cleared successfully");
+
+            return new ClearUserResult
+            {
+                Success = true,
+                Message = "User profile cleared successfully"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortuneUserProfileGAgent][ClearUserAsync] Error clearing user profile");
+            return new ClearUserResult
+            {
+                Success = false,
+                Message = "Internal error occurred"
+            };
+        }
     }
 }
 
