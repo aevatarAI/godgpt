@@ -21,6 +21,11 @@ public interface IFortuneUserProfileGAgent : IGAgent
     Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
     
     Task<GenerateProfileInsightsResult> GenerateProfileInsightsAsync(string aiResponse);
+    
+    /// <summary>
+    /// Clear user profile data (for testing purposes)
+    /// </summary>
+    Task<ClearUserResult> ClearUserAsync();
 }
 
 [GAgent(nameof(FortuneUserProfileGAgent))]
@@ -86,6 +91,29 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 state.Bazi = insightsEvent.Bazi;
                 state.Zodiac = insightsEvent.Zodiac;
                 state.InsightsGeneratedAt = insightsEvent.GeneratedAt;
+                break;
+            case UserProfileClearedEvent clearEvent:
+                // Clear all user profile data
+                state.UserId = string.Empty;
+                state.FullName = string.Empty;
+                state.Gender = default;
+                state.BirthDate = default;
+                state.BirthTime = null;
+                state.BirthCountry = null;
+                state.BirthCity = null;
+                state.MbtiType = null;
+                state.RelationshipStatus = null;
+                state.Interests = null;
+                state.CalendarType = null;
+                state.CurrentResidence = null;
+                state.Email = null;
+                state.Actions = new List<string>();
+                state.Astrology = new Dictionary<string, string>();
+                state.Bazi = new Dictionary<string, string>();
+                state.Zodiac = new Dictionary<string, string>();
+                state.CreatedAt = default;
+                state.UpdatedAt = clearEvent.ClearedAt;
+                state.InsightsGeneratedAt = null;
                 break;
         }
     }
@@ -544,7 +572,7 @@ REQUIRED FORMAT:
 {{
   ""astrology"": {{
     ""signPlacements"": ""{{\\""sunSign\\"": \\""[calculate]\\"", \\""moonSign\\"": \\""[calculate]\\"", \\""risingSign\\"": \\""[calculate]\\""}}"",
-    ""significance"": ""{{\\""title\\"": \\""[Planet] in [Sign]\\"", \\""description\\"": \\""[10-30 words]\\""}}""
+    ""significance"": ""{{\\""title\\"": \\""[Planet] in [Sign]\\"", \\""description\\"": \\""[30-50 words]\\""}}""
   }},
   ""bazi"": {{
     ""structure"": ""[Weak/Strong Self, Prosperous/Weak Wealth (身弱/身强财旺/财弱)]"",
@@ -603,6 +631,54 @@ EXAMPLE (format reference):
 }}";
 
         return prompt;
+    }
+
+    public async Task<ClearUserResult> ClearUserAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[FortuneUserProfileGAgent][ClearUserAsync] Clearing user profile data for: {GrainId}", 
+                this.GetPrimaryKey());
+
+            // Check if user exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[FortuneUserProfileGAgent][ClearUserAsync] User profile not found");
+                return new ClearUserResult
+                {
+                    Success = false,
+                    Message = "User profile not found"
+                };
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Raise event to clear state
+            RaiseEvent(new UserProfileClearedEvent
+            {
+                ClearedAt = now
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[FortuneUserProfileGAgent][ClearUserAsync] User profile cleared successfully");
+
+            return new ClearUserResult
+            {
+                Success = true,
+                Message = "User profile cleared successfully"
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortuneUserProfileGAgent][ClearUserAsync] Error clearing user profile");
+            return new ClearUserResult
+            {
+                Success = false,
+                Message = "Internal error occurred"
+            };
+        }
     }
 }
 
