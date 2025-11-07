@@ -50,6 +50,11 @@ public class ChatMessageWithMetaDto
     [Id(7)] public List<string> ImageKeys { get; set; } = new List<string>();
     
     /// <summary>
+    /// User's quoted/referenced content (only for user messages)
+    /// </summary>
+    [Id(8)] public string? Context { get; set; }
+    
+    /// <summary>
     /// Create from ChatMessage and optional ChatMessageMeta
     /// </summary>
     public static ChatMessageWithMetaDto Create(ChatMessage message, ChatMessageMeta? meta = null)

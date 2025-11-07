@@ -201,14 +201,23 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
-        List<string>? images = null)
+        List<string>? images = null, string? context = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start. region:{region}");
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start. region:{region}, hasContext:{!string.IsNullOrEmpty(context)}");
 
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Language from context: {language}");
+        
+        // Merge context and content for LLM processing
+        var originalContent = content; // Keep original for title generation
+        if (!string.IsNullOrEmpty(context))
+        {
+            // Merge context with content, adding context as quoted reference
+            content = $"[User's reference]: {context}\n\n[User's message]: {content}";
+            Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Context merged. Original length: {originalContent.Length}, Final length: {content.Length}");
+        }
 
         var actionType = images == null || images.IsNullOrEmpty()
             ? ActionType.Conversation
@@ -226,12 +235,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             // throw invalidOperationException;
 
             //save conversation data
-            await SetSessionTitleAsync(sessionId, content);
+            await SetSessionTitleAsync(sessionId, originalContent);
             var chatMessages = new List<ChatMessage>();
             chatMessages.Add(new ChatMessage
             {
                 ChatRole = ChatRole.User,
-                Content = content,
+                Content = originalContent, // Store original content, not merged
                 ImageKeys = images
             });
             chatMessages.Add(new ChatMessage
@@ -277,8 +286,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} - Validation passed");
         
-        await SetSessionTitleAsync(sessionId, content);
+        await SetSessionTitleAsync(sessionId, originalContent);
         var configuration = GetConfiguration();
+        // Use merged content (with context) for LLM call
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
             content, chatId, promptSettings, isHttpRequest, region, images: images);
