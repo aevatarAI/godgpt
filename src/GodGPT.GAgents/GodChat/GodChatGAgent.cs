@@ -184,15 +184,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] Language from context: {language}");
         
-        // Merge context and content for LLM processing
-        var originalContent = content; // Keep original for title generation
-        if (!string.IsNullOrEmpty(context))
-        {
-            // Merge context with content, adding context as quoted reference
-            content = $"[User's reference]: {context}\n\n[User's message]: {content}";
-            Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Context merged. Original length: {originalContent.Length}, Final length: {content.Length}");
-        }
-
         var actionType = images == null || images.IsNullOrEmpty()
             ? ActionType.Conversation
             : ActionType.ImageConversation;
@@ -209,12 +200,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             // throw invalidOperationException;
 
             //save conversation data
-            await SetSessionTitleAsync(sessionId, originalContent);
+            await SetSessionTitleAsync(sessionId, content);
             var chatMessages = new List<ChatMessage>();
             chatMessages.Add(new ChatMessage
             {
                 ChatRole = ChatRole.User,
-                Content = originalContent, // Store original content, not merged
+                Content = content, // Store original content (context stored separately)
                 ImageKeys = images
             });
             chatMessages.Add(new ChatMessage
@@ -271,14 +262,13 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} - Validation passed");
         
-        await SetSessionTitleAsync(sessionId, originalContent);
+        await SetSessionTitleAsync(sessionId, content);
         var configuration = GetConfiguration();
-        // Use merged content (with context) for LLM call, but pass originalContent for storage
+        // Pass original content and context separately, merge will happen in GodStreamChatAsync
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
             content, chatId, promptSettings, isHttpRequest, region, images: images, 
-            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context,
-            originalUserMessage: originalContent);
+            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context);
         
         totalStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
@@ -620,17 +610,22 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
         string? region = null, bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null,
-        string? userTimeZoneId = null, string? context = null, string? originalUserMessage = null)
+        string? userTimeZoneId = null, string? context = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug(
             $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}, hasContext:{!string.IsNullOrEmpty(context)}");
         
-        // Use originalUserMessage for storage if provided, otherwise use message
-        var contentToStore = originalUserMessage ?? message;
+        // Merge context and content for LLM call
+        var enhancedMessage = message;
+        if (!string.IsNullOrEmpty(context))
+        {
+            enhancedMessage = $"[User's reference]: {context}\n\n[User's message]: {message}";
+            Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Context merged. Original length: {message.Length}, Enhanced length: {enhancedMessage.Length}");
+        }
         
         var aiChatContextDto =
-            CreateAIChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings, isHttpRequest,
+            CreateAIChatContext(sessionId, llm, streamingModeEnabled, enhancedMessage, chatId, promptSettings, isHttpRequest,
                 region, images);
 
         var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
@@ -661,11 +656,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 }
             }
 
-            // User message without additional prefixes (timestamp now in system prompt)
-            string enhancedMessage = message;
-            Logger.LogDebug(
-                $"[GodChatGAgent][GodStreamChatAsync] Processing message. IsVoiceChat: {isPromptVoiceChat}");
-            
+            // Add conversation suggestions prompt for text chat only
             if (!isPromptVoiceChat)
             {
                 var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
@@ -679,10 +670,13 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
                     Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                 }
-                
-                enhancedMessage = enhancedMessage + ChatPrompts.ConversationSuggestionsPrompt;
-                Logger.LogDebug(
-                    $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
+                else
+                {
+                    // Only add conversation suggestions if not special prompt
+                    enhancedMessage = enhancedMessage + ChatPrompts.ConversationSuggestionsPrompt;
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
+                }
             }
             
             var settings = promptSettings ?? new ExecutionPromptSettings();
@@ -716,7 +710,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                         new ChatMessage
                         {
                             ChatRole = ChatRole.User,
-                            Content = contentToStore,  // Store original content, not merged
+                            Content = message,  // Store original content (context stored separately in meta)
                             ImageKeys = images
                         }
                     },
