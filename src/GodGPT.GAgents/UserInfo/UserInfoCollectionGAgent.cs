@@ -35,6 +35,11 @@ public interface IUserInfoCollectionGAgent : IGAgent
     /// Get user info options (seeking interests and source channels) based on language
     /// </summary>
     Task<UserInfoOptionsResponseDto> GetUserInfoOptionsAsync();
+    
+    /// <summary>
+    /// Generate user info prompt template with user data
+    /// </summary>
+    Task<Tuple<string, string>> GenerateUserInfoPromptAsync(DateTime? userLocalTime = null);
 }
 
 [GAgent(nameof(UserInfoCollectionGAgent))]
@@ -322,6 +327,89 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             SeekingInterestOptions = seekingInterestOptions,
             SourceChannelOptions = sourceChannelOptions
         };
+    }
+
+    public async Task<Tuple<string, string>> GenerateUserInfoPromptAsync(DateTime? userLocalTime = null)
+    {
+        _logger.LogInformation("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generating user info prompt");
+        
+        if (!State.IsInitialized)
+        {
+            _logger.LogWarning("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] User info collection not initialized");
+            return new Tuple<string, string>(string.Empty, string.Empty);
+        }
+
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+        var currentTime = userLocalTime ?? DateTime.UtcNow;
+        
+        // Generate full name
+        var fullName = $"{State.FirstName} {State.LastName}".Trim();
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            fullName = "Unknown";
+        }
+        
+        // Generate location
+        var location = $"{State.City}, {State.Country}".Trim(' ', ',');
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            location = "Unknown";
+        }
+        
+        // Generate gender text
+        var genderText = State.Gender switch
+        {
+            1 => "Male",
+            2 => "Female", 
+            _ => "Unknown"
+        };
+        
+        // Calculate age from birth date
+        var age = "Unknown";
+        if (State.Year > 0 && State.Month > 0 && State.Day > 0)
+        {
+            try
+            {
+                var birthDate = new DateTime(State.Year, State.Month, State.Day);
+                var calculatedAge = currentTime.Year - birthDate.Year;
+                if (currentTime < birthDate.AddYears(calculatedAge))
+                {
+                    calculatedAge--;
+                }
+                age = calculatedAge.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Invalid birth date: {Year}-{Month}-{Day}", State.Year, State.Month, State.Day);
+                age = "Unknown";
+            }
+        }
+        
+        // Generate language text
+        var languageText = language switch
+        {
+            GodGPTLanguage.English => "English",
+            GodGPTLanguage.TraditionalChinese => "Traditional Chinese",
+            GodGPTLanguage.Spanish => "Spanish",
+            GodGPTLanguage.CN => "Chinese",
+            _ => "English"
+        };
+        
+        // Format current time
+        var timeText = currentTime.ToString("yyyy-MM-dd HH:mm:ss");
+        
+        // Generate the prompt template
+        var prompt = $@"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.
+User Name: {fullName}
+User Location: {location}
+User Message Time: {timeText}
+User Gender: {genderText}
+User Age: {age}
+User Language: {languageText}";
+
+        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generated prompt for user {UserId}", State.UserId);
+        
+        return new Tuple<string, string>(fullName, prompt);
     }
 
     /// <summary>

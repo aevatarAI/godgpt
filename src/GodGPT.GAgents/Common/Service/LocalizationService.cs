@@ -262,7 +262,19 @@ public class LocalizationService : ILocalizationService
                 ["en.feedback_frequency_limit"] = "You can submit feedback again in {days} days. Please wait.",
                 ["zh-tw.feedback_frequency_limit"] = "您可以在 {days} 天後再次提交反饋。請等待。",
                 ["es.feedback_frequency_limit"] = "Puedes enviar comentarios nuevamente en {days} días. Por favor espera.",
-                ["zh.feedback_frequency_limit"] = "您可以在 {days} 天后再次提交反馈。请等待。"
+                ["zh.feedback_frequency_limit"] = "您可以在 {days} 天后再次提交反馈。请等待。",
+                
+                //HomeDosAndDontPrompt
+                ["en.home_dos_and_dont_prompt"] = "What’s my daily guide for today?",
+                ["zh-tw.home_dos_and_dont_prompt"] = "展示我的今日宜忌",
+                ["es.home_dos_and_dont_prompt"] = "¿Cuál es mi guía diaria de hoy?",
+                ["zh.home_dos_and_dont_prompt"] = "展示我的今日宜忌",
+                
+                //ChatPageMessageAfterSync
+                ["en.chat_page_message_after_sync"] = "Google calendar is synced, what’s my daily guide for today?",
+                ["zh-tw.chat_page_message_after_sync"] = "谷歌日曆已同步，請結合日曆展示我的今日宜忌",
+                ["es.chat_page_message_after_sync"] = "El calendario de Google está sincronizado, ¿cuál es mi guía diaria para hoy?",
+                ["zh.chat_page_message_after_sync"] = "谷歌日历已同步，请结合日历展示我的今日宜忌"
             },
             
             ["feedback_reasons"] = new Dictionary<string, string>

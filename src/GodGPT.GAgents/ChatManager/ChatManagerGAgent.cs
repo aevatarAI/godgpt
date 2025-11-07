@@ -16,6 +16,7 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.GoogleAuth;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.UserInfo;
@@ -329,7 +330,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     }
 
     public async Task<Guid> CreateSessionAsync(string systemLLM, string prompt, UserProfileDto? userProfile = null,
-        string? guider = null)
+        string? guider = null, DateTime? userLocalTime = null)
     {
         Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Start - UserId: {this.GetPrimaryKey()}");
 
@@ -348,11 +349,18 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var sysMessage = string.Empty;
         if (!string.IsNullOrEmpty(guider))
         {
-            var rolePrompt = GetRolePrompt(guider);
-            if (!string.IsNullOrEmpty(rolePrompt))
+            if (guider == SessionGuiderConstants.DailyGuide)
             {
-                sysMessage = rolePrompt;
-                Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Added role prompt for guider: {guider}");
+                sysMessage = $"###{SessionGuiderConstants.DailyGuide}###";
+            }
+            else
+            {
+                var rolePrompt = GetRolePrompt(guider);
+                if (!string.IsNullOrEmpty(rolePrompt))
+                {
+                    sysMessage = rolePrompt;
+                    Logger.LogDebug($"[ChatManagerGAgent][CreateSessionAsync] Added role prompt for guider: {guider}");
+                }
             }
         }
 
@@ -869,6 +877,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         var userInfoCollectionGAgent = GrainFactory.GetGrain<IUserInfoCollectionGAgent>(this.GetPrimaryKey());
         await userInfoCollectionGAgent.ClearAllAsync();
+
+        var googleAuthGAgent = GrainFactory.GetGrain<IGoogleAuthGAgent>(this.GetPrimaryKey());
+        await googleAuthGAgent.UnbindAccountAsync();
 
         RaiseEvent(new ClearAllEventLog());
         await ConfirmEvents();

@@ -12,7 +12,11 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.GodChat.Dtos;
+using Aevatar.Application.Grains.GoogleAuth;
+using Aevatar.Application.Grains.GoogleAuth.Dtos;
 using Aevatar.Application.Grains.Invitation;
+using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Common;
@@ -44,6 +48,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private const string CNConsoleRegion = "CNCONSOLE";
     private const string ConsoleRegion = "CONSOLE";
     private const string LocalBackupModel = "OpenAI";
+    private const string DailyGuide = $"###{SessionGuiderConstants.DailyGuide}###";
 
     private readonly ISpeechService _speechService;
     private readonly IOptionsMonitor<LLMRegionOptions> _llmRegionOptions;
@@ -140,45 +145,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         Logger.LogDebug(
             $"[GodChatGAgent][RequestStreamChatEvent] decommission :{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
         await PublishAsync(chatMessage);
-
-        // string chatId = Guid.NewGuid().ToString();
-        // Logger.LogDebug(
-        //     $"[GodChatGAgent][RequestStreamGodChatEvent] start:{JsonConvert.SerializeObject(@event)} chatID:{chatId}");
-        // var title = "";
-        // var content = "";
-        // var isLastChunk = false;
-        //
-        // try
-        // {
-        //     if (State.StreamingModeEnabled)
-        //     {
-        //         Logger.LogDebug("State.StreamingModeEnabled is on");
-        //         await StreamChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content, chatId);
-        //     }
-        //     else
-        //     {
-        //         var response = await ChatWithSessionAsync(@event.SessionId, @event.SystemLLM, @event.Content);
-        //         content = response.Item1;
-        //         title = response.Item2;
-        //         isLastChunk = true;
-        //     }
-        // }
-        // catch (Exception e)
-        // {
-        //     Logger.LogError(e, $"[GodChatGAgent][RequestStreamGodChatEvent] handle error:{e.ToString()}");
-        // }
-        //
-        // await PublishAsync(new ResponseStreamGodChat()
-        // {
-        //     ChatId = chatId,
-        //     Response = content,
-        //     NewTitle = title,
-        //     IsLastChunk = isLastChunk,
-        //     SerialNumber = -1,
-        //     SessionId = @event.SessionId
-        // });
-        //
-        // Logger.LogDebug($"[GodChatGAgent][RequestStreamGodChatEvent] end:{JsonConvert.SerializeObject(@event)}");
     }
 
     [EventHandler]
@@ -198,17 +164,25 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         stopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][HandleEventAsync][UpdateProxyInitStatusGEvent] End - Duration: {stopwatch.ElapsedMilliseconds}ms, Status updated to: {@event.Status} for proxy: {@event.ProxyId}");
     }
-
-    public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
-        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
-        List<string>? images = null, string? context = null)
+    
+    public async Task StartStreamChatAsync(StartStreamChatInput input)
     {
+        Guid sessionId = input.SessionId;
+        string sysmLLM = input.SysmLLM; 
+        string content = input.Content;
+        string chatId = input.ChatId;
+        ExecutionPromptSettings promptSettings = input.PromptSettings;
+        bool isHttpRequest = input.IsHttpRequest;
+        string? region = input.region;
+        List<string>? images = input.images;
+        string? context = input.Context;
+        
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} start. region:{region}, hasContext:{!string.IsNullOrEmpty(context)}");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region}, hasContext:{!string.IsNullOrEmpty(context)}");
 
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Language from context: {language}");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] Language from context: {language}");
         
         // Merge context and content for LLM processing
         var originalContent = content; // Keep original for title generation
@@ -228,7 +202,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             await userQuotaGAgent.ExecuteActionAsync(sessionId.ToString(), State.ChatManagerGuid.ToString(), actionType);
         if (!actionResultDto.Success)
         {
-            Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} Access restricted");
+            Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} Access restricted");
             //1、throw Exception
             // var invalidOperationException = new InvalidOperationException(actionResultDto.Message);
             // invalidOperationException.Data["Code"] = actionResultDto.Code.ToString();
@@ -284,17 +258,37 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             return;
         }
 
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] {sessionId.ToString()} - Validation passed");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} - Validation passed");
         
         await SetSessionTitleAsync(sessionId, originalContent);
         var configuration = GetConfiguration();
         // Use merged content (with context) for LLM call
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
-            content, chatId, promptSettings, isHttpRequest, region, images: images);
+            content, chatId, promptSettings, isHttpRequest, region, images: images, 
+            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId);
         
         totalStopwatch.Stop();
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
+    }
+
+    public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
+        ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
+        List<string>? images = null, string? context = null)
+    {
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSessionAsync] start: {sessionId.ToString()}");
+        await StartStreamChatAsync(new StartStreamChatInput
+        {
+            SessionId = sessionId,
+            SysmLLM = sysmLLM,
+            Content = content,
+            ChatId = chatId,
+            PromptSettings = promptSettings,
+            IsHttpRequest = isHttpRequest,
+            region = region,
+            images = images,
+            Context = context
+        });
     }
 
     public async Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string? voiceData,
@@ -613,14 +607,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
-        string? region = null, bool addToHistory = true, List<string>? images = null)
+        string? region = null, bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null,
+        string? userTimeZoneId = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug(
             $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}");
-        
-        var configuration = GetConfiguration();
-        var sysMessage = await configuration.GetPrompt();
         
         var aiChatContextDto =
             CreateAIChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings, isHttpRequest,
@@ -658,9 +650,21 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             string enhancedMessage = message;
             if (!isPromptVoiceChat)
             {
-                enhancedMessage = message + ChatPrompts.ConversationSuggestionsPrompt;
+                var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} Language from context: {language}");
+                var homeDosAndDontPromptMessage = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.HomeDosAndDontPrompt,language);
+                var chatPageMessageAfterSync = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.ChatPageMessageAfterSync,language);
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} homeDosAndDontPromptMessage: {homeDosAndDontPromptMessage}");
+                Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} message: {message}, {message == homeDosAndDontPromptMessage}");
+                if (message.StartsWith(homeDosAndDontPromptMessage) || message.StartsWith(chatPageMessageAfterSync))
+                {
+                    enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
+                    Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
+                }
+                
+                enhancedMessage = enhancedMessage + ChatPrompts.ConversationSuggestionsPrompt;
                 Logger.LogDebug(
-                    $"[GodChatGAgent][GodStreamChatAsync] Added conversation suggestions prompt for text chat");
+                    $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
             }
 
             var settings = promptSettings ?? new ExecutionPromptSettings();
@@ -848,24 +852,22 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         foreach (var llm in llmsForRegion)
         {
             var systemPrompt = rolePrompts.IsNullOrWhiteSpace() ? State.PromptTemplate : rolePrompts;
-
-            if (llm != LocalBackupModel)
+            var isDailyGuide = systemPrompt == DailyGuide;
+            if (isDailyGuide)
             {
-                systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+                systemPrompt = @"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.";
             }
             else
             {
-                systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+                if (llm != LocalBackupModel)
+                {
+                    systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+                }
+                else
+                {
+                    systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+                }
             }
-
-            // if (llm != ProxyGPTModelName)
-            // {
-            //     systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
-            // }
-            // else
-            // {
-            //     systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
-            // }
             //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
             var proxy = GrainFactory.GetGrain<IAIAgentStatusProxy>(Guid.NewGuid());
             await proxy.ConfigAsync(new AIAgentStatusProxyConfig
@@ -1198,13 +1200,15 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
             await ConfirmEvents();
 
-            var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
-            var inviterId = await chatManagerGAgent.GetInviterAsync();
-
-            if (inviterId != null && inviterId != Guid.Empty)
+            if (State.ChatManagerGuid != Guid.Empty)
             {
-                var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
-                await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                var chatManagerGAgent = GrainFactory.GetGrain<IChatManagerGAgent>(State.ChatManagerGuid);
+                var inviterId = await chatManagerGAgent.GetInviterAsync();
+                if (inviterId != null && inviterId != Guid.Empty)
+                {
+                    var invitationGAgent = GrainFactory.GetGrain<IInvitationGAgent>((Guid)inviterId);
+                    await invitationGAgent.ProcessInviteeChatCompletionAsync(State.ChatManagerGuid.ToString());
+                }
             }
 
             // Store suggestions and clean content for later use in partialMessage
@@ -2267,5 +2271,270 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
 
         return false;
+    }
+    
+    private async Task<string> GenerateDailyRecommendationsAsync(GodGPTLanguage language,
+        DateTime? userLocalTime, string? userTimeZoneId)
+    {
+        Logger.LogDebug($"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey()} userLocalTime: {userLocalTime.ToString() ?? "Null"}, userTimeZoneId: {userTimeZoneId ?? "Null"}");
+        var googleAuthGAgent = GrainFactory.GetGrain<IGoogleAuthGAgent>(State.ChatManagerGuid);
+        var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
+        var userInfoCollectionGAgent = GrainFactory.GetGrain<IUserInfoCollectionGAgent>(State.ChatManagerGuid);
+        var (fullName, prompt) = await userInfoCollectionGAgent.GenerateUserInfoPromptAsync(userLocalTime);
+        var isSubscribed = await userQuotaGAgent.IsSubscribedAsync(true) || await userQuotaGAgent.IsSubscribedAsync(false);
+        
+        // Get today's calendar events
+        var userTimeZone = TimeZoneInfo.Utc;
+        try
+        {
+            if (!userTimeZoneId.IsNullOrWhiteSpace())
+            {
+                userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(userTimeZoneId);
+            }
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            Logger.LogError(ex, $"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey()} TimeZone not found {userTimeZoneId}");
+        }
+        
+        var queryTime = userLocalTime ?? DateTime.UtcNow;
+        var dayStart = queryTime.Date;
+        var dayStartOffset = new DateTimeOffset(dayStart, userTimeZone.GetUtcOffset(dayStart));
+        var timeMinRfc3339 = dayStartOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
+
+        var dayEnd = queryTime.Date.AddDays(1).AddSeconds(-1);
+        var dayEndOffset = new DateTimeOffset(dayEnd, userTimeZone.GetUtcOffset(dayEnd));
+        var timeMaxRfc3339 = dayEndOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
+        Logger.LogDebug($"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey()} Final timeMin: {timeMinRfc3339}, timeMax: {timeMaxRfc3339}, TimeZone: {userTimeZone.Id}");
+        var googleCalendarListDto = await googleAuthGAgent.QueryCalendarEventsAsync(new GoogleCalendarQueryDto
+        {
+            StartTime = timeMinRfc3339,
+            EndTime = timeMaxRfc3339,
+            OrderBy = "startTime"
+        });
+        
+        // Generate daily recommendations based on subscription status and calendar events
+        var languageEnglishName = GodGPTLanguageHelper.GetLanguageEnglishName(language);
+        prompt = $"Use  {languageEnglishName} to respond including titles like DO, DON'T \n {prompt}";
+        return GenerateDailyRecommendationsAsync(prompt, isSubscribed, googleCalendarListDto, languageEnglishName);
+    }
+
+    /// <summary>
+    /// Generate daily recommendations based on subscription status and calendar events
+    /// </summary>
+    private string GenerateDailyRecommendationsAsync(string prompt, bool isSubscribed, GoogleCalendarListDto calendarEvents, 
+        string language)
+    {
+        try
+        {
+            Logger.LogDebug("[GodChatGAgent][GenerateDailyRecommendationsAsync] Generating daily recommendations");
+            
+            // Format calendar events
+            var notBound = !calendarEvents.Success && calendarEvents.Error == "Google account not bound";
+            var hasEvents = calendarEvents?.Success == true && !calendarEvents.Events.IsNullOrEmpty();
+            var formattedEvents = hasEvents ? FormatCalendarEvents(calendarEvents!.Events) : new List<string>();
+            
+            Logger.LogDebug($"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey().ToString()} isSubscribed: {isSubscribed}, notBound: {notBound}, hasEvents: {hasEvents}");
+            
+            // Generate recommendations based on scenarios
+            if (isSubscribed && hasEvents)
+            {
+                return $"{prompt}{GenerateSubscribedUserWithEventsRecommendations(formattedEvents, calendarEvents!.Events, language)}";
+            }
+            else if (!isSubscribed && hasEvents)
+            {
+                return $"{prompt}{GenerateNonSubscribedUserWithEventsRecommendations(formattedEvents, calendarEvents!.Events, language)}";
+            } else if (isSubscribed &&  !hasEvents && !notBound)
+            {
+                return $"{prompt}{GeneratePaidAndBoundUserWithoutEventsRecommendations(language)}";
+            }
+            else
+            {
+                return $"{prompt}{GenerateUserWithoutEventsRecommendations(language)}";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[GodChatGAgent][GenerateDailyRecommendationsAsync] Error generating daily recommendations");
+            return $"{prompt}{GenerateUserWithoutEventsRecommendations(language)}";
+        }
+    }
+
+    /// <summary>
+    /// Format calendar events for display
+    /// </summary>
+    private List<string> FormatCalendarEvents(List<GoogleCalendarEventDto> events)
+    {
+        var formattedEvents = new List<string>();
+        
+        foreach (var eventItem in events)
+        {
+            if (string.IsNullOrEmpty(eventItem.Summary)) continue;
+            
+            var eventTime = "Unknown time";
+            if (eventItem.StartTime?.DateTime.HasValue == true)
+            {
+                var startTime = eventItem.StartTime.DateTime.Value;
+                eventTime = startTime.ToString("HH:mm");
+            }
+            
+            formattedEvents.Add($"{eventItem.Summary} @ {eventTime}");
+        }
+        
+        return formattedEvents;
+    }
+    
+    private string GeneratePaidAndBoundUserWithoutEventsRecommendations(string language)
+    {
+        var prompt = $@"Use the following format for the output:
+Hi, {{user_name}}, based on your name, gender, age, location, and local time, here are your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
+DO
+- Xxxx
+- xxxxx
+DON'T
+- Xxxxx
+- Xxxxx
+
+We noticed your calendar is empty for today. This is a perfect opportunity to take some time for yourself, engage in deep thought, or simply enjoy the freedom! When you have new plans, we'll be here to provide you with personalized guidance.
+
+xxxxx (A brief one-sentence summary, under 20 words)";
+
+        return prompt;
+    }   
+
+    /// <summary>
+    /// Generate recommendations for users without events
+    /// </summary>
+    private string GenerateUserWithoutEventsRecommendations(string language)
+    {
+        var prompt = $@"Use the following format for the output:
+Based on your name, gender, age, location, and local time, here are your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
+DO
+- Xxxx
+- xxxxx
+DON'T
+- Xxxxx
+- Xxxxx
+xxxxx (A brief one-sentence summary, under 20 words)";
+
+        return prompt;
+    }
+
+    /// <summary>
+    /// Generate recommendations for non-subscribed users with events
+    /// </summary>
+    private string GenerateNonSubscribedUserWithEventsRecommendations(List<string> formattedEvents, List<GoogleCalendarEventDto> events, string language)
+    {
+        var prompt = $@"User events event_title @ time \\n";
+
+        // Add detailed event analysis for subscribed users
+        for (int i = 0; i < events.Count && i < formattedEvents.Count; i++)
+        {
+            var eventItem = events[i];
+            if (eventItem.Summary.IsNullOrWhiteSpace())
+            {
+                continue;
+            }
+            var eventSummary = eventItem.Summary;
+            var eventTime = string.Empty;
+            
+            if (eventItem.StartTime?.DateTime.HasValue == true)
+            {
+                var startTime = eventItem.StartTime.DateTime.Value;
+                eventTime = startTime.ToString("HH:mm");
+            }
+            
+            if (eventTime.IsNullOrWhiteSpace())
+            {
+                //prompt += $@"{eventSummary}\\n";
+            }
+            else
+            {
+                prompt += $@"{eventSummary} @ {eventTime}\\n";
+            }
+        }
+
+        
+        prompt += $@"Use the following format for the output:
+Hi, {{user_name}}, based on your name, gender, age, location, and local time, I have generated your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
+DO
+- Xxxx
+- xxxxx
+DON'T
+- Xxxxx
+- Xxxxx
+Event1 @ time
+Event2 @ time
+xxxxx (A brief one-sentence summary, under 20 words)
+Would you like me to create detailed guidance for you?";
+
+        return prompt;
+    }
+
+    /// <summary>
+    /// Generate recommendations for subscribed users with events
+    /// </summary>
+    private string GenerateSubscribedUserWithEventsRecommendations(List<string> formattedEvents, List<GoogleCalendarEventDto> events, string language)
+    {
+        
+        var prompt = $@"User events event_title @ time \\n";
+
+        // Add detailed event analysis for subscribed users
+        for (int i = 0; i < events.Count && i < formattedEvents.Count; i++)
+        {
+            var eventItem = events[i];
+            if (eventItem.Summary.IsNullOrWhiteSpace())
+            {
+                continue;
+            }
+            var eventSummary = eventItem.Summary;
+            var eventTime = string.Empty;
+            
+            if (eventItem.StartTime?.DateTime.HasValue == true)
+            {
+                var startTime = eventItem.StartTime.DateTime.Value;
+                eventTime = startTime.ToString("HH:mm");
+            }
+
+            if (eventTime.IsNullOrWhiteSpace())
+            {
+                //prompt += $@"{eventSummary}\\n";
+            }
+            else
+            {
+                prompt += $@"{eventSummary} @ {eventTime}\\n";
+            }
+        }
+
+        prompt += $@"Use the following format for the output:
+Hi, {{user_name}}, based on your name, gender, age, location, and local time, I have generated your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
+DO
+- Xxxx
+- xxxxx
+DON'T
+- Xxxxx
+- Xxxxx
+
+Event1 @ time
+xxxxxxx(Event Overview)
+DO
+- Xxxx
+- xxxxx
+DON'T
+- Xxxxx
+- Xxxxx
+
+Event2 @ time
+xxxxxxx(Event Overview)
+DO
+- Xxxx
+- xxxxx
+DON'T
+- Xxxxx
+- XxxxxXxxxx
+
+xxxxx (A brief one-sentence summary, under 20 words)";
+
+        return prompt;
     }
 }
