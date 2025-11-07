@@ -202,12 +202,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             // throw invalidOperationException;
 
             //save conversation data
-            await SetSessionTitleAsync(sessionId, originalContent);
+            await SetSessionTitleAsync(sessionId, content);
             var chatMessages = new List<ChatMessage>();
             chatMessages.Add(new ChatMessage
             {
                 ChatRole = ChatRole.User,
-                Content = originalContent, // Store original content, not merged
+                Content = content, // Store original content (context stored separately)
                 ImageKeys = images
             });
             chatMessages.Add(new ChatMessage
