@@ -31,8 +31,8 @@ public interface IGodChat : IGAgent
     [Obsolete("Recommend using StartStreamChatAsync")]
     Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null,
-        List<string>? images = null);
-
+        List<string>? images = null, string? context = null);
+    
     Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string? voiceData, string fileName, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, VoiceLanguageEnum voiceLanguage = VoiceLanguageEnum.English, double voiceDurationSeconds = 0.0);
     

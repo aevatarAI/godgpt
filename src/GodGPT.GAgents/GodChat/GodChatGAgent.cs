@@ -175,13 +175,23 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         bool isHttpRequest = input.IsHttpRequest;
         string? region = input.region;
         List<string>? images = input.images;
+        string? context = input.Context;
         
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region}");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region}, hasContext:{!string.IsNullOrEmpty(context)}");
 
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] Language from context: {language}");
+        
+        // Merge context and content for LLM processing
+        var originalContent = content; // Keep original for title generation
+        if (!string.IsNullOrEmpty(context))
+        {
+            // Merge context with content, adding context as quoted reference
+            content = $"[User's reference]: {context}\n\n[User's message]: {content}";
+            Logger.LogDebug($"[GodChatGAgent][StreamChatWithSession] Context merged. Original length: {originalContent.Length}, Final length: {content.Length}");
+        }
 
         var actionType = images == null || images.IsNullOrEmpty()
             ? ActionType.Conversation
@@ -199,12 +209,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             // throw invalidOperationException;
 
             //save conversation data
-            await SetSessionTitleAsync(sessionId, content);
+            await SetSessionTitleAsync(sessionId, originalContent);
             var chatMessages = new List<ChatMessage>();
             chatMessages.Add(new ChatMessage
             {
                 ChatRole = ChatRole.User,
-                Content = content,
+                Content = originalContent, // Store original content, not merged
                 ImageKeys = images
             });
             chatMessages.Add(new ChatMessage
@@ -250,8 +260,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} - Validation passed");
         
-        await SetSessionTitleAsync(sessionId, content);
+        await SetSessionTitleAsync(sessionId, originalContent);
         var configuration = GetConfiguration();
+        // Use merged content (with context) for LLM call
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
             content, chatId, promptSettings, isHttpRequest, region, images: images, 
@@ -263,7 +274,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
-        List<string>? images = null)
+        List<string>? images = null, string? context = null)
     {
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSessionAsync] start: {sessionId.ToString()}");
         await StartStreamChatAsync(new StartStreamChatInput
@@ -275,7 +286,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             PromptSettings = promptSettings,
             IsHttpRequest = isHttpRequest,
             region = region,
-            images = images
+            images = images,
+            Context = context
         });
     }
 
@@ -653,10 +665,13 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 if (message.StartsWith(homeDosAndDontPromptMessage) || message.StartsWith(chatPageMessageAfterSync))
                 {
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
-                    Logger.LogDebug(
-                        $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added calendar prompt for text chat");
+                    Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                     Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                 }
+                
+                enhancedMessage = enhancedMessage + ChatPrompts.ConversationSuggestionsPrompt;
+                Logger.LogDebug(
+                    $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
             }
             
             var settings = promptSettings ?? new ExecutionPromptSettings();
@@ -2272,6 +2287,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private async Task<string> GenerateDailyRecommendationsAsync(GodGPTLanguage language,
         DateTime? userLocalTime, string? userTimeZoneId)
     {
+        Logger.LogDebug($"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey()} userLocalTime: {userLocalTime.ToString() ?? "Null"}, userTimeZoneId: {userTimeZoneId ?? "Null"}");
         var googleAuthGAgent = GrainFactory.GetGrain<IGoogleAuthGAgent>(State.ChatManagerGuid);
         var userQuotaGAgent = GrainFactory.GetGrain<IUserQuotaGAgent>(State.ChatManagerGuid);
         var userInfoCollectionGAgent = GrainFactory.GetGrain<IUserInfoCollectionGAgent>(State.ChatManagerGuid);
@@ -2289,7 +2305,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         }
         catch (TimeZoneNotFoundException ex)
         {
-            Logger.LogError($"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey()} TimeZone not found {userTimeZoneId}");
+            Logger.LogError(ex, $"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey()} TimeZone not found {userTimeZoneId}");
         }
         
         var queryTime = userLocalTime ?? DateTime.UtcNow;
@@ -2300,16 +2316,19 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var dayEnd = queryTime.Date.AddDays(1).AddSeconds(-1);
         var dayEndOffset = new DateTimeOffset(dayEnd, userTimeZone.GetUtcOffset(dayEnd));
         var timeMaxRfc3339 = dayEndOffset.ToString("yyyy-MM-ddTHH:mm:sszzz");
-        Logger.LogDebug($"[GodChatGAgent][GenerateDailyRecommendationsAsync]Final timeMin: {timeMinRfc3339}, timeMax: {timeMaxRfc3339}, TimeZone: {userTimeZone.Id}");
+        Logger.LogDebug($"[GodChatGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey()} Final timeMin: {timeMinRfc3339}, timeMax: {timeMaxRfc3339}, TimeZone: {userTimeZone.Id}");
         var googleCalendarListDto = await googleAuthGAgent.QueryCalendarEventsAsync(new GoogleCalendarQueryDto
         {
             StartTime = timeMinRfc3339,
             EndTime = timeMaxRfc3339,
             OrderBy = "startTime"
         });
+        
         // Generate daily recommendations based on subscription status and calendar events
+        var languageEnglishName = GodGPTLanguageHelper.GetLanguageEnglishName(language);
+        prompt = $"Use  {languageEnglishName} to respond including titles like DO, DON'T \n {prompt}";
         Logger.LogDebug($"[GoogleAuthGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey().ToString()} Google response: {JsonConvert.SerializeObject(googleCalendarListDto)}");
-        return GenerateDailyRecommendationsAsync(prompt, isSubscribed, googleCalendarListDto, language.ToString());
+        return GenerateDailyRecommendationsAsync(prompt, isSubscribed, googleCalendarListDto, languageEnglishName);
     }
 
     /// <summary>
@@ -2322,9 +2341,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         {
             Logger.LogDebug("[GodChatGAgent][GenerateDailyRecommendationsAsync] Generating daily recommendations");
             
-            // Get user information
-            var currentTime = DateTime.UtcNow;
-            
             // Format calendar events
             var notBound = !calendarEvents.Success && calendarEvents.Error == "Google account not bound";
             var hasEvents = calendarEvents?.Success == true && !calendarEvents.Events.IsNullOrEmpty();
@@ -2335,11 +2351,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             // Generate recommendations based on scenarios
             if (isSubscribed && hasEvents)
             {
-                return $"{prompt}{GenerateSubscribedUserWithEventsRecommendations(currentTime, formattedEvents, calendarEvents!.Events, language)}";
+                return $"{prompt}{GenerateSubscribedUserWithEventsRecommendations(formattedEvents, calendarEvents!.Events, language)}";
             }
             else if (!isSubscribed && hasEvents)
             {
-                return $"{prompt}{GenerateNonSubscribedUserWithEventsRecommendations(currentTime, formattedEvents, calendarEvents!.Events, language)}";
+                return $"{prompt}{GenerateNonSubscribedUserWithEventsRecommendations(formattedEvents, calendarEvents!.Events, language)}";
             } else if (isSubscribed &&  !hasEvents && !notBound)
             {
                 return $"{prompt}{GeneratePaidAndBoundUserWithoutEventsRecommendations(language)}";
@@ -2382,7 +2398,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     
     private string GeneratePaidAndBoundUserWithoutEventsRecommendations(string language)
     {
-        var prompt = $@"Output Format (use the user's {language} for the response):
+        var prompt = $@"Use the following format for the output:
 Hi, {{user_name}}, based on your name, gender, age, location, and local time, here are your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
 DO
 - Xxxx
@@ -2403,7 +2419,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
     /// </summary>
     private string GenerateUserWithoutEventsRecommendations(string language)
     {
-        var prompt = $@"Use the following format for the output (and respond in the user's specified {language}):
+        var prompt = $@"Use the following format for the output:
 Based on your name, gender, age, location, and local time, here are your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
 DO
 - Xxxx
@@ -2419,7 +2435,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
     /// <summary>
     /// Generate recommendations for non-subscribed users with events
     /// </summary>
-    private string GenerateNonSubscribedUserWithEventsRecommendations(DateTime currentTime, List<string> formattedEvents, List<GoogleCalendarEventDto> events, string language)
+    private string GenerateNonSubscribedUserWithEventsRecommendations(List<string> formattedEvents, List<GoogleCalendarEventDto> events, string language)
     {
         var prompt = $@"User events event_title @ time \\n";
 
@@ -2442,7 +2458,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
             
             if (eventTime.IsNullOrWhiteSpace())
             {
-                prompt += $@"{eventSummary}\\n";
+                //prompt += $@"{eventSummary}\\n";
             }
             else
             {
@@ -2451,7 +2467,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
         }
 
         
-        prompt += $@"Use the following format for the output (and respond in the user's specified {language}):
+        prompt += $@"Use the following format for the output:
 Hi, {{user_name}}, based on your name, gender, age, location, and local time, I have generated your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
 DO
 - Xxxx
@@ -2470,7 +2486,7 @@ Would you like me to create detailed guidance for you?";
     /// <summary>
     /// Generate recommendations for subscribed users with events
     /// </summary>
-    private string GenerateSubscribedUserWithEventsRecommendations(DateTime currentTime, List<string> formattedEvents, List<GoogleCalendarEventDto> events, string language)
+    private string GenerateSubscribedUserWithEventsRecommendations(List<string> formattedEvents, List<GoogleCalendarEventDto> events, string language)
     {
         
         var prompt = $@"User events event_title @ time \\n";
@@ -2494,7 +2510,7 @@ Would you like me to create detailed guidance for you?";
 
             if (eventTime.IsNullOrWhiteSpace())
             {
-                prompt += $@"{eventSummary}\\n";
+                //prompt += $@"{eventSummary}\\n";
             }
             else
             {
@@ -2502,7 +2518,7 @@ Would you like me to create detailed guidance for you?";
             }
         }
 
-        prompt += $@"Use the following format for the output (and respond in the user's specified {language}):
+        prompt += $@"Use the following format for the output:
 Hi, {{user_name}}, based on your name, gender, age, location, and local time, I have generated your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
 DO
 - Xxxx
@@ -2512,8 +2528,7 @@ DON'T
 - Xxxxx
 
 Event1 @ time
-Overview
-Event Overview
+xxxxxxx(Event Overview)
 DO
 - Xxxx
 - xxxxx
@@ -2522,8 +2537,7 @@ DON'T
 - Xxxxx
 
 Event2 @ time
-Overview
-Event Overview
+xxxxxxx(Event Overview)
 DO
 - Xxxx
 - xxxxx

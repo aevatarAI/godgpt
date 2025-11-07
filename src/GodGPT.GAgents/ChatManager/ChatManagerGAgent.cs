@@ -18,6 +18,7 @@ using Aevatar.Application.Grains.ChatManager.UserQuota;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Common.Service;
+using Aevatar.Application.Grains.GoogleAuth;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.UserBilling;
 using Aevatar.Application.Grains.UserInfo;
@@ -878,6 +879,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
         var userInfoCollectionGAgent = GrainFactory.GetGrain<IUserInfoCollectionGAgent>(this.GetPrimaryKey());
         await userInfoCollectionGAgent.ClearAllAsync();
+
+        var googleAuthGAgent = GrainFactory.GetGrain<IGoogleAuthGAgent>(this.GetPrimaryKey());
+        await googleAuthGAgent.UnbindAccountAsync();
 
         RaiseEvent(new ClearAllEventLog());
         await ConfirmEvents();
