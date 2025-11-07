@@ -271,29 +271,23 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         if (!State.IsInitialized)
         {
             _logger.LogWarning("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] User info collection not initialized");
-            return null;
-        }
-
-        var userInfoCollectionDto = ConvertStateToDto();
-
-        if (!userInfoCollectionDto.IsInitialized)
-        {
+            
             var userGrainId = CommonHelper.StringToGuid(this.GetPrimaryKey().ToString());
             var fortuneUserProfileGAgent = GrainFactory.GetGrain<IFortuneUserProfileGAgent>(userGrainId);
             var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync();
             if (profileResult.Success &&  profileResult.UserProfile != null && !profileResult.UserProfile.UserId.IsNullOrWhiteSpace())
             {
-                userInfoCollectionDto.IsInitialized = true;
                 _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] query fortune user profile, userId {UserId}, initialized {Initialized}", 
                     this.GetPrimaryKey().ToString(), true);
+                return new UserInfoCollectionDto
+                {
+                    IsInitialized = true
+                };
             }
-            else
-            {
-                _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] query fortune user profile, userId {UserId}, not exist. ", 
-                    this.GetPrimaryKey().ToString());
-            }
+            return null;
         }
-        
+
+        var userInfoCollectionDto = ConvertStateToDto();
         _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] result: userId {UserId}, initialized {Initialized}", 
             this.GetPrimaryKey().ToString(), userInfoCollectionDto.IsInitialized);
         
