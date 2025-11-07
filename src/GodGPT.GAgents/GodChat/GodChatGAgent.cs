@@ -178,7 +178,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         string? context = input.Context;
         
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region}, hasContext:{!string.IsNullOrEmpty(context)}");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region}");
+        bool hasContext = !string.IsNullOrEmpty(context);
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] hasContext:{hasContext}");
 
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
