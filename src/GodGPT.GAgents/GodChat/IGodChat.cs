@@ -20,7 +20,7 @@ public interface IGodChat : IGAgent
 
     Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false, string? region = null,
-        bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null, string? userTimeZoneId = null);
+        bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null, string? userTimeZoneId = null, string? context = null);
 
     [ReadOnly]
     Task<List<ChatMessage>> GetChatMessageAsync();
