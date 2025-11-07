@@ -329,6 +329,11 @@ public class ChatMessageMeta
     /// Duration of the voice message in seconds (from frontend)
     /// </summary>
     [Id(4)] public double VoiceDurationSeconds { get; set; }
+    
+    /// <summary>
+    /// User's quoted/referenced content (only for user messages)
+    /// </summary>
+    [Id(5)] public string? Context { get; set; }
 }
 
 public enum ChatErrorCode

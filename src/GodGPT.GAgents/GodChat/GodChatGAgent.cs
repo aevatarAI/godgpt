@@ -227,9 +227,20 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 ChatList = chatMessages
             });
             
+            // Create meta with context for user message
+            var userMessageMeta = new ChatMessageMeta
+            {
+                IsVoiceMessage = false,
+                VoiceLanguage = VoiceLanguageEnum.English,
+                VoiceParseSuccess = true,
+                VoiceParseErrorMessage = null,
+                VoiceDurationSeconds = 0.0,
+                Context = context  // Store context if provided
+            };
+            
             RaiseEvent(new AddChatMessageMetasLogEvent
             {
-                ChatMessageMetas = new List<ChatMessageMeta>()
+                ChatMessageMetas = new List<ChatMessageMeta>() { userMessageMeta }
             });
             
             await ConfirmEvents();
@@ -266,7 +277,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
             content, chatId, promptSettings, isHttpRequest, region, images: images, 
-            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId);
+            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context);
         
         totalStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
@@ -608,11 +619,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
         string? region = null, bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null,
-        string? userTimeZoneId = null)
+        string? userTimeZoneId = null, string? context = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug(
-            $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}");
+            $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}, hasContext:{!string.IsNullOrEmpty(context)}");
         
         var aiChatContextDto =
             CreateAIChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings, isHttpRequest,
@@ -679,6 +690,17 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             if (addToHistory)
             {
                 var historyStopwatch = Stopwatch.StartNew();
+                // Create meta with context for user message
+                var userMessageMeta = new ChatMessageMeta
+                {
+                    IsVoiceMessage = false,
+                    VoiceLanguage = VoiceLanguageEnum.English,
+                    VoiceParseSuccess = true,
+                    VoiceParseErrorMessage = null,
+                    VoiceDurationSeconds = 0.0,
+                    Context = context  // Store context if provided
+                };
+                
                 // Optimize: Use combined event to reduce RaiseEvent calls from 3 to 1
                 RaiseEvent(new GodStreamChatCombinedEventLog
                 {
@@ -692,7 +714,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                         }
                     },
                     ChatTime = DateTime.UtcNow,
-                    ChatMessageMetas = new List<ChatMessageMeta>()
+                    ChatMessageMetas = new List<ChatMessageMeta>() { userMessageMeta }
                 });
 
                 historyStopwatch.Stop();

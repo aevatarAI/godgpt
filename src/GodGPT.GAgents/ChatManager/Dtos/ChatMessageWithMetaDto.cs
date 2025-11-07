@@ -63,6 +63,7 @@ public class ChatMessageWithMetaDto
         {
             ChatRole = message.ChatRole,
             Content = message.Content,
+            Context = meta?.Context,  // Get context from meta
             IsVoiceMessage = meta?.IsVoiceMessage ?? false,
             VoiceLanguage = meta?.VoiceLanguage ?? VoiceLanguageEnum.English,
             VoiceParseSuccess = meta?.VoiceParseSuccess ?? true,
