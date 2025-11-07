@@ -666,7 +666,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 {
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
                     Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
-                    Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                 }
                 
                 enhancedMessage = enhancedMessage + ChatPrompts.ConversationSuggestionsPrompt;
