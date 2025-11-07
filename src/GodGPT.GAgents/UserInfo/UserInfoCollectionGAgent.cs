@@ -1,4 +1,6 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using Aevatar.Application.Grains.Fortune;
+using Aevatar.Application.Grains.Fortune.Dtos;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.Application.Grains.UserInfo.Dtos;
@@ -264,15 +266,38 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
 
     public async Task<UserInfoCollectionDto> GetUserInfoCollectionAsync()
     {
-        _logger.LogInformation("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Getting user info collection");
+        _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Getting user {UserId} info collection", this.GetPrimaryKey().ToString());
         
         if (!State.IsInitialized)
         {
             _logger.LogWarning("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] User info collection not initialized");
             return null;
         }
+
+        var userInfoCollectionDto = ConvertStateToDto();
+
+        if (!userInfoCollectionDto.IsInitialized)
+        {
+            var userGrainId = CommonHelper.StringToGuid(this.GetPrimaryKey().ToString());
+            var fortuneUserProfileGAgent = GrainFactory.GetGrain<IFortuneUserProfileGAgent>(userGrainId);
+            var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync();
+            if (profileResult.Success &&  profileResult.UserProfile != null && !profileResult.UserProfile.UserId.IsNullOrWhiteSpace())
+            {
+                userInfoCollectionDto.IsInitialized = true;
+                _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] query fortune user profile, userId {UserId}, initialized {Initialized}", 
+                    this.GetPrimaryKey().ToString(), true);
+            }
+            else
+            {
+                _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] query fortune user profile, userId {UserId}, not exist. ", 
+                    this.GetPrimaryKey().ToString());
+            }
+        }
         
-        return ConvertStateToDto();
+        _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] result: userId {UserId}, initialized {Initialized}", 
+            this.GetPrimaryKey().ToString(), userInfoCollectionDto.IsInitialized);
+        
+        return userInfoCollectionDto;
     }
 
     public async Task<UserInfoDisplayDto> GetUserInfoDisplayAsync()
@@ -332,38 +357,55 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
     public async Task<Tuple<string, string>> GenerateUserInfoPromptAsync(DateTime? userLocalTime = null)
     {
         _logger.LogInformation("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generating user info prompt");
-        
+
         if (!State.IsInitialized)
         {
             _logger.LogWarning("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] User info collection not initialized");
-            return new Tuple<string, string>(string.Empty, string.Empty);
+            
+            var userGrainId = CommonHelper.StringToGuid(this.GetPrimaryKey().ToString());
+            var fortuneUserProfileGAgent = GrainFactory.GetGrain<IFortuneUserProfileGAgent>(userGrainId);
+            var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync();
+
+            if (!profileResult.Success || profileResult.UserProfile == null || profileResult.UserProfile.UserId.IsNullOrWhiteSpace())
+            {
+                _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] query fortune user profile, userId {UserId} not exist.", 
+                    this.GetPrimaryKey().ToString());
+                return new Tuple<string, string>(string.Empty, string.Empty);
+            }
+
+            return await GenerateUserInfoPromptWithFortuneUserProfileAsync(userLocalTime, profileResult.UserProfile);
         }
 
+        return await GenerateUserInfoPromptWithUserProfileAsync(userLocalTime);
+    }
+
+    private async Task<Tuple<string, string>> GenerateUserInfoPromptWithUserProfileAsync(DateTime? userLocalTime)
+    {
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         var currentTime = userLocalTime ?? DateTime.UtcNow;
-        
+
         // Generate full name
         var fullName = $"{State.FirstName} {State.LastName}".Trim();
         if (string.IsNullOrWhiteSpace(fullName))
         {
             fullName = "Unknown";
         }
-        
+
         // Generate location
         var location = $"{State.City}, {State.Country}".Trim(' ', ',');
         if (string.IsNullOrWhiteSpace(location))
         {
             location = "Unknown";
         }
-        
+
         // Generate gender text
         var genderText = State.Gender switch
         {
             1 => "Male",
-            2 => "Female", 
+            2 => "Female",
             _ => "Unknown"
         };
-        
+
         // Calculate age from birth date
         var age = "Unknown";
         if (State.Year > 0 && State.Month > 0 && State.Day > 0)
@@ -376,15 +418,18 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 {
                     calculatedAge--;
                 }
+
                 age = calculatedAge.ToString();
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Invalid birth date: {Year}-{Month}-{Day}", State.Year, State.Month, State.Day);
+                _logger.LogWarning(ex,
+                    "[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Invalid birth date: {Year}-{Month}-{Day}",
+                    State.Year, State.Month, State.Day);
                 age = "Unknown";
             }
         }
-        
+
         // Generate language text
         var languageText = language switch
         {
@@ -394,12 +439,13 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             GodGPTLanguage.CN => "Chinese",
             _ => "English"
         };
-        
+
         // Format current time
         var timeText = currentTime.ToString("yyyy-MM-dd HH:mm:ss");
-        
+
         // Generate the prompt template
-        var prompt = $@"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.
+        var prompt =
+            $@"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.
 User Name: {fullName}
 User Location: {location}
 User Message Time: {timeText}
@@ -407,8 +453,92 @@ User Gender: {genderText}
 User Age: {age}
 User Language: {languageText}";
 
-        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generated prompt for user {UserId}", State.UserId);
+        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generated prompt for user {UserId}",
+            State.UserId);
+
+        return new Tuple<string, string>(fullName, prompt);
+    }
+    
+    
+    private async Task<Tuple<string, string>> GenerateUserInfoPromptWithFortuneUserProfileAsync(DateTime? userLocalTime,
+        FortuneUserProfileDto userProfile)
+    {
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+        var currentTime = userLocalTime ?? DateTime.UtcNow;
+
+        // Generate full name
         
+        var fullName = userProfile.FullName.Trim();
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            fullName = "Unknown";
+        }
+
+        // Generate location
+        var location = $"{userProfile.BirthCity}, {userProfile.BirthCountry}".Trim(' ', ',');
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            location = "Unknown";
+        }
+
+        // Generate gender text
+        var genderText = userProfile.Gender switch
+        {
+            GenderEnum.Male => "Male",
+            GenderEnum.Female => "Female",
+            _ => "Other"
+        };
+
+        // Calculate age from birth date
+        var age = "Unknown";
+        if (userProfile.BirthDate != default)
+        {
+            try
+            {
+                var birthDate = userProfile.BirthDate.ToDateTime(userProfile.BirthTime ?? default);;
+                var calculatedAge = currentTime.Year - userProfile.BirthDate.Year;
+                if (currentTime < birthDate.AddYears(calculatedAge))
+                {
+                    calculatedAge--;
+                }
+
+                age = calculatedAge.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[UserInfoCollectionGAgent][GenerateUserInfoPromptWithFortuneUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
+                    State.Year, State.Month, State.Day);
+                age = "Unknown";
+            }
+        }
+
+        // Generate language text
+        var languageText = language switch
+        {
+            GodGPTLanguage.English => "English",
+            GodGPTLanguage.TraditionalChinese => "Traditional Chinese",
+            GodGPTLanguage.Spanish => "Spanish",
+            GodGPTLanguage.CN => "Chinese",
+            _ => "English"
+        };
+
+        // Format current time
+        var timeText = currentTime.ToString("yyyy-MM-dd HH:mm:ss");
+
+        // Generate the prompt template
+        var prompt =
+            $@"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.
+User Name: {fullName}
+User Location: {location}
+User Message Time: {timeText}
+User Gender: {genderText}
+User Age: {age}
+User Language: {languageText}";
+
+        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generated prompt for user {UserId}",
+            this.GetPrimaryKey().ToString());
+
         return new Tuple<string, string>(fullName, prompt);
     }
 
