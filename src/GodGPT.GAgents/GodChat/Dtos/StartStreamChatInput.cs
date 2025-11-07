@@ -15,4 +15,5 @@ public class StartStreamChatInput
     [Id(7)] public List<string>? images { get; set; } = null;
     [Id(8)] public DateTime? UserLocalTime { get; set; } = null;
     [Id(9)] public string? UserTimeZoneId { get; set; } = string.Empty;
+    [Id(10)] public string? Context { get; set; } = null;
 }
