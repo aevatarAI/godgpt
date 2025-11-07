@@ -273,11 +273,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         await SetSessionTitleAsync(sessionId, originalContent);
         var configuration = GetConfiguration();
-        // Use merged content (with context) for LLM call
+        // Use merged content (with context) for LLM call, but pass originalContent for storage
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
             content, chatId, promptSettings, isHttpRequest, region, images: images, 
-            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context);
+            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context,
+            originalUserMessage: originalContent);
         
         totalStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
@@ -619,14 +620,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
         string? region = null, bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null,
-        string? userTimeZoneId = null, string? context = null)
+        string? userTimeZoneId = null, string? context = null, string? originalUserMessage = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug(
             $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}, hasContext:{!string.IsNullOrEmpty(context)}");
         
-        var configuration = GetConfiguration();
-        var sysMessage = await configuration.GetPrompt();
+        // Use originalUserMessage for storage if provided, otherwise use message
+        var contentToStore = originalUserMessage ?? message;
         
         var aiChatContextDto =
             CreateAIChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings, isHttpRequest,
@@ -715,7 +716,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                         new ChatMessage
                         {
                             ChatRole = ChatRole.User,
-                            Content = message,
+                            Content = contentToStore,  // Store original content, not merged
                             ImageKeys = images
                         }
                     },
