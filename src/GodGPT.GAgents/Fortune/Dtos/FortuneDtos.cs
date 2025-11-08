@@ -237,8 +237,11 @@ public class PredictionResultDto
     [Id(4)] public DateTime CreatedAt { get; set; }
     [Id(5)] public bool FromCache { get; set; }
     [Id(6)] public Dictionary<string, string> LifetimeForecast { get; set; } = new Dictionary<string, string>();
-    [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; } = new Dictionary<string, string>();
-    [Id(8)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } = null; // Method feedbacks (if exist)
+    [Id(7)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } = null; // Method feedbacks (if exist)
+    
+    // Multilingual support - contains all language versions (en, zh-tw, zh, es)
+    [Id(8)] public Dictionary<string, Dictionary<string, Dictionary<string, string>>>? MultilingualResults { get; set; }
+    [Id(9)] public Dictionary<string, Dictionary<string, string>>? MultilingualLifetime { get; set; }
 }
 
 /// <summary>
