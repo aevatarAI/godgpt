@@ -530,7 +530,7 @@ User Gender: {genderText}
 User Age: {age}
 User Language: {languageText}";
 
-        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generated prompt for user {UserId}",
+        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptWithFortuneUserProfileAsync] Generated prompt for user {UserId}",
             this.GetPrimaryKey().ToString());
 
         return new Tuple<string, string>(fullName, prompt);
