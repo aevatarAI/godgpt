@@ -2433,7 +2433,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
     private string GenerateUserWithoutEventsRecommendations(string language)
     {
         var prompt = $@"Use the following format for the output:
-Based on your name, gender, age, location, and local time, here are your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
+Hi, {{user_name}}, based on your name, gender, age, location, and local time, here are your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
 DO
 - Xxxx
 - xxxxx
