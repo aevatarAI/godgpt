@@ -12,11 +12,21 @@ using Orleans.Concurrency;
 namespace Aevatar.Application.Grains.Fortune;
 
 /// <summary>
+/// Prediction type enumeration
+/// </summary>
+public enum PredictionType
+{
+    Daily = 0,      // Daily prediction - updates every day
+    Yearly = 1,     // Yearly prediction - updates every year
+    Lifetime = 2    // Lifetime prediction - never updates (unless profile changes)
+}
+
+/// <summary>
 /// Interface for Fortune Prediction GAgent - manages fortune prediction generation
 /// </summary>
 public interface IFortunePredictionGAgent : IGAgent
 {
-    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, bool lifetime = false);
+    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily);
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionAsync();
@@ -24,7 +34,7 @@ public interface IFortunePredictionGAgent : IGAgent
 
 [GAgent(nameof(FortunePredictionGAgent))]
 [Reentrant]
-public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, FortunePredictionEventLog>, 
+public class FortunePredictionGAgent : GAgentBase<LumenPredictionState, LumenPredictionEventLog>, 
     IFortunePredictionGAgent
 {
     private readonly ILogger<FortunePredictionGAgent> _logger;
@@ -46,64 +56,85 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortunePredictionState state,
-        StateLogEventBase<FortunePredictionEventLog> @event)
+    protected sealed override void GAgentTransitionState(LumenPredictionState state,
+        StateLogEventBase<LumenPredictionEventLog> @event)
     {
         switch (@event)
         {
-            case PredictionGeneratedEvent generatedEvent:
+            case LumenPredictionGeneratedEvent generatedEvent:
                 state.PredictionId = generatedEvent.PredictionId;
                 state.UserId = generatedEvent.UserId;
                 state.PredictionDate = generatedEvent.PredictionDate;
                 state.Results = generatedEvent.Results;
-                state.Energy = generatedEvent.Energy;
                 state.CreatedAt = generatedEvent.CreatedAt;
                 state.ProfileUpdatedAt = generatedEvent.ProfileUpdatedAt;
                 if (!generatedEvent.LifetimeForecast.IsNullOrEmpty())
                 {
                     state.LifetimeForecast = generatedEvent.LifetimeForecast;
                 }
-                if (!generatedEvent.WeeklyForecast.IsNullOrEmpty())
+                if (!generatedEvent.YearlyForecast.IsNullOrEmpty())
                 {
-                    state.WeeklyForecast = generatedEvent.WeeklyForecast;
-                    state.WeeklyGeneratedDate = generatedEvent.WeeklyGeneratedDate;
+                    state.YearlyForecast = generatedEvent.YearlyForecast;
+                    state.YearlyGeneratedDate = generatedEvent.YearlyGeneratedDate;
+                }
+                // Update multilingual caches
+                if (generatedEvent.MultilingualResults != null)
+                {
+                    state.MultilingualResults = generatedEvent.MultilingualResults;
+                }
+                if (generatedEvent.MultilingualLifetime != null)
+                {
+                    state.MultilingualLifetime = generatedEvent.MultilingualLifetime;
+                }
+                if (generatedEvent.MultilingualYearly != null)
+                {
+                    state.MultilingualYearly = generatedEvent.MultilingualYearly;
                 }
                 break;
         }
     }
 
-    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, bool lifetime = false)
+    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily)
     {
         try
         {
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            _logger.LogDebug("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Start - UserId: {UserId}, Date: {Date}",
-                userInfo.UserId, today);
-
-            // Check if prediction already exists (from cache/state)
-            if (lifetime)
-            {
-                // Check if lifetime exists
-                var hasLifetime = !State.LifetimeForecast.IsNullOrEmpty();
-                
-                // Check if weekly exists and is not expired (< 7 days old)
-                var hasValidWeekly = !State.WeeklyForecast.IsNullOrEmpty() && 
-                                     State.WeeklyGeneratedDate.HasValue && 
-                                     (DateTime.UtcNow - State.WeeklyGeneratedDate.Value).TotalDays < 7;
+            var currentYear = today.Year;
+            
+            _logger.LogDebug("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Start - UserId: {UserId}, Type: {Type}, Date: {Date}",
+                userInfo.UserId, type, today);
                 
                 // Check if profile has been updated since prediction was generated
                 var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
                 
-                // If both lifetime and valid weekly exist AND profile hasn't changed, return from cache
-                if (hasLifetime && hasValidWeekly && profileNotChanged)
+            // Check if prediction already exists (from cache/state) based on type
+            if (type == PredictionType.Lifetime)
+            {
+                // Lifetime: never expires unless profile changes
+                var hasLifetime = !State.LifetimeForecast.IsNullOrEmpty();
+                
+                if (hasLifetime && profileNotChanged)
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached lifetime+weekly prediction for {UserId}",
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached lifetime+weekly prediction (multilingual) for {UserId}",
                         userInfo.UserId);
 
-                    // Calculate and add currentPhase
+                    // Calculate and add currentPhase to all language versions
                     var lifetimeWithPhase = new Dictionary<string, string>(State.LifetimeForecast);
                     var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
                     lifetimeWithPhase["currentPhase"] = currentPhase.ToString();
+                    
+                    // Add currentPhase to multilingual versions too
+                    Dictionary<string, Dictionary<string, string>>? multilingualLifetimeWithPhase = null;
+                    if (State.MultilingualLifetime != null)
+                    {
+                        multilingualLifetimeWithPhase = new Dictionary<string, Dictionary<string, string>>();
+                        foreach (var kvp in State.MultilingualLifetime)
+                        {
+                            var lifetimeCopy = new Dictionary<string, string>(kvp.Value);
+                            lifetimeCopy["currentPhase"] = currentPhase.ToString();
+                            multilingualLifetimeWithPhase[kvp.Key] = lifetimeCopy;
+                        }
+                    }
 
                     return new GetTodayPredictionResult
                     {
@@ -118,33 +149,67 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                             CreatedAt = State.CreatedAt,
                             FromCache = true,
                             LifetimeForecast = lifetimeWithPhase,
-                            WeeklyForecast = State.WeeklyForecast
+                            // Include multilingual cached data
+                            MultilingualLifetime = multilingualLifetimeWithPhase
                         }
                     };
                 }
                 
                 // Log reason for regeneration
-                if (!hasValidWeekly)
+                if (!profileNotChanged)
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Weekly expired or missing, regenerating for {UserId}",
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating lifetime prediction for {UserId}",
+                        userInfo.UserId);
+                }
+            }
+            else if (type == PredictionType.Yearly)
+            {
+                // Yearly: expires after 1 year OR if profile changes
+                var hasYearly = !State.YearlyForecast.IsNullOrEmpty();
+                var yearlyNotExpired = State.YearlyGeneratedDate.HasValue && 
+                                      State.YearlyGeneratedDate.Value.Year == currentYear;
+                
+                if (hasYearly && yearlyNotExpired && profileNotChanged)
+                {
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached yearly prediction (multilingual) for {UserId}",
+                        userInfo.UserId);
+
+                    return new GetTodayPredictionResult
+                    {
+                        Success = true,
+                        Message = string.Empty,
+                        Prediction = new PredictionResultDto
+                        {
+                            PredictionId = State.PredictionId,
+                            UserId = State.UserId,
+                            PredictionDate = State.PredictionDate,
+                            Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
+                            CreatedAt = State.CreatedAt,
+                            FromCache = true,
+                            LifetimeForecast = State.YearlyForecast, // Return yearly in LifetimeForecast field for API compatibility
+                            MultilingualLifetime = State.MultilingualYearly // Return yearly multilingual
+                        }
+                    };
+                }
+                
+                // Log reason for regeneration
+                if (!yearlyNotExpired)
+                {
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Yearly expired, regenerating for {UserId}",
                         userInfo.UserId);
                 }
                 if (!profileNotChanged)
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating prediction for {UserId}",
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating yearly prediction for {UserId}",
                         userInfo.UserId);
                 }
-            } 
-            
-            // Check daily prediction cache
-            if (!lifetime && State.PredictionId != Guid.Empty && State.PredictionDate == today)
+            }
+            else // PredictionType.Daily
             {
-                // Check if profile has been updated since prediction was generated
-                var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
-                
-                if (profileNotChanged)
+                // Daily: expires every day OR if profile changes
+                if (State.PredictionId != Guid.Empty && State.PredictionDate == today && profileNotChanged)
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached prediction for {UserId}",
+                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached prediction (with multilingual) for {UserId}",
                         userInfo.UserId);
 
                     return new GetTodayPredictionResult
@@ -158,7 +223,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                             PredictionDate = State.PredictionDate,
                             Results = State.Results,
                             CreatedAt = State.CreatedAt,
-                            FromCache = true
+                            FromCache = true,
+                            // Include multilingual cached data
+                            MultilingualResults = State.MultilingualResults
                         }
                     };
                 }
@@ -170,10 +237,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             }
 
             // Generate new prediction
-            _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Generating new prediction for {UserId}, {Lifetime}",
-                userInfo.UserId, lifetime);
+            _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Generating new prediction for {UserId}, Type: {Type}",
+                userInfo.UserId, type);
 
-            var predictionResult = await GeneratePredictionAsync(userInfo, today, lifetime);
+            var predictionResult = await GeneratePredictionAsync(userInfo, today, type);
             if (!predictionResult.Success)
             {
                 return predictionResult;
@@ -211,19 +278,21 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             CreatedAt = State.CreatedAt,
             FromCache = true,
             LifetimeForecast = State.LifetimeForecast,
-            WeeklyForecast = State.WeeklyForecast
+            // Include multilingual cached data
+            MultilingualResults = State.MultilingualResults,
+            MultilingualLifetime = State.MultilingualLifetime
         });
     }
 
     /// <summary>
     /// Generate new prediction using AI
     /// </summary>
-    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(FortuneUserDto userInfo, DateOnly predictionDate, bool lifetime)
+    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type)
     {
         try
         {
             // Build prompt
-            var prompt = BuildPredictionPrompt(userInfo, predictionDate, lifetime);
+            var prompt = BuildPredictionPrompt(userInfo, predictionDate, type);
 
             _logger.LogDebug("[FortunePredictionGAgent][GeneratePredictionAsync] Calling AI with prompt for user {UserId}",
                 userInfo.UserId);
@@ -273,17 +342,22 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 aiResponse);
 
             Dictionary<string, Dictionary<string, string>>? parsedResults = null;
-            Dictionary<string, string>? lifetimeForecast = State.LifetimeForecast ?? new Dictionary<string, string>();
-            Dictionary<string, string>? weeklyForecast = State.WeeklyForecast ?? new Dictionary<string, string>();
+            Dictionary<string, string>? lifetimeForecast = new Dictionary<string, string>();
+            Dictionary<string, string>? yearlyForecast = new Dictionary<string, string>();
+            
+            // Multilingual caches
+            Dictionary<string, Dictionary<string, Dictionary<string, string>>>? multilingualResults = null;
+            Dictionary<string, Dictionary<string, string>>? multilingualLifetime = null;
+            Dictionary<string, Dictionary<string, string>>? multilingualYearly = null;
 
             // Parse AI response based on type
-            if (lifetime)
+            if (type == PredictionType.Lifetime)
             {
-                // Parse Lifetime & Weekly
-                var (parsedLifetime, parsedWeekly) = ParseLifetimeWeeklyResponse(aiResponse);
-                if (parsedLifetime == null || parsedWeekly == null)
+                // Parse Lifetime (multilingual)
+                var (parsedLifetime, mlLifetime) = ParseMultilingualLifetimeResponse(aiResponse);
+                if (parsedLifetime == null)
                 {
-                    _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Lifetime/Weekly response");
+                    _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Lifetime response");
                     return new GetTodayPredictionResult
                     {
                         Success = false,
@@ -292,13 +366,31 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 }
                 
                 lifetimeForecast = parsedLifetime;
-                weeklyForecast = parsedWeekly;
+                multilingualLifetime = mlLifetime;
                 parsedResults = new Dictionary<string, Dictionary<string, string>>(); // Empty for lifetime mode
             }
-            else
+            else if (type == PredictionType.Yearly)
             {
-                // Parse Daily (6 dimensions)
-                parsedResults = ParseDailyResponse(aiResponse);
+                // Parse Yearly (multilingual) - reuse lifetime parser as structure is similar
+                var (parsedYearly, mlYearly) = ParseMultilingualLifetimeResponse(aiResponse);
+                if (parsedYearly == null)
+                {
+                    _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Yearly response");
+                    return new GetTodayPredictionResult
+                    {
+                        Success = false,
+                        Message = "Failed to parse AI response"
+                    };
+                }
+                
+                yearlyForecast = parsedYearly;
+                multilingualYearly = mlYearly;
+                parsedResults = new Dictionary<string, Dictionary<string, string>>(); // Empty for yearly mode
+            }
+            else // PredictionType.Daily
+            {
+                // Parse Daily (6 dimensions, multilingual)
+                (parsedResults, multilingualResults) = ParseMultilingualDailyResponse(aiResponse);
                 if (parsedResults == null)
                 {
                     _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Daily response");
@@ -313,32 +405,44 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
 
-            // Raise event to save prediction
-            RaiseEvent(new PredictionGeneratedEvent
+            // Raise event to save prediction (with multilingual support)
+            RaiseEvent(new LumenPredictionGeneratedEvent
             {
                 PredictionId = predictionId,
                 UserId = userInfo.UserId,
                 PredictionDate = predictionDate,
                 Results = parsedResults,
-                Energy = 0, // Not used, kept for State compatibility
                 CreatedAt = now,
                 LifetimeForecast = lifetimeForecast,
-                WeeklyForecast = weeklyForecast,
-                WeeklyGeneratedDate = weeklyForecast.IsNullOrEmpty() ? null : now,
-                ProfileUpdatedAt = userInfo.UpdatedAt
+                ProfileUpdatedAt = userInfo.UpdatedAt,
+                // Multilingual data
+                MultilingualResults = multilingualResults,
+                MultilingualLifetime = multilingualLifetime,
+                // Yearly data
+                YearlyForecast = yearlyForecast,
+                YearlyGeneratedDate = type == PredictionType.Yearly ? now : State.YearlyGeneratedDate,
+                MultilingualYearly = multilingualYearly
             });
 
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortunePredictionGAgent][GeneratePredictionAsync] Prediction generated successfully for user {UserId}",
+            _logger.LogInformation("[FortunePredictionGAgent][GeneratePredictionAsync] Prediction generated successfully (multilingual) for user {UserId}",
                 userInfo.UserId);
 
-            // Add currentPhase if lifetime was generated
-            if (lifetime && lifetimeForecast != null && !lifetimeForecast.IsNullOrEmpty())
+            // Add currentPhase to all language versions if lifetime was generated
+            if (type == PredictionType.Lifetime && multilingualLifetime != null)
             {
                 var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                foreach (var lang in multilingualLifetime.Keys)
+                {
+                    multilingualLifetime[lang]["currentPhase"] = currentPhase.ToString();
+                }
+                // Also add to default version
+                if (lifetimeForecast != null && !lifetimeForecast.IsNullOrEmpty())
+                {
                 lifetimeForecast["currentPhase"] = currentPhase.ToString();
+                }
             }
 
             return new GetTodayPredictionResult
@@ -353,8 +457,11 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     Results = parsedResults,
                     CreatedAt = now,
                     FromCache = false,
-                    LifetimeForecast = lifetimeForecast,
-                    WeeklyForecast = weeklyForecast
+                    // For yearly, return in LifetimeForecast field for API compatibility
+                    LifetimeForecast = type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast,
+                    // Multilingual data
+                    MultilingualResults = multilingualResults,
+                    MultilingualLifetime = type == PredictionType.Yearly ? multilingualYearly : multilingualLifetime
                 }
             };
         }
@@ -372,7 +479,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     /// <summary>
     /// Build prediction prompt for AI
     /// </summary>
-    private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate, bool lifetime)
+    private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type)
     {
         // Build user info line dynamically based on available fields
         var userInfoParts = new List<string>();
@@ -430,17 +537,27 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         var userInfoLine = string.Join(", ", userInfoParts);
 
         string prompt = string.Empty;
-        if (lifetime)
+        
+        // Multilingual instruction prefix
+        var multilingualPrefix = @"IMPORTANT: Generate prediction in 4 languages (English, Traditional Chinese, Simplified Chinese, Spanish).
+All text fields must be naturally translated (not word-by-word), keeping the same meaning and tone.
+Wrap your response in a 'predictions' object with language codes: 'en', 'zh-tw', 'zh', 'es'.
+
+";
+        
+        if (type == PredictionType.Lifetime)
         {
-            prompt = $@"Generate lifetime and weekly fortune prediction based on user's birth info and current date.
+            prompt = multilingualPrefix + $@"Generate lifetime fortune prediction based on user's birth info.
 User: {userInfoLine}
 Date: {predictionDate:yyyy-MM-dd}
 
 REQUIRED FORMAT:
 {{
+  ""predictions"": {{
+    ""en"": {{
   ""lifetime"": {{
-    ""title"": ""You are [archetype]"",
-    ""description"": ""[30-50 words about life purpose and goals]"",
+        ""title"": ""You are [archetype]"",
+        ""description"": ""[30-50 words about life purpose and goals]"",
     ""traits"": {{
       ""fateRarity"": {{""percentage"": [0.1-10.0], ""description"": ""[6-10 words]""}},
       ""mainElements"": ""[1-2 bilingual elements]"",
@@ -450,14 +567,18 @@ REQUIRED FORMAT:
       ""phase1"": {{""description"": ""[15-30 words for 0-20yrs]""}},
       ""phase2"": {{""description"": ""[15-30 words for 21-35yrs]""}},
       ""phase3"": {{""description"": ""[15-30 words for 36+yrs]""}}
+        }}
     }}
   }},
-  ""weekly"": {{
-    ""health"": [0-5],
-    ""money"": [0-5],
-    ""career"": [0-5],
-    ""romance"": [0-5],
-    ""focus"": [0-5]
+    ""zh-tw"": {{
+      ""lifetime"": {{ ...Traditional Chinese version... }}
+    }},
+    ""zh"": {{
+      ""lifetime"": {{ ...Simplified Chinese version... }}
+    }},
+    ""es"": {{
+      ""lifetime"": {{ ...Spanish version... }}
+    }}
   }}
 }}
 
@@ -468,7 +589,6 @@ RULES:
 - mainElements: 1-2 bilingual elements from ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
 - lifePath: 2-4 roles comma-separated
 - phases: 15-30 words each (phase1: 0-20yrs, phase2: 21-35yrs, phase3: 36+yrs)
-- weekly: integers 0-5
 
 EXAMPLE (format reference):
 {{
@@ -485,105 +605,225 @@ EXAMPLE (format reference):
       ""phase2"": {{""description"": ""[15-30 words for 21-35yrs]""}},
       ""phase3"": {{""description"": ""[15-30 words for 36+yrs]""}}
     }}
-  }},
-  ""weekly"": {{
-    ""health"": 4,
-    ""money"": 3,
-    ""career"": 5,
-    ""romance"": 4,
-    ""focus"": 3
   }}
 }}";
         }
-        else
+        else if (type == PredictionType.Yearly)
         {
-            prompt = $@"Generate daily fortune prediction for {predictionDate:yyyy-MM-dd} based on user's profile.
+            prompt = multilingualPrefix + $@"Generate yearly fortune prediction for {predictionDate.Year} based on user's birth info.
 User: {userInfoLine}
+Year: {predictionDate.Year}
 
-Analyze 6 dimensions: opportunity, bazi, astrology, tarot, lifeTheme1, lifeTheme2
-
-REQUIRED FORMAT:
+REQUIRED FORMAT (ENGLISH - then translate to other languages):
 {{
-  ""opportunity"": {{
-    ""color"": ""[capitalized word]"",
-    ""crystal"": ""[capitalized word]"",
-    ""number"": ""[capitalized word NOT digit]"",
-    ""title"": ""[3-5 words]"",
-    ""description"": ""[10-20 words]""
-  }},
-  ""bazi"": {{
-    ""heavenlyStemEarthlyBranch"": ""[10-15 words explanatory]"",
-    ""fiveElements"": ""[10-15 words with bilingual]"",
-    ""compatibility"": ""[10-15 words explanatory]"",
-    ""energyFlow"": ""[10-15 words explanatory]""
-  }},
-  ""astrology"": {{
-    ""sunSign"": ""[sign name]"",
-    ""moonSign"": ""[sign name]"",
-    ""risingSign"": ""[sign name]"",
-    ""overallFortune"": ""[0-10.0]"",
-    ""luckyElement"": ""[bilingual]"",
-    ""keywordFocus"": ""[word/phrase]"",
-    ""moonInfluence"": ""[10-15 words]""
-  }},
-  ""tarot"": {{
-    ""card"": ""[Position | Name · Orientation]"",
-    ""interpretation"": ""[25-30 words]""
-  }},
-  ""lifeTheme1"": {{
-    ""theme"": ""[1 word]"",
-    ""description"": ""[30+ words]""
-  }},
-  ""lifeTheme2"": {{
-    ""theme"": ""[1 word]"",
-    ""description"": ""[30+ words]""
+  ""predictions"": {{
+    ""en"": {{
+      ""zodiacInfluence"": ""[User's zodiac] native in a [Year's zodiac] year → [Taishui relationship]"",
+      ""westernAstroOverlay"": ""[Sun sign] Sun · [Year role/archetype] — {predictionDate.Year}\n[Key planetary positions]"",
+      ""yearlyTheme"": {{
+        ""overallTheme"": ""[3-5 words theme title]"",
+        ""atAGlance"": ""[One sentence: 20-30 words summarizing the year's energy]""
+      }},
+      ""divineInfluence"": {{
+        ""career"": {{
+          ""score"": [1-4],
+          ""bestMoves"": [
+            ""[15-25 words: specific actionable advice]"",
+            ""[15-25 words: specific actionable advice]""
+          ],
+          ""avoid"": [
+            ""[10-20 words: what to avoid]"",
+            ""[10-20 words: what to avoid]""
+          ]
+        }},
+        ""love"": {{
+          ""score"": [1-4],
+          ""bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
+          ""avoid"": [""[10-20 words]"", ""[10-20 words]""]
+        }},
+        ""wealth"": {{
+          ""score"": [1-4],
+          ""bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
+          ""avoid"": [""[10-20 words]"", ""[10-20 words]""]
+        }},
+        ""health"": {{
+          ""score"": [1-4],
+          ""bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
+          ""avoid"": [""[10-20 words]"", ""[10-20 words]""]
+        }}
+      }},
+      ""embodimentMantra"": ""[20-40 words: poetic, powerful mantra for the year]""
+    }},
+    ""zh-tw"": {{...same structure, Traditional Chinese}},
+    ""zh"": {{...same structure, Simplified Chinese}},
+    ""es"": {{...same structure, Spanish}}
   }}
 }}
 
-RULES:
-- opportunity.title: 3-5 words, DIRECT and actionable
-- opportunity.description: 10-25 words, clearly state what TO DO and what to AVOID today
-- opportunity: color/crystal/number use capitalized English words (NOT digits)
-- bazi: 10-15 words explanatory per field, bilingual elements: ""Fire (火)"", ""Metal (金)"", ""Water (水)"", ""Wood (木)"", ""Earth (土)""
-- astrology: calculate signs based on date, overallFortune 0-10 with decimal, luckyElement bilingual, moonInfluence 10-15 words
-- tarot: card format ""Position | CardName · Upright/Reversed"", interpretation 25-30 words
-- lifeTheme: AI generates theme (1 word), description 30+ words
+STRUCTURE RULES:
+1. zodiacInfluence: Combine Chinese zodiac (user's birth year animal + current year animal) + Taishui relationship (刑太岁/冲太岁/合太岁/害太岁 etc.)
+2. westernAstroOverlay: User's sun sign + archetypal role for the year + major planetary transits relevant to {predictionDate.Year}
+3. yearlyTheme.overallTheme: A thematic title (3-5 words) capturing the year's essence
+4. yearlyTheme.atAGlance: One clear sentence summarizing what this year brings
+5. divineInfluence: Score each dimension 1-4 (1=lowest, 4=highest energy/opportunity)
+   - bestMoves: 2 specific, actionable strategies
+   - avoid: 2 clear warnings about what to steer clear of
+6. embodimentMantra: A poetic, memorable statement to carry through the year
 
-EXAMPLE (format reference):
+TRANSLATION PATTERNS:
+- zodiacInfluence: Keep zodiac animals in English or use local names (蛇年/Año de la Serpiente)
+- Taishui relationships: Use Chinese terms with translations where appropriate
+- embodimentMantra: Translate poetically, maintaining rhythm and power
+
+TONE & STYLE:
+- Use second person (You/Your) extensively to create direct, personal connection
+- Write as if speaking directly to the user, making them feel seen and understood
+- Maintain warm, conversational tone—like a trusted guide, not a distant oracle
+- Balance mystical wisdom with approachable, actionable language
+- Scores should reflect realistic assessment, not overly optimistic
+
+EXAMPLE (for reference):
 {{
-  ""opportunity"": {{
-    ""color"": ""Emerald"",
-    ""crystal"": ""Amethyst"",
-    ""number"": ""Seven"",
-    ""title"": ""Act on Creative Ideas"",
-    ""description"": ""DO: [action]. AVOID: [caution].""
-  }},
-  ""bazi"": {{
-    ""heavenlyStemEarthlyBranch"": ""[combine 天干 like 甲/乙/丙 with 地支 like 寅/卯/辰]"",
-    ""fiveElements"": ""[use bilingual: Fire (火), Metal (金), Water (水), Wood (木), Earth (土)]"",
-    ""compatibility"": ""[10-15 words]"",
-    ""energyFlow"": ""[10-15 words]""
-  }},
-  ""astrology"": {{
-    ""sunSign"": ""Leo"",
-    ""moonSign"": ""Cancer"",
-    ""risingSign"": ""Sagittarius"",
-    ""overallFortune"": ""8.2"",
-    ""luckyElement"": ""Earth (土)"",
-    ""keywordFocus"": ""Transformation"",
-    ""moonInfluence"": ""[10-15 words]""
-  }},
-  ""tarot"": {{
-    ""card"": ""Future | The Empress · Upright"",
-    ""interpretation"": ""[25-30 words]""
-  }},
-  ""lifeTheme1"": {{
-    ""theme"": ""Growth"",
-    ""description"": ""[30+ words]""
-  }},
-  ""lifeTheme2"": {{
-    ""theme"": ""Connection"",
-    ""description"": ""[30+ words]""
+  ""predictions"": {{
+    ""en"": {{
+      ""zodiacInfluence"": ""Earth Snake native in a Wood Snake year → Self-Punishment Taishui (刑太岁)"",
+      ""westernAstroOverlay"": ""Pisces Sun · Intuitive Creator — 2025\nSaturn & Neptune in Pisces"",
+      ""yearlyTheme"": {{
+        ""overallTheme"": ""Recalibration of Self, Speech & System"",
+        ""atAGlance"": ""Both Eastern and Western systems agree: 2025 is a year of internal pressure, clarity, and purification.""
+      }},
+      ""divineInfluence"": {{
+        ""career"": {{
+          ""score"": 3,
+          ""bestMoves"": [
+            ""Rebrand or restructure your personal/professional platform—you're ready for a new chapter that reflects your evolved values."",
+            ""Start building passive or IP-based income: course, book, tool, system—your expertise is worth packaging.""
+          ],
+          ""avoid"": [
+            ""Taking shortcuts to 'force results'—sustainable growth takes patient strategy this year."",
+            ""Team dramas or unclear partnerships—clarify roles and boundaries early.""
+          ]
+        }},
+        ""love"": {{
+          ""score"": 2,
+          ""bestMoves"": [
+            ""Communicate your needs with radical honesty—vulnerability deepens real connection this year."",
+            ""Invest in quality time over grand gestures—presence matters more than performance.""
+          ],
+          ""avoid"": [
+            ""Avoiding difficult conversations—unspoken tension will only grow."",
+            ""Forcing commitment or clarity before it's naturally ready—trust timing.""
+          ]
+        }},
+        ""wealth"": {{
+          ""score"": 3,
+          ""bestMoves"": [
+            ""Focus on long-term wealth building: retirement, property, or passive income streams aligned with your purpose."",
+            ""Audit your financial systems—automate, consolidate, and optimize what you already have.""
+          ],
+          ""avoid"": [
+            ""High-risk speculation or 'get rich quick' schemes—2025 rewards slow, steady growth."",
+            ""Overspending to compensate for emotional voids—money can't buy inner peace this year.""
+          ]
+        }},
+        ""health"": {{
+          ""score"": 2,
+          ""bestMoves"": [
+            ""Prioritize nervous system regulation: meditation, breathwork, or somatic therapy—your body holds stress you don't realize."",
+            ""Build consistent, gentle routines: sleep hygiene, hydration, movement—small habits compound powerfully this year.""
+          ],
+          ""avoid"": [
+            ""Ignoring emotional red flags or pushing through burnout—rest is productive this year."",
+            ""Over-reliance on stimulants (caffeine, sugar) to mask exhaustion—address the root cause.""
+          ]
+        }}
+      }},
+      ""embodimentMantra"": ""My words build worlds. My silence tunes my frequency. My path is not rushed—it is authored.""
+    }}
+  }}
+}}";
+        }
+        else // PredictionType.Daily
+        {
+            prompt = multilingualPrefix + $@"⚠️ CRITICAL: All word count requirements are MINIMUMS. ""10-15 words"" means AT LEAST 10 words.
+
+Generate daily fortune prediction for {predictionDate:yyyy-MM-dd} based on user's profile.
+User: {userInfoLine}
+
+OUTPUT FORMAT:
+{{
+  ""predictions"": {{
+    ""en"": {{
+      ""dayTitle"": ""The Day of [word1] and [word2]"",           // Evocative words capturing day's essence
+      ""todaysReading"": {{
+        ""tarotCard"": {{""name"": ""[card]"", ""represents"": ""[1-3 words]""}},
+        ""pathTitle"": ""{{firstName}}'s Path Today - A [Adjective] Path"",
+        ""pathDescription"": ""[30-50 words: warm greeting + day's theme]"",
+        ""careerAndWork"": ""[20-30 words: specific actionable advice]"",
+        ""loveAndRelationships"": ""[20-30 words: specific actionable advice]"",
+        ""wealthAndFinance"": ""[20-30 words: specific actionable advice]"",
+        ""healthAndWellness"": ""[20-30 words: specific actionable advice]""
+      }},
+      ""todaysTakeaway"": ""[One powerful sentence with {{firstName}}]"",
+      ""luckyAlignments"": {{
+        ""luckyNumber"": {{""number"": ""[Seven]"", ""digit"": ""[7]"", ""description"": ""Today carries Number [X]'s energy...""}},
+        ""luckyStone"": ""[Amethyst]"",
+        ""luckySpell"": ""[2-4 words mystical phrase]""
+      }},
+      ""twistOfFate"": {{
+        ""favorable"": [""[10-15 words advice - MUST be at least 10 words]"", ""[10-15 words advice - MUST be at least 10 words]""],
+        ""avoid"": [""[10-15 words warning - MUST be at least 10 words]"", ""[10-15 words warning - MUST be at least 10 words]""],
+        ""todaysRecommendation"": ""[One sentence: day's turning point]""
+      }}
+    }},
+    ""zh-tw"": {{...same structure, Traditional Chinese}},
+    ""zh"": {{...same structure, Simplified Chinese}},
+    ""es"": {{...same structure, Spanish}}
+  }}
+}}
+
+TRANSLATION PATTERNS:
+- dayTitle: ""The Day of X and Y"" → ""[X]與[Y]之日"" (zh-tw) / ""[X]与[Y]之日"" (zh) / ""El Día de X y Y"" (es)
+- pathTitle: ""{{firstName}}'s Path Today - A X Path"" → ""{{firstName}}今日之路 - [X]之路"" (zh-tw/zh) / ""El Camino de {{firstName}} Hoy - Un Camino X"" (es)
+
+TONE & STYLE:
+- Use second person (You/Your) extensively to create direct, personal connection
+- Write as if speaking directly to the user, making them feel seen and understood
+- Maintain warm, conversational tone—like a trusted guide, not a distant oracle
+- Balance mystical wisdom with approachable language
+
+EXAMPLE:
+{{
+  ""predictions"": {{
+    ""en"": {{
+      ""dayTitle"": ""The Day of Reflection and Strength"",
+      ""todaysReading"": {{
+        ""tarotCard"": {{""name"": ""The Empress"", ""represents"": ""Abundance""}},
+        ""pathTitle"": ""Sean's Path Today - A Difficult Path"",
+        ""pathDescription"": ""Hi Sean, today brings you challenges but also growth. The road ahead may feel blocked to you, but remember—obstacles forge your character and reveal your inner strength."",
+        ""careerAndWork"": ""You'll find strategic planning serves you better than pushing hard today. Patient preparation is your ally, not aggressive action. Focus on building your foundation."",
+        ""loveAndRelationships"": ""Misunderstandings may arise around you—stay calm and communicate gently. Your ability to listen deeply will clear what force cannot. Patience is your superpower today."",
+        ""wealthAndFinance"": ""Exercise caution with your investments today. Prioritize stability in your finances over expansion. Review your financial structure and consolidate what you have."",
+        ""healthAndWellness"": ""Your strength today lies in stillness, not intensity. Gentle movement, rest, and turning your focus inward will restore your energy more than pushing your limits.""
+      }},
+      ""todaysTakeaway"": ""Sean, your power today is not in force, but in your stillness—ground yourself and clarity will follow."",
+      ""luckyAlignments"": {{
+        ""luckyNumber"": {{""number"": ""Seven"", ""digit"": ""7"", ""description"": ""Today carries Number 7's energy: introspection, wisdom, mystery, and spiritual elevation.""}},
+        ""luckyStone"": ""Amethyst"",
+        ""luckySpell"": ""The Still""
+      }},
+      ""twistOfFate"": {{
+        ""favorable"": [
+          ""Engage deeply with those you trust and value their counsel—they see what you need."",
+          ""Listen to your capable advisors who can see what you might miss in your own path.""
+        ],
+        ""avoid"": [
+          ""Acting alone or being overly headstrong without seeking consultation—you need perspective today."",
+          ""Forcing your progress or confronting others aggressively—patience will serve you better.""
+        ],
+        ""todaysRecommendation"": ""Your turning point today lies in the connections you make, the collaboration you embrace, and the wisdom you exchange with your trusted allies.""
+      }}
+    }}
   }}
 }}";            
         }
@@ -776,6 +1016,161 @@ EXAMPLE (format reference):
             _logger.LogError(ex, "[FortunePredictionGAgent][ParseAIResponse] Failed to parse JSON");
             return (null, 70);
         }
+    }
+    
+    /// <summary>
+    /// Parse multilingual daily response from AI
+    /// Returns (default English results, multilingual dictionary)
+    /// </summary>
+    private (Dictionary<string, Dictionary<string, string>>?, Dictionary<string, Dictionary<string, Dictionary<string, string>>>?) ParseMultilingualDailyResponse(string aiResponse)
+    {
+        try
+        {
+            // Extract JSON from markdown code blocks if needed
+            var jsonMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*(\{[\s\S]*?\})\s*```");
+            if (jsonMatch.Success)
+            {
+                aiResponse = jsonMatch.Groups[1].Value;
+            }
+
+            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiResponse);
+            if (fullResponse == null)
+            {
+                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Failed to deserialize response");
+                return (null, null);
+            }
+
+            // Check if response has predictions wrapper
+            if (!fullResponse.ContainsKey("predictions"))
+            {
+                // Fallback to old format (single language)
+                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] No predictions wrapper found, using old format");
+                var singleLangResults = ParseDailyResponse(aiResponse);
+                return (singleLangResults, null);
+            }
+
+            var predictionsJson = JsonConvert.SerializeObject(fullResponse["predictions"]);
+            var predictions = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>(predictionsJson);
+            
+            if (predictions == null || predictions.Count == 0)
+            {
+                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] No predictions found");
+                return (null, null);
+            }
+
+            // Extract English version as default
+            Dictionary<string, Dictionary<string, string>>? defaultResults = null;
+            if (predictions.ContainsKey("en"))
+            {
+                defaultResults = predictions["en"];
+            }
+            else
+            {
+                // Use first available language as fallback
+                defaultResults = predictions.Values.FirstOrDefault();
+            }
+
+            return (defaultResults, predictions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortunePredictionGAgent][ParseMultilingualDailyResponse] Failed to parse multilingual response");
+            // Fallback to old format
+            return (ParseDailyResponse(aiResponse), null);
+        }
+    }
+    
+    /// <summary>
+    /// Parse multilingual lifetime response from AI
+    /// Returns (default lifetime, multilingual lifetime)
+    /// </summary>
+    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseMultilingualLifetimeResponse(string aiResponse)
+    {
+        try
+        {
+            // Extract JSON from markdown code blocks if needed
+            var jsonMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*(\{[\s\S]*?\})\s*```");
+            if (jsonMatch.Success)
+            {
+                aiResponse = jsonMatch.Groups[1].Value;
+            }
+
+            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiResponse);
+            if (fullResponse == null)
+            {
+                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Failed to deserialize response");
+                return (null, null);
+            }
+
+            // Check if response has predictions wrapper
+            if (!fullResponse.ContainsKey("predictions"))
+            {
+                // Fallback to old format (single language)
+                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] No predictions wrapper found, using old format");
+                var (lifetime, _) = ParseLifetimeWeeklyResponse(aiResponse);
+                return (lifetime, null);
+            }
+
+            var predictionsJson = JsonConvert.SerializeObject(fullResponse["predictions"]);
+            var predictions = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, object>>>(predictionsJson);
+            
+            if (predictions == null || predictions.Count == 0)
+            {
+                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] No predictions found");
+                return (null, null);
+            }
+
+            // Extract multilingual lifetime
+            var multilingualLifetime = new Dictionary<string, Dictionary<string, string>>();
+            
+            foreach (var langKvp in predictions)
+            {
+                var lang = langKvp.Key;
+                var langData = langKvp.Value;
+                
+                // Extract lifetime
+                if (langData.ContainsKey("lifetime"))
+                {
+                    var lifetimeJson = JsonConvert.SerializeObject(langData["lifetime"]);
+                    var lifetime = JsonConvert.DeserializeObject<Dictionary<string, string>>(lifetimeJson);
+                    if (lifetime != null)
+                    {
+                        multilingualLifetime[lang] = FlattenDictionary(lifetime);
+                    }
+                }
+            }
+
+            // Extract English version as default
+            Dictionary<string, string>? defaultLifetime = null;
+            
+            if (multilingualLifetime.ContainsKey("en"))
+            {
+                defaultLifetime = multilingualLifetime["en"];
+            }
+            else if (multilingualLifetime.Count > 0)
+            {
+                defaultLifetime = multilingualLifetime.Values.FirstOrDefault();
+            }
+
+            return (defaultLifetime, multilingualLifetime);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Failed to parse multilingual response");
+            // Fallback to old format
+            var (lifetime, _) = ParseLifetimeWeeklyResponse(aiResponse);
+            return (lifetime, null);
+        }
+    }
+    
+    /// <summary>
+    /// Helper method to flatten nested dictionary structure
+    /// </summary>
+    private Dictionary<string, string> FlattenDictionary(Dictionary<string, string> source)
+    {
+        // This is a simplified version - you may need to enhance based on actual structure
+        // For now, it just returns as-is since the actual parsing would convert nested objects to JSON strings
+        return source;
     }
 }
 

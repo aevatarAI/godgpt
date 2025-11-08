@@ -59,10 +59,10 @@ public class UserActionsUpdatedEvent : FortuneUserEventLog
 
 #endregion
 
-#region Prediction Events
+#region Prediction Events (Legacy)
 
 /// <summary>
-/// Base event log for Fortune Prediction GAgent
+/// Base event log for Fortune Prediction GAgent (Legacy - deprecated)
 /// </summary>
 [GenerateSerializer]
 public abstract class FortunePredictionEventLog : StateLogEventBase<FortunePredictionEventLog>
@@ -70,7 +70,7 @@ public abstract class FortunePredictionEventLog : StateLogEventBase<FortunePredi
 }
 
 /// <summary>
-/// Prediction generated event
+/// Prediction generated event (Legacy - deprecated)
 /// </summary>
 [GenerateSerializer]
 public class PredictionGeneratedEvent : FortunePredictionEventLog
@@ -85,6 +85,45 @@ public class PredictionGeneratedEvent : FortunePredictionEventLog
     [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; }
     [Id(8)] public DateTime? WeeklyGeneratedDate { get; set; }
     [Id(9)] public DateTime? ProfileUpdatedAt { get; set; }
+    [Id(10)] public Dictionary<string, Dictionary<string, Dictionary<string, string>>>? MultilingualResults { get; set; }
+    [Id(11)] public Dictionary<string, Dictionary<string, string>>? MultilingualLifetime { get; set; }
+    [Id(12)] public Dictionary<string, Dictionary<string, string>>? MultilingualWeekly { get; set; }
+}
+
+#endregion
+
+#region Lumen Prediction Events
+
+/// <summary>
+/// Base event log for Lumen Prediction GAgent
+/// </summary>
+[GenerateSerializer]
+public abstract class LumenPredictionEventLog : StateLogEventBase<LumenPredictionEventLog>
+{
+}
+
+/// <summary>
+/// Lumen prediction generated event (with daily/yearly/lifetime support)
+/// </summary>
+[GenerateSerializer]
+public class LumenPredictionGeneratedEvent : LumenPredictionEventLog
+{
+    [Id(0)] public Guid PredictionId { get; set; }
+    [Id(1)] public string UserId { get; set; } = string.Empty;
+    [Id(2)] public DateOnly PredictionDate { get; set; }
+    [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new(); // Daily results
+    [Id(4)] public DateTime CreatedAt { get; set; }
+    [Id(5)] public Dictionary<string, string> LifetimeForecast { get; set; } // Lifetime prediction
+    [Id(6)] public DateTime? ProfileUpdatedAt { get; set; }
+    
+    // Multilingual support
+    [Id(7)] public Dictionary<string, Dictionary<string, Dictionary<string, string>>>? MultilingualResults { get; set; } // Daily multilingual
+    [Id(8)] public Dictionary<string, Dictionary<string, string>>? MultilingualLifetime { get; set; } // Lifetime multilingual
+    
+    // Yearly prediction
+    [Id(9)] public Dictionary<string, string> YearlyForecast { get; set; } // Yearly prediction
+    [Id(10)] public DateTime? YearlyGeneratedDate { get; set; }
+    [Id(11)] public Dictionary<string, Dictionary<string, string>>? MultilingualYearly { get; set; } // Yearly multilingual
 }
 
 #endregion
