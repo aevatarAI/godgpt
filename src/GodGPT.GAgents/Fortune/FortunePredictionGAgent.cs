@@ -34,7 +34,7 @@ public interface IFortunePredictionGAgent : IGAgent
 
 [GAgent(nameof(FortunePredictionGAgent))]
 [Reentrant]
-public class FortunePredictionGAgent : GAgentBase<LumenPredictionState, LumenPredictionEventLog>, 
+public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, FortunePredictionEventLog>, 
     IFortunePredictionGAgent
 {
     private readonly ILogger<FortunePredictionGAgent> _logger;
@@ -56,16 +56,17 @@ public class FortunePredictionGAgent : GAgentBase<LumenPredictionState, LumenPre
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(LumenPredictionState state,
-        StateLogEventBase<LumenPredictionEventLog> @event)
+    protected sealed override void GAgentTransitionState(FortunePredictionState state,
+        StateLogEventBase<FortunePredictionEventLog> @event)
     {
         switch (@event)
         {
-            case LumenPredictionGeneratedEvent generatedEvent:
+            case PredictionGeneratedEvent generatedEvent:
                 state.PredictionId = generatedEvent.PredictionId;
                 state.UserId = generatedEvent.UserId;
                 state.PredictionDate = generatedEvent.PredictionDate;
                 state.Results = generatedEvent.Results;
+                state.Energy = generatedEvent.Energy; // Deprecated field
                 state.CreatedAt = generatedEvent.CreatedAt;
                 state.ProfileUpdatedAt = generatedEvent.ProfileUpdatedAt;
                 if (!generatedEvent.LifetimeForecast.IsNullOrEmpty())
@@ -406,18 +407,22 @@ public class FortunePredictionGAgent : GAgentBase<LumenPredictionState, LumenPre
             var now = DateTime.UtcNow;
 
             // Raise event to save prediction (with multilingual support)
-            RaiseEvent(new LumenPredictionGeneratedEvent
+            RaiseEvent(new PredictionGeneratedEvent
             {
                 PredictionId = predictionId,
                 UserId = userInfo.UserId,
                 PredictionDate = predictionDate,
                 Results = parsedResults,
+                Energy = 0, // Deprecated field, kept for backward compatibility
                 CreatedAt = now,
                 LifetimeForecast = lifetimeForecast,
+                WeeklyForecast = new Dictionary<string, string>(), // Deprecated field
+                WeeklyGeneratedDate = null, // Deprecated field
                 ProfileUpdatedAt = userInfo.UpdatedAt,
                 // Multilingual data
                 MultilingualResults = multilingualResults,
                 MultilingualLifetime = multilingualLifetime,
+                MultilingualWeekly = null, // Deprecated field
                 // Yearly data
                 YearlyForecast = yearlyForecast,
                 YearlyGeneratedDate = type == PredictionType.Yearly ? now : State.YearlyGeneratedDate,
