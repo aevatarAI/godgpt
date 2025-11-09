@@ -8,6 +8,7 @@ using Aevatar.GAgents.AI.Options;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
+using System.Diagnostics;
 
 namespace Aevatar.Application.Grains.Fortune;
 
@@ -97,13 +98,13 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
 
     public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily)
     {
+        var totalStopwatch = Stopwatch.StartNew();
         try
         {
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var currentYear = today.Year;
             
-            _logger.LogDebug("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Start - UserId: {UserId}, Type: {Type}, Date: {Date}",
-                userInfo.UserId, type, today);
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} START - Type: {type}, Date: {today}");
                 
                 // Check if profile has been updated since prediction was generated
                 var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
@@ -116,8 +117,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 
                 if (hasLifetime && profileNotChanged)
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached lifetime+weekly prediction (multilingual) for {UserId}",
-                        userInfo.UserId);
+                    totalStopwatch.Stop();
+                    _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Lifetime");
 
                     // Calculate and add currentPhase to all language versions
                     var lifetimeWithPhase = new Dictionary<string, string>(State.LifetimeForecast);
@@ -162,7 +163,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating lifetime prediction for {UserId}",
                         userInfo.UserId);
                 }
-            }
+            } 
             else if (type == PredictionType.Yearly)
             {
                 // Yearly: expires after 1 year OR if profile changes
@@ -172,8 +173,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 
                 if (hasYearly && yearlyNotExpired && profileNotChanged)
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached yearly prediction (multilingual) for {UserId}",
-                        userInfo.UserId);
+                    totalStopwatch.Stop();
+                    _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Yearly");
 
                     return new GetTodayPredictionResult
                     {
@@ -204,14 +205,14 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating yearly prediction for {UserId}",
                         userInfo.UserId);
                 }
-            }
+            } 
             else // PredictionType.Daily
             {
                 // Daily: expires every day OR if profile changes
                 if (State.PredictionId != Guid.Empty && State.PredictionDate == today && profileNotChanged)
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Returning cached prediction (with multilingual) for {UserId}",
-                        userInfo.UserId);
+                    totalStopwatch.Stop();
+                    _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Daily");
 
                     return new GetTodayPredictionResult
                     {
@@ -238,20 +239,27 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             }
 
             // Generate new prediction
-            _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Generating new prediction for {UserId}, Type: {Type}",
-                userInfo.UserId, type);
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Miss - Generating new prediction, Type: {type}");
 
+            var generateStopwatch = Stopwatch.StartNew();
             var predictionResult = await GeneratePredictionAsync(userInfo, today, type);
+            generateStopwatch.Stop();
+            
+            totalStopwatch.Stop();
+            
             if (!predictionResult.Success)
             {
+                _logger.LogWarning($"[PERF][Fortune] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms");
                 return predictionResult;
             }
 
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
             return predictionResult;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Error generating prediction");
+            totalStopwatch.Stop();
+            _logger.LogError(ex, $"[PERF][Fortune] {userInfo.UserId} Error: {totalStopwatch.ElapsedMilliseconds}ms - Exception in GetOrGeneratePredictionAsync");
             return new GetTodayPredictionResult
             {
                 Success = false,
@@ -293,10 +301,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         try
         {
             // Build prompt
+            var promptStopwatch = Stopwatch.StartNew();
             var prompt = BuildPredictionPrompt(userInfo, predictionDate, type);
-
-            _logger.LogDebug("[FortunePredictionGAgent][GeneratePredictionAsync] Calling AI with prompt for user {UserId}",
-                userInfo.UserId);
+            promptStopwatch.Stop();
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
 
             // NOTE: Using IGodChat.ChatWithoutHistoryAsync for AI calls
             // This is a temporary solution that reuses existing chat infrastructure
@@ -318,6 +326,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             // Use dedicated "FORTUNE" region for independent LLM configuration
             // This allows Fortune to use cost-optimized models (e.g., GPT-4o-mini)
             // separate from the main chat experience
+            var llmStopwatch = Stopwatch.StartNew();
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid, 
                 string.Empty, 
@@ -326,6 +335,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 settings, 
                 true, 
                 "FORTUNE");
+            llmStopwatch.Stop();
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             if (response == null || response.Count() == 0)
             {
@@ -339,8 +350,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             }
 
             var aiResponse = response[0].Content;
-            _logger.LogDebug("[FortunePredictionGAgent][GeneratePredictionAsync] Received AI response: {Response}",
-                aiResponse);
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} LLM_Response: {aiResponse.Length} chars");
 
             Dictionary<string, Dictionary<string, string>>? parsedResults = null;
             Dictionary<string, string>? lifetimeForecast = new Dictionary<string, string>();
@@ -352,6 +362,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             Dictionary<string, Dictionary<string, string>>? multilingualYearly = null;
 
             // Parse AI response based on type
+            var parseStopwatch = Stopwatch.StartNew();
             if (type == PredictionType.Lifetime)
             {
                 // Parse Lifetime (multilingual)
@@ -402,6 +413,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     };
                 }
             }
+            parseStopwatch.Stop();
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
