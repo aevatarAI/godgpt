@@ -648,21 +648,21 @@ FORMAT (flattened, no nesting):
 }}
 
 CONTENT GUIDELINES:
-- fourPillars coreIdentity: Address user by name, describe as 'fusion of' elements
-- fourPillars expanded: List zodiac signs, define archetype, show contrasts using 'both...yet' patterns
+- fourPillars coreIdentity: Address user by name, describe as ''fusion of'' elements
+- fourPillars expanded: List zodiac signs, define archetype, show contrasts using ''both...yet'' patterns
 - chineseAstrology currentYear: MUST calculate accurate year animal+element based on Chinese lunar calendar (e.g., 2025 = Wood Snake year)
 - chineseAstrology currentYearStems: CRITICAL - Calculate accurate Heavenly Stem + Earthly Branch for the year (e.g., 2025 = 乙巳 Yǐsì). Must be ONE compound word
 - chineseAstrology traits: 3-4 concrete personality traits from user's birth year animal
-- zodiacWhisper: How Chinese zodiac adds to/enhances Western astrology. Use 'You are not only X, but Y' pattern
-- sunSign tagline: Create poetic metaphor using nature/elements (e.g., 'flow like water', 'burn like fire', 'shine like diamond')
-- westernOverview archetypes: Give each sign a title (e.g., 'The Dream Weaver', 'The Intuitive Nurturer', 'The Radiant Leader')
+- zodiacWhisper: How Chinese zodiac adds to/enhances Western astrology. Use ''You are not only X, but Y'' pattern
+- sunSign tagline: Create poetic metaphor using nature/elements (e.g., ''flow like water'', ''burn like fire'', ''shine like diamond'')
+- westernOverview archetypes: Give each sign a title (e.g., ''The Dream Weaver'', ''The Intuitive Nurturer'', ''The Radiant Leader'')
 - westernOverview descriptions: Sun is core identity, Moon is emotional nature, Rising is how they meet the world
-- combinedEssence: Use exact pattern 'You think like [a/an] [Sun], feel like [a/an] [Moon], and move through the world like [a/an] [Rising].'
+- combinedEssence: Use exact pattern ''You think like [a/an] [Sun], feel like [a/an] [Moon], and move through the world like [a/an] [Rising].''
 - strengths overview: Philosophical statement on evolution/growth pattern
-- strengths items: Attribute each strength to specific sign combinations (e.g., 'Gemini gives you X, Scorpio Moon gives you Y')
-- challenges overview: Start with 'Your power grows when...' to frame positively
-- challenges items: Use sign combinations to explain challenges (e.g., 'Virgo + Gemini can trap you in mental loops')
-- destiny overview: State life purpose with 'You are here to...' pattern, end with dual identity (e.g., 'You are both X and Y')
+- strengths items: Attribute each strength to specific sign combinations (e.g., ''Gemini gives you X, Scorpio Moon gives you Y'')
+- challenges overview: Start with ''Your power grows when...'' to frame positively
+- challenges items: Use sign combinations to explain challenges (e.g., ''Virgo + Gemini can trap you in mental loops'')
+- destiny overview: State life purpose with 'You are here to...' pattern, end with dual identity (e.g., ''You are both X and Y'')
 - destiny paths: List 3 potential career/calling directions using slash-separated roles, each path more specific than last
 - zodiacCycle title: MUST calculate accurate current 20-year period based on actual year
 - zodiacCycle names: Provide both English cycle name and Chinese name (e.g., 'Li Fire Luck Cycle' / '九紫离火运')
@@ -670,15 +670,15 @@ CONTENT GUIDELINES:
 - zodiacCycle dayMaster points: 4 specific ways this cycle influences the user, can include timing advice
 - tenYearCycles: Describe user's Fate Palace (命宫), its sector (with Chinese), element, and what it aligns them with
 - pastCycle/currentCycle/futureCycle: MUST calculate accurate age ranges based on user's birth year. Each 10-year period includes:
-  * ageRange: Age span and year span (e.g., "Age 27-37 (2016-2026)")
-  * period: Heavenly Stem + Earthly Branch in Chinese with Pinyin, plus Element Animal (e.g., "甲午 (Jia-Wu) · Wood Horse")
+  * ageRange: Age span and year span (e.g., ""Age 27-37 (2016-2026)"")
+  * period: Heavenly Stem + Earthly Branch in Chinese with Pinyin, plus Element Animal (e.g., ""甲午 (Jia-Wu) · Wood Horse"")
   * influenceSummary: Brief theme summary (8-12 words)
   * meaning: Detailed explanation (60-80 words) using appropriate tense (past/present/future), referencing Ten Gods system if relevant
-- lifePlot title: Create poetic archetype starting with "You are a..." (10-20 words total)
+- lifePlot title: Create poetic archetype starting with ""You are a..."" (10-20 words total)
 - lifePlot chapter: Address user by name, describe their destiny in inspiring terms (30-50 words)
 - lifePlot points: 4 bullet points - first 3 describe how elements/chart aspects shape them (5-15 words each), final point is powerful identity statement
 - activationSteps: 4 practical action steps to activate their destiny. Each has a title (2-5 words) and description (10-20 words). Be specific and actionable. Final step should be most powerful.
-- mantra: Section titled with 2-4 words. 3 inspiring directives (5-15 words each) using command language like "Write as if...", "Speak as if...", "Recognize...". Final point should be most powerful.
+- mantra: Section titled with 2-4 words. 3 inspiring directives (5-15 words each) using command language like ""Write as if..."", ""Speak as if..."", ""Recognize..."". Final point should be most powerful.
 
 RULES:
 - Use You/Your in all descriptions
