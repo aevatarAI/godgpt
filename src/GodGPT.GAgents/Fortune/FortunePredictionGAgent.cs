@@ -1026,14 +1026,31 @@ EXAMPLE:
     {
         try
         {
-            // Extract JSON from markdown code blocks if needed
-            var jsonMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*(\{[\s\S]*?\})\s*```");
-            if (jsonMatch.Success)
+            // Extract JSON - try multiple strategies
+            string jsonContent = aiResponse;
+            
+            // Strategy 1: Extract from markdown code blocks
+            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
+            if (codeBlockMatch.Success)
             {
-                aiResponse = jsonMatch.Groups[1].Value;
+                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
             }
+            
+            // Strategy 2: Find complete JSON object (from first { to last })
+            var firstBrace = jsonContent.IndexOf('{');
+            var lastBrace = jsonContent.LastIndexOf('}');
+            
+            if (firstBrace >= 0 && lastBrace > firstBrace)
+            {
+                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
+            }
+            
+            // Clean up any trailing characters
+            jsonContent = jsonContent.Trim();
+            
+            _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
-            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiResponse);
+            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
             if (fullResponse == null)
             {
                 _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Failed to deserialize response");
@@ -1088,14 +1105,31 @@ EXAMPLE:
     {
         try
         {
-            // Extract JSON from markdown code blocks if needed
-            var jsonMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*(\{[\s\S]*?\})\s*```");
-            if (jsonMatch.Success)
+            // Extract JSON - try multiple strategies
+            string jsonContent = aiResponse;
+            
+            // Strategy 1: Extract from markdown code blocks
+            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
+            if (codeBlockMatch.Success)
             {
-                aiResponse = jsonMatch.Groups[1].Value;
+                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
             }
+            
+            // Strategy 2: Find complete JSON object (from first { to last })
+            var firstBrace = jsonContent.IndexOf('{');
+            var lastBrace = jsonContent.LastIndexOf('}');
+            
+            if (firstBrace >= 0 && lastBrace > firstBrace)
+            {
+                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
+            }
+            
+            // Clean up any trailing characters
+            jsonContent = jsonContent.Trim();
+            
+            _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
-            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiResponse);
+            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
             if (fullResponse == null)
             {
                 _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Failed to deserialize response");
