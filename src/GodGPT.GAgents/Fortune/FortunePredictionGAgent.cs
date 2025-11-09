@@ -1026,14 +1026,31 @@ EXAMPLE:
     {
         try
         {
-            // Extract JSON from markdown code blocks if needed
-            var jsonMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*(\{[\s\S]*?\})\s*```");
-            if (jsonMatch.Success)
+            // Extract JSON - try multiple strategies
+            string jsonContent = aiResponse;
+            
+            // Strategy 1: Extract from markdown code blocks
+            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
+            if (codeBlockMatch.Success)
             {
-                aiResponse = jsonMatch.Groups[1].Value;
+                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
             }
+            
+            // Strategy 2: Find complete JSON object (from first { to last })
+            var firstBrace = jsonContent.IndexOf('{');
+            var lastBrace = jsonContent.LastIndexOf('}');
+            
+            if (firstBrace >= 0 && lastBrace > firstBrace)
+            {
+                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
+            }
+            
+            // Clean up any trailing characters
+            jsonContent = jsonContent.Trim();
+            
+            _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
-            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiResponse);
+            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
             if (fullResponse == null)
             {
                 _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Failed to deserialize response");
@@ -1050,7 +1067,7 @@ EXAMPLE:
             }
 
             var predictionsJson = JsonConvert.SerializeObject(fullResponse["predictions"]);
-            var predictions = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, Dictionary<string, string>>>>(predictionsJson);
+            var predictions = JsonConvert.DeserializeObject<Dictionary<string, object>>(predictionsJson);
             
             if (predictions == null || predictions.Count == 0)
             {
@@ -1058,19 +1075,34 @@ EXAMPLE:
                 return (null, null);
             }
 
-            // Extract English version as default
-            Dictionary<string, Dictionary<string, string>>? defaultResults = null;
-            if (predictions.ContainsKey("en"))
+            // Convert each language's nested structure to flattened Dictionary<string, string>
+            var multilingualResults = new Dictionary<string, Dictionary<string, Dictionary<string, string>>>();
+            
+            foreach (var langKvp in predictions)
             {
-                defaultResults = predictions["en"];
-            }
-            else
-            {
-                // Use first available language as fallback
-                defaultResults = predictions.Values.FirstOrDefault();
+                var lang = langKvp.Key;
+                var langDataJson = JsonConvert.SerializeObject(langKvp.Value);
+                var langDataFlat = FlattenNestedJson(langDataJson);
+                
+                if (langDataFlat != null && langDataFlat.Count > 0)
+                {
+                    multilingualResults[lang] = langDataFlat;
+                }
             }
 
-            return (defaultResults, predictions);
+            // Extract English version as default
+            Dictionary<string, Dictionary<string, string>>? defaultResults = null;
+            if (multilingualResults.ContainsKey("en"))
+            {
+                defaultResults = multilingualResults["en"];
+            }
+            else if (multilingualResults.Count > 0)
+            {
+                // Use first available language as fallback
+                defaultResults = multilingualResults.Values.FirstOrDefault();
+            }
+
+            return (defaultResults, multilingualResults);
         }
         catch (Exception ex)
         {
@@ -1088,14 +1120,31 @@ EXAMPLE:
     {
         try
         {
-            // Extract JSON from markdown code blocks if needed
-            var jsonMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*(\{[\s\S]*?\})\s*```");
-            if (jsonMatch.Success)
+            // Extract JSON - try multiple strategies
+            string jsonContent = aiResponse;
+            
+            // Strategy 1: Extract from markdown code blocks
+            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
+            if (codeBlockMatch.Success)
             {
-                aiResponse = jsonMatch.Groups[1].Value;
+                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
             }
+            
+            // Strategy 2: Find complete JSON object (from first { to last })
+            var firstBrace = jsonContent.IndexOf('{');
+            var lastBrace = jsonContent.LastIndexOf('}');
+            
+            if (firstBrace >= 0 && lastBrace > firstBrace)
+            {
+                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
+            }
+            
+            // Clean up any trailing characters
+            jsonContent = jsonContent.Trim();
+            
+            _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
-            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(aiResponse);
+            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
             if (fullResponse == null)
             {
                 _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Failed to deserialize response");
@@ -1171,6 +1220,73 @@ EXAMPLE:
         // This is a simplified version - you may need to enhance based on actual structure
         // For now, it just returns as-is since the actual parsing would convert nested objects to JSON strings
         return source;
+    }
+    
+    /// <summary>
+    /// Flatten nested JSON into Dictionary<section, Dictionary<field, value>>
+    /// This handles the complex nested structure of daily predictions
+    /// </summary>
+    private Dictionary<string, Dictionary<string, string>>? FlattenNestedJson(string json)
+    {
+        try
+        {
+            var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+            if (data == null) return null;
+            
+            var result = new Dictionary<string, Dictionary<string, string>>();
+            
+            foreach (var kvp in data)
+            {
+                var sectionName = kvp.Key;
+                var sectionData = new Dictionary<string, string>();
+                
+                if (kvp.Value is string strValue)
+                {
+                    // Simple string value
+                    sectionData["value"] = strValue;
+                }
+                else
+                {
+                    // Nested object - serialize it back to JSON string
+                    var sectionJson = JsonConvert.SerializeObject(kvp.Value);
+                    
+                    // Try to parse as dictionary for better structure
+                    try
+                    {
+                        var nestedDict = JsonConvert.DeserializeObject<Dictionary<string, object>>(sectionJson);
+                        if (nestedDict != null)
+                        {
+                            foreach (var nestedKvp in nestedDict)
+                            {
+                                // Store nested values as JSON strings to preserve structure
+                                if (nestedKvp.Value is string nestedStr)
+                                {
+                                    sectionData[nestedKvp.Key] = nestedStr;
+                                }
+                                else
+                                {
+                                    sectionData[nestedKvp.Key] = JsonConvert.SerializeObject(nestedKvp.Value);
+                                }
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // If can't parse as dict, just store the whole thing as JSON
+                        sectionData["value"] = sectionJson;
+                    }
+                }
+                
+                result[sectionName] = sectionData;
+            }
+            
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortunePredictionGAgent][FlattenNestedJson] Failed to flatten JSON");
+            return null;
+        }
     }
 }
 
