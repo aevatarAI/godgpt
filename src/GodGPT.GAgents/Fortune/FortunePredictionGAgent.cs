@@ -614,49 +614,46 @@ EXAMPLE (format reference):
 User: {userInfoLine}
 Year: {predictionDate.Year}
 
-REQUIRED FORMAT (ENGLISH - then translate to other languages):
+REQUIRED FORMAT (FLATTENED - use underscore for nested keys):
 {{
   ""predictions"": {{
     ""en"": {{
       ""zodiacInfluence"": ""[User's zodiac] native in a [Year's zodiac] year → [Taishui relationship]"",
       ""westernAstroOverlay"": ""[Sun sign] Sun · [Year role/archetype] — {predictionDate.Year}\n[Key planetary positions]"",
-      ""yearlyTheme"": {{
-        ""overallTheme"": ""[3-5 words theme title]"",
-        ""atAGlance"": ""[One sentence: 20-30 words summarizing the year's energy]""
-      }},
-      ""divineInfluence"": {{
-        ""career"": {{
-          ""score"": [1-4],
-          ""bestMoves"": [
-            ""[15-25 words: specific actionable advice]"",
-            ""[15-25 words: specific actionable advice]""
-          ],
-          ""avoid"": [
-            ""[10-20 words: what to avoid]"",
-            ""[10-20 words: what to avoid]""
-          ]
-        }},
-        ""love"": {{
-          ""score"": [1-4],
-          ""bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
-          ""avoid"": [""[10-20 words]"", ""[10-20 words]""]
-        }},
-        ""wealth"": {{
-          ""score"": [1-4],
-          ""bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
-          ""avoid"": [""[10-20 words]"", ""[10-20 words]""]
-        }},
-        ""health"": {{
-          ""score"": [1-4],
-          ""bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
-          ""avoid"": [""[10-20 words]"", ""[10-20 words]""]
-        }}
-      }},
+      
+      ""yearlyTheme_overallTheme"": ""[3-5 words theme title]"",
+      ""yearlyTheme_atAGlance"": ""[20-30 words: one sentence summary]"",
+      ""yearlyTheme_expanded"": ""[60-100 words: 3 paragraphs separated by \n\n explaining astrological combination, energy summary, and year characterization]"",
+      
+      ""divineInfluence_career_score"": [1-4],
+      ""divineInfluence_career_tagline"": ""[10-15 words: warm, relatable tagline for career this year]"",
+      ""divineInfluence_career_bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
+      ""divineInfluence_career_avoid"": [""[10-20 words]"", ""[10-20 words]""],
+      ""divineInfluence_career_inANutshell"": ""[40-60 words: 3 paragraphs separated by \n\n with astrological formula, impact description, and practical insight]"",
+      
+      ""divineInfluence_love_score"": [1-4],
+      ""divineInfluence_love_tagline"": ""[10-15 words]"",
+      ""divineInfluence_love_bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
+      ""divineInfluence_love_avoid"": [""[10-20 words]"", ""[10-20 words]""],
+      ""divineInfluence_love_inANutshell"": ""[40-60 words: 3 paragraphs separated by \n\n]"",
+      
+      ""divineInfluence_wealth_score"": [1-4],
+      ""divineInfluence_wealth_tagline"": ""[10-15 words]"",
+      ""divineInfluence_wealth_bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
+      ""divineInfluence_wealth_avoid"": [""[10-20 words]"", ""[10-20 words]""],
+      ""divineInfluence_wealth_inANutshell"": ""[40-60 words: 3 paragraphs separated by \n\n]"",
+      
+      ""divineInfluence_health_score"": [1-4],
+      ""divineInfluence_health_tagline"": ""[10-15 words]"",
+      ""divineInfluence_health_bestMoves"": [""[15-25 words]"", ""[15-25 words]""],
+      ""divineInfluence_health_avoid"": [""[10-20 words]"", ""[10-20 words]""],
+      ""divineInfluence_health_inANutshell"": ""[40-60 words: 3 paragraphs separated by \n\n]"",
+      
       ""embodimentMantra"": ""[20-40 words: poetic, powerful mantra for the year]""
     }},
-    ""zh-tw"": {{...same structure, Traditional Chinese}},
-    ""zh"": {{...same structure, Simplified Chinese}},
-    ""es"": {{...same structure, Spanish}}
+    ""zh-tw"": {{...same flattened structure, Traditional Chinese}},
+    ""zh"": {{...same flattened structure, Simplified Chinese}},
+    ""es"": {{...same flattened structure, Spanish}}
   }}
 }}
 
@@ -750,41 +747,52 @@ EXAMPLE (for reference):
 Generate daily fortune prediction for {predictionDate:yyyy-MM-dd} based on user's profile.
 User: {userInfoLine}
 
-OUTPUT FORMAT:
+OUTPUT FORMAT (FLATTENED - use underscore for nested keys):
 {{
   ""predictions"": {{
     ""en"": {{
-      ""dayTitle"": ""The Day of [word1] and [word2]"",           // Evocative words capturing day's essence
-      ""todaysReading"": {{
-        ""tarotCard"": {{""name"": ""[card]"", ""represents"": ""[1-3 words]""}},
-        ""pathTitle"": ""{{firstName}}'s Path Today - A [Adjective] Path"",
-        ""pathDescription"": ""[30-50 words: warm greeting + day's theme]"",
-        ""careerAndWork"": ""[20-30 words: specific actionable advice]"",
-        ""loveAndRelationships"": ""[20-30 words: specific actionable advice]"",
-        ""wealthAndFinance"": ""[20-30 words: specific actionable advice]"",
-        ""healthAndWellness"": ""[20-30 words: specific actionable advice]""
-      }},
+      ""dayTitle"": ""The Day of [word1] and [word2]"",
+      
+      ""todaysReading_tarotCard_name"": ""[Tarot card name]"",
+      ""todaysReading_tarotCard_represents"": ""[1-3 words: what card represents]"",
+      ""todaysReading_pathTitle"": ""{{firstName}}'s Path Today - A [Adjective] Path"",
+      ""todaysReading_pathDescription"": ""[30-50 words: warm greeting + day's theme - MINIMUM 30 WORDS]"",
+      ""todaysReading_pathDescriptionExpanded"": ""[30-50 words: deeper insight continuing from pathDescription - MINIMUM 30 WORDS]"",
+      ""todaysReading_careerAndWork"": ""[20-30 words: specific actionable advice - MINIMUM 20 WORDS]"",
+      ""todaysReading_loveAndRelationships"": ""[20-30 words: specific actionable advice - MINIMUM 20 WORDS]"",
+      ""todaysReading_wealthAndFinance"": ""[20-30 words: specific actionable advice - MINIMUM 20 WORDS]"",
+      ""todaysReading_healthAndWellness"": ""[20-30 words: specific actionable advice - MINIMUM 20 WORDS]"",
+      
       ""todaysTakeaway"": ""[One powerful sentence with {{firstName}}]"",
-      ""luckyAlignments"": {{
-        ""luckyNumber"": {{""number"": ""[Seven]"", ""digit"": ""[7]"", ""description"": ""Today carries Number [X]'s energy...""}},
-        ""luckyStone"": ""[Amethyst]"",
-        ""luckySpell"": ""[2-4 words mystical phrase]""
-      }},
-      ""twistOfFate"": {{
-        ""favorable"": [""[10-15 words advice - MUST be at least 10 words]"", ""[10-15 words advice - MUST be at least 10 words]""],
-        ""avoid"": [""[10-15 words warning - MUST be at least 10 words]"", ""[10-15 words warning - MUST be at least 10 words]""],
-        ""todaysRecommendation"": ""[One sentence: day's turning point]""
-      }}
+      
+      ""luckyAlignments_luckyNumber_number"": ""[Word form like Seven]"",
+      ""luckyAlignments_luckyNumber_digit"": ""[Digit form like 7]"",
+      ""luckyAlignments_luckyNumber_description"": ""[20-30 words: Today carries Number X's energy and its qualities]"",
+      ""luckyAlignments_luckyNumber_calculation"": ""How is it calculated?\n\nNumerical Energy of the Day ({predictionDate:M-d-yyyy}): [Show formula like 2 + 0 + 2 + 5 + 1 + 1 + 0 + 5 = 16 → 1 + 6 = 7]"",
+      
+      ""luckyAlignments_luckyStone"": ""[Single word stone name]"",
+      ""luckyAlignments_luckyStone_description"": ""[20-30 words: how to use the stone and its effect]"",
+      ""luckyAlignments_luckyStone_guidance"": ""Crystal Guidance\n\n[20-30 words: specific ritual or meditation instructions]"",
+      
+      ""luckyAlignments_luckySpell"": ""[2-4 words: the spell phrase itself]"",
+      ""luckyAlignments_luckySpell_description"": ""[10-15 words: Tell yourself + the spell in quotes]"",
+      ""luckyAlignments_luckySpell_intent"": ""Spell Intent\n\n[15-25 words: purpose and effect of the spell]"",
+      
+      ""twistOfFate_favorable"": [""[10-15 words - MUST be at least 10 words]"", ""[10-15 words - MUST be at least 10 words]""],
+      ""twistOfFate_avoid"": [""[10-15 words - MUST be at least 10 words]"", ""[10-15 words - MUST be at least 10 words]""],
+      ""twistOfFate_todaysRecommendation"": ""[One sentence: day's turning point]""
     }},
-    ""zh-tw"": {{...same structure, Traditional Chinese}},
-    ""zh"": {{...same structure, Simplified Chinese}},
-    ""es"": {{...same structure, Spanish}}
+    ""zh-tw"": {{...same flattened structure, Traditional Chinese}},
+    ""zh"": {{...same flattened structure, Simplified Chinese}},
+    ""es"": {{...same flattened structure, Spanish}}
   }}
 }}
 
 TRANSLATION PATTERNS:
 - dayTitle: ""The Day of X and Y"" → ""[X]與[Y]之日"" (zh-tw) / ""[X]与[Y]之日"" (zh) / ""El Día de X y Y"" (es)
 - pathTitle: ""{{firstName}}'s Path Today - A X Path"" → ""{{firstName}}今日之路 - [X]之路"" (zh-tw/zh) / ""El Camino de {{firstName}} Hoy - Un Camino X"" (es)
+- calculation: Keep formula in numbers, but translate text labels
+- guidance: Translate ritual instructions naturally
 
 TONE & STYLE:
 - Use second person (You/Your) extensively to create direct, personal connection
@@ -792,37 +800,40 @@ TONE & STYLE:
 - Maintain warm, conversational tone—like a trusted guide, not a distant oracle
 - Balance mystical wisdom with approachable language
 
-EXAMPLE:
+EXAMPLE (Collapsed view - frontend shows these by default):
 {{
   ""predictions"": {{
     ""en"": {{
       ""dayTitle"": ""The Day of Reflection and Strength"",
-      ""todaysReading"": {{
-        ""tarotCard"": {{""name"": ""The Empress"", ""represents"": ""Abundance""}},
-        ""pathTitle"": ""Sean's Path Today - A Difficult Path"",
-        ""pathDescription"": ""Hi Sean, today brings you challenges but also growth. The road ahead may feel blocked to you, but remember—obstacles forge your character and reveal your inner strength."",
-        ""careerAndWork"": ""You'll find strategic planning serves you better than pushing hard today. Patient preparation is your ally, not aggressive action. Focus on building your foundation."",
-        ""loveAndRelationships"": ""Misunderstandings may arise around you—stay calm and communicate gently. Your ability to listen deeply will clear what force cannot. Patience is your superpower today."",
-        ""wealthAndFinance"": ""Exercise caution with your investments today. Prioritize stability in your finances over expansion. Review your financial structure and consolidate what you have."",
-        ""healthAndWellness"": ""Your strength today lies in stillness, not intensity. Gentle movement, rest, and turning your focus inward will restore your energy more than pushing your limits.""
-      }},
+      ""todaysReading_tarotCard_name"": ""The Empress"",
+      ""todaysReading_tarotCard_represents"": ""Abundance"",
+      ""todaysReading_pathTitle"": ""Sean's Path Today - A Difficult Path"",
+      ""todaysReading_pathDescription"": ""Hi Sean, today brings you challenges but also growth. The road ahead may feel blocked to you, but remember—obstacles forge your character and reveal your inner strength."",
+      ""todaysReading_pathDescriptionExpanded"": ""Yet obstacles are not the end—they're invitations for you to refine your approach, deepen your resolve, and trust your process. What feels hard now is shaping your future mastery."",
+      ""todaysReading_careerAndWork"": ""You'll find strategic planning serves you better than pushing hard today. Patient preparation is your ally, not aggressive action. Focus on building your foundation."",
+      ""todaysReading_loveAndRelationships"": ""Misunderstandings may arise around you—stay calm and communicate gently. Your ability to listen deeply will clear what force cannot. Patience is your superpower today."",
+      ""todaysReading_wealthAndFinance"": ""Exercise caution with your investments today. Prioritize stability in your finances over expansion. Review your financial structure and consolidate what you have."",
+      ""todaysReading_healthAndWellness"": ""Your strength today lies in stillness, not intensity. Gentle movement, rest, and turning your focus inward will restore your energy more than pushing your limits."",
       ""todaysTakeaway"": ""Sean, your power today is not in force, but in your stillness—ground yourself and clarity will follow."",
-      ""luckyAlignments"": {{
-        ""luckyNumber"": {{""number"": ""Seven"", ""digit"": ""7"", ""description"": ""Today carries Number 7's energy: introspection, wisdom, mystery, and spiritual elevation.""}},
-        ""luckyStone"": ""Amethyst"",
-        ""luckySpell"": ""The Still""
-      }},
-      ""twistOfFate"": {{
-        ""favorable"": [
-          ""Engage deeply with those you trust and value their counsel—they see what you need."",
-          ""Listen to your capable advisors who can see what you might miss in your own path.""
-        ],
-        ""avoid"": [
-          ""Acting alone or being overly headstrong without seeking consultation—you need perspective today."",
-          ""Forcing your progress or confronting others aggressively—patience will serve you better.""
-        ],
-        ""todaysRecommendation"": ""Your turning point today lies in the connections you make, the collaboration you embrace, and the wisdom you exchange with your trusted allies.""
-      }}
+      ""luckyAlignments_luckyNumber_number"": ""Seven"",
+      ""luckyAlignments_luckyNumber_digit"": ""7"",
+      ""luckyAlignments_luckyNumber_description"": ""Today carries the energy of Number 7, introspection, wisdom, mystery, and spiritual elevation."",
+      ""luckyAlignments_luckyNumber_calculation"": ""How is it calculated?\n\nNumerical Energy of the Day (5-11-2025): 2 + 0 + 2 + 5 + 1 + 1 + 0 + 5 = 16 → 1 + 6 = 7"",
+      ""luckyAlignments_luckyStone"": ""Amethyst"",
+      ""luckyAlignments_luckyStone_description"": ""Hold or wear amethyst as you meditate, it awakens your inner clarity and aligns you with wisdom's frequency."",
+      ""luckyAlignments_luckyStone_guidance"": ""Crystal Guidance\n\nMeditate: Light a stick of lavender incense, hold the crystal, and take three deep breaths."",
+      ""luckyAlignments_luckySpell"": ""The Still"",
+      ""luckyAlignments_luckySpell_description"": ""Tell yourself 'When thoughts drift like clouds, I return to stillness.'"",
+      ""luckyAlignments_luckySpell_intent"": ""Spell Intent\n\nTo clear the mind, restore focus, and awaken inner guidance."",
+      ""twistOfFate_favorable"": [
+        ""Engage deeply with those you trust and value their counsel—they see what you need."",
+        ""Listen to your capable advisors who can see what you might miss in your own path.""
+      ],
+      ""twistOfFate_avoid"": [
+        ""Acting alone or being overly headstrong without seeking consultation—you need perspective today."",
+        ""Forcing your progress or confronting others aggressively—patience will serve you better.""
+      ],
+      ""twistOfFate_todaysRecommendation"": ""Your turning point today lies in the connections you make, the collaboration you embrace, and the wisdom you exchange with your trusted allies.""
     }}
   }}
 }}";            
