@@ -546,6 +546,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         // Multilingual instruction prefix
         var multilingualPrefix = @"IMPORTANT: Generate prediction in 4 languages (English, Traditional Chinese, Simplified Chinese, Spanish).
 All text fields must be naturally translated (not word-by-word), keeping the same meaning and tone.
+EXCEPTION: chineseAstrology_currentYearStems must remain in Chinese with Pinyin format across ALL languages (e.g., '乙巳 (Yǐsì)').
 Wrap your response in a 'predictions' object with language codes: 'en', 'zh-tw', 'zh', 'es'.
 
 ";
@@ -651,7 +652,7 @@ CONTENT GUIDELINES:
 - fourPillars coreIdentity: Address user by name, describe as ''fusion of'' elements
 - fourPillars expanded: List zodiac signs, define archetype, show contrasts using ''both...yet'' patterns
 - chineseAstrology currentYear: MUST calculate accurate year animal+element based on Chinese lunar calendar (e.g., 2025 = Wood Snake year)
-- chineseAstrology currentYearStems: CRITICAL - Calculate accurate Heavenly Stem + Earthly Branch for the year (e.g., 2025 = 乙巳 Yǐsì). Must be ONE compound word
+- chineseAstrology currentYearStems: CRITICAL - Calculate accurate Heavenly Stem + Earthly Branch for the year (e.g., 2025 = 乙巳 Yǐsì). Must be ONE compound word. MUST use Chinese characters + Pinyin in ALL language versions (do NOT translate)
 - chineseAstrology traits: 3-4 concrete personality traits from user's birth year animal
 - zodiacWhisper: How Chinese zodiac adds to/enhances Western astrology. Use ''You are not only X, but Y'' pattern
 - sunSign tagline: Create poetic metaphor using nature/elements (e.g., ''flow like water'', ''burn like fire'', ''shine like diamond'')
