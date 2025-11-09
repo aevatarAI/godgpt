@@ -1169,7 +1169,7 @@ EXAMPLE:
                 return (null, null);
             }
 
-            // Extract multilingual lifetime
+            // Extract multilingual lifetime (for lifetime predictions) or yearly (for yearly predictions)
             var multilingualLifetime = new Dictionary<string, Dictionary<string, string>>();
             
             foreach (var langKvp in predictions)
@@ -1177,14 +1177,34 @@ EXAMPLE:
                 var lang = langKvp.Key;
                 var langData = langKvp.Value;
                 
-                // Extract lifetime
+                // Check for lifetime or yearly data (yearly uses the whole structure, lifetime uses nested "lifetime" key)
+                object targetData = null;
                 if (langData.ContainsKey("lifetime"))
                 {
-                    var lifetimeJson = JsonConvert.SerializeObject(langData["lifetime"]);
-                    var lifetime = JsonConvert.DeserializeObject<Dictionary<string, string>>(lifetimeJson);
-                    if (lifetime != null)
+                    targetData = langData["lifetime"];
+                }
+                else
+                {
+                    // For yearly, the whole langData is the prediction structure
+                    targetData = langData;
+                }
+                
+                if (targetData != null)
+                {
+                    var dataJson = JsonConvert.SerializeObject(targetData);
+                    
+                    // Use the same flattening logic as daily predictions
+                    var flattened = new Dictionary<string, string>();
+                    var parsedData = JsonConvert.DeserializeObject<Dictionary<string, object>>(dataJson);
+                    
+                    if (parsedData != null)
                     {
-                        multilingualLifetime[lang] = FlattenDictionary(lifetime);
+                        foreach (var kvp in parsedData)
+                        {
+                            FlattenObject(kvp.Value, kvp.Key, flattened);
+                        }
+                        
+                        multilingualLifetime[lang] = flattened;
                     }
                 }
             }
@@ -1224,7 +1244,8 @@ EXAMPLE:
     
     /// <summary>
     /// Flatten nested JSON into Dictionary<section, Dictionary<field, value>>
-    /// This handles the complex nested structure of daily predictions
+    /// Uses underscore to join nested keys (e.g., "tarotCard.name" → "tarotCard_name")
+    /// This allows frontend to access nested fields without JSON.parse()
     /// </summary>
     private Dictionary<string, Dictionary<string, string>>? FlattenNestedJson(string json)
     {
@@ -1240,45 +1261,13 @@ EXAMPLE:
                 var sectionName = kvp.Key;
                 var sectionData = new Dictionary<string, string>();
                 
-                if (kvp.Value is string strValue)
-                {
-                    // Simple string value
-                    sectionData["value"] = strValue;
-                }
-                else
-                {
-                    // Nested object - serialize it back to JSON string
-                    var sectionJson = JsonConvert.SerializeObject(kvp.Value);
-                    
-                    // Try to parse as dictionary for better structure
-                    try
-                    {
-                        var nestedDict = JsonConvert.DeserializeObject<Dictionary<string, object>>(sectionJson);
-                        if (nestedDict != null)
-                        {
-                            foreach (var nestedKvp in nestedDict)
-                            {
-                                // Store nested values as JSON strings to preserve structure
-                                if (nestedKvp.Value is string nestedStr)
-                                {
-                                    sectionData[nestedKvp.Key] = nestedStr;
-                                }
-                                else
-                                {
-                                    sectionData[nestedKvp.Key] = JsonConvert.SerializeObject(nestedKvp.Value);
-                                }
-                            }
-                        }
-                    }
-                    catch
-                    {
-                        // If can't parse as dict, just store the whole thing as JSON
-                        sectionData["value"] = sectionJson;
-                    }
-                }
+                // Recursively flatten the section data
+                FlattenObject(kvp.Value, "", sectionData);
                 
                 result[sectionName] = sectionData;
             }
+            
+            _logger.LogDebug("[FortunePredictionGAgent][FlattenNestedJson] Flattened {Count} sections", result.Count);
             
             return result;
         }
@@ -1286,6 +1275,81 @@ EXAMPLE:
         {
             _logger.LogError(ex, "[FortunePredictionGAgent][FlattenNestedJson] Failed to flatten JSON");
             return null;
+        }
+    }
+    
+    /// <summary>
+    /// Recursively flatten an object into a flat dictionary with underscore-separated keys
+    /// </summary>
+    private void FlattenObject(object obj, string prefix, Dictionary<string, string> result)
+    {
+        if (obj == null)
+        {
+            if (!string.IsNullOrEmpty(prefix))
+            {
+                result[prefix] = "";
+            }
+            return;
+        }
+        
+        // Handle different value types
+        switch (obj)
+        {
+            case string strValue:
+                // Simple string - store directly
+                result[prefix] = strValue;
+                break;
+                
+            case Newtonsoft.Json.Linq.JObject jObject:
+                // Nested object - recurse into it
+                foreach (var property in jObject.Properties())
+                {
+                    var newKey = string.IsNullOrEmpty(prefix) 
+                        ? property.Name 
+                        : $"{prefix}_{property.Name}";
+                    FlattenObject(property.Value, newKey, result);
+                }
+                break;
+                
+            case Newtonsoft.Json.Linq.JArray jArray:
+                // Array - store as JSON string for now (could expand to array_0, array_1, etc.)
+                result[prefix] = jArray.ToString(Newtonsoft.Json.Formatting.None);
+                break;
+                
+            case Newtonsoft.Json.Linq.JValue jValue:
+                // Primitive value (number, boolean, etc.)
+                result[prefix] = jValue.ToString();
+                break;
+                
+            default:
+                // For other types, try to serialize as JSON and recurse
+                try
+                {
+                    var json = JsonConvert.SerializeObject(obj);
+                    var parsed = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
+                    
+                    if (parsed != null)
+                    {
+                        foreach (var kvp in parsed)
+                        {
+                            var newKey = string.IsNullOrEmpty(prefix) 
+                                ? kvp.Key 
+                                : $"{prefix}_{kvp.Key}";
+                            FlattenObject(kvp.Value, newKey, result);
+                        }
+                    }
+                    else
+                    {
+                        // Can't parse - store as JSON string
+                        result[prefix] = json;
+                    }
+                }
+                catch
+                {
+                    // Last resort - convert to string
+                    result[prefix] = obj.ToString() ?? "";
+                }
+                break;
         }
     }
 }
