@@ -101,12 +101,33 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             // Validate prediction method
             var validMethods = new[]
             {
-                "opportunity",   // Today's opportunity (color, crystal, number, description)
-                "bazi",          // Ba Zi (八字)
-                "astrology",     // Astrology Overview (星座)
-                "tarot",         // Tarot Spread (塔罗)
-                "lifeTheme1",    // Life Theme 1 (人生主题1)
-                "lifeTheme2"     // Life Theme 2 (人生主题2)
+                // Daily prediction sections
+                "todaysReading",    // Today's Reading
+                "luckyAlignments",  // Lucky Alignments
+                "twistOfFate",      // Twist of Fate
+                
+                // Yearly prediction sections
+                "yearlyTheme",      // Yearly Theme
+                "divineInfluence",  // Divine Influence (career/love/wealth/health)
+                
+                // Profile (Lifetime) sections
+                "fourPillars",      // Four Pillars of Destiny
+                "chineseAstrology", // Chinese Astrology Traits
+                "westernOverview",  // Western Astrology Overview
+                "strengths",        // Strength Highlights
+                "challenges",       // Potential Challenges
+                "destiny",          // Destiny Direction
+                "zodiacCycle",      // Zodiac Cycle Influence
+                "lifePlot",         // Life Plot
+                "activationSteps",  // Activation Steps
+                
+                // Legacy methods (deprecated but still supported)
+                "opportunity",      // Old: Today's opportunity
+                "bazi",             // Old: Ba Zi
+                "astrology",        // Old: Astrology
+                "tarot",            // Old: Tarot
+                "lifeTheme1",       // Old: Life Theme 1
+                "lifeTheme2"        // Old: Life Theme 2
             };
 
             if (!validMethods.Contains(request.PredictionMethod))
@@ -394,12 +415,14 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
         // Validate prediction method
         var validMethods = new[]
         {
-            "opportunity",   // Today's opportunity
-            "bazi",          // Ba Zi (八字)
-            "astrology",     // Astrology Overview (星座)
-            "tarot",         // Tarot Spread (塔罗)
-            "lifeTheme1",    // Life Theme 1 (人生主题1)
-            "lifeTheme2"     // Life Theme 2 (人生主题2)
+            // Daily prediction sections
+            "todaysReading", "luckyAlignments", "twistOfFate",
+            // Yearly prediction sections
+            "yearlyTheme", "divineInfluence",
+            // Profile (Lifetime) sections
+            "fourPillars", "chineseAstrology", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps",
+            // Legacy methods (deprecated but still supported)
+            "opportunity", "bazi", "astrology", "tarot", "lifeTheme1", "lifeTheme2"
         };
 
         if (!validMethods.Contains(request.PredictionMethod))
