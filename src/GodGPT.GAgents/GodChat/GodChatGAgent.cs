@@ -2342,7 +2342,52 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         // Generate daily recommendations based on subscription status and calendar events
         var languageEnglishName = GodGPTLanguageHelper.GetLanguageEnglishName(language);
-        prompt = $"Use  {languageEnglishName} to respond including titles like DO, DON'T \n {prompt}";
+        
+        // Select divination system based on user language
+        var divinationSystemInstruction = language == GodGPTLanguage.CN || language == GodGPTLanguage.TraditionalChinese
+            ? @"DIVINATION SYSTEM: Chinese Huangli (Yellow Calendar) and Five Elements Theory (五行学说)
+
+METHODOLOGY EXPLANATION (MUST include in your response to user):
+- Start your response by briefly explaining that this analysis is based on traditional Chinese Huangli (Yellow Calendar) combined with Five Elements theory (Metal金, Wood木, Water水, Fire火, Earth土)
+- Mention that the predictions consider the user's birth date, current date, location, and the interaction of Five Elements
+- Use phrases like: ""根据中国传统黄历和五行理论..."", ""今日五行属性..."", ""结合您的八字...""
+
+ELEMENT EXPLANATION REQUIREMENT:
+- For EACH DO/DON'T recommendation, explain which element (五行) or Huangli principle supports it
+- Example: ""宜：签署合同 - 今日为黄道吉日，五行金旺，利于商业决策""
+- Example: ""忌：搬家 - 今日冲煞方位与您的本命相克，五行土弱""
+- Make the user understand WHY by referencing specific elements related to them
+
+TONE: Mystical yet authoritative, as if consulting ancient wisdom. Use traditional Chinese fortune-telling language."
+            : @"DIVINATION SYSTEM: Western Astrology and Planetary Transits
+
+METHODOLOGY EXPLANATION (MUST include in your response to user):
+- Start your response by briefly explaining that this analysis is based on Western astrological principles, examining current planetary positions and their aspects
+- Mention that the predictions consider the user's birth chart (zodiac sign, planetary placements) and today's celestial transits
+- Use phrases like: ""Based on astrological analysis..."", ""Today's planetary alignment reveals..."", ""According to your birth chart...""
+
+ASTROLOGICAL ELEMENT EXPLANATION REQUIREMENT:
+- For EACH DO/DON'T recommendation, explain which astrological factor supports it
+- Reference specific elements: planets (Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn), aspects (conjunction, trine, square, opposition), houses (1st-12th)
+- Example: ""DO: Start new projects - Mars trine your natal Sun empowers bold action and initiative""
+- Example: ""DON'T: Make major financial decisions - Mercury retrograde creates confusion in communication and contracts""
+- Example: ""DO: Social networking - Venus in your 11th house (friendships) brings harmonious connections""
+- Make the user understand WHY by connecting to their personal astrological profile
+
+TONE: Mystical yet authoritative, as if consulting celestial wisdom. Use astrological terminology that sounds both ancient and scientific.";
+
+        prompt = $@"Use {languageEnglishName} to respond.
+
+{divinationSystemInstruction}
+
+CRITICAL REQUIREMENTS:
+1. In your response, FIRST explain to the user what divination method you're using and why they should trust it
+2. Reference specific elements (Five Elements for Chinese, Planetary aspects for Western) throughout your recommendations
+3. For EVERY DO and DON'T item, provide the underlying divination reasoning
+4. Make the user feel this is personalized for THEM by connecting to their birth date, location, and time
+5. Use mystical and authoritative language to add credibility
+
+{prompt}";
         Logger.LogDebug($"[GoogleAuthGAgent][GenerateDailyRecommendationsAsync] {this.GetPrimaryKey().ToString()} Google response: {JsonConvert.SerializeObject(googleCalendarListDto)}");
         return GenerateDailyRecommendationsAsync(prompt, isSubscribed, googleCalendarListDto, languageEnglishName);
     }
