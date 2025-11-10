@@ -588,8 +588,10 @@ Wrap response in 'predictions' object with language codes.
         
         if (type == PredictionType.Lifetime)
         {
+            var currentYear = DateTime.UtcNow.Year;
             prompt = multilingualPrefix + $@"Generate lifetime profile for user.
 User: {userInfoLine}
+Current Year: {currentYear}
 
 FORMAT (flattened):
 {{
@@ -598,8 +600,8 @@ FORMAT (flattened):
       ""welcomeNote_zodiac"": ""[zodiac]"", ""welcomeNote_chineseZodiac"": ""[Element Animal]"", ""welcomeNote_rhythm"": ""[Yin/Yang Element]"", ""welcomeNote_essence"": ""[adj] and [adj]"",
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: List Sun/Moon/Rising signs, define archetype, show contrasts using 'both...yet' patterns]"",
-      ""chineseAstrology_currentYear"": ""Year of the [Element Animal] - accurate for current lunar year"", 
-      ""chineseAstrology_currentYearStems"": ""[天干 地支 Tiangan Dizhi] - accurate Heavenly Stem + Earthly Branch, space-separated (e.g., '乙 巳 Yi Si')"",
+      ""chineseAstrology_currentYear"": ""Year of the [Element Animal for {currentYear}]"", 
+      ""chineseAstrology_currentYearStems"": ""[天干 地支 Tiangan Dizhi for {currentYear}]"",
       ""chineseAstrology_trait1"": ""[8-12 words]"", ""chineseAstrology_trait2"": ""[8-12 words]"", ""chineseAstrology_trait3"": ""[8-12 words]"", ""chineseAstrology_trait4"": ""[8-12 words]"",
       ""zodiacWhisper"": ""[40-50 words: How Chinese zodiac enhances Western chart. Start '[Animal] adds...' Use 'You are not only X, but Y']"",
       ""sunSign_name"": ""[sign]"", ""sunSign_tagline"": ""You [2-5 words poetic metaphor]"",
@@ -620,7 +622,7 @@ FORMAT (flattened):
       ""destiny_path2_title"": ""[3-5 roles separated by /]"", ""destiny_path2_description"": ""[5-10 words]"",
       ""destiny_path3_title"": ""[1-3 roles]"", ""destiny_path3_description"": ""[8-15 words]"",
       ""chineseZodiac_animal"": ""The [Animal]"", ""chineseZodiac_essence"": ""Essence like [element]"",
-      ""zodiacCycle_title"": ""Zodiac Cycle Influence (YYYY-YYYY) - current 20-year period"", 
+      ""zodiacCycle_title"": ""Zodiac Cycle Influence (YYYY-YYYY)"", 
       ""zodiacCycle_cycleName"": ""[English name]"", ""zodiacCycle_cycleNameChinese"": ""[Chinese name]"",
       ""zodiacCycle_overview"": ""[50-65 words: State zodiac+element, describe 20-year cycle, how it affects Day Master]"",
       ""zodiacCycle_dayMasterPoint1"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint2"": ""[6-10 words]"", ""zodiacCycle_dayMasterPoint3"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint4"": ""[10-15 words]"",
@@ -646,7 +648,9 @@ FORMAT (flattened):
 }}
 
 KEY RULES:
-- Calculate accurate Chinese lunar calendar dates/stems for currentYear and currentYearStems
+- currentYear and currentYearStems MUST be for {currentYear} (NOT user's birth year). Calculate accurate Chinese lunar calendar animal and stems.
+- currentYearStems format: '天干 地支 Tiangan Dizhi' with spaces (e.g., '乙 巳 Yi Si')
+- zodiacCycle_title: Use current 20-year period based on birth year (e.g., 'Zodiac Cycle Influence (2004-2023)')
 - Use 'both...yet' contrasts for personality, 'You are here to...' for destiny, 'Your power grows when...' for challenges
 - Attribute strengths/challenges to specific sign combinations
 - Calculate age ranges for 10-year cycles based on birth year
@@ -707,12 +711,12 @@ FORMAT (flattened):
       ""todaysReading_careerAndWork"": ""[10-20 words]"", ""todaysReading_loveAndRelationships"": ""[10-20 words]"", 
       ""todaysReading_wealthAndFinance"": ""[10-20 words]"", ""todaysReading_healthAndWellness"": ""[10-15 words]"",
       ""todaysTakeaway"": ""[15-25 words: Start '{{firstName}}, your...' Use contrast/cause-effect]"",
-      ""luckyAlignments_luckyNumber_number"": ""[Seven]"", ""luckyAlignments_luckyNumber_digit"": ""[7]"", 
+      ""luckyAlignments_luckyNumber_number"": ""[Seven (7)]"", ""luckyAlignments_luckyNumber_digit"": ""[7]"", 
       ""luckyAlignments_luckyNumber_description"": ""[15-20 words]"",
-      ""luckyAlignments_luckyNumber_calculation"": ""How is it calculated? Numerical Energy of the Day ({predictionDate:M-d-yyyy}): [formula reducing to single digit]"",
+      ""luckyAlignments_luckyNumber_calculation"": ""[20-30 words: How is it calculated? Numerical Energy of the Day ({predictionDate:M-d-yyyy}): formula reducing to single digit]"",
       ""luckyAlignments_luckyStone"": ""[stone]"", ""luckyAlignments_luckyStone_description"": ""[15-20 words: How to use, what it awakens]"",
       ""luckyAlignments_luckyStone_guidance"": ""[15-20 words: Start 'Meditate:' or 'Practice:', specific ritual]"",
-      ""luckyAlignments_luckySpell"": ""[2-4 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[Quote format first-person affirmation]"",
+      ""luckyAlignments_luckySpell"": ""[2 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[20-30 words: Quote format first-person affirmation]"",
       ""luckyAlignments_luckySpell_intent"": ""[10-12 words: Start 'To [verb]...']"",
       ""twistOfFate_favorable"": [""[4-8 words]"", ""[4-8 words]""], ""twistOfFate_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
       ""twistOfFate_todaysRecommendation"": ""[10-15 words: Start 'Today's turning point lies in...']""
