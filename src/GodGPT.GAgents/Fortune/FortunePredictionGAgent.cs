@@ -600,8 +600,8 @@ FORMAT (flattened):
       ""welcomeNote_zodiac"": ""[zodiac]"", ""welcomeNote_chineseZodiac"": ""[Element Animal]"", ""welcomeNote_rhythm"": ""[Yin/Yang Element]"", ""welcomeNote_essence"": ""[adj] and [adj]"",
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: List Sun/Moon/Rising signs, define archetype, show contrasts using 'both...yet' patterns]"",
-      ""chineseAstrology_currentYear"": ""Year of the [Element Animal] - for {currentYear}, NOT user's birth year"", 
-      ""chineseAstrology_currentYearStems"": ""[天干 地支 Tiangan Dizhi] - for {currentYear}, space-separated (e.g., '乙 巳 Yi Si')"",
+      ""chineseAstrology_currentYear"": ""Year of the [Element Animal for {currentYear}]"", 
+      ""chineseAstrology_currentYearStems"": ""[天干 地支 Tiangan Dizhi for {currentYear}]"",
       ""chineseAstrology_trait1"": ""[8-12 words]"", ""chineseAstrology_trait2"": ""[8-12 words]"", ""chineseAstrology_trait3"": ""[8-12 words]"", ""chineseAstrology_trait4"": ""[8-12 words]"",
       ""zodiacWhisper"": ""[40-50 words: How Chinese zodiac enhances Western chart. Start '[Animal] adds...' Use 'You are not only X, but Y']"",
       ""sunSign_name"": ""[sign]"", ""sunSign_tagline"": ""You [2-5 words poetic metaphor]"",
@@ -648,7 +648,8 @@ FORMAT (flattened):
 }}
 
 KEY RULES:
-- Calculate accurate Chinese lunar calendar dates/stems for currentYear and currentYearStems
+- currentYear and currentYearStems MUST be for {currentYear} (NOT user's birth year). Calculate accurate Chinese lunar calendar animal and stems.
+- currentYearStems format: '天干 地支 Tiangan Dizhi' with spaces (e.g., '乙 巳 Yi Si')
 - Use 'both...yet' contrasts for personality, 'You are here to...' for destiny, 'Your power grows when...' for challenges
 - Attribute strengths/challenges to specific sign combinations
 - Calculate age ranges for 10-year cycles based on birth year
