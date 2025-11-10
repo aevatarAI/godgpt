@@ -768,7 +768,7 @@ FORMAT (flattened):
   ""predictions"": {{
     ""en"": {{
       ""dayTitle"": ""The Day of [word1] and [word2]"",
-      ""todaysReading_tarotCard_name"": ""[card name]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", 
+      ""todaysReading_tarotCard_name"": ""[card name]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", ""todaysReading_tarotCard_orientation"": ""[Upright or Reversed]"",
       ""todaysReading_pathTitle"": ""{{firstName}}'s Path Today - A [Adjective] Path"",
       ""todaysReading_pathDescription"": ""[15-25 words: Greet user, describe today's energy/theme, how it may feel]"", 
       ""todaysReading_pathDescriptionExpanded"": ""[30-40 words: Deeper insight on navigating today, actionable wisdom]"",
@@ -795,6 +795,7 @@ FORMAT (flattened):
 }}
 
 CONTENT GUIDELINES:
+- Tarot Card: Choose one card randomly, include its orientation (Upright or Reversed). The orientation affects the reading's tone
 - pathDescription: Start with 'Hi {{firstName}}', describe the day's overall energy and how it may feel
 - pathDescriptionExpanded: Offer deeper wisdom on navigating today. Use metaphors if fitting. Focus on transformation and understanding, not just doing
 - todaysTakeaway: Powerful closing message. Use patterns like 'Your power is not in X, but in Y' or 'The more you X, the Y'. Make it memorable
