@@ -622,7 +622,7 @@ FORMAT (flattened):
       ""destiny_path2_title"": ""[3-5 roles separated by /]"", ""destiny_path2_description"": ""[5-10 words]"",
       ""destiny_path3_title"": ""[1-3 roles]"", ""destiny_path3_description"": ""[8-15 words]"",
       ""chineseZodiac_animal"": ""The [Animal]"", ""chineseZodiac_essence"": ""Essence like [element]"",
-      ""zodiacCycle_title"": ""Zodiac Cycle Influence (YYYY-YYYY) - current 20-year period"", 
+      ""zodiacCycle_title"": ""Zodiac Cycle Influence (YYYY-YYYY)"", 
       ""zodiacCycle_cycleName"": ""[English name]"", ""zodiacCycle_cycleNameChinese"": ""[Chinese name]"",
       ""zodiacCycle_overview"": ""[50-65 words: State zodiac+element, describe 20-year cycle, how it affects Day Master]"",
       ""zodiacCycle_dayMasterPoint1"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint2"": ""[6-10 words]"", ""zodiacCycle_dayMasterPoint3"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint4"": ""[10-15 words]"",
@@ -650,6 +650,7 @@ FORMAT (flattened):
 KEY RULES:
 - currentYear and currentYearStems MUST be for {currentYear} (NOT user's birth year). Calculate accurate Chinese lunar calendar animal and stems.
 - currentYearStems format: '天干 地支 Tiangan Dizhi' with spaces (e.g., '乙 巳 Yi Si')
+- zodiacCycle_title: Use current 20-year period based on birth year (e.g., 'Zodiac Cycle Influence (2004-2023)')
 - Use 'both...yet' contrasts for personality, 'You are here to...' for destiny, 'Your power grows when...' for challenges
 - Attribute strengths/challenges to specific sign combinations
 - Calculate age ranges for 10-year cycles based on birth year
