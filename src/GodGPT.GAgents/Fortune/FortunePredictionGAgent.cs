@@ -124,7 +124,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     var lifetimeWithPhase = new Dictionary<string, string>(State.LifetimeForecast);
                     var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
                     lifetimeWithPhase["currentPhase"] = currentPhase.ToString();
-                    
+
                     // Add currentPhase to multilingual versions too
                     Dictionary<string, Dictionary<string, string>>? multilingualLifetimeWithPhase = null;
                     if (State.MultilingualLifetime != null)
@@ -139,14 +139,14 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     }
 
                     var predictionDto = new PredictionResultDto
-                    {
-                        PredictionId = State.PredictionId,
-                        UserId = State.UserId,
-                        PredictionDate = State.PredictionDate,
-                        Results = State.Results,
-                        CreatedAt = State.CreatedAt,
-                        FromCache = true,
-                        LifetimeForecast = lifetimeWithPhase,
+                        {
+                            PredictionId = State.PredictionId,
+                            UserId = State.UserId,
+                            PredictionDate = State.PredictionDate,
+                            Results = State.Results,
+                            CreatedAt = State.CreatedAt,
+                            FromCache = true,
+                            LifetimeForecast = lifetimeWithPhase,
                         // Include multilingual cached data
                         MultilingualLifetime = multilingualLifetimeWithPhase
                     };
@@ -195,7 +195,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     
                     // Extract enum values for frontend (from yearly forecast)
                     ExtractEnumValues(predictionDto, null, State.YearlyForecast);
-                    
+
                     return new GetTodayPredictionResult
                     {
                         Success = true,
@@ -225,12 +225,12 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Daily");
 
                     var predictionDto = new PredictionResultDto
-                    {
-                        PredictionId = State.PredictionId,
-                        UserId = State.UserId,
-                        PredictionDate = State.PredictionDate,
-                        Results = State.Results,
-                        CreatedAt = State.CreatedAt,
+                        {
+                            PredictionId = State.PredictionId,
+                            UserId = State.UserId,
+                            PredictionDate = State.PredictionDate,
+                            Results = State.Results,
+                            CreatedAt = State.CreatedAt,
                         FromCache = true,
                         // Include multilingual cached data
                         MultilingualResults = State.MultilingualResults
@@ -479,13 +479,13 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             }
 
             var newPredictionDto = new PredictionResultDto
-            {
-                PredictionId = predictionId,
-                UserId = userInfo.UserId,
-                PredictionDate = predictionDate,
-                Results = parsedResults,
-                CreatedAt = now,
-                FromCache = false,
+                {
+                    PredictionId = predictionId,
+                    UserId = userInfo.UserId,
+                    PredictionDate = predictionDate,
+                    Results = parsedResults,
+                    CreatedAt = now,
+                    FromCache = false,
                 // For yearly, return in LifetimeForecast field for API compatibility
                 LifetimeForecast = type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast,
                 // Multilingual data
@@ -581,7 +581,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         var multilingualPrefix = @"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
 
 MULTILINGUAL: Generate in 4 languages with natural translation (not word-by-word): 'en', 'zh-tw', 'zh', 'es'.
-EXCEPTION: chineseAstrology_currentYearStems always stays in Chinese+Pinyin (e.g., '乙巳 (Yǐsì)').
+EXCEPTION: chineseAstrology_currentYearStems always stays in Chinese+Pinyin with space separation (e.g., '乙 巳 Yi Si').
 Wrap response in 'predictions' object with language codes.
 
 ";
@@ -599,13 +599,13 @@ FORMAT (flattened):
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: List Sun/Moon/Rising signs, define archetype, show contrasts using 'both...yet' patterns]"",
       ""chineseAstrology_currentYear"": ""Year of the [Element Animal] - accurate for current lunar year"", 
-      ""chineseAstrology_currentYearStems"": ""[干支 (Pinyin)] - accurate Heavenly Stem + Earthly Branch"",
+      ""chineseAstrology_currentYearStems"": ""[天干 地支 Tiangan Dizhi] - accurate Heavenly Stem + Earthly Branch, space-separated (e.g., '乙 巳 Yi Si')"",
       ""chineseAstrology_trait1"": ""[8-12 words]"", ""chineseAstrology_trait2"": ""[8-12 words]"", ""chineseAstrology_trait3"": ""[8-12 words]"", ""chineseAstrology_trait4"": ""[8-12 words]"",
       ""zodiacWhisper"": ""[40-50 words: How Chinese zodiac enhances Western chart. Start '[Animal] adds...' Use 'You are not only X, but Y']"",
       ""sunSign_name"": ""[sign]"", ""sunSign_tagline"": ""You [2-5 words poetic metaphor]"",
-      ""westernOverview_sunSign"": ""[sign]"", ""westernOverview_sunArchetype"": ""The [3-5 words]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
-      ""westernOverview_moonSign"": ""[sign]"", ""westernOverview_moonArchetype"": ""The [3-5 words]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
-      ""westernOverview_risingSign"": ""[sign]"", ""westernOverview_risingArchetype"": ""The [3-5 words]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
+      ""westernOverview_sunSign"": ""[sign]"", ""westernOverview_sunArchetype"": ""Sun in [sign] - The [3-5 words archetype title]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
+      ""westernOverview_moonSign"": ""[sign]"", ""westernOverview_moonArchetype"": ""Moon in [sign] - The [3-5 words archetype title]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
+      ""westernOverview_risingSign"": ""[sign]"", ""westernOverview_risingArchetype"": ""Rising in [sign] - The [3-5 words archetype title]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
       ""combinedEssence"": ""[15-20 words: 'You think like [Sun], feel like [Moon], move through world like [Rising]']"",
       ""strengths_overview"": ""[10-15 words: How they evolve/grow]"",
       ""strengths_item1_title"": ""[2-5 words]"", ""strengths_item1_description"": ""[15-25 words: Attribute to sign combinations]"",
