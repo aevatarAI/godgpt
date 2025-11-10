@@ -27,7 +27,7 @@ public enum PredictionType
 /// </summary>
 public interface IFortunePredictionGAgent : IGAgent
 {
-    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily);
+    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en");
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionAsync();
@@ -92,11 +92,91 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 {
                     state.MultilingualYearly = generatedEvent.MultilingualYearly;
                 }
+                // Initialize language generation status (only initial language is available)
+                if (!string.IsNullOrEmpty(generatedEvent.InitialLanguage) && generatedEvent.PredictionTypeGenerated.HasValue)
+                {
+                    var initialLang = generatedEvent.InitialLanguage;
+                    switch (generatedEvent.PredictionTypeGenerated.Value)
+                    {
+                        case PredictionType.Daily:
+                            state.DailyGeneratedLanguages = new List<string> { initialLang };
+                            break;
+                        case PredictionType.Yearly:
+                            state.YearlyGeneratedLanguages = new List<string> { initialLang };
+                            break;
+                        case PredictionType.Lifetime:
+                            state.LifetimeGeneratedLanguages = new List<string> { initialLang };
+                            break;
+                    }
+                }
+                break;
+                
+            case LanguagesTranslatedEvent translatedEvent:
+                // Update multilingual cache with translated languages
+                switch (translatedEvent.Type)
+                {
+                    case PredictionType.Daily:
+                        if (state.MultilingualResults == null)
+                        {
+                            state.MultilingualResults = new Dictionary<string, Dictionary<string, Dictionary<string, string>>>();
+                        }
+                        
+                        var dateKey = translatedEvent.PredictionDate.ToString("yyyy-MM-dd");
+                        if (!state.MultilingualResults.ContainsKey(dateKey))
+                        {
+                            state.MultilingualResults[dateKey] = new Dictionary<string, Dictionary<string, string>>();
+                        }
+                        
+                        if (translatedEvent.TranslatedLanguages != null)
+                        {
+                            foreach (var lang in translatedEvent.TranslatedLanguages)
+                            {
+                                state.MultilingualResults[dateKey][lang.Key] = lang.Value;
+                            }
+                        }
+                        
+                        state.DailyGeneratedLanguages = translatedEvent.AllGeneratedLanguages;
+                        break;
+                        
+                    case PredictionType.Yearly:
+                        if (state.MultilingualYearly == null)
+                        {
+                            state.MultilingualYearly = new Dictionary<string, Dictionary<string, string>>();
+                        }
+                        
+                        if (translatedEvent.TranslatedLanguages != null)
+                        {
+                            foreach (var lang in translatedEvent.TranslatedLanguages)
+                            {
+                                state.MultilingualYearly[lang.Key] = lang.Value;
+                            }
+                        }
+                        
+                        state.YearlyGeneratedLanguages = translatedEvent.AllGeneratedLanguages;
+                        break;
+                        
+                    case PredictionType.Lifetime:
+                        if (state.MultilingualLifetime == null)
+                        {
+                            state.MultilingualLifetime = new Dictionary<string, Dictionary<string, string>>();
+                        }
+                        
+                        if (translatedEvent.TranslatedLanguages != null)
+                        {
+                            foreach (var lang in translatedEvent.TranslatedLanguages)
+                            {
+                                state.MultilingualLifetime[lang.Key] = lang.Value;
+                            }
+                        }
+                        
+                        state.LifetimeGeneratedLanguages = translatedEvent.AllGeneratedLanguages;
+                        break;
+                }
                 break;
         }
     }
 
-    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily)
+    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en")
     {
         var totalStopwatch = Stopwatch.StartNew();
         try
@@ -104,7 +184,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var currentYear = today.Year;
             
-            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} START - Type: {type}, Date: {today}");
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} START - Type: {type}, Date: {today}, Language: {userLanguage}");
                 
                 // Check if profile has been updated since prediction was generated
                 var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
@@ -148,7 +228,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                             FromCache = true,
                             LifetimeForecast = lifetimeWithPhase,
                         // Include multilingual cached data
-                        MultilingualLifetime = multilingualLifetimeWithPhase
+                        MultilingualLifetime = multilingualLifetimeWithPhase,
+                        // Language status
+                        AvailableLanguages = State.LifetimeGeneratedLanguages ?? new List<string> { "en" },
+                        AllLanguagesGenerated = State.LifetimeGeneratedLanguages?.Count == 4
                     };
                     
                     // Extract enum values for frontend
@@ -190,7 +273,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                         CreatedAt = State.CreatedAt,
                         FromCache = true,
                         LifetimeForecast = State.YearlyForecast, // Return yearly in LifetimeForecast field for API compatibility
-                        MultilingualLifetime = State.MultilingualYearly // Return yearly multilingual
+                        MultilingualLifetime = State.MultilingualYearly, // Return yearly multilingual
+                        // Language status
+                        AvailableLanguages = State.YearlyGeneratedLanguages ?? new List<string> { "en" },
+                        AllLanguagesGenerated = State.YearlyGeneratedLanguages?.Count == 4
                     };
                     
                     // Extract enum values for frontend (from yearly forecast)
@@ -233,7 +319,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                             CreatedAt = State.CreatedAt,
                         FromCache = true,
                         // Include multilingual cached data
-                        MultilingualResults = State.MultilingualResults
+                        MultilingualResults = State.MultilingualResults,
+                        // Language status
+                        AvailableLanguages = State.DailyGeneratedLanguages ?? new List<string> { "en" },
+                        AllLanguagesGenerated = State.DailyGeneratedLanguages?.Count == 4
                     };
                     
                     // Extract enum values for frontend (from daily results)
@@ -254,10 +343,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             }
 
             // Generate new prediction
-            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Miss - Generating new prediction, Type: {type}");
+            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Miss - Generating new prediction, Type: {type}, Language: {userLanguage}");
 
             var generateStopwatch = Stopwatch.StartNew();
-            var predictionResult = await GeneratePredictionAsync(userInfo, today, type);
+            var predictionResult = await GeneratePredictionAsync(userInfo, today, type, userLanguage);
             generateStopwatch.Stop();
             
             totalStopwatch.Stop();
@@ -304,20 +393,23 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             LifetimeForecast = State.LifetimeForecast,
             // Include multilingual cached data
             MultilingualResults = State.MultilingualResults,
-            MultilingualLifetime = State.MultilingualLifetime
+            MultilingualLifetime = State.MultilingualLifetime,
+            // Language status
+            AvailableLanguages = State.DailyGeneratedLanguages ?? new List<string> { "en" },
+            AllLanguagesGenerated = State.DailyGeneratedLanguages?.Count == 4
         });
     }
 
     /// <summary>
     /// Generate new prediction using AI
     /// </summary>
-    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type)
+    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
     {
         try
         {
             // Build prompt
             var promptStopwatch = Stopwatch.StartNew();
-            var prompt = BuildPredictionPrompt(userInfo, predictionDate, type);
+            var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage);
             promptStopwatch.Stop();
             _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
 
@@ -454,7 +546,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 // Yearly data
                 YearlyForecast = yearlyForecast,
                 YearlyGeneratedDate = type == PredictionType.Yearly ? now : State.YearlyGeneratedDate,
-                MultilingualYearly = multilingualYearly
+                MultilingualYearly = multilingualYearly,
+                // Language generation tracking
+                InitialLanguage = targetLanguage,
+                PredictionTypeGenerated = type
             });
 
             // Confirm events to persist state changes
@@ -490,12 +585,62 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 LifetimeForecast = type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast,
                 // Multilingual data
                 MultilingualResults = multilingualResults,
-                MultilingualLifetime = type == PredictionType.Yearly ? multilingualYearly : multilingualLifetime
+                MultilingualLifetime = type == PredictionType.Yearly ? multilingualYearly : multilingualLifetime,
+                // Language status (only target language is available initially)
+                AvailableLanguages = new List<string> { targetLanguage },
+                AllLanguagesGenerated = false // Will be true after async generation completes
             };
             
             // Extract enum values for frontend
             ExtractEnumValues(newPredictionDto, parsedResults, 
                 type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast);
+            
+            // Stage 2: Trigger async generation of remaining languages
+            Dictionary<string, string>? sourceContent = null;
+            switch (type)
+            {
+                case PredictionType.Daily:
+                    if (multilingualResults != null && multilingualResults.Count > 0)
+                    {
+                        var dateKey = predictionDate.ToString("yyyy-MM-dd");
+                        if (multilingualResults.ContainsKey(dateKey) && multilingualResults[dateKey].ContainsKey(targetLanguage))
+                        {
+                            sourceContent = multilingualResults[dateKey][targetLanguage];
+                        }
+                    }
+                    break;
+                case PredictionType.Yearly:
+                    if (multilingualYearly != null && multilingualYearly.ContainsKey(targetLanguage))
+                    {
+                        sourceContent = multilingualYearly[targetLanguage];
+                    }
+                    break;
+                case PredictionType.Lifetime:
+                    if (multilingualLifetime != null && multilingualLifetime.ContainsKey(targetLanguage))
+                    {
+                        sourceContent = multilingualLifetime[targetLanguage];
+                    }
+                    break;
+            }
+            
+            // Trigger async generation for remaining languages (non-blocking)
+            if (sourceContent != null && sourceContent.Count > 0)
+            {
+                _logger.LogInformation($"[Fortune] {userInfo.UserId} Triggering async generation for remaining languages");
+                
+                // Fire and forget - run in background
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await GenerateRemainingLanguagesAsync(userInfo, predictionDate, type, targetLanguage, sourceContent);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"[Fortune] {userInfo.UserId} Background translation task failed");
+                    }
+                });
+            }
             
             return new GetTodayPredictionResult
             {
@@ -516,9 +661,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     }
 
     /// <summary>
-    /// Build prediction prompt for AI
+    /// Build prediction prompt for AI (single language generation for first stage)
     /// </summary>
-    private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type)
+    private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
     {
         // Build user info line dynamically based on available fields
         var userInfoParts = new List<string>();
@@ -577,26 +722,38 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
 
         string prompt = string.Empty;
         
-        // Multilingual instruction prefix
-        var multilingualPrefix = @"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
+        // Language-specific instruction prefix (single language generation for first stage)
+        var languageMap = new Dictionary<string, string>
+        {
+            { "en", "English" },
+            { "zh-tw", "Traditional Chinese" },
+            { "zh", "Simplified Chinese" },
+            { "es", "Spanish" }
+        };
+        
+        var languageName = languageMap.GetValueOrDefault(targetLanguage, "English");
+        
+        var singleLanguagePrefix = $@"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
 
-MULTILINGUAL: Generate in 4 languages with natural translation (not word-by-word): 'en', 'zh-tw', 'zh', 'es'.
-EXCEPTION: chineseAstrology_currentYearStems always stays in Chinese+Pinyin with space separation (e.g., '乙 巳 Yi Si').
-Wrap response in 'predictions' object with language codes.
+Generate prediction in {languageName} only.
+EXCEPTIONS:
+- chineseAstrology_currentYearStems always stays in Chinese+Pinyin with space separation (e.g., '乙 巳 Yi Si'), regardless of target language.
+- For Chinese (zh-tw/zh): Properly adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
+Wrap response in JSON format.
 
 ";
         
         if (type == PredictionType.Lifetime)
         {
             var currentYear = DateTime.UtcNow.Year;
-            prompt = multilingualPrefix + $@"Generate lifetime profile for user.
+            prompt = singleLanguagePrefix + $@"Generate lifetime profile for user.
 User: {userInfoLine}
 Current Year: {currentYear}
 
 FORMAT (flattened):
 {{
   ""predictions"": {{
-    ""en"": {{
+    ""{targetLanguage}"": {{
       ""welcomeNote_zodiac"": ""[zodiac]"", ""welcomeNote_chineseZodiac"": ""[Element Animal]"", ""welcomeNote_rhythm"": ""[Yin/Yang Element]"", ""welcomeNote_essence"": ""[adj] and [adj]"",
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: List Sun/Moon/Rising signs, define archetype, show contrasts using 'both...yet' patterns]"",
@@ -642,8 +799,7 @@ FORMAT (flattened):
       ""activationSteps_step4_title"": ""[2-5 words]"", ""activationSteps_step4_description"": ""[10-20 words: Most powerful]"",
       ""mantra_title"": ""[2-4 words]"", 
       ""mantra_point1"": ""[5-15 words: 'X as if...' pattern]"", ""mantra_point2"": ""[5-15 words]"", ""mantra_point3"": ""[5-15 words: Most powerful]""
-    }},
-    ""zh-tw"": {{...same}}, ""zh"": {{...same}}, ""es"": {{...same}}
+    }}
   }}
 }}
 
@@ -658,33 +814,32 @@ KEY RULES:
         }
         else if (type == PredictionType.Yearly)
         {
-            prompt = multilingualPrefix + $@"Generate yearly prediction for {predictionDate.Year}.
+            prompt = singleLanguagePrefix + $@"Generate yearly prediction for {predictionDate.Year}.
 User: {userInfoLine}
 
 FORMAT (flattened):
 {{
   ""predictions"": {{
-    ""en"": {{
+    ""{targetLanguage}"": {{
       ""zodiacInfluence"": ""[Element Animal] native in [Element Animal] year → [Taishui relationship]"",
       ""westernAstroOverlay"": ""[Sun sign] Sun · [2-3 word archetype] — {predictionDate.Year} [Key transits]"",
       ""yearlyTheme_overallTheme"": ""[4-7 words: Theme using 'of' structure]"", 
       ""yearlyTheme_atAGlance"": ""[15-20 words: What systems agree on]"", 
       ""yearlyTheme_expanded"": ""[60-80 words: 3 paragraphs (double space): P1 combination/clash, P2 what it creates, P3 define year (not X but Y)]"",
       ""divineInfluence_career_score"": [1-4], ""divineInfluence_career_tagline"": ""[10-15 words: Start 'Your superpower this year:']"", 
-      ""divineInfluence_career_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_career_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_career_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_career_avoid"": [""[3-6 specific activities/actions, comma-separated. Examples: Job Hopping, Micromanaging, Overcommitting]"", ""[3-6 specific activities/actions, comma-separated]""], 
       ""divineInfluence_career_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 how it feels, P3 meaning]"",
       ""divineInfluence_love_score"": [1-4], ""divineInfluence_love_tagline"": ""[10-15 words: Philosophical]"", 
-      ""divineInfluence_love_bestMoves"": [""[6-10 words]"", ""[6-12 words]""], ""divineInfluence_love_avoid"": [""[6-12 words]"", ""[4-8 words]""], 
+      ""divineInfluence_love_bestMoves"": [""[6-10 words]"", ""[6-12 words]""], ""divineInfluence_love_avoid"": [""[3-6 specific activities/behaviors, comma-separated. Examples: Jealousy, Past Baggage, Unrealistic Expectations]"", ""[3-6 specific activities/behaviors, comma-separated]""], 
       ""divineInfluence_love_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 emotional state, P3 what relationships need]"",
       ""divineInfluence_wealth_score"": [1-4], ""divineInfluence_wealth_tagline"": ""[10-15 words]"", 
-      ""divineInfluence_wealth_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_wealth_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_wealth_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_wealth_avoid"": [""[3-6 specific activities/actions, comma-separated. Examples: Gambling, Impulse Purchases, High-Risk Loans]"", ""[3-6 specific activities/actions, comma-separated]""], 
       ""divineInfluence_wealth_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 climate, P3 what prosperity needs]"",
       ""divineInfluence_health_score"": [1-4], ""divineInfluence_health_tagline"": ""[10-15 words]"", 
-      ""divineInfluence_health_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_health_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_health_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_health_avoid"": [""[3-6 specific activities/habits, comma-separated. Examples: Late Nights, Junk Food, Ignoring Symptoms]"", ""[3-6 specific activities/habits, comma-separated]""], 
       ""divineInfluence_health_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 state, P3 what wellness needs]"",
       ""embodimentMantra"": ""[18-25 words: First-person 'My' declarations, 2-3 powerful statements, poetic and rhythmic]""
-    }},
-    ""zh-tw"": {{...same}}, ""zh"": {{...same}}, ""es"": {{...same}}
+    }}
   }}
 }}
 
@@ -693,17 +848,18 @@ KEY RULES:
 - Scores: 1=challenging, 2=mixed, 3=favorable, 4=excellent
 - inANutshell: Always use formula pattern ('X + Y = Z.'), then describe state, then meaning
 - Career tagline starts 'Your superpower this year:', others are philosophical
+- Avoid fields: Must be 3-6 specific, actionable nouns/activities (e.g., 'Gambling, Impulse Purchases, High-Risk Loans' NOT sentences)
 - Use 'You/Your' (except embodimentMantra uses 'My'), warm tone, no special chars/emoji, use double space not line breaks";
         }
         else // PredictionType.Daily
         {
-            prompt = multilingualPrefix + $@"Generate daily prediction for {predictionDate:yyyy-MM-dd}.
+            prompt = singleLanguagePrefix + $@"Generate daily prediction for {predictionDate:yyyy-MM-dd}.
 User: {userInfoLine}
 
 FORMAT (flattened):
 {{
   ""predictions"": {{
-    ""en"": {{
+    ""{targetLanguage}"": {{
       ""dayTitle"": ""The Day of [word1] and [word2]"",
       ""todaysReading_tarotCard_name"": ""[card]"", ""todaysReading_tarotCard_represents"": ""[1-2 words]"", ""todaysReading_tarotCard_orientation"": ""[Upright/Reversed]"",
       ""todaysReading_pathTitle"": ""{{firstName}}'s Path Today - A [Adjective] Path"",
@@ -718,10 +874,10 @@ FORMAT (flattened):
       ""luckyAlignments_luckyStone_guidance"": ""[15-20 words: Start 'Meditate:' or 'Practice:', specific ritual]"",
       ""luckyAlignments_luckySpell"": ""[2 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[20-30 words: Quote format first-person affirmation]"",
       ""luckyAlignments_luckySpell_intent"": ""[10-12 words: Start 'To [verb]...']"",
-      ""twistOfFate_favorable"": [""[4-8 words]"", ""[4-8 words]""], ""twistOfFate_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""twistOfFate_favorable"": [""[3-6 specific actionable words/activities, comma-separated. Examples: Networking, Starting Projects, Creative Work]"", ""[3-6 specific actionable words/activities, comma-separated. Examples: Meditation, Exercise, Reading]""], 
+      ""twistOfFate_avoid"": [""[3-6 specific actionable words/activities, comma-separated. Examples: Haircuts, Moving, Wedding]"", ""[3-6 specific actionable words/activities, comma-separated. Examples: Arguments, Impulsive Decisions, Overspending]""], 
       ""twistOfFate_todaysRecommendation"": ""[10-15 words: Start 'Today's turning point lies in...']""
-    }},
-    ""zh-tw"": {{...same}}, ""zh"": {{...same}}, ""es"": {{...same}}
+    }}
   }}
 }}
 
@@ -730,10 +886,154 @@ KEY RULES:
 - pathDescription starts 'Hi {{firstName}}', pathDescriptionExpanded offers deeper wisdom with metaphors
 - todaysTakeaway uses contrast patterns ('not X but Y', 'the more X, the Y')
 - Lucky Number: Calculate from date digits. Stone: Ritual steps. Spell: First-person affirmation with intent
+- Twist of Fate: Favorable/Avoid must be 3-6 specific, actionable nouns/activities (e.g., 'Haircuts, Moving, Wedding' NOT sentences)
 - Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";            
         }
 
         return prompt;
+    }
+
+    /// <summary>
+    /// Build translation prompt for remaining languages (second stage)
+    /// </summary>
+    private string BuildTranslationPrompt(Dictionary<string, string> sourceContent, string sourceLanguage, List<string> targetLanguages, PredictionType type)
+    {
+        var languageMap = new Dictionary<string, string>
+        {
+            { "en", "English" },
+            { "zh-tw", "Traditional Chinese" },
+            { "zh", "Simplified Chinese" },
+            { "es", "Spanish" }
+        };
+        
+        var sourceLangName = languageMap.GetValueOrDefault(sourceLanguage, "English");
+        var targetLangNames = string.Join(", ", targetLanguages.Select(lang => languageMap.GetValueOrDefault(lang, lang)));
+        
+        // Serialize source content to JSON
+        var sourceJson = JsonConvert.SerializeObject(sourceContent, Formatting.Indented);
+        
+        var translationPrompt = $@"You are a professional translator specializing in astrology and divination content.
+
+TASK: Translate the following {type} prediction from {sourceLangName} into {targetLangNames}.
+
+CRITICAL RULES:
+1. TRANSLATE - do NOT regenerate or reinterpret. Keep the exact same meaning and content structure.
+2. PRESERVE these fields in Chinese+Pinyin regardless of target language:
+   - chineseAstrology_currentYearStems (e.g., '乙 巳 Yi Si')
+   - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
+3. Maintain natural, fluent expression in each target language (not word-for-word).
+4. Keep all field names unchanged.
+5. Preserve all numbers, dates, and proper nouns.
+6. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
+   - Possessives: ""Sean's Path"" → ""Sean的道路"" (convert 's to 的)
+   - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
+   - Sentence structure: Adjust to natural Chinese word order
+7. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
+
+SOURCE CONTENT ({sourceLangName}):
+{sourceJson}
+
+Generate translations for: {targetLangNames}
+Output in JSON format with 'predictions' object containing each target language.
+";
+
+        return translationPrompt;
+    }
+
+    /// <summary>
+    /// Generate remaining languages asynchronously (second stage)
+    /// </summary>
+    private async Task GenerateRemainingLanguagesAsync(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent)
+    {
+        try
+        {
+            var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
+            var remainingLanguages = allLanguages.Where(lang => lang != sourceLanguage).ToList();
+            
+            if (remainingLanguages.Count == 0)
+            {
+                _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} No remaining languages to generate for {type}");
+                return;
+            }
+            
+            _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} START - Type: {type}, Source: {sourceLanguage}, Targets: {string.Join(", ", remainingLanguages)}");
+            
+            // Build translation prompt
+            var translationPrompt = BuildTranslationPrompt(sourceContent, sourceLanguage, remainingLanguages, type);
+            
+            // Call LLM for translation
+            var llmStopwatch = Stopwatch.StartNew();
+            var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
+            var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
+            var chatId = Guid.NewGuid().ToString();
+            
+            var response = await godChat.ChatWithoutHistoryAsync(
+                userGuid,
+                chatId,
+                translationPrompt,
+                "FORTUNE");
+            llmStopwatch.Stop();
+            _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
+            
+            if (response == null || response.Count() == 0)
+            {
+                _logger.LogWarning($"[Fortune][AsyncTranslation] {userInfo.UserId} No response from LLM");
+                return;
+            }
+            
+            var aiResponse = response[0].Content;
+            
+            // Parse response
+            var parseStopwatch = Stopwatch.StartNew();
+            
+            // Extract JSON from response
+            string jsonContent = aiResponse;
+            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
+            if (codeBlockMatch.Success)
+            {
+                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
+            }
+            var firstBrace = jsonContent.IndexOf('{');
+            var lastBrace = jsonContent.LastIndexOf('}');
+            if (firstBrace >= 0 && lastBrace > firstBrace)
+            {
+                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
+            }
+            jsonContent = jsonContent.Trim();
+            
+            var parsedResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            
+            if (parsedResponse == null || !parsedResponse.ContainsKey("predictions"))
+            {
+                _logger.LogWarning($"[Fortune][AsyncTranslation] {userInfo.UserId} Invalid response format");
+                return;
+            }
+            
+            var predictionsObj = parsedResponse["predictions"];
+            var translatedLanguages = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(
+                JsonConvert.SerializeObject(predictionsObj));
+            
+            parseStopwatch.Stop();
+            _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms");
+            
+            // Raise event to update state with translated languages
+            RaiseEvent(new LanguagesTranslatedEvent
+            {
+                Type = type,
+                PredictionDate = predictionDate,
+                TranslatedLanguages = translatedLanguages,
+                AllGeneratedLanguages = allLanguages
+            });
+            
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+            
+            _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} SUCCESS - Generated {translatedLanguages.Count} languages for {type}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[Fortune][AsyncTranslation] {userInfo.UserId} Error generating remaining languages for {type}");
+        }
     }
 
     /// <summary>
@@ -955,7 +1255,20 @@ KEY RULES:
             
             _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
-            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            Dictionary<string, object>? fullResponse = null;
+            try
+            {
+                fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogError(jsonEx, "[FortunePredictionGAgent][ParseMultilingualDailyResponse] JSON parse error. First 500 chars: {JsonPreview}", 
+                    jsonContent.Length > 500 ? jsonContent.Substring(0, 500) : jsonContent);
+                _logger.LogError("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Last 200 chars: {JsonEnd}", 
+                    jsonContent.Length > 200 ? jsonContent.Substring(jsonContent.Length - 200) : jsonContent);
+                return (null, null);
+            }
+            
             if (fullResponse == null)
             {
                 _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Failed to deserialize response");
@@ -1049,7 +1362,20 @@ KEY RULES:
             
             _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
-            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            Dictionary<string, object>? fullResponse = null;
+            try
+            {
+                fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogError(jsonEx, "[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] JSON parse error. First 500 chars: {JsonPreview}", 
+                    jsonContent.Length > 500 ? jsonContent.Substring(0, 500) : jsonContent);
+                _logger.LogError("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Last 200 chars: {JsonEnd}", 
+                    jsonContent.Length > 200 ? jsonContent.Substring(jsonContent.Length - 200) : jsonContent);
+                return (null, null);
+            }
+            
             if (fullResponse == null)
             {
                 _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Failed to deserialize response");

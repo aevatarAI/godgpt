@@ -429,6 +429,10 @@ public class PredictionResultDto
     [Id(13)] public ZodiacSignEnum? RisingSign { get; set; } // From lifetime prediction
     [Id(14)] public ChineseZodiacEnum? ChineseZodiac { get; set; } // From user profile/lifetime prediction
     [Id(15)] public CrystalStoneEnum? LuckyStone { get; set; } // Daily prediction only
+    
+    // Language generation status (two-stage generation support)
+    [Id(16)] public List<string>? AvailableLanguages { get; set; } // Languages that are currently available
+    [Id(17)] public bool AllLanguagesGenerated { get; set; } // True if all 4 languages are generated
 }
 
 /// <summary>
