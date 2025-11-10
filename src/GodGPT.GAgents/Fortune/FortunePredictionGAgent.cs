@@ -709,10 +709,10 @@ FORMAT (flattened):
       ""todaysTakeaway"": ""[15-25 words: Start '{{firstName}}, your...' Use contrast/cause-effect]"",
       ""luckyAlignments_luckyNumber_number"": ""[Seven]"", ""luckyAlignments_luckyNumber_digit"": ""[7]"", 
       ""luckyAlignments_luckyNumber_description"": ""[15-20 words]"",
-      ""luckyAlignments_luckyNumber_calculation"": ""How is it calculated? Numerical Energy of the Day ({predictionDate:M-d-yyyy}): [formula reducing to single digit]"",
+      ""luckyAlignments_luckyNumber_calculation"": ""[20-30 words: How is it calculated? Numerical Energy of the Day ({predictionDate:M-d-yyyy}): formula reducing to single digit]"",
       ""luckyAlignments_luckyStone"": ""[stone]"", ""luckyAlignments_luckyStone_description"": ""[15-20 words: How to use, what it awakens]"",
       ""luckyAlignments_luckyStone_guidance"": ""[15-20 words: Start 'Meditate:' or 'Practice:', specific ritual]"",
-      ""luckyAlignments_luckySpell"": ""[2-4 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[Quote format first-person affirmation]"",
+      ""luckyAlignments_luckySpell"": ""[2-4 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[20-30 words: Quote format first-person affirmation]"",
       ""luckyAlignments_luckySpell_intent"": ""[10-12 words: Start 'To [verb]...']"",
       ""twistOfFate_favorable"": [""[4-8 words]"", ""[4-8 words]""], ""twistOfFate_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
       ""twistOfFate_todaysRecommendation"": ""[10-15 words: Start 'Today's turning point lies in...']""
