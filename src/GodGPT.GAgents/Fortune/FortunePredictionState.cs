@@ -28,5 +28,10 @@ public class FortunePredictionState : StateBase
     [Id(13)] public Dictionary<string, string> YearlyForecast { get; set; } = new Dictionary<string, string>(); // Yearly prediction
     [Id(14)] public DateTime? YearlyGeneratedDate { get; set; } // Track when yearly was generated for expiration check
     [Id(15)] public Dictionary<string, Dictionary<string, string>>? MultilingualYearly { get; set; } // Yearly multilingual
+    
+    // Language generation status (two-stage generation support)
+    [Id(16)] public List<string>? DailyGeneratedLanguages { get; set; } // Track which languages are generated for daily
+    [Id(17)] public List<string>? YearlyGeneratedLanguages { get; set; } // Track which languages are generated for yearly
+    [Id(18)] public List<string>? LifetimeGeneratedLanguages { get; set; } // Track which languages are generated for lifetime
 }
 

@@ -95,6 +95,22 @@ public class PredictionGeneratedEvent : FortunePredictionEventLog
     [Id(13)] public Dictionary<string, string> YearlyForecast { get; set; } = new Dictionary<string, string>(); // Yearly prediction
     [Id(14)] public DateTime? YearlyGeneratedDate { get; set; } // Track when yearly was generated
     [Id(15)] public Dictionary<string, Dictionary<string, string>>? MultilingualYearly { get; set; } // Yearly multilingual
+    
+    // Language generation tracking (two-stage generation support)
+    [Id(16)] public string? InitialLanguage { get; set; } // The language generated in first stage
+    [Id(17)] public PredictionType? PredictionTypeGenerated { get; set; } // Type of prediction generated
+}
+
+/// <summary>
+/// Event raised when remaining languages are generated asynchronously (second stage)
+/// </summary>
+[GenerateSerializer]
+public class LanguagesTranslatedEvent : FortunePredictionEventLog
+{
+    [Id(0)] public PredictionType Type { get; set; }
+    [Id(1)] public DateOnly PredictionDate { get; set; }
+    [Id(2)] public Dictionary<string, Dictionary<string, string>>? TranslatedLanguages { get; set; } // Key: language code, Value: content
+    [Id(3)] public List<string>? AllGeneratedLanguages { get; set; } // All languages now available
 }
 
 #endregion
