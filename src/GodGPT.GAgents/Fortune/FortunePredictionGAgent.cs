@@ -557,10 +557,11 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         string prompt = string.Empty;
         
         // Multilingual instruction prefix
-        var multilingualPrefix = @"IMPORTANT: Generate prediction in 4 languages (English, Traditional Chinese, Simplified Chinese, Spanish).
-All text fields must be naturally translated (not word-by-word), keeping the same meaning and tone.
-EXCEPTION: chineseAstrology_currentYearStems must remain in Chinese with Pinyin format across ALL languages (e.g., '乙巳 (Yǐsì)').
-Wrap your response in a 'predictions' object with language codes: 'en', 'zh-tw', 'zh', 'es'.
+        var multilingualPrefix = @"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
+
+MULTILINGUAL: Generate in 4 languages with natural translation (not word-by-word): 'en', 'zh-tw', 'zh', 'es'.
+EXCEPTION: chineseAstrology_currentYearStems always stays in Chinese+Pinyin (e.g., '乙巳 (Yǐsì)').
+Wrap response in 'predictions' object with language codes.
 
 ";
         
@@ -569,137 +570,66 @@ Wrap your response in a 'predictions' object with language codes: 'en', 'zh-tw',
             prompt = multilingualPrefix + $@"Generate lifetime profile for user.
 User: {userInfoLine}
 
-FORMAT (flattened, no nesting):
+FORMAT (flattened):
 {{
   ""predictions"": {{
     ""en"": {{
       ""welcomeNote_zodiac"": ""[zodiac]"", ""welcomeNote_chineseZodiac"": ""[Element Animal]"", ""welcomeNote_rhythm"": ""[Yin/Yang Element]"", ""welcomeNote_essence"": ""[adj] and [adj]"",
-      ""fourPillars_coreIdentity"": ""[12-18 words: Address user by name, describe chart as fusion of elements/qualities. E.g., 'Sean, your chart presents a fascinating fusion of air intellect, earth depth, and fire instinct.']"", 
-      ""fourPillars_coreIdentity_expanded"": ""[45-60 words: State Sun sign + birth year animal + Rising + Moon, define archetype in one phrase, then list 3-4 contrasting traits using 'both...yet' or 'and' patterns]"",
-      ""chineseAstrology_currentYear"": ""Year of the [Element Animal] - MUST be accurate for current year based on Chinese lunar calendar"", 
-      ""chineseAstrology_currentYearStems"": ""[干支词组 (Pinyin)] - MUST be accurate Heavenly Stem + Earthly Branch for current year. Example: '己巳 (Jǐsì)' for 1989, '乙巳 (Yǐsì)' for 2025'"",
-      ""chineseAstrology_trait1"": ""[8-12 words: One key personality trait from Chinese zodiac]"", 
-      ""chineseAstrology_trait2"": ""[8-12 words: Another trait]"", 
-      ""chineseAstrology_trait3"": ""[8-12 words: Another trait]"", 
-      ""chineseAstrology_trait4"": ""[8-12 words: Optional fourth trait]"",
-      ""zodiacWhisper"": ""[40-50 words: Explain how Chinese zodiac element/animal adds specific qualities to the Western chart. Start with '[Animal] adds...' Use 'You are not only X, but Y.' Address directly with 'You']"",
-      ""sunSign_name"": ""[sign name]"", ""sunSign_tagline"": ""You [2-5 words, poetic metaphor like 'flow like water' or 'burn like fire']"",
-      ""westernOverview_sunSign"": ""[sign]"", 
-      ""westernOverview_sunArchetype"": ""The [3-5 words archetype title]"", 
-      ""westernOverview_sunDescription"": ""[18-25 words: Core Sun sign traits, use 'You' extensively. E.g., 'Sean, you are empathic, creative, deeply intuitive. You dream in symbols and speak in soul codes.']"",
-      ""westernOverview_moonSign"": ""[sign]"", 
-      ""westernOverview_moonArchetype"": ""The [3-5 words archetype title]"", 
-      ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature, describe Moon qualities. E.g., 'Emotional depth, protective instincts, and strong intuitive memory. Words carry nurturing frequency.']"",
-      ""westernOverview_risingSign"": ""[sign]"", 
-      ""westernOverview_risingArchetype"": ""The [3-5 words archetype title]"", 
-      ""westernOverview_risingDescription"": ""[20-28 words: How they appear/move through world. E.g., 'You meet the world with radiant confidence. Your purpose is to shine through self-expressive mastery — when paired with your Bazi fire-hour, communication becomes royal.']"",
-      ""combinedEssence"": ""[15-20 words: Pattern 'You think like [article] [Sun], feel like [article] [Moon], and move through the world like [article] [Rising].']"",
-      ""strengths_overview"": ""[10-15 words: Philosophical statement about how they evolve/grow. E.g., 'You evolve in layers. You're always quietly editing your identity.']"",
-      ""strengths_item1_title"": ""[2-5 words: Strength name]"", 
-      ""strengths_item1_description"": ""[15-25 words: Describe strength using specific sign combinations. E.g., 'Gemini gives you broadcast power, Scorpio Moon gives you x-ray insight. You can read between lines and speak beneath surface tensions.']"",
-      ""strengths_item2_title"": ""[2-5 words: Strength name]"", 
-      ""strengths_item2_description"": ""[12-18 words: Another strength with sign attribution]"",
-      ""strengths_item3_title"": ""[2-5 words: Strength name]"", 
-      ""strengths_item3_description"": ""[12-18 words: Another strength with sign attribution]"",
-      ""challenges_overview"": ""[12-18 words: State when/how their power grows. Start with 'Your power grows when...' E.g., 'Your power grows when you balance intuition and logic, and when you allow safe emotional openings.']"",
-      ""challenges_item1_title"": ""[2-5 words: Challenge name]"", 
-      ""challenges_item1_description"": ""[8-15 words: Frame challenge using sign combinations. E.g., 'Virgo + Gemini can trap you in mental loops.']"",
-      ""challenges_item2_title"": ""[2-5 words: Challenge name]"", 
-      ""challenges_item2_description"": ""[10-18 words: Another challenge with signs]"",
-      ""challenges_item3_title"": ""[2-5 words: Challenge name]"", 
-      ""challenges_item3_description"": ""[10-18 words: Another challenge with signs]"",
-      ""destiny_overview"": ""[20-30 words: State life purpose/calling using 'You are here to...' Start with purpose, end with identity. E.g., 'You are here to grasp patterns beneath the surface, and express them with clarity and usefulness. You are both mirror and messenger.']"",
-      ""destiny_path1_title"": ""[3-5 roles separated by / (slash). E.g., 'Therapist / Coach / Strategist']"", 
-      ""destiny_path1_description"": ""[3-6 words: Core essence of this path. E.g., 'Blending logic and depth.']"",
-      ""destiny_path2_title"": ""[3-5 roles separated by /. E.g., 'Writer / Researcher / Otherworldly Communicator']"", 
-      ""destiny_path2_description"": ""[5-10 words: E.g., 'Someone who processes and transmits hidden wisdom.']"",
-      ""destiny_path3_title"": ""[1-3 roles or unique title. E.g., 'Spiritual Scientist']"", 
-      ""destiny_path3_description"": ""[8-15 words: E.g., 'Interpreting emotional data, creating inner systems, helping others decode themselves.']"",
-      ""chineseZodiac_animal"": ""The [Animal - user's birth year zodiac animal]"", 
-      ""chineseZodiac_essence"": ""Essence like [element - the element associated with user's birth year, e.g., 'fire', 'water', 'earth', 'metal', 'wood']"",
-      ""zodiacCycle_title"": ""Zodiac Cycle Influence (2024-2043) - MUST use actual current 20-year period"", 
-      ""zodiacCycle_cycleName"": ""[Cycle Name in English, e.g., 'Li Fire Luck Cycle']"", 
-      ""zodiacCycle_cycleNameChinese"": ""[Chinese name, e.g., '九紫离火运']"",
-      ""zodiacCycle_overview"": ""[50-65 words: State user's zodiac + element alignment. Start with 'Your Chinese Zodiac is [Animal] ([Element]), a [element]-aligned sign.' Describe the current 20-year cycle period, what element/energy dominates, and how it affects the user's Day Master. E.g., 'From 2024 to 2043, we enter the Li Fire Luck Cycle — an era dominated by expressive, spiritual fire energy. For you, this enhances your metal Day Master.']"",
-      ""zodiacCycle_dayMasterPoint1"": ""[8-12 words: How this cycle affects user. E.g., 'Fire tempers your essence into useable form']"", 
-      ""zodiacCycle_dayMasterPoint2"": ""[6-10 words: Another effect]"", 
-      ""zodiacCycle_dayMasterPoint3"": ""[8-12 words: Another effect]"", 
-      ""zodiacCycle_dayMasterPoint4"": ""[10-15 words: Final effect or timing advice]"",
-      ""tenYearCycles_description"": ""[40-60 words: Describe user's Fate Palace (命宫). State which sector it lies in (e.g., Gen 艮, Kun 坤), its element, and what it represents. Then explain what this aligns the user with. Start with 'Your Fate Palace (命宫) lies in the [Sector] ([Chinese]) sector — [element] element, representing [qualities]. This aligns you with [activities/strengths].']"",
-      ""pastCycle_ageRange"": ""Age X-Y (YYYY-YYYY) - MUST calculate based on user's birth year"", 
-      ""pastCycle_period"": ""[干支 (Pinyin)] · [Element Animal] - e.g., '甲午 (Jia-Wu) · Wood Horse']"", 
-      ""pastCycle_influenceSummary"": ""[8-12 words: Brief summary of past cycle's theme]"", 
-      ""pastCycle_meaning"": ""[60-80 words: Describe what this past cycle meant for the user. Use past tense. Explain the dominant element/energy, what it supported or challenged, and how it shaped them. Reference the Ten Gods (e.g., Shi Shen, Zheng Guan) if relevant.]"",
-      ""currentCycle_ageRange"": ""Age X-Y (YYYY-YYYY) - MUST calculate based on user's birth year and current year"", 
-      ""currentCycle_period"": ""[干支 (Pinyin)] · [Element Animal]"", 
-      ""currentCycle_influenceSummary"": ""[8-12 words: Brief summary of current cycle's theme, e.g., 'Current cycle: peak creativity & expression']"", 
-      ""currentCycle_meaning"": ""[60-80 words: Describe what this current cycle means for the user. Use present tense. Start with 'This is your [Cycle Name] —' Explain the dominant element/energy, what it's empowering or fueling, and what activities/paths it supports. Reference the Ten Gods if relevant. E.g., 'This is your Expression Cycle — fire is empowering your Geng Metal, fueling charisma, speech, creativity, and public influence. As a Shi Shen cycle, it supports teaching, writing, performing, and crafting new systems of reality through structured content.']"",
-      ""futureCycle_ageRange"": ""Age X-Y (YYYY-YYYY) - MUST calculate based on user's birth year"", 
-      ""futureCycle_period"": ""[干支 (Pinyin)] · [Element Animal]"", 
-      ""futureCycle_influenceSummary"": ""[8-12 words: Brief summary of future cycle's theme]"", 
-      ""futureCycle_meaning"": ""[60-80 words: Describe what this future cycle will bring for the user. Use future tense. Explain the dominant element/energy, what it will support or challenge, and what opportunities or lessons it brings. Reference the Ten Gods if relevant.]"",
-      ""lifePlot_title"": ""You are a [10-20 words: Create poetic archetype that captures user's essence. E.g., 'You are a linguistic architect of reality.']"", 
-      ""lifePlot_chapter"": ""[30-50 words: Address user by name, describe their destiny/calling in inspiring terms. E.g., 'Sean, your destiny isn't just to express — it's to build entire frameworks, crafts, and worlds through language.']"",
-      ""lifePlot_point1"": ""[5-15 words: How one element/chart aspect shapes them. E.g., 'Fire refines your soul']"", 
-      ""lifePlot_point2"": ""[5-15 words: Another element/chart aspect]"", 
-      ""lifePlot_point3"": ""[5-15 words: Another element/chart aspect]"", 
-      ""lifePlot_point4"": ""[5-15 words: Final powerful statement about their identity. E.g., 'You are not here to find your voice — you are the voice']"",
-      ""activationSteps_step1_title"": ""[2-5 words: Action-oriented title. E.g., 'Morning Practice']"", 
-      ""activationSteps_step1_description"": ""[10-20 words: Specific actionable advice. E.g., 'Journaling, scripting, or sigil sentences to code your day']"",
-      ""activationSteps_step2_title"": ""[2-5 words: E.g., 'Teach or Share']"", 
-      ""activationSteps_step2_description"": ""[10-20 words: E.g., 'Host micro-teachings, even just 1:1 sharing']"",
-      ""activationSteps_step3_title"": ""[2-5 words: E.g., 'Framework Building']"", 
-      ""activationSteps_step3_description"": ""[10-20 words: E.g., 'Develop a system of language, symbols, or logic unique to your essence']"",
-      ""activationSteps_step4_title"": ""[2-5 words: E.g., 'Speak With Intention']"", 
-      ""activationSteps_step4_description"": ""[10-20 words: Powerful closing statement. E.g., 'Every word you say or write is a ripple collapsing future states']"",
-      ""mantra_title"": ""[2-4 words: Section title. E.g., 'Be Intentional']"", 
-      ""mantra_point1"": ""[5-15 words: Inspiring directive. E.g., 'Write as if you are sculpting spirit']"", 
-      ""mantra_point2"": ""[5-15 words: Another directive. E.g., 'Speak as if you are broadcasting codes']"", 
-      ""mantra_point3"": ""[5-15 words: Final powerful statement. E.g., 'Recognize: your voice is a divine tool for reality programming']""
+      ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
+      ""fourPillars_coreIdentity_expanded"": ""[45-60 words: List Sun/Moon/Rising signs, define archetype, show contrasts using 'both...yet' patterns]"",
+      ""chineseAstrology_currentYear"": ""Year of the [Element Animal] - accurate for current lunar year"", 
+      ""chineseAstrology_currentYearStems"": ""[干支 (Pinyin)] - accurate Heavenly Stem + Earthly Branch"",
+      ""chineseAstrology_trait1"": ""[8-12 words]"", ""chineseAstrology_trait2"": ""[8-12 words]"", ""chineseAstrology_trait3"": ""[8-12 words]"", ""chineseAstrology_trait4"": ""[8-12 words]"",
+      ""zodiacWhisper"": ""[40-50 words: How Chinese zodiac enhances Western chart. Start '[Animal] adds...' Use 'You are not only X, but Y']"",
+      ""sunSign_name"": ""[sign]"", ""sunSign_tagline"": ""You [2-5 words poetic metaphor]"",
+      ""westernOverview_sunSign"": ""[sign]"", ""westernOverview_sunArchetype"": ""The [3-5 words]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
+      ""westernOverview_moonSign"": ""[sign]"", ""westernOverview_moonArchetype"": ""The [3-5 words]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
+      ""westernOverview_risingSign"": ""[sign]"", ""westernOverview_risingArchetype"": ""The [3-5 words]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
+      ""combinedEssence"": ""[15-20 words: 'You think like [Sun], feel like [Moon], move through world like [Rising]']"",
+      ""strengths_overview"": ""[10-15 words: How they evolve/grow]"",
+      ""strengths_item1_title"": ""[2-5 words]"", ""strengths_item1_description"": ""[15-25 words: Attribute to sign combinations]"",
+      ""strengths_item2_title"": ""[2-5 words]"", ""strengths_item2_description"": ""[12-18 words]"",
+      ""strengths_item3_title"": ""[2-5 words]"", ""strengths_item3_description"": ""[12-18 words]"",
+      ""challenges_overview"": ""[12-18 words: Start 'Your power grows when...']"",
+      ""challenges_item1_title"": ""[2-5 words]"", ""challenges_item1_description"": ""[8-15 words: Frame using sign combinations]"",
+      ""challenges_item2_title"": ""[2-5 words]"", ""challenges_item2_description"": ""[10-18 words]"",
+      ""challenges_item3_title"": ""[2-5 words]"", ""challenges_item3_description"": ""[10-18 words]"",
+      ""destiny_overview"": ""[20-30 words: 'You are here to...' End with dual identity]"",
+      ""destiny_path1_title"": ""[3-5 roles separated by /]"", ""destiny_path1_description"": ""[3-6 words]"",
+      ""destiny_path2_title"": ""[3-5 roles separated by /]"", ""destiny_path2_description"": ""[5-10 words]"",
+      ""destiny_path3_title"": ""[1-3 roles]"", ""destiny_path3_description"": ""[8-15 words]"",
+      ""chineseZodiac_animal"": ""The [Animal]"", ""chineseZodiac_essence"": ""Essence like [element]"",
+      ""zodiacCycle_title"": ""Zodiac Cycle Influence (YYYY-YYYY) - current 20-year period"", 
+      ""zodiacCycle_cycleName"": ""[English name]"", ""zodiacCycle_cycleNameChinese"": ""[Chinese name]"",
+      ""zodiacCycle_overview"": ""[50-65 words: State zodiac+element, describe 20-year cycle, how it affects Day Master]"",
+      ""zodiacCycle_dayMasterPoint1"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint2"": ""[6-10 words]"", ""zodiacCycle_dayMasterPoint3"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint4"": ""[10-15 words]"",
+      ""tenYearCycles_description"": ""[40-60 words: Fate Palace sector, element, what it represents, what it aligns them with]"",
+      ""pastCycle_ageRange"": ""Age X-Y (YYYY-YYYY)"", ""pastCycle_period"": ""[干支 (Pinyin)] · [Element Animal]"", 
+      ""pastCycle_influenceSummary"": ""[8-12 words]"", ""pastCycle_meaning"": ""[60-80 words: Past tense, explain element/energy, reference Ten Gods if relevant]"",
+      ""currentCycle_ageRange"": ""Age X-Y (YYYY-YYYY)"", ""currentCycle_period"": ""[干支 (Pinyin)] · [Element Animal]"", 
+      ""currentCycle_influenceSummary"": ""[8-12 words]"", ""currentCycle_meaning"": ""[60-80 words: Present tense, what it empowers, reference Ten Gods]"",
+      ""futureCycle_ageRange"": ""Age X-Y (YYYY-YYYY)"", ""futureCycle_period"": ""[干支 (Pinyin)] · [Element Animal]"", 
+      ""futureCycle_influenceSummary"": ""[8-12 words]"", ""futureCycle_meaning"": ""[60-80 words: Future tense, opportunities/challenges]"",
+      ""lifePlot_title"": ""You are a [10-20 words: Poetic archetype]"", 
+      ""lifePlot_chapter"": ""[30-50 words: Address by name, describe destiny]"",
+      ""lifePlot_point1"": ""[5-15 words]"", ""lifePlot_point2"": ""[5-15 words]"", ""lifePlot_point3"": ""[5-15 words]"", ""lifePlot_point4"": ""[5-15 words: Powerful identity statement]"",
+      ""activationSteps_step1_title"": ""[2-5 words]"", ""activationSteps_step1_description"": ""[10-20 words: Actionable]"",
+      ""activationSteps_step2_title"": ""[2-5 words]"", ""activationSteps_step2_description"": ""[10-20 words]"",
+      ""activationSteps_step3_title"": ""[2-5 words]"", ""activationSteps_step3_description"": ""[10-20 words]"",
+      ""activationSteps_step4_title"": ""[2-5 words]"", ""activationSteps_step4_description"": ""[10-20 words: Most powerful]"",
+      ""mantra_title"": ""[2-4 words]"", 
+      ""mantra_point1"": ""[5-15 words: 'X as if...' pattern]"", ""mantra_point2"": ""[5-15 words]"", ""mantra_point3"": ""[5-15 words: Most powerful]""
     }},
     ""zh-tw"": {{...same}}, ""zh"": {{...same}}, ""es"": {{...same}}
   }}
 }}
 
-CONTENT GUIDELINES:
-- fourPillars coreIdentity: Address user by name, describe as ''fusion of'' elements
-- fourPillars expanded: List zodiac signs, define archetype, show contrasts using ''both...yet'' patterns
-- chineseAstrology currentYear: MUST calculate accurate year animal+element based on Chinese lunar calendar (e.g., 2025 = Wood Snake year)
-- chineseAstrology currentYearStems: CRITICAL - Calculate accurate Heavenly Stem + Earthly Branch for the year (e.g., 2025 = 乙巳 Yǐsì). Must be ONE compound word. MUST use Chinese characters + Pinyin in ALL language versions (do NOT translate)
-- chineseAstrology traits: 3-4 concrete personality traits from user's birth year animal
-- zodiacWhisper: How Chinese zodiac adds to/enhances Western astrology. Use ''You are not only X, but Y'' pattern
-- sunSign tagline: Create poetic metaphor using nature/elements (e.g., ''flow like water'', ''burn like fire'', ''shine like diamond'')
-- westernOverview archetypes: Give each sign a title (e.g., ''The Dream Weaver'', ''The Intuitive Nurturer'', ''The Radiant Leader'')
-- westernOverview descriptions: Sun is core identity, Moon is emotional nature, Rising is how they meet the world
-- combinedEssence: Use exact pattern ''You think like [a/an] [Sun], feel like [a/an] [Moon], and move through the world like [a/an] [Rising].''
-- strengths overview: Philosophical statement on evolution/growth pattern
-- strengths items: Attribute each strength to specific sign combinations (e.g., ''Gemini gives you X, Scorpio Moon gives you Y'')
-- challenges overview: Start with ''Your power grows when...'' to frame positively
-- challenges items: Use sign combinations to explain challenges (e.g., ''Virgo + Gemini can trap you in mental loops'')
-- destiny overview: State life purpose with 'You are here to...' pattern, end with dual identity (e.g., ''You are both X and Y'')
-- destiny paths: List 3 potential career/calling directions using slash-separated roles, each path more specific than last
-- zodiacCycle title: MUST calculate accurate current 20-year period based on actual year
-- zodiacCycle names: Provide both English cycle name and Chinese name (e.g., 'Li Fire Luck Cycle' / '九紫离火运')
-- zodiacCycle overview: Start by stating user's zodiac+element, then describe the 20-year cycle and how it affects their Day Master
-- zodiacCycle dayMaster points: 4 specific ways this cycle influences the user, can include timing advice
-- tenYearCycles: Describe user's Fate Palace (命宫), its sector (with Chinese), element, and what it aligns them with
-- pastCycle/currentCycle/futureCycle: MUST calculate accurate age ranges based on user's birth year. Each 10-year period includes:
-  * ageRange: Age span and year span (e.g., ""Age 27-37 (2016-2026)"")
-  * period: Heavenly Stem + Earthly Branch in Chinese with Pinyin, plus Element Animal (e.g., ""甲午 (Jia-Wu) · Wood Horse"")
-  * influenceSummary: Brief theme summary (8-12 words)
-  * meaning: Detailed explanation (60-80 words) using appropriate tense (past/present/future), referencing Ten Gods system if relevant
-- lifePlot title: Create poetic archetype starting with ""You are a..."" (10-20 words total)
-- lifePlot chapter: Address user by name, describe their destiny in inspiring terms (30-50 words)
-- lifePlot points: 4 bullet points - first 3 describe how elements/chart aspects shape them (5-15 words each), final point is powerful identity statement
-- activationSteps: 4 practical action steps to activate their destiny. Each has a title (2-5 words) and description (10-20 words). Be specific and actionable. Final step should be most powerful.
-- mantra: Section titled with 2-4 words. 3 inspiring directives (5-15 words each) using command language like ""Write as if..."", ""Speak as if..."", ""Recognize..."". Final point should be most powerful.
-
-RULES:
-- Use You/Your in all descriptions
-- No special chars like ✨★※ or emoji in JSON values
-- No line breaks in string values (use space instead)
-- Warm, conversational tone
-- For challenges: frame positively";
+KEY RULES:
+- Calculate accurate Chinese lunar calendar dates/stems for currentYear and currentYearStems
+- Use 'both...yet' contrasts for personality, 'You are here to...' for destiny, 'Your power grows when...' for challenges
+- Attribute strengths/challenges to specific sign combinations
+- Calculate age ranges for 10-year cycles based on birth year
+- Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";
         }
         else if (type == PredictionType.Yearly)
         {
@@ -710,53 +640,35 @@ FORMAT (flattened):
 {{
   ""predictions"": {{
     ""en"": {{
-      ""zodiacInfluence"": ""[Element Animal] native in a [Element Animal] year → [Taishui relationship like Self-Punishment/Harmony etc (刑太岁/冲太岁/etc)]"",
-      ""westernAstroOverlay"": ""[Sun sign] Sun · [2-3 word archetype/role] — {predictionDate.Year} [Key planetary transits]"",
-      ""yearlyTheme_overallTheme"": ""[4-7 words: Powerful theme title using 'of' structure, like 'Recalibration of Self, Speech & System']"", 
-      ""yearlyTheme_atAGlance"": ""[15-20 words: State what Eastern and Western systems agree on for this year]"", 
-      ""yearlyTheme_expanded"": ""[60-80 words total, 3 paragraphs separated by double space: P1 describe astrological combination and zodiac clash, P2 what this creates/tests, P3 define what kind of year this is (not X but Y)]"",
-      ""divineInfluence_career_score"": [1-4], ""divineInfluence_career_tagline"": ""[10-15 words: Start with 'Your superpower this year:']"", 
-      ""divineInfluence_career_bestMoves"": [""[8-12 words: Specific actionable advice]"", ""[8-15 words: Another specific action]""], 
-      ""divineInfluence_career_avoid"": [""[4-8 words: Specific behavior to avoid]"", ""[4-8 words: Another thing to avoid]""], 
-      ""divineInfluence_career_inANutshell"": ""[50-70 words, 3 parts separated by double space: Part 1 planetary formula (e.g., 'Saturn + 天岁 Clash = Structural Audit.'), Part 2 describe how it feels, Part 3 what delays/challenges mean]"",
-      ""divineInfluence_love_score"": [1-4], ""divineInfluence_love_tagline"": ""[10-15 words: Philosophical statement about love this year]"", 
-      ""divineInfluence_love_bestMoves"": [""[6-10 words: Single advice OR Committed advice with label]"", ""[6-12 words: Another advice (can be for different relationship status)]""], 
-      ""divineInfluence_love_avoid"": [""[6-12 words: What to avoid in relationships]"", ""[4-8 words: Another pitfall to avoid]""], 
-      ""divineInfluence_love_inANutshell"": ""[50-70 words, 3 parts separated by double space: Part 1 planetary formula (e.g., 'Neptune + 天岁 Clash = Emotional Sensitivity.'), Part 2 emotional state this year, Part 3 what relationships require]"",
-      ""divineInfluence_wealth_score"": [1-4], ""divineInfluence_wealth_tagline"": ""[10-15 words: Financial philosophy for the year]"", 
-      ""divineInfluence_wealth_bestMoves"": [""[8-12 words: Specific financial strategy]"", ""[8-15 words: Another wealth action]""], 
-      ""divineInfluence_wealth_avoid"": [""[4-8 words: Financial behavior to avoid]"", ""[4-8 words: Another wealth pitfall]""], 
-      ""divineInfluence_wealth_inANutshell"": ""[50-70 words, 3 parts separated by double space: Part 1 planetary formula for wealth, Part 2 financial climate this year, Part 3 what prosperity requires]"",
-      ""divineInfluence_health_score"": [1-4], ""divineInfluence_health_tagline"": ""[10-15 words: Health philosophy for the year]"", 
-      ""divineInfluence_health_bestMoves"": [""[8-12 words: Specific health practice]"", ""[8-15 words: Another health action]""], 
-      ""divineInfluence_health_avoid"": [""[4-8 words: Health behavior to avoid]"", ""[4-8 words: Another health pitfall]""], 
-      ""divineInfluence_health_inANutshell"": ""[50-70 words, 3 parts separated by double space: Part 1 planetary formula for health, Part 2 body-mind state this year, Part 3 what wellness requires]"",
-      ""embodimentMantra"": ""[18-25 words: First-person declarations using 'My'. Create 2-3 powerful statements about how user will embody this year's energy. Poetic, rhythmic, empowering]""
+      ""zodiacInfluence"": ""[Element Animal] native in [Element Animal] year → [Taishui relationship]"",
+      ""westernAstroOverlay"": ""[Sun sign] Sun · [2-3 word archetype] — {predictionDate.Year} [Key transits]"",
+      ""yearlyTheme_overallTheme"": ""[4-7 words: Theme using 'of' structure]"", 
+      ""yearlyTheme_atAGlance"": ""[15-20 words: What systems agree on]"", 
+      ""yearlyTheme_expanded"": ""[60-80 words: 3 paragraphs (double space): P1 combination/clash, P2 what it creates, P3 define year (not X but Y)]"",
+      ""divineInfluence_career_score"": [1-4], ""divineInfluence_career_tagline"": ""[10-15 words: Start 'Your superpower this year:']"", 
+      ""divineInfluence_career_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_career_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_career_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 how it feels, P3 meaning]"",
+      ""divineInfluence_love_score"": [1-4], ""divineInfluence_love_tagline"": ""[10-15 words: Philosophical]"", 
+      ""divineInfluence_love_bestMoves"": [""[6-10 words]"", ""[6-12 words]""], ""divineInfluence_love_avoid"": [""[6-12 words]"", ""[4-8 words]""], 
+      ""divineInfluence_love_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 emotional state, P3 what relationships need]"",
+      ""divineInfluence_wealth_score"": [1-4], ""divineInfluence_wealth_tagline"": ""[10-15 words]"", 
+      ""divineInfluence_wealth_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_wealth_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_wealth_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 climate, P3 what prosperity needs]"",
+      ""divineInfluence_health_score"": [1-4], ""divineInfluence_health_tagline"": ""[10-15 words]"", 
+      ""divineInfluence_health_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_health_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_health_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 state, P3 what wellness needs]"",
+      ""embodimentMantra"": ""[18-25 words: First-person 'My' declarations, 2-3 powerful statements, poetic and rhythmic]""
     }},
     ""zh-tw"": {{...same}}, ""zh"": {{...same}}, ""es"": {{...same}}
   }}
 }}
 
-CONTENT GUIDELINES:
-- zodiacInfluence: Show user's Chinese zodiac element+animal, year's element+animal, and Taishui relationship
-- westernAstroOverlay: Mention Sun sign, give them an archetype/role, list key 2025 transits
-- yearlyTheme overallTheme: Use 'of' structure to create gravitas (e.g., 'Recalibration of...', 'Year of...')
-- yearlyTheme atAGlance: Start with 'Both Eastern and Western systems agree:' or similar consensus statement
-- yearlyTheme expanded: 
-  * P1: Address user directly, describe the rare astrological combination (Chinese zodiac clash + Western transits)
-  * P2: Explain what this combination creates, tests, or demands
-  * P3: Define the year's nature using contrast ('This is not X — it's Y' or 'Not for X, but for Y')
-- divineInfluence scores: Be realistic (1=challenging, 2=mixed, 3=favorable, 4=excellent)
-- divineInfluence taglines: Career 'Your superpower this year:', Love/Wealth/Health are philosophical
-- divineInfluence bestMoves: Concrete actions. Love can specify 'If You Are Single' / 'If You Are Committed'
-- divineInfluence inANutshell: Always use formula pattern (e.g., 'Saturn + 天岁 Clash = X.'), describe state, explain meaning
-- embodimentMantra: First-person 'My' statements. Example: 'My words build worlds. My silence tunes my frequency. My path is not rushed — it is authored.'
-
-RULES:
-- Use You/Your extensively (except embodimentMantra uses 'My')
-- No special chars or emoji
-- No line breaks in strings (use double space to separate parts)
-- Warm, empowering tone";
+KEY RULES:
+- Theme expanded: P1 astrological combo, P2 what it creates, P3 define using contrast (not X but Y)
+- Scores: 1=challenging, 2=mixed, 3=favorable, 4=excellent
+- inANutshell: Always use formula pattern ('X + Y = Z.'), then describe state, then meaning
+- Career tagline starts 'Your superpower this year:', others are philosophical
+- Use 'You/Your' (except embodimentMantra uses 'My'), warm tone, no special chars/emoji, use double space not line breaks";
         }
         else // PredictionType.Daily
         {
@@ -768,49 +680,32 @@ FORMAT (flattened):
   ""predictions"": {{
     ""en"": {{
       ""dayTitle"": ""The Day of [word1] and [word2]"",
-      ""todaysReading_tarotCard_name"": ""[card name]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", ""todaysReading_tarotCard_orientation"": ""[Upright or Reversed]"",
+      ""todaysReading_tarotCard_name"": ""[card]"", ""todaysReading_tarotCard_represents"": ""[1-2 words]"", ""todaysReading_tarotCard_orientation"": ""[Upright/Reversed]"",
       ""todaysReading_pathTitle"": ""{{firstName}}'s Path Today - A [Adjective] Path"",
-      ""todaysReading_pathDescription"": ""[15-25 words: Greet user, describe today's energy/theme, how it may feel]"", 
-      ""todaysReading_pathDescriptionExpanded"": ""[30-40 words: Deeper insight on navigating today, actionable wisdom]"",
-      ""todaysReading_careerAndWork"": ""[10-20 words: Specific career/work guidance, actionable and direct]"", 
-      ""todaysReading_loveAndRelationships"": ""[10-20 words: Relationship guidance, communication tips, emotional advice]"", 
-      ""todaysReading_wealthAndFinance"": ""[10-20 words: Financial decisions, money mindset, investment guidance]"", 
-      ""todaysReading_healthAndWellness"": ""[10-15 words: Physical/mental health focus, self-care advice]"",
-      ""todaysTakeaway"": ""[15-25 words: Start with '{{firstName}}, your...', deliver core insight/truth. Use contrast or cause-effect. Powerful and memorable]"",
+      ""todaysReading_pathDescription"": ""[15-25 words: Greet, describe energy]"", ""todaysReading_pathDescriptionExpanded"": ""[30-40 words: Deeper wisdom, actionable]"",
+      ""todaysReading_careerAndWork"": ""[10-20 words]"", ""todaysReading_loveAndRelationships"": ""[10-20 words]"", 
+      ""todaysReading_wealthAndFinance"": ""[10-20 words]"", ""todaysReading_healthAndWellness"": ""[10-15 words]"",
+      ""todaysTakeaway"": ""[15-25 words: Start '{{firstName}}, your...' Use contrast/cause-effect]"",
       ""luckyAlignments_luckyNumber_number"": ""[Seven]"", ""luckyAlignments_luckyNumber_digit"": ""[7]"", 
-      ""luckyAlignments_luckyNumber_description"": ""[15-20 words: Describe the number's energy/qualities relevant to today]"",
-      ""luckyAlignments_luckyNumber_calculation"": ""How is it calculated? Numerical Energy of the Day ({predictionDate:M-d-yyyy}): [show full formula step by step, reduce to single digit]"",
-      ""luckyAlignments_luckyStone"": ""[stone name]"", 
-      ""luckyAlignments_luckyStone_description"": ""[15-20 words: How to use the stone and what it awakens/aligns]"",
-      ""luckyAlignments_luckyStone_guidance"": ""[15-20 words: Start with 'Meditate:' or 'Practice:', give specific ritual/action steps]"",
-      ""luckyAlignments_luckySpell"": ""[2-4 words: The spell name, can be poetic]"", 
-      ""luckyAlignments_luckySpell_description"": ""[Quote format: 'When thoughts drift like clouds, I return to stillness.']"",
-      ""luckyAlignments_luckySpell_intent"": ""[10-12 words: Start with 'To [verb]...', describe the spell's purpose clearly]"",
-      ""twistOfFate_favorable"": [""[4-8 words: Specific favorable action or approach]"", ""[4-8 words: Another favorable action]""], 
-      ""twistOfFate_avoid"": [""[4-8 words: Specific behavior or approach to avoid]"", ""[4-8 words: Another thing to avoid]""], 
-      ""twistOfFate_todaysRecommendation"": ""[10-15 words: Start with 'Today's turning point lies in...' or similar. Synthesize the key insight]""
+      ""luckyAlignments_luckyNumber_description"": ""[15-20 words]"",
+      ""luckyAlignments_luckyNumber_calculation"": ""How is it calculated? Numerical Energy of the Day ({predictionDate:M-d-yyyy}): [formula reducing to single digit]"",
+      ""luckyAlignments_luckyStone"": ""[stone]"", ""luckyAlignments_luckyStone_description"": ""[15-20 words: How to use, what it awakens]"",
+      ""luckyAlignments_luckyStone_guidance"": ""[15-20 words: Start 'Meditate:' or 'Practice:', specific ritual]"",
+      ""luckyAlignments_luckySpell"": ""[2-4 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[Quote format first-person affirmation]"",
+      ""luckyAlignments_luckySpell_intent"": ""[10-12 words: Start 'To [verb]...']"",
+      ""twistOfFate_favorable"": [""[4-8 words]"", ""[4-8 words]""], ""twistOfFate_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""twistOfFate_todaysRecommendation"": ""[10-15 words: Start 'Today's turning point lies in...']""
     }},
     ""zh-tw"": {{...same}}, ""zh"": {{...same}}, ""es"": {{...same}}
   }}
 }}
 
-CONTENT GUIDELINES:
-- Tarot Card: Choose one card randomly, include its orientation (Upright or Reversed). The orientation affects the reading's tone
-- pathDescription: Start with 'Hi {{firstName}}', describe the day's overall energy and how it may feel
-- pathDescriptionExpanded: Offer deeper wisdom on navigating today. Use metaphors if fitting. Focus on transformation and understanding, not just doing
-- todaysTakeaway: Powerful closing message. Use patterns like 'Your power is not in X, but in Y' or 'The more you X, the Y'. Make it memorable
-- Career/Love/Wealth/Health: Be specific and actionable
-- Lucky Number: Calculate using date digits, describe its spiritual meaning
-- Lucky Stone: Explain how to use it (hold/wear/meditate), give practical ritual steps
-- Lucky Spell: Create a poetic name, write as first-person affirmation/mantra, state clear intent
-- Twist of Fate: Provide 2 specific favorable actions and 2 things to avoid. Be concrete and actionable
-- Today's Recommendation: Synthesize the turning point in one clear sentence
-
-RULES:
-- Use You/Your extensively
-- No special chars or emoji
-- No line breaks in strings
-- Warm, direct tone";            
+KEY RULES:
+- Tarot: Include orientation (Upright/Reversed) affecting tone
+- pathDescription starts 'Hi {{firstName}}', pathDescriptionExpanded offers deeper wisdom with metaphors
+- todaysTakeaway uses contrast patterns ('not X but Y', 'the more X, the Y')
+- Lucky Number: Calculate from date digits. Stone: Ritual steps. Spell: First-person affirmation with intent
+- Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";            
         }
 
         return prompt;
