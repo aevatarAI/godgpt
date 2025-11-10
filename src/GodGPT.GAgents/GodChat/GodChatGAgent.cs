@@ -848,17 +848,17 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             var isDailyGuide = systemPrompt == DailyGuide;
             if (isDailyGuide)
             {
-                systemPrompt = @"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.";
+                systemPrompt = GetFormulaFormatPrompt();
             }
             else
             {
                 if (llm != LocalBackupModel)
                 {
-                    systemPrompt = $"{systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}\n\n{dateInfo}";
+                    systemPrompt = $"{systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}\n\n{GetFormulaFormatPrompt()}\n\n{dateInfo}";
                 }
                 else
                 {
-                    systemPrompt = $"{oldSystemPrompt} {systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}\n\n{dateInfo}";
+                    systemPrompt = $"{oldSystemPrompt} {systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}\n\n{GetFormulaFormatPrompt()}\n\n{dateInfo}";
                 }
             }
             //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
@@ -2045,6 +2045,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         return new Tuple<string, string>(response, title);
     }
 
+
+    private string GetFormulaFormatPrompt()
+    {
+        return "When outputting mathematical formulas, use standard Markdown LaTeX format: inline formulas with single dollar signs like $\\psi$, block formulas with double dollar signs on separate lines. Use single backslash in formulas (e.g., \\psi, \\frac), never double backslashes. Example: $$\\psi = \\psi(\\psi)$$";
+    }
 
     public async Task<string> GodVoiceStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled,
         string message,
