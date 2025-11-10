@@ -138,22 +138,27 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                         }
                     }
 
+                    var predictionDto = new PredictionResultDto
+                    {
+                        PredictionId = State.PredictionId,
+                        UserId = State.UserId,
+                        PredictionDate = State.PredictionDate,
+                        Results = State.Results,
+                        CreatedAt = State.CreatedAt,
+                        FromCache = true,
+                        LifetimeForecast = lifetimeWithPhase,
+                        // Include multilingual cached data
+                        MultilingualLifetime = multilingualLifetimeWithPhase
+                    };
+                    
+                    // Extract enum values for frontend
+                    ExtractEnumValues(predictionDto, State.Results, lifetimeWithPhase);
+                    
                     return new GetTodayPredictionResult
                     {
                         Success = true,
                         Message = string.Empty,
-                        Prediction = new PredictionResultDto
-                        {
-                            PredictionId = State.PredictionId,
-                            UserId = State.UserId,
-                            PredictionDate = State.PredictionDate,
-                            Results = State.Results,
-                            CreatedAt = State.CreatedAt,
-                            FromCache = true,
-                            LifetimeForecast = lifetimeWithPhase,
-                            // Include multilingual cached data
-                            MultilingualLifetime = multilingualLifetimeWithPhase
-                        }
+                        Prediction = predictionDto
                     };
                 }
                 
@@ -176,21 +181,26 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     totalStopwatch.Stop();
                     _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Yearly");
 
+                    var predictionDto = new PredictionResultDto
+                    {
+                        PredictionId = State.PredictionId,
+                        UserId = State.UserId,
+                        PredictionDate = State.PredictionDate,
+                        Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
+                        CreatedAt = State.CreatedAt,
+                        FromCache = true,
+                        LifetimeForecast = State.YearlyForecast, // Return yearly in LifetimeForecast field for API compatibility
+                        MultilingualLifetime = State.MultilingualYearly // Return yearly multilingual
+                    };
+                    
+                    // Extract enum values for frontend (from yearly forecast)
+                    ExtractEnumValues(predictionDto, null, State.YearlyForecast);
+                    
                     return new GetTodayPredictionResult
                     {
                         Success = true,
                         Message = string.Empty,
-                        Prediction = new PredictionResultDto
-                        {
-                            PredictionId = State.PredictionId,
-                            UserId = State.UserId,
-                            PredictionDate = State.PredictionDate,
-                            Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
-                            CreatedAt = State.CreatedAt,
-                            FromCache = true,
-                            LifetimeForecast = State.YearlyForecast, // Return yearly in LifetimeForecast field for API compatibility
-                            MultilingualLifetime = State.MultilingualYearly // Return yearly multilingual
-                        }
+                        Prediction = predictionDto
                     };
                 }
                 
@@ -214,21 +224,26 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     totalStopwatch.Stop();
                     _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Daily");
 
+                    var predictionDto = new PredictionResultDto
+                    {
+                        PredictionId = State.PredictionId,
+                        UserId = State.UserId,
+                        PredictionDate = State.PredictionDate,
+                        Results = State.Results,
+                        CreatedAt = State.CreatedAt,
+                        FromCache = true,
+                        // Include multilingual cached data
+                        MultilingualResults = State.MultilingualResults
+                    };
+                    
+                    // Extract enum values for frontend (from daily results)
+                    ExtractEnumValues(predictionDto, State.Results, State.LifetimeForecast);
+                    
                     return new GetTodayPredictionResult
                     {
                         Success = true,
                         Message = string.Empty,
-                        Prediction = new PredictionResultDto
-                        {
-                            PredictionId = State.PredictionId,
-                            UserId = State.UserId,
-                            PredictionDate = State.PredictionDate,
-                            Results = State.Results,
-                            CreatedAt = State.CreatedAt,
-                            FromCache = true,
-                            // Include multilingual cached data
-                            MultilingualResults = State.MultilingualResults
-                        }
+                        Prediction = predictionDto
                     };
                 }
                 else
@@ -463,24 +478,30 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 }
             }
 
+            var newPredictionDto = new PredictionResultDto
+            {
+                PredictionId = predictionId,
+                UserId = userInfo.UserId,
+                PredictionDate = predictionDate,
+                Results = parsedResults,
+                CreatedAt = now,
+                FromCache = false,
+                // For yearly, return in LifetimeForecast field for API compatibility
+                LifetimeForecast = type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast,
+                // Multilingual data
+                MultilingualResults = multilingualResults,
+                MultilingualLifetime = type == PredictionType.Yearly ? multilingualYearly : multilingualLifetime
+            };
+            
+            // Extract enum values for frontend
+            ExtractEnumValues(newPredictionDto, parsedResults, 
+                type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast);
+            
             return new GetTodayPredictionResult
             {
                 Success = true,
                 Message = string.Empty,
-                Prediction = new PredictionResultDto
-                {
-                    PredictionId = predictionId,
-                    UserId = userInfo.UserId,
-                    PredictionDate = predictionDate,
-                    Results = parsedResults,
-                    CreatedAt = now,
-                    FromCache = false,
-                    // For yearly, return in LifetimeForecast field for API compatibility
-                    LifetimeForecast = type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast,
-                    // Multilingual data
-                    MultilingualResults = multilingualResults,
-                    MultilingualLifetime = type == PredictionType.Yearly ? multilingualYearly : multilingualLifetime
-                }
+                Prediction = newPredictionDto
             };
         }
         catch (Exception ex)
@@ -1231,6 +1252,143 @@ KEY RULES:
                 }
                 break;
         }
+    }
+    
+    /// <summary>
+    /// Extract enum values from prediction results
+    /// </summary>
+    private void ExtractEnumValues(PredictionResultDto prediction, Dictionary<string, Dictionary<string, string>>? results, Dictionary<string, string>? lifetime)
+    {
+        // Extract Tarot Card from daily prediction (from en language version)
+        if (results != null && results.TryGetValue("en", out var enResults))
+        {
+            if (enResults.TryGetValue("todaysReading_tarotCard_name", out var tarotName))
+            {
+                prediction.TodaysTarotCard = ParseTarotCard(tarotName);
+            }
+            
+            if (enResults.TryGetValue("luckyAlignments_luckyStone", out var stoneName))
+            {
+                prediction.LuckyStone = ParseCrystalStone(stoneName);
+            }
+        }
+        
+        // Extract Zodiac signs from lifetime prediction
+        if (lifetime != null)
+        {
+            if (lifetime.TryGetValue("westernOverview_sunSign", out var sunSign))
+            {
+                prediction.SunSign = ParseZodiacSign(sunSign);
+            }
+            
+            if (lifetime.TryGetValue("westernOverview_moonSign", out var moonSign))
+            {
+                prediction.MoonSign = ParseZodiacSign(moonSign);
+            }
+            
+            if (lifetime.TryGetValue("westernOverview_risingSign", out var risingSign))
+            {
+                prediction.RisingSign = ParseZodiacSign(risingSign);
+            }
+            
+            if (lifetime.TryGetValue("chineseZodiac_animal", out var chineseZodiac))
+            {
+                prediction.ChineseZodiac = ParseChineseZodiac(chineseZodiac);
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Parse tarot card name to enum
+    /// </summary>
+    private TarotCardEnum ParseTarotCard(string cardName)
+    {
+        if (string.IsNullOrWhiteSpace(cardName)) return TarotCardEnum.Unknown;
+        
+        // Remove "The " prefix and spaces for matching
+        var normalized = cardName.Replace("The ", "").Replace(" ", "").Replace("of", "Of").Trim();
+        
+        if (Enum.TryParse<TarotCardEnum>(normalized, true, out var result))
+        {
+            return result;
+        }
+        
+        _logger.LogWarning($"[FortunePredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}");
+        return TarotCardEnum.Unknown;
+    }
+    
+    /// <summary>
+    /// Parse zodiac sign name to enum
+    /// </summary>
+    private ZodiacSignEnum ParseZodiacSign(string signName)
+    {
+        if (string.IsNullOrWhiteSpace(signName)) return ZodiacSignEnum.Unknown;
+        
+        var normalized = signName.Trim();
+        
+        if (Enum.TryParse<ZodiacSignEnum>(normalized, true, out var result))
+        {
+            return result;
+        }
+        
+        _logger.LogWarning($"[FortunePredictionGAgent][ParseZodiacSign] Unknown zodiac sign: {signName}");
+        return ZodiacSignEnum.Unknown;
+    }
+    
+    /// <summary>
+    /// Parse chinese zodiac animal to enum
+    /// </summary>
+    private ChineseZodiacEnum ParseChineseZodiac(string animalName)
+    {
+        if (string.IsNullOrWhiteSpace(animalName)) return ChineseZodiacEnum.Unknown;
+        
+        // Remove "The " prefix for matching
+        var normalized = animalName.Replace("The ", "").Trim();
+        
+        if (Enum.TryParse<ChineseZodiacEnum>(normalized, true, out var result))
+        {
+            return result;
+        }
+        
+        _logger.LogWarning($"[FortunePredictionGAgent][ParseChineseZodiac] Unknown chinese zodiac: {animalName}");
+        return ChineseZodiacEnum.Unknown;
+    }
+    
+    /// <summary>
+    /// Parse crystal stone name to enum
+    /// </summary>
+    private CrystalStoneEnum ParseCrystalStone(string stoneName)
+    {
+        if (string.IsNullOrWhiteSpace(stoneName)) return CrystalStoneEnum.Unknown;
+        
+        // Remove spaces and special chars for matching
+        var normalized = stoneName.Replace(" ", "").Replace("'", "").Replace("-", "").Trim();
+        
+        // Handle special cases
+        var specialCases = new Dictionary<string, CrystalStoneEnum>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "RoseQuartz", CrystalStoneEnum.RoseQuartz },
+            { "ClearQuartz", CrystalStoneEnum.ClearQuartz },
+            { "BlackTourmaline", CrystalStoneEnum.BlackTourmaline },
+            { "TigersEye", CrystalStoneEnum.TigersEye },
+            { "Tiger'sEye", CrystalStoneEnum.TigersEye },
+            { "TigerEye", CrystalStoneEnum.TigersEye },
+            { "LapisLazuli", CrystalStoneEnum.Lapis },
+            { "Lapis", CrystalStoneEnum.Lapis }
+        };
+        
+        if (specialCases.TryGetValue(normalized, out var specialResult))
+        {
+            return specialResult;
+        }
+        
+        if (Enum.TryParse<CrystalStoneEnum>(normalized, true, out var result))
+        {
+            return result;
+        }
+        
+        _logger.LogWarning($"[FortunePredictionGAgent][ParseCrystalStone] Unknown crystal stone: {stoneName}");
+        return CrystalStoneEnum.Unknown;
     }
 }
 
