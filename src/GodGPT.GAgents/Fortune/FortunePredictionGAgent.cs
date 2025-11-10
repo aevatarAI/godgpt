@@ -736,7 +736,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         var singleLanguagePrefix = $@"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
 
 Generate prediction in {languageName} only.
-EXCEPTION: chineseAstrology_currentYearStems always stays in Chinese+Pinyin with space separation (e.g., '乙 巳 Yi Si'), regardless of target language.
+EXCEPTIONS:
+- chineseAstrology_currentYearStems always stays in Chinese+Pinyin with space separation (e.g., '乙 巳 Yi Si'), regardless of target language.
+- For Chinese (zh-tw/zh): Properly adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
 Wrap response in JSON format.
 
 ";
@@ -922,7 +924,11 @@ CRITICAL RULES:
 3. Maintain natural, fluent expression in each target language (not word-for-word).
 4. Keep all field names unchanged.
 5. Preserve all numbers, dates, and proper nouns.
-6. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
+6. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
+   - Possessives: ""Sean's Path"" → ""Sean的道路"" (convert 's to 的)
+   - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
+   - Sentence structure: Adjust to natural Chinese word order
+7. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
