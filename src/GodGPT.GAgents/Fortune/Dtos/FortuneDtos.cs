@@ -80,6 +80,185 @@ public enum FeedbackTypeEnum
     [Id(5)] Bug = 5
 }
 
+/// <summary>
+/// Tarot Card enumeration (Major Arcana + Minor Arcana)
+/// </summary>
+[GenerateSerializer]
+public enum TarotCardEnum
+{
+    // Major Arcana (0-21)
+    [Id(0)] TheFool = 0,
+    [Id(1)] TheMagician = 1,
+    [Id(2)] TheHighPriestess = 2,
+    [Id(3)] TheEmpress = 3,
+    [Id(4)] TheEmperor = 4,
+    [Id(5)] TheHierophant = 5,
+    [Id(6)] TheLovers = 6,
+    [Id(7)] TheChariot = 7,
+    [Id(8)] Strength = 8,
+    [Id(9)] TheHermit = 9,
+    [Id(10)] WheelOfFortune = 10,
+    [Id(11)] Justice = 11,
+    [Id(12)] TheHangedMan = 12,
+    [Id(13)] Death = 13,
+    [Id(14)] Temperance = 14,
+    [Id(15)] TheDevil = 15,
+    [Id(16)] TheTower = 16,
+    [Id(17)] TheStar = 17,
+    [Id(18)] TheMoon = 18,
+    [Id(19)] TheSun = 19,
+    [Id(20)] Judgement = 20,
+    [Id(21)] TheWorld = 21,
+    
+    // Wands (22-35)
+    [Id(22)] AceOfWands = 22,
+    [Id(23)] TwoOfWands = 23,
+    [Id(24)] ThreeOfWands = 24,
+    [Id(25)] FourOfWands = 25,
+    [Id(26)] FiveOfWands = 26,
+    [Id(27)] SixOfWands = 27,
+    [Id(28)] SevenOfWands = 28,
+    [Id(29)] EightOfWands = 29,
+    [Id(30)] NineOfWands = 30,
+    [Id(31)] TenOfWands = 31,
+    [Id(32)] PageOfWands = 32,
+    [Id(33)] KnightOfWands = 33,
+    [Id(34)] QueenOfWands = 34,
+    [Id(35)] KingOfWands = 35,
+    
+    // Cups (36-49)
+    [Id(36)] AceOfCups = 36,
+    [Id(37)] TwoOfCups = 37,
+    [Id(38)] ThreeOfCups = 38,
+    [Id(39)] FourOfCups = 39,
+    [Id(40)] FiveOfCups = 40,
+    [Id(41)] SixOfCups = 41,
+    [Id(42)] SevenOfCups = 42,
+    [Id(43)] EightOfCups = 43,
+    [Id(44)] NineOfCups = 44,
+    [Id(45)] TenOfCups = 45,
+    [Id(46)] PageOfCups = 46,
+    [Id(47)] KnightOfCups = 47,
+    [Id(48)] QueenOfCups = 48,
+    [Id(49)] KingOfCups = 49,
+    
+    // Swords (50-63)
+    [Id(50)] AceOfSwords = 50,
+    [Id(51)] TwoOfSwords = 51,
+    [Id(52)] ThreeOfSwords = 52,
+    [Id(53)] FourOfSwords = 53,
+    [Id(54)] FiveOfSwords = 54,
+    [Id(55)] SixOfSwords = 55,
+    [Id(56)] SevenOfSwords = 56,
+    [Id(57)] EightOfSwords = 57,
+    [Id(58)] NineOfSwords = 58,
+    [Id(59)] TenOfSwords = 59,
+    [Id(60)] PageOfSwords = 60,
+    [Id(61)] KnightOfSwords = 61,
+    [Id(62)] QueenOfSwords = 62,
+    [Id(63)] KingOfSwords = 63,
+    
+    // Pentacles (64-77)
+    [Id(64)] AceOfPentacles = 64,
+    [Id(65)] TwoOfPentacles = 65,
+    [Id(66)] ThreeOfPentacles = 66,
+    [Id(67)] FourOfPentacles = 67,
+    [Id(68)] FiveOfPentacles = 68,
+    [Id(69)] SixOfPentacles = 69,
+    [Id(70)] SevenOfPentacles = 70,
+    [Id(71)] EightOfPentacles = 71,
+    [Id(72)] NineOfPentacles = 72,
+    [Id(73)] TenOfPentacles = 73,
+    [Id(74)] PageOfPentacles = 74,
+    [Id(75)] KnightOfPentacles = 75,
+    [Id(76)] QueenOfPentacles = 76,
+    [Id(77)] KingOfPentacles = 77,
+    
+    [Id(999)] Unknown = 999
+}
+
+/// <summary>
+/// Western Zodiac Sign enumeration
+/// </summary>
+[GenerateSerializer]
+public enum ZodiacSignEnum
+{
+    [Id(0)] Aries = 0,
+    [Id(1)] Taurus = 1,
+    [Id(2)] Gemini = 2,
+    [Id(3)] Cancer = 3,
+    [Id(4)] Leo = 4,
+    [Id(5)] Virgo = 5,
+    [Id(6)] Libra = 6,
+    [Id(7)] Scorpio = 7,
+    [Id(8)] Sagittarius = 8,
+    [Id(9)] Capricorn = 9,
+    [Id(10)] Aquarius = 10,
+    [Id(11)] Pisces = 11,
+    [Id(999)] Unknown = 999
+}
+
+/// <summary>
+/// Chinese Zodiac Animal enumeration
+/// </summary>
+[GenerateSerializer]
+public enum ChineseZodiacEnum
+{
+    [Id(0)] Rat = 0,
+    [Id(1)] Ox = 1,
+    [Id(2)] Tiger = 2,
+    [Id(3)] Rabbit = 3,
+    [Id(4)] Dragon = 4,
+    [Id(5)] Snake = 5,
+    [Id(6)] Horse = 6,
+    [Id(7)] Goat = 7,
+    [Id(8)] Monkey = 8,
+    [Id(9)] Rooster = 9,
+    [Id(10)] Dog = 10,
+    [Id(11)] Pig = 11,
+    [Id(999)] Unknown = 999
+}
+
+/// <summary>
+/// Crystal/Stone enumeration for lucky stones
+/// </summary>
+[GenerateSerializer]
+public enum CrystalStoneEnum
+{
+    [Id(0)] Amethyst = 0,
+    [Id(1)] RoseQuartz = 1,
+    [Id(2)] ClearQuartz = 2,
+    [Id(3)] Citrine = 3,
+    [Id(4)] BlackTourmaline = 4,
+    [Id(5)] Selenite = 5,
+    [Id(6)] Labradorite = 6,
+    [Id(7)] Moonstone = 7,
+    [Id(8)] Carnelian = 8,
+    [Id(9)] TigersEye = 9,
+    [Id(10)] Jade = 10,
+    [Id(11)] Turquoise = 11,
+    [Id(12)] Lapis = 12,
+    [Id(13)] Aquamarine = 13,
+    [Id(14)] Emerald = 14,
+    [Id(15)] Ruby = 15,
+    [Id(16)] Sapphire = 16,
+    [Id(17)] Garnet = 17,
+    [Id(18)] Opal = 18,
+    [Id(19)] Topaz = 19,
+    [Id(20)] Peridot = 20,
+    [Id(21)] Obsidian = 21,
+    [Id(22)] Malachite = 22,
+    [Id(23)] Hematite = 23,
+    [Id(24)] Pyrite = 24,
+    [Id(25)] Fluorite = 25,
+    [Id(26)] Aventurine = 26,
+    [Id(27)] Jasper = 27,
+    [Id(28)] Agate = 28,
+    [Id(29)] Bloodstone = 29,
+    [Id(30)] Onyx = 30,
+    [Id(999)] Unknown = 999
+}
+
 #endregion
 
 #region User Management DTOs
@@ -242,6 +421,14 @@ public class PredictionResultDto
     // Multilingual support - contains all language versions (en, zh-tw, zh, es)
     [Id(8)] public Dictionary<string, Dictionary<string, Dictionary<string, string>>>? MultilingualResults { get; set; }
     [Id(9)] public Dictionary<string, Dictionary<string, string>>? MultilingualLifetime { get; set; }
+    
+    // Enum fields for frontend - extracted from prediction results
+    [Id(10)] public TarotCardEnum? TodaysTarotCard { get; set; } // Daily prediction only
+    [Id(11)] public ZodiacSignEnum? SunSign { get; set; } // From user profile/lifetime prediction
+    [Id(12)] public ZodiacSignEnum? MoonSign { get; set; } // From lifetime prediction
+    [Id(13)] public ZodiacSignEnum? RisingSign { get; set; } // From lifetime prediction
+    [Id(14)] public ChineseZodiacEnum? ChineseZodiac { get; set; } // From user profile/lifetime prediction
+    [Id(15)] public CrystalStoneEnum? LuckyStone { get; set; } // Daily prediction only
 }
 
 /// <summary>
