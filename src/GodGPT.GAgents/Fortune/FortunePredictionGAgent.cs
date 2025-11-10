@@ -955,7 +955,20 @@ KEY RULES:
             
             _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
-            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            Dictionary<string, object>? fullResponse = null;
+            try
+            {
+                fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogError(jsonEx, "[FortunePredictionGAgent][ParseMultilingualDailyResponse] JSON parse error. First 500 chars: {JsonPreview}", 
+                    jsonContent.Length > 500 ? jsonContent.Substring(0, 500) : jsonContent);
+                _logger.LogError("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Last 200 chars: {JsonEnd}", 
+                    jsonContent.Length > 200 ? jsonContent.Substring(jsonContent.Length - 200) : jsonContent);
+                return (null, null);
+            }
+            
             if (fullResponse == null)
             {
                 _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Failed to deserialize response");
@@ -1049,7 +1062,20 @@ KEY RULES:
             
             _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
-            var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            Dictionary<string, object>? fullResponse = null;
+            try
+            {
+                fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogError(jsonEx, "[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] JSON parse error. First 500 chars: {JsonPreview}", 
+                    jsonContent.Length > 500 ? jsonContent.Substring(0, 500) : jsonContent);
+                _logger.LogError("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Last 200 chars: {JsonEnd}", 
+                    jsonContent.Length > 200 ? jsonContent.Substring(jsonContent.Length - 200) : jsonContent);
+                return (null, null);
+            }
+            
             if (fullResponse == null)
             {
                 _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Failed to deserialize response");
