@@ -825,16 +825,16 @@ FORMAT (flattened):
       ""yearlyTheme_atAGlance"": ""[15-20 words: What systems agree on]"", 
       ""yearlyTheme_expanded"": ""[60-80 words: 3 paragraphs (double space): P1 combination/clash, P2 what it creates, P3 define year (not X but Y)]"",
       ""divineInfluence_career_score"": [1-4], ""divineInfluence_career_tagline"": ""[10-15 words: Start 'Your superpower this year:']"", 
-      ""divineInfluence_career_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_career_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_career_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_career_avoid"": [""[3-6 specific activities/actions, comma-separated. Examples: Job Hopping, Micromanaging, Overcommitting]"", ""[3-6 specific activities/actions, comma-separated]""], 
       ""divineInfluence_career_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 how it feels, P3 meaning]"",
       ""divineInfluence_love_score"": [1-4], ""divineInfluence_love_tagline"": ""[10-15 words: Philosophical]"", 
-      ""divineInfluence_love_bestMoves"": [""[6-10 words]"", ""[6-12 words]""], ""divineInfluence_love_avoid"": [""[6-12 words]"", ""[4-8 words]""], 
+      ""divineInfluence_love_bestMoves"": [""[6-10 words]"", ""[6-12 words]""], ""divineInfluence_love_avoid"": [""[3-6 specific activities/behaviors, comma-separated. Examples: Jealousy, Past Baggage, Unrealistic Expectations]"", ""[3-6 specific activities/behaviors, comma-separated]""], 
       ""divineInfluence_love_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 emotional state, P3 what relationships need]"",
       ""divineInfluence_wealth_score"": [1-4], ""divineInfluence_wealth_tagline"": ""[10-15 words]"", 
-      ""divineInfluence_wealth_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_wealth_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_wealth_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_wealth_avoid"": [""[3-6 specific activities/actions, comma-separated. Examples: Gambling, Impulse Purchases, High-Risk Loans]"", ""[3-6 specific activities/actions, comma-separated]""], 
       ""divineInfluence_wealth_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 climate, P3 what prosperity needs]"",
       ""divineInfluence_health_score"": [1-4], ""divineInfluence_health_tagline"": ""[10-15 words]"", 
-      ""divineInfluence_health_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_health_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""divineInfluence_health_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_health_avoid"": [""[3-6 specific activities/habits, comma-separated. Examples: Late Nights, Junk Food, Ignoring Symptoms]"", ""[3-6 specific activities/habits, comma-separated]""], 
       ""divineInfluence_health_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 state, P3 what wellness needs]"",
       ""embodimentMantra"": ""[18-25 words: First-person 'My' declarations, 2-3 powerful statements, poetic and rhythmic]""
     }}
@@ -846,6 +846,7 @@ KEY RULES:
 - Scores: 1=challenging, 2=mixed, 3=favorable, 4=excellent
 - inANutshell: Always use formula pattern ('X + Y = Z.'), then describe state, then meaning
 - Career tagline starts 'Your superpower this year:', others are philosophical
+- Avoid fields: Must be 3-6 specific, actionable nouns/activities (e.g., 'Gambling, Impulse Purchases, High-Risk Loans' NOT sentences)
 - Use 'You/Your' (except embodimentMantra uses 'My'), warm tone, no special chars/emoji, use double space not line breaks";
         }
         else // PredictionType.Daily
@@ -871,7 +872,8 @@ FORMAT (flattened):
       ""luckyAlignments_luckyStone_guidance"": ""[15-20 words: Start 'Meditate:' or 'Practice:', specific ritual]"",
       ""luckyAlignments_luckySpell"": ""[2 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[20-30 words: Quote format first-person affirmation]"",
       ""luckyAlignments_luckySpell_intent"": ""[10-12 words: Start 'To [verb]...']"",
-      ""twistOfFate_favorable"": [""[4-8 words]"", ""[4-8 words]""], ""twistOfFate_avoid"": [""[4-8 words]"", ""[4-8 words]""], 
+      ""twistOfFate_favorable"": [""[3-6 specific actionable words/activities, comma-separated. Examples: Networking, Starting Projects, Creative Work]"", ""[3-6 specific actionable words/activities, comma-separated. Examples: Meditation, Exercise, Reading]""], 
+      ""twistOfFate_avoid"": [""[3-6 specific actionable words/activities, comma-separated. Examples: Haircuts, Moving, Wedding]"", ""[3-6 specific actionable words/activities, comma-separated. Examples: Arguments, Impulsive Decisions, Overspending]""], 
       ""twistOfFate_todaysRecommendation"": ""[10-15 words: Start 'Today's turning point lies in...']""
     }}
   }}
@@ -882,6 +884,7 @@ KEY RULES:
 - pathDescription starts 'Hi {{firstName}}', pathDescriptionExpanded offers deeper wisdom with metaphors
 - todaysTakeaway uses contrast patterns ('not X but Y', 'the more X, the Y')
 - Lucky Number: Calculate from date digits. Stone: Ritual steps. Spell: First-person affirmation with intent
+- Twist of Fate: Favorable/Avoid must be 3-6 specific, actionable nouns/activities (e.g., 'Haircuts, Moving, Wedding' NOT sentences)
 - Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";            
         }
 
