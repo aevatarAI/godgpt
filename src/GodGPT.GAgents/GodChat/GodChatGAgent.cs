@@ -844,17 +844,17 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             var isDailyGuide = systemPrompt == DailyGuide;
             if (isDailyGuide)
             {
-                systemPrompt = @"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.";
+                systemPrompt = GetFormulaFormatPrompt();
             }
             else
             {
                 if (llm != LocalBackupModel)
                 {
-                    systemPrompt = $"{systemPrompt} {GetCustomPrompt()}";
+                    systemPrompt = $"{systemPrompt} {GetFormulaFormatPrompt()} {GetCustomPrompt()}";
                 }
                 else
                 {
-                    systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetCustomPrompt()}";
+                    systemPrompt = $"{oldSystemPrompt} {systemPrompt} {GetFormulaFormatPrompt()} {GetCustomPrompt()}";
                 }
             }
             //Logger.LogDebug($"[GodChatGAgent][InitializeRegionProxiesAsync] {this.GetPrimaryKey().ToString()} - {llm} system prompt: {systemPrompt}");
@@ -2044,6 +2044,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     private string GetCustomPrompt()
     {
         return $"The current UTC time is: {DateTime.UtcNow}. Please answer all questions based on this UTC time.";
+    }
+
+    private string GetFormulaFormatPrompt()
+    {
+        return "When outputting mathematical formulas, use standard Markdown LaTeX format: inline formulas with single dollar signs like $\\psi$, block formulas with double dollar signs on separate lines. Use single backslash in formulas (e.g., \\psi, \\frac), never double backslashes. Example: $$\\psi = \\psi(\\psi)$$";
     }
 
     public async Task<string> GodVoiceStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled,
