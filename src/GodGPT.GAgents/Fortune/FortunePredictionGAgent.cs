@@ -189,31 +189,35 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             // ========== IDEMPOTENCY CHECK: Prevent concurrent generation for this type ==========
             if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
             {
-                // Check if generation timed out (5 minutes)
-                if (lockInfo.StartedAt.HasValue && 
-                    (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes < 5)
+                // Check if generation timed out (1 minute - handles service restart scenarios)
+                if (lockInfo.StartedAt.HasValue)
                 {
-                    // Generation is in progress, return waiting status
-                    totalStopwatch.Stop();
-                    _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_IN_PROGRESS - Type: {type}, StartedAt: {lockInfo.StartedAt}, Duration: {totalStopwatch.ElapsedMilliseconds}ms");
+                    var elapsed = DateTime.UtcNow - lockInfo.StartedAt.Value;
                     
-                    return new GetTodayPredictionResult
+                    if (elapsed.TotalMinutes < 1)
                     {
-                        Success = false,
-                        Message = $"{type} prediction is currently being generated. Please wait a moment and try again."
-                    };
-                }
-                else
-                {
-                    // Generation timed out, reset lock
-                    _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Resetting lock");
-                    lockInfo.IsGenerating = false;
-                    lockInfo.StartedAt = null;
+                        // Generation is in progress, return waiting status
+                        totalStopwatch.Stop();
+                        _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_IN_PROGRESS - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalSeconds:F1}s");
+                        
+                        return new GetTodayPredictionResult
+                        {
+                            Success = false,
+                            Message = $"{type} prediction is currently being generated. Please wait a moment and try again."
+                        };
+                    }
+                    else
+                    {
+                        // Generation timed out (service restart or actual timeout), reset lock and retry
+                        _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalMinutes:F2} minutes, Resetting lock and retrying");
+                        lockInfo.IsGenerating = false;
+                        lockInfo.StartedAt = null;
+                    }
                 }
             }
                 
-            // Check if profile has been updated since prediction was generated
-            var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
+                // Check if profile has been updated since prediction was generated
+                var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
                 
             // Check if prediction already exists (from cache/state) based on type
             if (type == PredictionType.Lifetime)
@@ -387,14 +391,14 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             
                 totalStopwatch.Stop();
             
-                if (!predictionResult.Success)
-                {
+            if (!predictionResult.Success)
+            {
                     _logger.LogWarning($"[PERF][Fortune] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms");
-                    return predictionResult;
-                }
+                return predictionResult;
+            }
 
                 _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
-                return predictionResult;
+            return predictionResult;
             }
             finally
             {
