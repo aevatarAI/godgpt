@@ -210,6 +210,9 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 });
             }
 
+            // Calculate WelcomeNote using backend calculations
+            var welcomeNote = GenerateWelcomeNote(State.BirthDate);
+
             return Task.FromResult(new GetUserProfileResult
             {
                 Success = true,
@@ -235,7 +238,8 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                     Bazi = State.Bazi,
                     Zodiac = State.Zodiac,
                     InsightsGeneratedAt = State.InsightsGeneratedAt,
-                    UpdatedAt = State.UpdatedAt
+                    UpdatedAt = State.UpdatedAt,
+                    WelcomeNote = welcomeNote
                 }
             });
         }
@@ -685,5 +689,87 @@ EXAMPLE (format reference):
             };
         }
     }
+
+    #region Helper Methods
+
+    /// <summary>
+    /// Generate WelcomeNote based on birth date (backend calculations)
+    /// </summary>
+    private Dictionary<string, string> GenerateWelcomeNote(DateOnly birthDate)
+    {
+        var birthYear = birthDate.Year;
+        
+        // Calculate zodiac and chinese zodiac
+        var zodiac = FortuneCalculator.CalculateZodiacSign(birthDate);
+        var chineseZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
+        
+        // Calculate rhythm (Yin/Yang + Element from birth year stems)
+        var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
+        // Extract element from stems (format: "甲 子 Jiǎ Zǐ")
+        // First character is Heavenly Stem, we can map it to Yin/Yang + Element
+        var rhythm = GetRhythmFromStems(birthYearStems);
+        
+        // Calculate essence based on zodiac and chinese zodiac
+        var essence = GetEssenceFromZodiac(zodiac, chineseZodiac);
+        
+        return new Dictionary<string, string>
+        {
+            { "zodiac", zodiac },
+            { "chineseZodiac", chineseZodiac },
+            { "rhythm", rhythm },
+            { "essence", essence }
+        };
+    }
+
+    /// <summary>
+    /// Get Yin/Yang + Element from Heavenly Stems
+    /// </summary>
+    private string GetRhythmFromStems(string stemsInfo)
+    {
+        // Stems format: "甲 子 Jiǎ Zǐ"
+        // Heavenly Stems (天干): 甲乙丙丁戊己庚辛壬癸
+        // Mapping: 甲=Yang Wood, 乙=Yin Wood, 丙=Yang Fire, 丁=Yin Fire, 戊=Yang Earth, 己=Yin Earth, 庚=Yang Metal, 辛=Yin Metal, 壬=Yang Water, 癸=Yin Water
+        if (stemsInfo.StartsWith("甲")) return "Yang Wood";
+        if (stemsInfo.StartsWith("乙")) return "Yin Wood";
+        if (stemsInfo.StartsWith("丙")) return "Yang Fire";
+        if (stemsInfo.StartsWith("丁")) return "Yin Fire";
+        if (stemsInfo.StartsWith("戊")) return "Yang Earth";
+        if (stemsInfo.StartsWith("己")) return "Yin Earth";
+        if (stemsInfo.StartsWith("庚")) return "Yang Metal";
+        if (stemsInfo.StartsWith("辛")) return "Yin Metal";
+        if (stemsInfo.StartsWith("壬")) return "Yang Water";
+        if (stemsInfo.StartsWith("癸")) return "Yin Water";
+        
+        return "Yang Wood"; // Default
+    }
+
+    /// <summary>
+    /// Get essence (2 adjectives) based on zodiac and chinese zodiac
+    /// Simple mapping for now - can be enhanced later
+    /// </summary>
+    private string GetEssenceFromZodiac(string zodiac, string chineseZodiac)
+    {
+        // Simple approach: combine zodiac personality with chinese zodiac element
+        var zodiacEssence = zodiac switch
+        {
+            "Aries" => "Bold, Passionate",
+            "Taurus" => "Steady, Loyal",
+            "Gemini" => "Curious, Adaptable",
+            "Cancer" => "Nurturing, Intuitive",
+            "Leo" => "Confident, Generous",
+            "Virgo" => "Analytical, Practical",
+            "Libra" => "Balanced, Diplomatic",
+            "Scorpio" => "Intense, Transformative",
+            "Sagittarius" => "Adventurous, Optimistic",
+            "Capricorn" => "Disciplined, Ambitious",
+            "Aquarius" => "Innovative, Independent",
+            "Pisces" => "Empathetic, Creative",
+            _ => "Unique, Dynamic"
+        };
+        
+        return zodiacEssence;
+    }
+
+    #endregion
 }
 

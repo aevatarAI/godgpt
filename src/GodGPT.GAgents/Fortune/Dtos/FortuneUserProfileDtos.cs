@@ -61,10 +61,7 @@ public class FortuneUserProfileDto
     [Id(17)] public Dictionary<string, string> Zodiac { get; set; } = new();
     [Id(18)] public DateTime? InsightsGeneratedAt { get; set; }
     [Id(19)] public DateTime UpdatedAt { get; set; }
-    
-    // Lifetime prediction (never expires unless profile changes)
-    [Id(20)] public Dictionary<string, string> LifetimeForecast { get; set; } = new();
-    [Id(21)] public Dictionary<string, Dictionary<string, string>>? MultilingualLifetime { get; set; }
+    [Id(20)] public Dictionary<string, string> WelcomeNote { get; set; } = new(); // Backend-calculated welcome note (zodiac, chineseZodiac, rhythm, essence)
 }
 
 /// <summary>
@@ -76,7 +73,6 @@ public class GetUserProfileResult
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
     [Id(2)] public FortuneUserProfileDto? UserProfile { get; set; }
-    [Id(3)] public PredictionResultDto? LifetimePrediction { get; set; } // Lifetime prediction (never expires unless profile changes)
 }
 
 /// <summary>

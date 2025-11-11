@@ -412,14 +412,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage);
             promptStopwatch.Stop();
             _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
-
-            // NOTE: Using IGodChat.ChatWithoutHistoryAsync for AI calls
-            // This is a temporary solution that reuses existing chat infrastructure
-            // Ideally, Fortune should have a dedicated lightweight AI service that:
-            // - Reads LLM config from Options
-            // - Makes simple HTTP calls to OpenAI/Azure API
-            // - No session/history management overhead
-            // TODO: Create FortuneAIService for direct API calls when time permits
             
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
@@ -523,7 +515,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             parseStopwatch.Stop();
             _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
-            // ========== INJECT BACKEND-CALCULATED FIELDS (方案B优化) ==========
+            // ========== INJECT BACKEND-CALCULATED FIELDS ==========
             // Pre-calculate values once
             var currentYear = DateTime.UtcNow.Year;
             var birthYear = userInfo.BirthDate.Year;
@@ -541,8 +533,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 // Inject into primary language (lifetimeForecast)
                 if (lifetimeForecast != null)
                 {
-                    lifetimeForecast["welcomeNote_zodiac"] = sunSign;
-                    lifetimeForecast["welcomeNote_chineseZodiac"] = birthYearZodiac;
                     lifetimeForecast["chineseAstrology_currentYearStems"] = currentYearStems;
                     lifetimeForecast["sunSign_name"] = sunSign;
                     lifetimeForecast["westernOverview_sunSign"] = sunSign;
@@ -560,8 +550,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 {
                     foreach (var lang in multilingualLifetime.Keys)
                     {
-                        multilingualLifetime[lang]["welcomeNote_zodiac"] = sunSign;
-                        multilingualLifetime[lang]["welcomeNote_chineseZodiac"] = birthYearZodiac;
                         multilingualLifetime[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
                         multilingualLifetime[lang]["sunSign_name"] = sunSign;
                         multilingualLifetime[lang]["westernOverview_sunSign"] = sunSign;
@@ -818,7 +806,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         var currentYearAnimal = FortuneCalculator.CalculateChineseZodiac(currentYear);
         var currentYearElement = FortuneCalculator.CalculateChineseElement(currentYear);
         
-        // Heavenly Stems & Earthly Branches (天干地支)
+        // Heavenly Stems & Earthly Branches
         var currentYearStems = FortuneCalculator.CalculateStemsAndBranches(currentYear);
         var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
         
@@ -872,7 +860,6 @@ FORMAT (flattened - Backend will inject: zodiac, chineseZodiac, currentYearStems
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""welcomeNote_rhythm"": ""[Yin/Yang + Element, e.g., 'Yang Fire' or 'Yin Water']"", ""welcomeNote_essence"": ""[VARIED: 2 adjectives reflecting personality]"",
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: Use {sunSign} as Sun sign, define archetype, show contrasts using 'both...yet' patterns]"",
       ""chineseAstrology_currentYear"": ""Year of the {currentYearZodiac}"", 
