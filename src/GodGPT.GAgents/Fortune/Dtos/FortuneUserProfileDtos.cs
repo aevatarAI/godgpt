@@ -61,6 +61,7 @@ public class FortuneUserProfileDto
     [Id(17)] public Dictionary<string, string> Zodiac { get; set; } = new();
     [Id(18)] public DateTime? InsightsGeneratedAt { get; set; }
     [Id(19)] public DateTime UpdatedAt { get; set; }
+    [Id(20)] public Dictionary<string, string> WelcomeNote { get; set; } = new(); // Backend-calculated welcome note (zodiac, chineseZodiac, rhythm, essence)
 }
 
 /// <summary>

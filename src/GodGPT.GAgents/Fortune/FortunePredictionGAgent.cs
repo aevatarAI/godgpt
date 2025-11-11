@@ -412,7 +412,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage);
             promptStopwatch.Stop();
             _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
-
+            
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
             var chatId = Guid.NewGuid().ToString();
@@ -533,8 +533,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 // Inject into primary language (lifetimeForecast)
                 if (lifetimeForecast != null)
                 {
-                    lifetimeForecast["welcomeNote_zodiac"] = sunSign;
-                    lifetimeForecast["welcomeNote_chineseZodiac"] = birthYearZodiac;
                     lifetimeForecast["chineseAstrology_currentYearStems"] = currentYearStems;
                     lifetimeForecast["sunSign_name"] = sunSign;
                     lifetimeForecast["westernOverview_sunSign"] = sunSign;
@@ -552,8 +550,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 {
                     foreach (var lang in multilingualLifetime.Keys)
                     {
-                        multilingualLifetime[lang]["welcomeNote_zodiac"] = sunSign;
-                        multilingualLifetime[lang]["welcomeNote_chineseZodiac"] = birthYearZodiac;
                         multilingualLifetime[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
                         multilingualLifetime[lang]["sunSign_name"] = sunSign;
                         multilingualLifetime[lang]["westernOverview_sunSign"] = sunSign;
@@ -864,7 +860,6 @@ FORMAT (flattened - Backend will inject: zodiac, chineseZodiac, currentYearStems
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""welcomeNote_rhythm"": ""[Yin/Yang + Element, e.g., 'Yang Fire' or 'Yin Water']"", ""welcomeNote_essence"": ""[VARIED: 2 adjectives reflecting personality]"",
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: Use {sunSign} as Sun sign, define archetype, show contrasts using 'both...yet' patterns]"",
       ""chineseAstrology_currentYear"": ""Year of the {currentYearZodiac}"", 
