@@ -56,12 +56,8 @@ public class FortuneUserProfileDto
     [Id(12)] public List<string> Actions { get; set; } = new();
     [Id(13)] public string? CurrentResidence { get; set; }
     [Id(14)] public string? Email { get; set; }
-    [Id(15)] public Dictionary<string, string> Astrology { get; set; } = new();
-    [Id(16)] public Dictionary<string, string> Bazi { get; set; } = new();
-    [Id(17)] public Dictionary<string, string> Zodiac { get; set; } = new();
-    [Id(18)] public DateTime? InsightsGeneratedAt { get; set; }
-    [Id(19)] public DateTime UpdatedAt { get; set; }
-    [Id(20)] public Dictionary<string, string> WelcomeNote { get; set; } = new(); // Backend-calculated welcome note (zodiac, chineseZodiac, rhythm, essence)
+    [Id(15)] public DateTime UpdatedAt { get; set; }
+    [Id(16)] public Dictionary<string, string> WelcomeNote { get; set; } = new(); // Backend-calculated welcome note (zodiac, chineseZodiac, rhythm, essence)
 }
 
 /// <summary>
@@ -73,20 +69,6 @@ public class GetUserProfileResult
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
     [Id(2)] public FortuneUserProfileDto? UserProfile { get; set; }
-}
-
-/// <summary>
-/// Generate profile insights result
-/// </summary>
-[GenerateSerializer]
-public class GenerateProfileInsightsResult
-{
-    [Id(0)] public bool Success { get; set; }
-    [Id(1)] public string Message { get; set; } = string.Empty;
-    [Id(2)] public Dictionary<string, string> Astrology { get; set; } = new();
-    [Id(3)] public Dictionary<string, string> Bazi { get; set; } = new();
-    [Id(4)] public Dictionary<string, string> Zodiac { get; set; } = new();
-    [Id(5)] public DateTime GeneratedAt { get; set; }
 }
 
 #endregion
