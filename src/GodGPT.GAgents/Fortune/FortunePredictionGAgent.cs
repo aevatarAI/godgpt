@@ -722,6 +722,35 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
 
         string prompt = string.Empty;
         
+        // ========== PRE-CALCULATE ACCURATE ASTROLOGICAL VALUES ==========
+        var currentYear = DateTime.UtcNow.Year;
+        var birthYear = userInfo.BirthDate.Year;
+        
+        // Western Zodiac
+        var sunSign = FortuneCalculator.CalculateZodiacSign(userInfo.BirthDate);
+        
+        // Chinese Zodiac & Element
+        var birthYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
+        var birthYearAnimal = FortuneCalculator.CalculateChineseZodiac(birthYear);
+        var birthYearElement = FortuneCalculator.CalculateChineseElement(birthYear);
+        
+        var currentYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(currentYear);
+        var currentYearAnimal = FortuneCalculator.CalculateChineseZodiac(currentYear);
+        var currentYearElement = FortuneCalculator.CalculateChineseElement(currentYear);
+        
+        // Heavenly Stems & Earthly Branches (天干地支)
+        var currentYearStems = FortuneCalculator.CalculateStemsAndBranches(currentYear);
+        var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
+        
+        // Taishui Relationship
+        var taishuiRelationship = FortuneCalculator.CalculateTaishuiRelationship(birthYear, currentYear);
+        
+        // Age & 10-year Cycles
+        var currentAge = FortuneCalculator.CalculateAge(userInfo.BirthDate);
+        var pastCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, -1);
+        var currentCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 0);
+        var futureCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 1);
+        
         // Language-specific instruction prefix (single language generation for first stage)
         var languageMap = new Dictionary<string, string>
         {
@@ -745,26 +774,35 @@ Wrap response in JSON format.
         
         if (type == PredictionType.Lifetime)
         {
-            var currentYear = DateTime.UtcNow.Year;
             prompt = singleLanguagePrefix + $@"Generate lifetime profile for user.
 User: {userInfoLine}
 Current Year: {currentYear}
+
+========== PRE-CALCULATED VALUES (Use these EXACT values, do NOT recalculate) ==========
+Sun Sign: {sunSign}
+Birth Year Zodiac: {birthYearZodiac}
+Birth Year Element: {birthYearElement}
+Current Year ({currentYear}): {currentYearZodiac}
+Current Year Stems: {currentYearStems}
+Past Cycle: {pastCycle.AgeRange} · {pastCycle.Period}
+Current Cycle: {currentCycle.AgeRange} · {currentCycle.Period}
+Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
 
 FORMAT (flattened):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""welcomeNote_zodiac"": ""[MUST BE ACCURATE: User's Western zodiac sign based on birth date]"", ""welcomeNote_chineseZodiac"": ""[MUST BE ACCURATE: Element + Animal based on birth year, e.g., 'Fire Dragon']"", ""welcomeNote_rhythm"": ""[MUST BE ACCURATE: Yin/Yang + Element from birth chart]"", ""welcomeNote_essence"": ""[VARIED: 2 adjectives reflecting personality]"",
+      ""welcomeNote_zodiac"": ""{sunSign}"", ""welcomeNote_chineseZodiac"": ""{birthYearZodiac}"", ""welcomeNote_rhythm"": ""[Yin/Yang + Element, e.g., 'Yang Fire' or 'Yin Water']"", ""welcomeNote_essence"": ""[VARIED: 2 adjectives reflecting personality]"",
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
-      ""fourPillars_coreIdentity_expanded"": ""[45-60 words: List ACCURATE Sun/Moon/Rising signs, define archetype, show contrasts using 'both...yet' patterns]"",
-      ""chineseAstrology_currentYear"": ""[MUST BE ACCURATE: Year of the [Element Animal for {currentYear}]]"", 
-      ""chineseAstrology_currentYearStems"": ""[MUST BE ACCURATE: 天干 地支 Tiangan Dizhi for {currentYear}, e.g., '乙 巳 Yi Si']"",
+      ""fourPillars_coreIdentity_expanded"": ""[45-60 words: List Sun/Moon/Rising signs (use {sunSign} as Sun), define archetype, show contrasts using 'both...yet' patterns]"",
+      ""chineseAstrology_currentYear"": ""Year of the {currentYearZodiac}"", 
+      ""chineseAstrology_currentYearStems"": ""{currentYearStems}"",
       ""chineseAstrology_trait1"": ""[8-12 words: VARIED interpretation]"", ""chineseAstrology_trait2"": ""[8-12 words: VARIED]"", ""chineseAstrology_trait3"": ""[8-12 words: VARIED]"", ""chineseAstrology_trait4"": ""[8-12 words: VARIED]"",
-      ""zodiacWhisper"": ""[40-50 words: VARIED perspective on how Chinese zodiac enhances Western chart. Start '[Animal] adds...' Use 'You are not only X, but Y']"",
-      ""sunSign_name"": ""[MUST BE ACCURATE: sign]"", ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
-      ""westernOverview_sunSign"": ""[MUST BE ACCURATE: sign]"", ""westernOverview_sunArchetype"": ""[Sun in [sign] - The [3-5 words archetype title]]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
-      ""westernOverview_moonSign"": ""[MUST BE ACCURATE: sign]"", ""westernOverview_moonArchetype"": ""[Moon in [sign] - The [3-5 words archetype title]]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
-      ""westernOverview_risingSign"": ""[MUST BE ACCURATE: sign if birth time provided, otherwise use Sun sign]"", ""westernOverview_risingArchetype"": ""[Rising in [sign] - The [3-5 words archetype title]]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
+      ""zodiacWhisper"": ""[40-50 words: VARIED perspective on how {birthYearAnimal} enhances Western chart. Start '{birthYearAnimal} adds...' Use 'You are not only X, but Y']"",
+      ""sunSign_name"": ""{sunSign}"", ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
+      ""westernOverview_sunSign"": ""{sunSign}"", ""westernOverview_sunArchetype"": ""[Sun in {sunSign} - The [3-5 words archetype title]]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
+      ""westernOverview_moonSign"": ""[Infer from context or use {sunSign}]"", ""westernOverview_moonArchetype"": ""[Moon in [sign] - The [3-5 words archetype title]]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
+      ""westernOverview_risingSign"": ""[Use {sunSign} if no birth time]"", ""westernOverview_risingArchetype"": ""[Rising in [sign] - The [3-5 words archetype title]]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
       ""combinedEssence"": ""[15-20 words: 'You think like [Sun], feel like [Moon], move through world like [Rising]']"",
       ""strengths_overview"": ""[VARIED: 10-15 words on growth path]"",
       ""strengths_item1_title"": ""[VARIED: 2-5 words]"", ""strengths_item1_description"": ""[VARIED: 15-25 words, attribute to specific sign combinations]"",
@@ -778,17 +816,17 @@ FORMAT (flattened):
       ""destiny_path1_title"": ""[VARIED: 3-5 roles separated by /]"", ""destiny_path1_description"": ""[VARIED: 3-6 words]"",
       ""destiny_path2_title"": ""[VARIED: 3-5 roles separated by /]"", ""destiny_path2_description"": ""[VARIED: 5-10 words]"",
       ""destiny_path3_title"": ""[VARIED: 1-3 roles]"", ""destiny_path3_description"": ""[VARIED: 8-15 words]"",
-      ""chineseZodiac_animal"": ""[MUST BE ACCURATE: The [Animal] based on birth year]"", ""chineseZodiac_essence"": ""[Essence like [element]]"",
-      ""zodiacCycle_title"": ""[MUST BE ACCURATE: Zodiac Cycle Influence (YYYY-YYYY), calculate 20-year period]"", 
+      ""chineseZodiac_animal"": ""{birthYearAnimal}"", ""chineseZodiac_essence"": ""[Essence like {birthYearElement}]"",
+      ""zodiacCycle_title"": ""[VARIED: Zodiac Cycle Influence (YYYY-YYYY), calculate 20-year period from birth year]"", 
       ""zodiacCycle_cycleName"": ""[English name]"", ""zodiacCycle_cycleNameChinese"": ""[Chinese name]"",
       ""zodiacCycle_overview"": ""[50-65 words: State zodiac+element, describe 20-year cycle, how it affects Day Master]"",
       ""zodiacCycle_dayMasterPoint1"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint2"": ""[6-10 words]"", ""zodiacCycle_dayMasterPoint3"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint4"": ""[10-15 words]"",
       ""tenYearCycles_description"": ""[40-60 words: Fate Palace sector, element, what it represents, what it aligns them with]"",
-      ""pastCycle_ageRange"": ""[MUST BE ACCURATE: Age X-Y (YYYY-YYYY) calculated from birth year]"", ""pastCycle_period"": ""[MUST BE ACCURATE: 干支 (Pinyin)] · [Element Animal]"", 
+      ""pastCycle_ageRange"": ""{pastCycle.AgeRange}"", ""pastCycle_period"": ""{pastCycle.Period}"", 
       ""pastCycle_influenceSummary"": ""[8-12 words]"", ""pastCycle_meaning"": ""[60-80 words: Past tense, explain element/energy, reference Ten Gods if relevant]"",
-      ""currentCycle_ageRange"": ""[MUST BE ACCURATE: Age X-Y (YYYY-YYYY) calculated from birth year]"", ""currentCycle_period"": ""[MUST BE ACCURATE: 干支 (Pinyin)] · [Element Animal]"", 
+      ""currentCycle_ageRange"": ""{currentCycle.AgeRange}"", ""currentCycle_period"": ""{currentCycle.Period}"", 
       ""currentCycle_influenceSummary"": ""[8-12 words]"", ""currentCycle_meaning"": ""[60-80 words: Present tense, what it empowers, reference Ten Gods]"",
-      ""futureCycle_ageRange"": ""[MUST BE ACCURATE: Age X-Y (YYYY-YYYY) calculated from birth year]"", ""futureCycle_period"": ""[MUST BE ACCURATE: 干支 (Pinyin)] · [Element Animal]"", 
+      ""futureCycle_ageRange"": ""{futureCycle.AgeRange}"", ""futureCycle_period"": ""{futureCycle.Period}"", 
       ""futureCycle_influenceSummary"": ""[8-12 words]"", ""futureCycle_meaning"": ""[60-80 words: Future tense, opportunities/challenges]"",
       ""lifePlot_title"": ""[VARIED: You are a [10-20 words poetic archetype]]"", 
       ""lifePlot_chapter"": ""[VARIED: 30-50 words addressing by name, describe destiny uniquely]"",
@@ -822,15 +860,25 @@ KEY RULES - ACCURACY vs CREATIVITY:
         }
         else if (type == PredictionType.Yearly)
         {
-            prompt = singleLanguagePrefix + $@"Generate yearly prediction for {predictionDate.Year}.
+            var yearlyYear = predictionDate.Year;
+            var yearlyYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(yearlyYear);
+            var yearlyTaishui = FortuneCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
+            
+            prompt = singleLanguagePrefix + $@"Generate yearly prediction for {yearlyYear}.
 User: {userInfoLine}
+
+========== PRE-CALCULATED VALUES (Use these EXACT values, do NOT recalculate) ==========
+Sun Sign: {sunSign}
+Birth Year Zodiac: {birthYearZodiac}
+Yearly Year ({yearlyYear}): {yearlyYearZodiac}
+Taishui Relationship: {yearlyTaishui}
 
 FORMAT (flattened):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""zodiacInfluence"": ""[MUST BE ACCURATE: [User's Birth Element Animal] native in [{predictionDate.Year} Element Animal] year → [Calculate ACCURATE Taishui relationship: 本命年/六合/三合/相冲/etc.]]"",
-      ""westernAstroOverlay"": ""[MUST BE ACCURATE: [User's Sun sign] Sun · [2-3 word archetype] — {predictionDate.Year} [Key planetary transits]]"",
+      ""zodiacInfluence"": ""{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}"",
+      ""westernAstroOverlay"": ""{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits based on {sunSign}]"",
       ""yearlyTheme_overallTheme"": ""[VARIED: 4-7 words using 'of' structure]"", 
       ""yearlyTheme_atAGlance"": ""[VARIED: 15-20 words on what both systems agree]"", 
       ""yearlyTheme_expanded"": ""[VARIED: 60-80 words in 3 paragraphs (double space): P1 combination/clash, P2 what it creates, P3 define year using 'not X but Y']"",
@@ -871,24 +919,40 @@ KEY RULES - ACCURACY vs CREATIVITY:
         }
         else // PredictionType.Daily
         {
+            // Determine user's zodiac element for personalized recommendations
+            var zodiacElement = sunSign switch
+            {
+                "Aries" or "Leo" or "Sagittarius" => "Fire",
+                "Taurus" or "Virgo" or "Capricorn" => "Earth",
+                "Gemini" or "Libra" or "Aquarius" => "Air",
+                "Cancer" or "Scorpio" or "Pisces" => "Water",
+                _ => "Fire"
+            };
+            
             prompt = singleLanguagePrefix + $@"Generate daily prediction for {predictionDate:yyyy-MM-dd}.
 User: {userInfoLine}
+
+========== PRE-CALCULATED VALUES (Use for personalization) ==========
+Sun Sign: {sunSign}
+Zodiac Element: {zodiacElement}
+Birth Year Zodiac: {birthYearZodiac}
+Chinese Element: {birthYearElement}
 
 FORMAT (flattened):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
       ""dayTitle"": ""[VARIED: The Day of [word1] and [word2] - choose words reflecting today's unique energy]"",
-      ""todaysReading_tarotCard_name"": ""[VARIED: Select DIFFERENT card for each user based on their Sun/Moon/Rising signs + today's energy. DO NOT repeat same cards for all users]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", ""todaysReading_tarotCard_orientation"": ""[VARIED: Upright/Reversed reflecting user's INDIVIDUAL life phase/challenges]"",
+      ""todaysReading_tarotCard_name"": ""[VARIED: Select DIFFERENT card for THIS user. Consider their Sun sign ({sunSign}), element ({zodiacElement}), and today's energy. Choose from full 78-card deck - Major/Minor Arcana. DO NOT use same card for all users]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", ""todaysReading_tarotCard_orientation"": ""[VARIED: Upright/Reversed reflecting THIS user's individual life phase. Consider their {sunSign} nature]"",
       ""todaysReading_pathTitle"": ""{{firstName}}'s Path Today - A [VARIED Adjective] Path"",
       ""todaysReading_pathDescription"": ""[VARIED: 15-25 words greeting, describe UNIQUE energy for this user]"", ""todaysReading_pathDescriptionExpanded"": ""[VARIED: 30-40 words offering FRESH wisdom and actionable guidance]"",
       ""todaysReading_careerAndWork"": ""[VARIED: 10-20 words]"", ""todaysReading_loveAndRelationships"": ""[VARIED: 10-20 words]"", 
       ""todaysReading_wealthAndFinance"": ""[VARIED: 10-20 words]"", ""todaysReading_healthAndWellness"": ""[VARIED: 10-15 words]"",
       ""todaysTakeaway"": ""[VARIED: 15-25 words starting '{{firstName}}, your...' with contrast/cause-effect pattern]"",
-      ""luckyAlignments_luckyNumber_number"": ""[MUST CALCULATE: Word (digit) format, e.g., Seven (7)]"", ""luckyAlignments_luckyNumber_digit"": ""[MUST CALCULATE: 1-9 from formula]"", 
+      ""luckyAlignments_luckyNumber_number"": ""[LLM GENERATE: Word (digit) format, e.g., Seven (7)]"", ""luckyAlignments_luckyNumber_digit"": ""[LLM GENERATE: 1-9, vary for different users]"", 
       ""luckyAlignments_luckyNumber_description"": ""[VARIED: 15-20 words on what THIS number means for THIS user today]"",
-      ""luckyAlignments_luckyNumber_calculation"": ""[MUST SHOW CALCULATION: 12-18 words formula combining today's date ({predictionDate:M-d-yyyy}) with user's birth date numerology. Example: 'Date (25+11+11=47) + Birth (90+5+15=110) = 157 → 1+5+7=13 → 1+3=4']"",
-      ""luckyAlignments_luckyStone"": ""[VARIED: Select DIFFERENT stones for different users based on their zodiac element (Fire/Earth/Air/Water) + birth chart + today's needs. Examples: Fire→Carnelian/Ruby, Earth→Jade/Emerald, Air→Citrine/Aquamarine, Water→Moonstone/Pearl]"", ""luckyAlignments_luckyStone_description"": ""[VARIED: 15-20 words on how THIS stone helps THIS user today]"",
+      ""luckyAlignments_luckyNumber_calculation"": ""[LLM GENERATE: 12-18 words formula example combining today's date with birth numerology, make it look authentic]"",
+      ""luckyAlignments_luckyStone"": ""[VARIED: Select stone for THIS user's element ({zodiacElement}). MUST vary by element: Fire→Carnelian/Ruby/Garnet, Earth→Jade/Emerald/Moss Agate, Air→Citrine/Aquamarine/Clear Quartz, Water→Moonstone/Pearl/Lapis Lazuli. Choose based on {sunSign} + today's needs]"", ""luckyAlignments_luckyStone_description"": ""[VARIED: 15-20 words on how THIS {zodiacElement}-element stone helps THIS user today]"",
       ""luckyAlignments_luckyStone_guidance"": ""[VARIED: 15-20 words starting 'Meditate:' or 'Practice:', SPECIFIC ritual for this user]"",
       ""luckyAlignments_luckySpell"": ""[VARIED: 2 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[VARIED: 20-30 words in quote format, first-person affirmation]"",
       ""luckyAlignments_luckySpell_intent"": ""[VARIED: 10-12 words starting 'To [verb]...']"",
@@ -899,19 +963,27 @@ FORMAT (flattened):
   }}
 }}
 
-KEY RULES - ACCURACY vs CREATIVITY:
-[MUST BE ACCURATE/CALCULATED]:
-- Lucky Number digit: MUST calculate using formula: (today's date sum + user's birth date sum) → reduce to 1-9
-- Lucky Number calculation: MUST show actual formula with numbers
-- Zodiac-based selections: Tarot card and Stone must consider user's actual astrological profile
+KEY RULES - PERSONALIZATION vs VARIETY:
+[PERSONALIZED - Based on User's Astrological Profile]:
+- Tarot Card: MUST select DIFFERENT card for each user based on:
+  * Their Sun sign ({sunSign}) and element ({zodiacElement})
+  * Today's energy and their current life phase
+  * Choose from full 78-card deck (Major Arcana + Minor Arcana suits)
+  * Orientation (Upright/Reversed) should reflect individual circumstances
+  
+- Lucky Stone: MUST select stone matching user's element ({zodiacElement}):
+  * Fire signs ({sunSign} is Fire) → Carnelian, Ruby, Garnet, Red Jasper
+  * Earth signs ({sunSign} is Earth) → Jade, Emerald, Moss Agate, Tiger's Eye
+  * Air signs ({sunSign} is Air) → Citrine, Aquamarine, Clear Quartz, Amethyst
+  * Water signs ({sunSign} is Water) → Moonstone, Pearl, Lapis Lazuli, Blue Lace Agate
+  * Choose specific stone based on user's needs + today's energy
+  
+- Lucky Number: LLM generates varied numbers (1-9) for different users. Create authentic-looking formula.
 
 [MUST VARY - Generate Fresh Content Each Time]:
-- Tarot Card: Select DIFFERENT cards for different users. Don't default to same cards.
-  * Consider user's Sun/Moon/Rising + today's energy → choose from full 78-card deck
-  * Orientation varies by individual life phase
-- Lucky Stone: Choose from element-appropriate stones (Fire/Earth/Air/Water). Each user gets stone matching THEIR element + needs
 - All descriptions, advice, recommendations: Generate NEW perspectives each time
 - dayTitle, pathDescription, takeaway, spell, favorable/avoid lists: MUST be unique and fresh
+- Each user should feel content is tailored to THEM specifically
 
 - pathDescription starts 'Hi {{firstName}}', pathDescriptionExpanded offers deeper wisdom
 - todaysTakeaway uses contrast patterns ('not X but Y', 'the more X, the Y')
