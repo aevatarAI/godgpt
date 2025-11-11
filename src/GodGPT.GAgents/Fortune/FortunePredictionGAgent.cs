@@ -413,14 +413,6 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             promptStopwatch.Stop();
             _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
 
-            // NOTE: Using IGodChat.ChatWithoutHistoryAsync for AI calls
-            // This is a temporary solution that reuses existing chat infrastructure
-            // Ideally, Fortune should have a dedicated lightweight AI service that:
-            // - Reads LLM config from Options
-            // - Makes simple HTTP calls to OpenAI/Azure API
-            // - No session/history management overhead
-            // TODO: Create FortuneAIService for direct API calls when time permits
-            
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
             var chatId = Guid.NewGuid().ToString();
@@ -523,7 +515,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             parseStopwatch.Stop();
             _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
-            // ========== INJECT BACKEND-CALCULATED FIELDS (方案B优化) ==========
+            // ========== INJECT BACKEND-CALCULATED FIELDS ==========
             // Pre-calculate values once
             var currentYear = DateTime.UtcNow.Year;
             var birthYear = userInfo.BirthDate.Year;
@@ -818,7 +810,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         var currentYearAnimal = FortuneCalculator.CalculateChineseZodiac(currentYear);
         var currentYearElement = FortuneCalculator.CalculateChineseElement(currentYear);
         
-        // Heavenly Stems & Earthly Branches (天干地支)
+        // Heavenly Stems & Earthly Branches
         var currentYearStems = FortuneCalculator.CalculateStemsAndBranches(currentYear);
         var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
         
