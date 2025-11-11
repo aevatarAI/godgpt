@@ -523,6 +523,86 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             parseStopwatch.Stop();
             _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
+            // ========== INJECT BACKEND-CALCULATED FIELDS (方案B优化) ==========
+            // Pre-calculate values once
+            var currentYear = DateTime.UtcNow.Year;
+            var birthYear = userInfo.BirthDate.Year;
+            
+            var sunSign = FortuneCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            var birthYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
+            var birthYearAnimal = FortuneCalculator.CalculateChineseZodiac(birthYear);
+            var currentYearStems = FortuneCalculator.CalculateStemsAndBranches(currentYear);
+            var pastCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, -1);
+            var currentCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 0);
+            var futureCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 1);
+            
+            if (type == PredictionType.Lifetime)
+            {
+                // Inject into primary language (lifetimeForecast)
+                if (lifetimeForecast != null)
+                {
+                    lifetimeForecast["welcomeNote_zodiac"] = sunSign;
+                    lifetimeForecast["welcomeNote_chineseZodiac"] = birthYearZodiac;
+                    lifetimeForecast["chineseAstrology_currentYearStems"] = currentYearStems.FullFormat;
+                    lifetimeForecast["sunSign_name"] = sunSign;
+                    lifetimeForecast["westernOverview_sunSign"] = sunSign;
+                    lifetimeForecast["chineseZodiac_animal"] = birthYearAnimal;
+                    lifetimeForecast["pastCycle_ageRange"] = pastCycle.AgeRange;
+                    lifetimeForecast["pastCycle_period"] = pastCycle.Period;
+                    lifetimeForecast["currentCycle_ageRange"] = currentCycle.AgeRange;
+                    lifetimeForecast["currentCycle_period"] = currentCycle.Period;
+                    lifetimeForecast["futureCycle_ageRange"] = futureCycle.AgeRange;
+                    lifetimeForecast["futureCycle_period"] = futureCycle.Period;
+                }
+                
+                // Inject into all multilingual versions
+                if (multilingualLifetime != null)
+                {
+                    foreach (var lang in multilingualLifetime.Keys)
+                    {
+                        multilingualLifetime[lang]["welcomeNote_zodiac"] = sunSign;
+                        multilingualLifetime[lang]["welcomeNote_chineseZodiac"] = birthYearZodiac;
+                        multilingualLifetime[lang]["chineseAstrology_currentYearStems"] = currentYearStems.FullFormat;
+                        multilingualLifetime[lang]["sunSign_name"] = sunSign;
+                        multilingualLifetime[lang]["westernOverview_sunSign"] = sunSign;
+                        multilingualLifetime[lang]["chineseZodiac_animal"] = birthYearAnimal;
+                        multilingualLifetime[lang]["pastCycle_ageRange"] = pastCycle.AgeRange;
+                        multilingualLifetime[lang]["pastCycle_period"] = pastCycle.Period;
+                        multilingualLifetime[lang]["currentCycle_ageRange"] = currentCycle.AgeRange;
+                        multilingualLifetime[lang]["currentCycle_period"] = currentCycle.Period;
+                        multilingualLifetime[lang]["futureCycle_ageRange"] = futureCycle.AgeRange;
+                        multilingualLifetime[lang]["futureCycle_period"] = futureCycle.Period;
+                    }
+                }
+                
+                _logger.LogInformation($"[Fortune] {userInfo.UserId} Injected backend-calculated fields into Lifetime prediction");
+            }
+            else if (type == PredictionType.Yearly)
+            {
+                var yearlyYear = predictionDate.Year;
+                var yearlyYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(yearlyYear);
+                var yearlyTaishui = FortuneCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
+                var zodiacInfluence = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
+                
+                // Inject into primary language (yearlyForecast)
+                if (yearlyForecast != null)
+                {
+                    yearlyForecast["zodiacInfluence"] = zodiacInfluence;
+                }
+                
+                // Inject into all multilingual versions
+                if (multilingualYearly != null)
+                {
+                    foreach (var lang in multilingualYearly.Keys)
+                    {
+                        multilingualYearly[lang]["zodiacInfluence"] = zodiacInfluence;
+                    }
+                }
+                
+                _logger.LogInformation($"[Fortune] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
+            }
+            // Daily type: No backend-calculated fields to inject (all LLM-generated)
+            
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
 
@@ -788,19 +868,18 @@ Past Cycle: {pastCycle.AgeRange} · {pastCycle.Period}
 Current Cycle: {currentCycle.AgeRange} · {currentCycle.Period}
 Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
 
-FORMAT (flattened):
+FORMAT (flattened - Backend will inject: zodiac, chineseZodiac, currentYearStems, cycle ages/periods):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""welcomeNote_zodiac"": ""{sunSign}"", ""welcomeNote_chineseZodiac"": ""{birthYearZodiac}"", ""welcomeNote_rhythm"": ""[Yin/Yang + Element, e.g., 'Yang Fire' or 'Yin Water']"", ""welcomeNote_essence"": ""[VARIED: 2 adjectives reflecting personality]"",
+      ""welcomeNote_rhythm"": ""[Yin/Yang + Element, e.g., 'Yang Fire' or 'Yin Water']"", ""welcomeNote_essence"": ""[VARIED: 2 adjectives reflecting personality]"",
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: Use {sunSign} as Sun sign, define archetype, show contrasts using 'both...yet' patterns]"",
       ""chineseAstrology_currentYear"": ""Year of the {currentYearZodiac}"", 
-      ""chineseAstrology_currentYearStems"": ""{currentYearStems}"",
       ""chineseAstrology_trait1"": ""[VARIED: 8-12 words interpretation]"", ""chineseAstrology_trait2"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait3"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait4"": ""[VARIED: 8-12 words]"",
       ""zodiacWhisper"": ""[VARIED: 40-50 words perspective on how {birthYearAnimal} enhances Western chart. Start '{birthYearAnimal} adds...' Use 'You are not only X, but Y']"",
-      ""sunSign_name"": ""{sunSign}"", ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
-      ""westernOverview_sunSign"": ""{sunSign}"", ""westernOverview_sunArchetype"": ""[Sun in {sunSign} - The [3-5 words archetype title]]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
+      ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
+      ""westernOverview_sunArchetype"": ""[Sun in {sunSign} - The [3-5 words archetype title]]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
       ""westernOverview_moonSign"": ""[Infer from context or use {sunSign}]"", ""westernOverview_moonArchetype"": ""[Moon in [sign] - The [3-5 words archetype title]]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
       ""westernOverview_risingSign"": ""[Use {sunSign} if no birth time]"", ""westernOverview_risingArchetype"": ""[Rising in [sign] - The [3-5 words archetype title]]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
       ""combinedEssence"": ""[15-20 words: 'You think like [Sun], feel like [Moon], move through world like [Rising]']"",
@@ -816,17 +895,14 @@ FORMAT (flattened):
       ""destiny_path1_title"": ""[VARIED: 3-5 roles separated by /]"", ""destiny_path1_description"": ""[VARIED: 3-6 words]"",
       ""destiny_path2_title"": ""[VARIED: 3-5 roles separated by /]"", ""destiny_path2_description"": ""[VARIED: 5-10 words]"",
       ""destiny_path3_title"": ""[VARIED: 1-3 roles]"", ""destiny_path3_description"": ""[VARIED: 8-15 words]"",
-      ""chineseZodiac_animal"": ""{birthYearAnimal}"", ""chineseZodiac_essence"": ""[Essence like {birthYearElement}]"",
+      ""chineseZodiac_essence"": ""[Essence like {birthYearElement}]"",
       ""zodiacCycle_title"": ""[Zodiac Cycle Influence (YYYY-YYYY), calculate 20-year period from birth year]"", 
       ""zodiacCycle_cycleName"": ""[English name]"", ""zodiacCycle_cycleNameChinese"": ""[Chinese name]"",
       ""zodiacCycle_overview"": ""[50-65 words: State zodiac+element, describe 20-year cycle, how it affects Day Master]"",
       ""zodiacCycle_dayMasterPoint1"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint2"": ""[6-10 words]"", ""zodiacCycle_dayMasterPoint3"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint4"": ""[10-15 words]"",
       ""tenYearCycles_description"": ""[40-60 words: Fate Palace sector, element, what it represents, what it aligns them with]"",
-      ""pastCycle_ageRange"": ""{pastCycle.AgeRange}"", ""pastCycle_period"": ""{pastCycle.Period}"", 
       ""pastCycle_influenceSummary"": ""[8-12 words]"", ""pastCycle_meaning"": ""[60-80 words: Past tense, explain element/energy, reference Ten Gods if relevant]"",
-      ""currentCycle_ageRange"": ""{currentCycle.AgeRange}"", ""currentCycle_period"": ""{currentCycle.Period}"", 
       ""currentCycle_influenceSummary"": ""[8-12 words]"", ""currentCycle_meaning"": ""[60-80 words: Present tense, what it empowers, reference Ten Gods]"",
-      ""futureCycle_ageRange"": ""{futureCycle.AgeRange}"", ""futureCycle_period"": ""{futureCycle.Period}"", 
       ""futureCycle_influenceSummary"": ""[8-12 words]"", ""futureCycle_meaning"": ""[60-80 words: Future tense, opportunities/challenges]"",
       ""lifePlot_title"": ""[VARIED: You are a [10-20 words poetic archetype]]"", 
       ""lifePlot_chapter"": ""[VARIED: 30-50 words addressing by name, describe destiny uniquely]"",
@@ -861,11 +937,10 @@ Birth Year Zodiac: {birthYearZodiac}
 Yearly Year ({yearlyYear}): {yearlyYearZodiac}
 Taishui Relationship: {yearlyTaishui}
 
-FORMAT (flattened):
+FORMAT (flattened - Backend will inject: zodiacInfluence):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""zodiacInfluence"": ""{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}"",
       ""westernAstroOverlay"": ""{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits based on {sunSign}]"",
       ""yearlyTheme_overallTheme"": ""[VARIED: 4-7 words using 'of' structure]"", 
       ""yearlyTheme_atAGlance"": ""[VARIED: 15-20 words on what both systems agree]"", 
