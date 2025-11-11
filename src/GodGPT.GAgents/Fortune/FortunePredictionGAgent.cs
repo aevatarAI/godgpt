@@ -30,7 +30,7 @@ public interface IFortunePredictionGAgent : IGAgent
     Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en");
     
     [ReadOnly]
-    Task<PredictionResultDto?> GetPredictionAsync();
+    Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en");
 }
 
 [GAgent(nameof(FortunePredictionGAgent))]
@@ -267,6 +267,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     // Extract enum values for frontend (from lifetime forecast)
                     ExtractEnumValues(predictionDto, null, lifetimeWithPhase);
                     
+                    // Apply localization: only return requested language version
+                    ApplyLocalization(predictionDto, userLanguage);
+                    
                     return new GetTodayPredictionResult
                     {
                         Success = true,
@@ -311,6 +314,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     
                     // Extract enum values for frontend (from yearly forecast)
                     ExtractEnumValues(predictionDto, null, State.YearlyForecast);
+                    
+                    // Apply localization: only return requested language version
+                    ApplyLocalization(predictionDto, userLanguage);
 
                     return new GetTodayPredictionResult
                     {
@@ -357,6 +363,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     
                     // Extract enum values for frontend (from daily results)
                     ExtractEnumValues(predictionDto, State.Results, null);
+                    
+                    // Apply localization: only return requested language version
+                    ApplyLocalization(predictionDto, userLanguage);
                     
                     return new GetTodayPredictionResult
                     {
@@ -424,9 +433,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     }
 
     /// <summary>
-    /// Get prediction from state without generating
+    /// Get prediction from state without generating (only returns requested language version)
     /// </summary>
-    public Task<PredictionResultDto?> GetPredictionAsync()
+    public Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en")
     {
         if (State.PredictionId == Guid.Empty)
         {
@@ -441,10 +450,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         {
             // This is a Yearly prediction grain
             predictionDto = new PredictionResultDto
-            {
-                PredictionId = State.PredictionId,
-                UserId = State.UserId,
-                PredictionDate = State.PredictionDate,
+        {
+            PredictionId = State.PredictionId,
+            UserId = State.UserId,
+            PredictionDate = State.PredictionDate,
                 Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
                 CreatedAt = State.CreatedAt,
                 FromCache = true,
@@ -466,9 +475,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 UserId = State.UserId,
                 PredictionDate = State.PredictionDate,
                 Results = new Dictionary<string, Dictionary<string, string>>(), // Lifetime doesn't have daily results
-                CreatedAt = State.CreatedAt,
-                FromCache = true,
-                LifetimeForecast = State.LifetimeForecast,
+            CreatedAt = State.CreatedAt,
+            FromCache = true,
+            LifetimeForecast = State.LifetimeForecast,
                 MultilingualLifetime = State.MultilingualLifetime,
                 AvailableLanguages = State.LifetimeGeneratedLanguages ?? new List<string> { "en" },
                 AllLanguagesGenerated = State.LifetimeGeneratedLanguages?.Count == 4
@@ -498,6 +507,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             // Extract enum values for frontend (from daily results)
             ExtractEnumValues(predictionDto, State.Results, null);
         }
+
+        // Apply localization: only return requested language version
+        ApplyLocalization(predictionDto, userLanguage);
 
         return Task.FromResult<PredictionResultDto?>(predictionDto);
     }
@@ -632,6 +644,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             
             if (type == PredictionType.Lifetime)
             {
+                // Calculate Four Pillars (Ba Zi)
+                var fourPillars = FortuneCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+                
                 // Inject into primary language (lifetimeForecast)
                 if (lifetimeForecast != null)
                 {
@@ -645,6 +660,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     lifetimeForecast["currentCycle_period"] = currentCycle.Period;
                     lifetimeForecast["futureCycle_ageRange"] = futureCycle.AgeRange;
                     lifetimeForecast["futureCycle_period"] = futureCycle.Period;
+                    
+                    // Inject Four Pillars data (will be localized per language later)
+                    InjectFourPillarsData(lifetimeForecast, fourPillars, targetLanguage);
                 }
                 
                 // Inject into all multilingual versions
@@ -662,6 +680,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                         multilingualLifetime[lang]["currentCycle_period"] = currentCycle.Period;
                         multilingualLifetime[lang]["futureCycle_ageRange"] = futureCycle.AgeRange;
                         multilingualLifetime[lang]["futureCycle_period"] = futureCycle.Period;
+                        
+                        // Inject Four Pillars data with language-specific formatting
+                        InjectFourPillarsData(multilingualLifetime[lang], fourPillars, lang);
                     }
                 }
                 
@@ -1171,13 +1192,17 @@ CRITICAL RULES:
 3. PRESERVE these fields in Chinese+Pinyin regardless of target language:
    - chineseAstrology_currentYearStems (e.g., '乙 巳 Yi Si')
    - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
-4. Maintain natural, fluent expression in each target language (not word-for-word).
-5. Keep all field names unchanged.
-6. Preserve all numbers, dates, and proper nouns.
-7. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
+4. TRANSLATE luckyNumber format correctly:
+   - English/Spanish: ""Seven (7)"" - translate word, keep (digit)
+   - Spanish example: ""Siete (7)""
+   - Chinese: Keep original format or use ""七 (7)""
+5. Maintain natural, fluent expression in each target language (not word-for-word).
+6. Keep all field names unchanged.
+7. Preserve all numbers, dates, and proper nouns.
+8. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
    - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
    - Sentence structure: Adjust to natural Chinese word order
-8. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
+9. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
@@ -1996,5 +2021,143 @@ Output in JSON format with 'predictions' object containing each target language.
         _logger.LogWarning($"[FortunePredictionGAgent][ParseCrystalStone] Unknown crystal stone: {stoneName}");
         return CrystalStoneEnum.Unknown;
     }
+    
+    /// <summary>
+    /// Apply localization: only keep requested language version, remove other languages
+    /// </summary>
+    private void ApplyLocalization(PredictionResultDto prediction, string userLanguage)
+    {
+        // Apply localization to daily results
+        if (prediction.MultilingualResults != null && prediction.MultilingualResults.Count > 0)
+        {
+            if (prediction.MultilingualResults.TryGetValue(userLanguage, out var localizedResults))
+            {
+                prediction.Results = localizedResults;
+            }
+            else if (prediction.MultilingualResults.TryGetValue("en", out var englishResults))
+            {
+                // Fallback to English if requested language not available
+                prediction.Results = englishResults;
+                _logger.LogWarning("[FortunePredictionGAgent][ApplyLocalization] Language {UserLanguage} not found, using English fallback",
+                    userLanguage);
+            }
+            
+            // Clear multilingual field to avoid returning all languages
+            prediction.MultilingualResults = null;
+        }
+        
+        // Apply localization to lifetime/yearly forecast
+        if (prediction.MultilingualLifetime != null && prediction.MultilingualLifetime.Count > 0)
+        {
+            if (prediction.MultilingualLifetime.TryGetValue(userLanguage, out var localizedLifetime))
+            {
+                prediction.LifetimeForecast = localizedLifetime;
+            }
+            else if (prediction.MultilingualLifetime.TryGetValue("en", out var englishLifetime))
+            {
+                // Fallback to English
+                prediction.LifetimeForecast = englishLifetime;
+                _logger.LogWarning("[FortunePredictionGAgent][ApplyLocalization] Lifetime/Yearly {UserLanguage} not found, using English fallback",
+                    userLanguage);
+            }
+            
+            // Clear multilingual field to avoid returning all languages
+            prediction.MultilingualLifetime = null;
+        }
+    }
+    
+    /// <summary>
+    /// Inject Four Pillars (Ba Zi) data into prediction dictionary with language-specific formatting
+    /// </summary>
+    private void InjectFourPillarsData(Dictionary<string, string> prediction, FourPillarsInfo fourPillars, string language)
+    {
+        // Year Pillar
+        prediction["fourPillars_yearPillar"] = fourPillars.YearPillar.GetFormattedString(language);
+        prediction["fourPillars_yearPillar_stem"] = fourPillars.YearPillar.StemChinese;
+        prediction["fourPillars_yearPillar_branch"] = fourPillars.YearPillar.BranchChinese;
+        prediction["fourPillars_yearPillar_stemPinyin"] = fourPillars.YearPillar.StemPinyin;
+        prediction["fourPillars_yearPillar_branchPinyin"] = fourPillars.YearPillar.BranchPinyin;
+        prediction["fourPillars_yearPillar_yinYang"] = TranslateYinYang(fourPillars.YearPillar.YinYang, language);
+        prediction["fourPillars_yearPillar_element"] = TranslateElement(fourPillars.YearPillar.Element, language);
+        prediction["fourPillars_yearPillar_direction"] = TranslateDirection(fourPillars.YearPillar.Direction, language);
+        
+        // Month Pillar
+        prediction["fourPillars_monthPillar"] = fourPillars.MonthPillar.GetFormattedString(language);
+        prediction["fourPillars_monthPillar_stem"] = fourPillars.MonthPillar.StemChinese;
+        prediction["fourPillars_monthPillar_branch"] = fourPillars.MonthPillar.BranchChinese;
+        prediction["fourPillars_monthPillar_stemPinyin"] = fourPillars.MonthPillar.StemPinyin;
+        prediction["fourPillars_monthPillar_branchPinyin"] = fourPillars.MonthPillar.BranchPinyin;
+        prediction["fourPillars_monthPillar_yinYang"] = TranslateYinYang(fourPillars.MonthPillar.YinYang, language);
+        prediction["fourPillars_monthPillar_element"] = TranslateElement(fourPillars.MonthPillar.Element, language);
+        prediction["fourPillars_monthPillar_direction"] = TranslateDirection(fourPillars.MonthPillar.Direction, language);
+        
+        // Day Pillar
+        prediction["fourPillars_dayPillar"] = fourPillars.DayPillar.GetFormattedString(language);
+        prediction["fourPillars_dayPillar_stem"] = fourPillars.DayPillar.StemChinese;
+        prediction["fourPillars_dayPillar_branch"] = fourPillars.DayPillar.BranchChinese;
+        prediction["fourPillars_dayPillar_stemPinyin"] = fourPillars.DayPillar.StemPinyin;
+        prediction["fourPillars_dayPillar_branchPinyin"] = fourPillars.DayPillar.BranchPinyin;
+        prediction["fourPillars_dayPillar_yinYang"] = TranslateYinYang(fourPillars.DayPillar.YinYang, language);
+        prediction["fourPillars_dayPillar_element"] = TranslateElement(fourPillars.DayPillar.Element, language);
+        prediction["fourPillars_dayPillar_direction"] = TranslateDirection(fourPillars.DayPillar.Direction, language);
+        
+        // Hour Pillar (optional)
+        if (fourPillars.HourPillar != null)
+        {
+            prediction["fourPillars_hourPillar"] = fourPillars.HourPillar.GetFormattedString(language);
+            prediction["fourPillars_hourPillar_stem"] = fourPillars.HourPillar.StemChinese;
+            prediction["fourPillars_hourPillar_branch"] = fourPillars.HourPillar.BranchChinese;
+            prediction["fourPillars_hourPillar_stemPinyin"] = fourPillars.HourPillar.StemPinyin;
+            prediction["fourPillars_hourPillar_branchPinyin"] = fourPillars.HourPillar.BranchPinyin;
+            prediction["fourPillars_hourPillar_yinYang"] = TranslateYinYang(fourPillars.HourPillar.YinYang, language);
+            prediction["fourPillars_hourPillar_element"] = TranslateElement(fourPillars.HourPillar.Element, language);
+            prediction["fourPillars_hourPillar_direction"] = TranslateDirection(fourPillars.HourPillar.Direction, language);
+        }
+    }
+    
+    private string TranslateYinYang(string yinYang, string language) => language switch
+    {
+        "zh-tw" or "zh" => yinYang == "Yang" ? "陽" : "陰",
+        "es" => yinYang == "Yang" ? "Yang" : "Yin",
+        _ => yinYang  // English default
+    };
+    
+    private string TranslateElement(string element, string language) => (element, language) switch
+    {
+        ("Wood", "zh-tw" or "zh") => "木",
+        ("Fire", "zh-tw" or "zh") => "火",
+        ("Earth", "zh-tw" or "zh") => "土",
+        ("Metal", "zh-tw" or "zh") => "金",
+        ("Water", "zh-tw" or "zh") => "水",
+        ("Wood", "es") => "Madera",
+        ("Fire", "es") => "Fuego",
+        ("Earth", "es") => "Tierra",
+        ("Metal", "es") => "Metal",
+        ("Water", "es") => "Agua",
+        _ => element  // English default
+    };
+    
+    private string TranslateDirection(string direction, string language) => (direction, language) switch
+    {
+        ("East 1", "zh-tw" or "zh") => "東一",
+        ("East 2", "zh-tw" or "zh") => "東二",
+        ("South 1", "zh-tw" or "zh") => "南一",
+        ("South 2", "zh-tw" or "zh") => "南二",
+        ("West 1", "zh-tw" or "zh") => "西一",
+        ("West 2", "zh-tw" or "zh") => "西二",
+        ("North 1", "zh-tw" or "zh") => "北一",
+        ("North 2", "zh-tw" or "zh") => "北二",
+        ("Centre", "zh-tw" or "zh") => "中",
+        ("East 1", "es") => "Este 1",
+        ("East 2", "es") => "Este 2",
+        ("South 1", "es") => "Sur 1",
+        ("South 2", "es") => "Sur 2",
+        ("West 1", "es") => "Oeste 1",
+        ("West 2", "es") => "Oeste 2",
+        ("North 1", "es") => "Norte 1",
+        ("North 2", "es") => "Norte 2",
+        ("Centre", "es") => "Centro",
+        _ => direction  // English default
+    };
 }
 
