@@ -253,7 +253,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                             PredictionId = State.PredictionId,
                             UserId = State.UserId,
                             PredictionDate = State.PredictionDate,
-                            Results = State.Results,
+                            Results = new Dictionary<string, Dictionary<string, string>>(), // Lifetime doesn't have daily results
                             CreatedAt = State.CreatedAt,
                             FromCache = true,
                             LifetimeForecast = lifetimeWithPhase,
@@ -264,8 +264,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                         AllLanguagesGenerated = State.LifetimeGeneratedLanguages?.Count == 4
                     };
                     
-                    // Extract enum values for frontend
-                    ExtractEnumValues(predictionDto, State.Results, lifetimeWithPhase);
+                    // Extract enum values for frontend (from lifetime forecast)
+                    ExtractEnumValues(predictionDto, null, lifetimeWithPhase);
                     
                     return new GetTodayPredictionResult
                     {
@@ -356,7 +356,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     };
                     
                     // Extract enum values for frontend (from daily results)
-                    ExtractEnumValues(predictionDto, State.Results, State.LifetimeForecast);
+                    ExtractEnumValues(predictionDto, State.Results, null);
                     
                     return new GetTodayPredictionResult
                     {
