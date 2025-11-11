@@ -543,7 +543,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 {
                     lifetimeForecast["welcomeNote_zodiac"] = sunSign;
                     lifetimeForecast["welcomeNote_chineseZodiac"] = birthYearZodiac;
-                    lifetimeForecast["chineseAstrology_currentYearStems"] = currentYearStems.FullFormat;
+                    lifetimeForecast["chineseAstrology_currentYearStems"] = currentYearStems;
                     lifetimeForecast["sunSign_name"] = sunSign;
                     lifetimeForecast["westernOverview_sunSign"] = sunSign;
                     lifetimeForecast["chineseZodiac_animal"] = birthYearAnimal;
@@ -562,7 +562,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     {
                         multilingualLifetime[lang]["welcomeNote_zodiac"] = sunSign;
                         multilingualLifetime[lang]["welcomeNote_chineseZodiac"] = birthYearZodiac;
-                        multilingualLifetime[lang]["chineseAstrology_currentYearStems"] = currentYearStems.FullFormat;
+                        multilingualLifetime[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
                         multilingualLifetime[lang]["sunSign_name"] = sunSign;
                         multilingualLifetime[lang]["westernOverview_sunSign"] = sunSign;
                         multilingualLifetime[lang]["chineseZodiac_animal"] = birthYearAnimal;
