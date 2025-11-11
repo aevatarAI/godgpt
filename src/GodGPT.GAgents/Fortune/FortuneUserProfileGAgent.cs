@@ -1,5 +1,6 @@
 using Aevatar.Application.Grains.Fortune.Dtos;
 using Aevatar.Application.Grains.Fortune.SEvents;
+using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
@@ -16,7 +17,13 @@ public interface IFortuneUserProfileGAgent : IGAgent
     Task<UpdateUserProfileResult> UpdateUserProfileAsync(UpdateUserProfileRequest request);
     
     [ReadOnly]
-    Task<GetUserProfileResult> GetUserProfileAsync();
+    Task<GetUserProfileResult> GetUserProfileAsync(Guid userId);
+    
+    /// <summary>
+    /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
+    /// </summary>
+    [ReadOnly]
+    Task<FortuneUserProfileDto?> GetRawStateAsync();
     
     Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
     
@@ -194,26 +201,33 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
     }
 
-    public Task<GetUserProfileResult> GetUserProfileAsync()
+    public async Task<GetUserProfileResult> GetUserProfileAsync(Guid userId)
     {
         try
         {
             _logger.LogDebug("[FortuneUserProfileGAgent][GetUserProfileAsync] Getting user profile for: {UserId}", 
-                this.GetPrimaryKey());
+                this.GetPrimaryKey().ToString());
 
             if (string.IsNullOrEmpty(State.UserId))
             {
-                return Task.FromResult(new GetUserProfileResult
+                // Try to migrate data from UserInfoCollectionGAgent
+                await TryToMigrateDataFromUserInfoCollectionAsync(userId);
+            }
+
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[FortuneUserProfileGAgent][GetUserProfileAsync] Fortune user profile not initialized {GrainId}", this.GetPrimaryKey().ToString());
+                return new GetUserProfileResult
                 {
                     Success = false,
                     Message = "User profile not found"
-                });
+                };
             }
 
             // Calculate WelcomeNote using backend calculations
             var welcomeNote = GenerateWelcomeNote(State.BirthDate);
 
-            return Task.FromResult(new GetUserProfileResult
+            return new GetUserProfileResult
             {
                 Success = true,
                 Message = string.Empty,
@@ -241,16 +255,187 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                     UpdatedAt = State.UpdatedAt,
                     WelcomeNote = welcomeNote
                 }
-            });
+            };
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[FortuneUserProfileGAgent][GetUserProfileAsync] Error getting user profile");
-            return Task.FromResult(new GetUserProfileResult
+            return new GetUserProfileResult
             {
                 Success = false,
                 Message = "Internal error occurred"
-            });
+            };
+        }
+    }
+
+    private async Task TryToMigrateDataFromUserInfoCollectionAsync(Guid userId)
+    {
+        _logger.LogWarning(
+            "[FortuneUserProfileGAgent][GetUserProfileAsync] Fortune user profile not initialized. {GrainId}",
+            this.GetPrimaryKey().ToString());
+
+        // Use GetRawStateAsync to prevent circular dependency
+        var userInfoCollectionGAgent = GrainFactory.GetGrain<IUserInfoCollectionGAgent>(userId);
+        var userInfoResult = await userInfoCollectionGAgent.GetRawStateAsync();
+
+        if (userInfoResult != null && userInfoResult.IsInitialized && userInfoResult.NameInfo != null)
+        {
+            _logger.LogInformation(
+                "[FortuneUserProfileGAgent][GetUserProfileAsync] Migrating data from UserInfoCollection to FortuneUserProfile, userId {UserId}",
+                userId.ToString());
+
+            var now = DateTime.UtcNow;
+
+            // Prepare migration data - bypass validation for data migration scenario
+            // Concatenate FirstName + LastName → FullName
+            var firstName = userInfoResult.NameInfo.FirstName?.Trim() ?? "";
+            var lastName = userInfoResult.NameInfo.LastName?.Trim() ?? "";
+            var fullName = $"{firstName} {lastName}".Trim();
+
+            // If both are empty, use firstName (which is already empty string)
+            if (string.IsNullOrWhiteSpace(fullName))
+            {
+                fullName = firstName;
+            }
+
+            // Map Gender: 1→Male(0), 2→Female(1)
+            GenderEnum gender = GenderEnum.Other;
+            if (userInfoResult.NameInfo.Gender == 1)
+            {
+                gender = GenderEnum.Male;
+            }
+            else if (userInfoResult.NameInfo.Gender == 2)
+            {
+                gender = GenderEnum.Female;
+            }
+
+            // Construct BirthDate from Day/Month/Year (if all present)
+            DateOnly? birthDate = null;
+            if (userInfoResult.BirthDateInfo != null &&
+                userInfoResult.BirthDateInfo.Day.HasValue &&
+                userInfoResult.BirthDateInfo.Month.HasValue &&
+                userInfoResult.BirthDateInfo.Year.HasValue)
+            {
+                try
+                {
+                    birthDate = new DateOnly(
+                        userInfoResult.BirthDateInfo.Year.Value,
+                        userInfoResult.BirthDateInfo.Month.Value,
+                        userInfoResult.BirthDateInfo.Day.Value);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "[FortuneUserProfileGAgent][GetUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
+                        userInfoResult.BirthDateInfo.Year, userInfoResult.BirthDateInfo.Month,
+                        userInfoResult.BirthDateInfo.Day);
+                }
+            }
+
+            // Construct BirthTime from Hour/Minute (if present)
+            TimeOnly? birthTime = null;
+            if (userInfoResult.BirthTimeInfo != null &&
+                userInfoResult.BirthTimeInfo.Hour.HasValue &&
+                userInfoResult.BirthTimeInfo.Minute.HasValue)
+            {
+                birthTime = new TimeOnly(userInfoResult.BirthTimeInfo.Hour.Value,
+                    userInfoResult.BirthTimeInfo.Minute.Value);
+            }
+
+            // Map location
+            string birthCountry = userInfoResult.LocationInfo?.Country;
+            string birthCity = userInfoResult.LocationInfo?.City;
+
+            // Check if we have minimum required data for migration
+            bool hasDataToMigrate = !string.IsNullOrWhiteSpace(fullName) && birthDate.HasValue;
+
+            if (hasDataToMigrate)
+            {
+                _logger.LogInformation(
+                    "[FortuneUserProfileGAgent][GetUserProfileAsync] Saving migrated data for userId {UserId}, " +
+                    "fullName: {FullName}, gender: {Gender}, birthDate: {BirthDate}, country: {Country}, city: {City}",
+                    userId.ToString(), fullName, gender, birthDate, birthCountry, birthCity);
+
+                // Directly raise event to bypass validation - migration is internal data sync
+                RaiseEvent(new UserProfileUpdatedEvent
+                {
+                    UserId = userId.ToString(),
+                    FullName = fullName,
+                    Gender = gender,
+                    BirthDate = birthDate.Value,
+                    BirthTime = birthTime,
+                    BirthCountry = birthCountry,
+                    BirthCity = birthCity,
+                    MbtiType = null,
+                    RelationshipStatus = null,
+                    Interests = null,
+                    CalendarType = null,
+                    UpdatedAt = now,
+                    CurrentResidence = null,
+                    Email = null
+                });
+
+                await ConfirmEvents();
+
+                _logger.LogInformation(
+                    "[FortuneUserProfileGAgent][GetUserProfileAsync] Successfully migrated data from UserInfoCollection");
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "[FortuneUserProfileGAgent][GetUserProfileAsync] UserInfoCollection exists but insufficient data for migration (missing FullName or BirthDate)");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
+    /// </summary>
+    public Task<FortuneUserProfileDto?> GetRawStateAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[FortuneUserProfileGAgent][GetRawStateAsync] Getting raw state for: {UserId}", 
+                this.GetPrimaryKey());
+
+            // If not initialized, return null immediately without any migration logic
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                return Task.FromResult<FortuneUserProfileDto?>(null);
+            }
+
+            // Return raw state data without any processing or migration
+            var profileDto = new FortuneUserProfileDto
+            {
+                UserId = State.UserId,
+                FullName = State.FullName,
+                Gender = State.Gender,
+                BirthDate = State.BirthDate,
+                BirthTime = State.BirthTime,
+                BirthCountry = State.BirthCountry,
+                BirthCity = State.BirthCity,
+                MbtiType = State.MbtiType,
+                RelationshipStatus = State.RelationshipStatus,
+                Interests = State.Interests,
+                CalendarType = State.CalendarType,
+                Actions = State.Actions,
+                CreatedAt = State.CreatedAt,
+                CurrentResidence = State.CurrentResidence,
+                Email = State.Email,
+                Astrology = State.Astrology,
+                Bazi = State.Bazi,
+                Zodiac = State.Zodiac,
+                InsightsGeneratedAt = State.InsightsGeneratedAt,
+                UpdatedAt = State.UpdatedAt,
+                WelcomeNote = new Dictionary<string, string>() // Empty, no calculation
+            };
+
+            return Task.FromResult<FortuneUserProfileDto?>(profileDto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[FortuneUserProfileGAgent][GetRawStateAsync] Error getting raw state");
+            return Task.FromResult<FortuneUserProfileDto?>(null);
         }
     }
 
