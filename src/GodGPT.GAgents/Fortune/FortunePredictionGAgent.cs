@@ -654,6 +654,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     lifetimeForecast["sunSign_name"] = sunSign;
                     lifetimeForecast["westernOverview_sunSign"] = sunSign;
                     lifetimeForecast["chineseZodiac_animal"] = birthYearAnimal;
+                    lifetimeForecast["chineseZodiac_title"] = $"The {birthYearAnimal.Split(' ').Last()}"; // Extract animal name only (e.g., "The Pig")
                     lifetimeForecast["pastCycle_ageRange"] = pastCycle.AgeRange;
                     lifetimeForecast["pastCycle_period"] = pastCycle.Period;
                     lifetimeForecast["currentCycle_ageRange"] = currentCycle.AgeRange;
@@ -674,6 +675,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                         multilingualLifetime[lang]["sunSign_name"] = sunSign;
                         multilingualLifetime[lang]["westernOverview_sunSign"] = sunSign;
                         multilingualLifetime[lang]["chineseZodiac_animal"] = birthYearAnimal;
+                        multilingualLifetime[lang]["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, lang);
                         multilingualLifetime[lang]["pastCycle_ageRange"] = pastCycle.AgeRange;
                         multilingualLifetime[lang]["pastCycle_period"] = pastCycle.Period;
                         multilingualLifetime[lang]["currentCycle_ageRange"] = currentCycle.AgeRange;
@@ -975,7 +977,8 @@ Current Year: {currentYear}
 
 ========== PRE-CALCULATED VALUES (Use these EXACT values, do NOT recalculate) ==========
 Sun Sign: {sunSign}
-Birth Year Zodiac: {birthYearZodiac}
+Birth Year Zodiac (USER'S ZODIAC): {birthYearZodiac}
+Birth Year Animal (USER'S ANIMAL): {birthYearAnimal}
 Birth Year Element: {birthYearElement}
 Current Year ({currentYear}): {currentYearZodiac}
 Current Year Stems: {currentYearStems}
@@ -983,7 +986,9 @@ Past Cycle: {pastCycle.AgeRange} · {pastCycle.Period}
 Current Cycle: {currentCycle.AgeRange} · {currentCycle.Period}
 Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
 
-FORMAT (flattened - Backend will inject: zodiac, chineseZodiac, currentYearStems, cycle ages/periods):
+IMPORTANT: All Chinese Zodiac content must be based on USER'S Birth Year Zodiac ({birthYearZodiac}), NOT the current year zodiac ({currentYearZodiac}).
+
+FORMAT (flattened - Backend will inject: chineseZodiac_title, chineseZodiac_animal, sunSign_name, currentYearStems, cycle ages/periods, fourPillars details):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
@@ -1012,7 +1017,7 @@ FORMAT (flattened - Backend will inject: zodiac, chineseZodiac, currentYearStems
       ""chineseZodiac_essence"": ""[Essence like {birthYearElement}]"",
       ""zodiacCycle_title"": ""[Zodiac Cycle Influence (YYYY-YYYY), calculate 20-year period from birth year]"", 
       ""zodiacCycle_cycleName"": ""[English name]"", ""zodiacCycle_cycleNameChinese"": ""[Chinese name]"",
-      ""zodiacCycle_overview"": ""[50-65 words: State zodiac+element, describe 20-year cycle, how it affects Day Master]"",
+      ""zodiacCycle_overview"": ""[50-65 words: Start with 'Your Chinese Zodiac is {birthYearAnimal}...' Explain the current 20-year cycle (e.g., 2024-2043) and how this period's energy influences the user's life. Reference both the user's zodiac and the cycle's characteristics.]"",
       ""zodiacCycle_dayMasterPoint1"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint2"": ""[6-10 words]"", ""zodiacCycle_dayMasterPoint3"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint4"": ""[10-15 words]"",
       ""tenYearCycles_description"": ""[40-60 words: Fate Palace sector, element, what it represents, what it aligns them with]"",
       ""pastCycle_influenceSummary"": ""[8-12 words]"", ""pastCycle_meaning"": ""[60-80 words: Past tense, explain element/energy, reference Ten Gods if relevant]"",
@@ -2159,5 +2164,51 @@ Output in JSON format with 'predictions' object containing each target language.
         ("Centre", "es") => "Centro",
         _ => direction  // English default
     };
+    
+    /// <summary>
+    /// Translate Chinese Zodiac title (e.g., "The Pig") to different languages
+    /// </summary>
+    private string TranslateZodiacTitle(string birthYearAnimal, string language)
+    {
+        // Extract animal name (e.g., "Wood Pig" -> "Pig")
+        var animalName = birthYearAnimal.Split(' ').Last();
+        
+        return language switch
+        {
+            "zh-tw" or "zh" => animalName switch
+            {
+                "Rat" => "鼠",
+                "Ox" => "牛",
+                "Tiger" => "虎",
+                "Rabbit" => "兔",
+                "Dragon" => "龍",
+                "Snake" => "蛇",
+                "Horse" => "馬",
+                "Goat" => "羊",
+                "Monkey" => "猴",
+                "Rooster" => "雞",
+                "Dog" => "狗",
+                "Pig" => "豬",
+                _ => animalName
+            },
+            "es" => animalName switch
+            {
+                "Rat" => "La Rata",
+                "Ox" => "El Buey",
+                "Tiger" => "El Tigre",
+                "Rabbit" => "El Conejo",
+                "Dragon" => "El Dragón",
+                "Snake" => "La Serpiente",
+                "Horse" => "El Caballo",
+                "Goat" => "La Cabra",
+                "Monkey" => "El Mono",
+                "Rooster" => "El Gallo",
+                "Dog" => "El Perro",
+                "Pig" => "El Cerdo",
+                _ => $"El {animalName}"
+            },
+            _ => $"The {animalName}"  // English default
+        };
+    }
 }
 
