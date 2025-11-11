@@ -33,5 +33,18 @@ public class FortunePredictionState : StateBase
     [Id(16)] public List<string>? DailyGeneratedLanguages { get; set; } // Track which languages are generated for daily
     [Id(17)] public List<string>? YearlyGeneratedLanguages { get; set; } // Track which languages are generated for yearly
     [Id(18)] public List<string>? LifetimeGeneratedLanguages { get; set; } // Track which languages are generated for lifetime
+    
+    // Idempotency protection - prevent concurrent generation (per prediction type)
+    [Id(19)] public Dictionary<PredictionType, GenerationLockInfo> GenerationLocks { get; set; } = new();
+}
+
+/// <summary>
+/// Generation lock information for idempotency protection
+/// </summary>
+[GenerateSerializer]
+public class GenerationLockInfo
+{
+    [Id(0)] public bool IsGenerating { get; set; }
+    [Id(1)] public DateTime? StartedAt { get; set; }
 }
 
