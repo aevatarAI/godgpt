@@ -1192,13 +1192,17 @@ CRITICAL RULES:
 3. PRESERVE these fields in Chinese+Pinyin regardless of target language:
    - chineseAstrology_currentYearStems (e.g., '乙 巳 Yi Si')
    - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
-4. Maintain natural, fluent expression in each target language (not word-for-word).
-5. Keep all field names unchanged.
-6. Preserve all numbers, dates, and proper nouns.
-7. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
+4. TRANSLATE luckyNumber format correctly:
+   - English/Spanish: ""Seven (7)"" - translate word, keep (digit)
+   - Spanish example: ""Siete (7)""
+   - Chinese: Keep original format or use ""七 (7)""
+5. Maintain natural, fluent expression in each target language (not word-for-word).
+6. Keep all field names unchanged.
+7. Preserve all numbers, dates, and proper nouns.
+8. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
    - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
    - Sentence structure: Adjust to natural Chinese word order
-8. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
+9. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
