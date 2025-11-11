@@ -30,7 +30,7 @@ public interface IFortunePredictionGAgent : IGAgent
     Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en");
     
     [ReadOnly]
-    Task<PredictionResultDto?> GetPredictionAsync();
+    Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en");
 }
 
 [GAgent(nameof(FortunePredictionGAgent))]
@@ -424,9 +424,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     }
 
     /// <summary>
-    /// Get prediction from state without generating
+    /// Get prediction from state without generating (only returns requested language version)
     /// </summary>
-    public Task<PredictionResultDto?> GetPredictionAsync()
+    public Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en")
     {
         if (State.PredictionId == Guid.Empty)
         {
@@ -441,10 +441,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         {
             // This is a Yearly prediction grain
             predictionDto = new PredictionResultDto
-            {
-                PredictionId = State.PredictionId,
-                UserId = State.UserId,
-                PredictionDate = State.PredictionDate,
+        {
+            PredictionId = State.PredictionId,
+            UserId = State.UserId,
+            PredictionDate = State.PredictionDate,
                 Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
                 CreatedAt = State.CreatedAt,
                 FromCache = true,
@@ -466,9 +466,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 UserId = State.UserId,
                 PredictionDate = State.PredictionDate,
                 Results = new Dictionary<string, Dictionary<string, string>>(), // Lifetime doesn't have daily results
-                CreatedAt = State.CreatedAt,
-                FromCache = true,
-                LifetimeForecast = State.LifetimeForecast,
+            CreatedAt = State.CreatedAt,
+            FromCache = true,
+            LifetimeForecast = State.LifetimeForecast,
                 MultilingualLifetime = State.MultilingualLifetime,
                 AvailableLanguages = State.LifetimeGeneratedLanguages ?? new List<string> { "en" },
                 AllLanguagesGenerated = State.LifetimeGeneratedLanguages?.Count == 4
@@ -498,6 +498,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             // Extract enum values for frontend (from daily results)
             ExtractEnumValues(predictionDto, State.Results, null);
         }
+
+        // Apply localization: only return requested language version
+        ApplyLocalization(predictionDto, userLanguage);
 
         return Task.FromResult<PredictionResultDto?>(predictionDto);
     }
@@ -1995,6 +1998,50 @@ Output in JSON format with 'predictions' object containing each target language.
         
         _logger.LogWarning($"[FortunePredictionGAgent][ParseCrystalStone] Unknown crystal stone: {stoneName}");
         return CrystalStoneEnum.Unknown;
+    }
+    
+    /// <summary>
+    /// Apply localization: only keep requested language version, remove other languages
+    /// </summary>
+    private void ApplyLocalization(PredictionResultDto prediction, string userLanguage)
+    {
+        // Apply localization to daily results
+        if (prediction.MultilingualResults != null && prediction.MultilingualResults.Count > 0)
+        {
+            if (prediction.MultilingualResults.TryGetValue(userLanguage, out var localizedResults))
+            {
+                prediction.Results = localizedResults;
+            }
+            else if (prediction.MultilingualResults.TryGetValue("en", out var englishResults))
+            {
+                // Fallback to English if requested language not available
+                prediction.Results = englishResults;
+                _logger.LogWarning("[FortunePredictionGAgent][ApplyLocalization] Language {UserLanguage} not found, using English fallback",
+                    userLanguage);
+            }
+            
+            // Clear multilingual field to avoid returning all languages
+            prediction.MultilingualResults = null;
+        }
+        
+        // Apply localization to lifetime/yearly forecast
+        if (prediction.MultilingualLifetime != null && prediction.MultilingualLifetime.Count > 0)
+        {
+            if (prediction.MultilingualLifetime.TryGetValue(userLanguage, out var localizedLifetime))
+            {
+                prediction.LifetimeForecast = localizedLifetime;
+            }
+            else if (prediction.MultilingualLifetime.TryGetValue("en", out var englishLifetime))
+            {
+                // Fallback to English
+                prediction.LifetimeForecast = englishLifetime;
+                _logger.LogWarning("[FortunePredictionGAgent][ApplyLocalization] Lifetime/Yearly {UserLanguage} not found, using English fallback",
+                    userLanguage);
+            }
+            
+            // Clear multilingual field to avoid returning all languages
+            prediction.MultilingualLifetime = null;
+        }
     }
 }
 
