@@ -214,5 +214,34 @@ public static class FortuneCalculator
     }
     
     #endregion
+    
+    #region Display Name
+    
+    /// <summary>
+    /// Convert full name to display name based on user language
+    /// - For English/Spanish: take first word (space-separated)
+    /// - For Chinese/Japanese: take full name
+    /// </summary>
+    public static string GetDisplayName(string fullName, string userLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            return string.Empty;
+        }
+        
+        var language = userLanguage?.ToLower() ?? "en";
+        
+        // For English and Spanish, use first name only (first word before space)
+        if (language == "en" || language == "es")
+        {
+            var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length > 0 ? parts[0] : fullName;
+        }
+        
+        // For Chinese, Japanese, and other languages, use full name
+        return fullName.Trim();
+    }
+    
+    #endregion
 }
 

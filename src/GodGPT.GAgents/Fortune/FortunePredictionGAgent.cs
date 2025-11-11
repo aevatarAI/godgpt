@@ -191,7 +191,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             {
                 // Check if generation timed out (1 minute - handles service restart scenarios)
                 if (lockInfo.StartedAt.HasValue)
-                {
+            {
                     var elapsed = DateTime.UtcNow - lockInfo.StartedAt.Value;
                     
                     if (elapsed.TotalMinutes < 1)
@@ -433,22 +433,73 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             return Task.FromResult<PredictionResultDto?>(null);
         }
 
-        return Task.FromResult<PredictionResultDto?>(new PredictionResultDto
+        // Determine prediction type based on which fields are populated
+        // Each grain stores only one type: daily, yearly, or lifetime
+        PredictionResultDto predictionDto;
+        
+        if (State.YearlyForecast != null && State.YearlyForecast.Count > 0)
         {
-            PredictionId = State.PredictionId,
-            UserId = State.UserId,
-            PredictionDate = State.PredictionDate,
-            Results = State.Results,
-            CreatedAt = State.CreatedAt,
-            FromCache = true,
-            LifetimeForecast = State.LifetimeForecast,
-            // Include multilingual cached data
-            MultilingualResults = State.MultilingualResults,
-            MultilingualLifetime = State.MultilingualLifetime,
-            // Language status
-            AvailableLanguages = State.DailyGeneratedLanguages ?? new List<string> { "en" },
-            AllLanguagesGenerated = State.DailyGeneratedLanguages?.Count == 4
-        });
+            // This is a Yearly prediction grain
+            predictionDto = new PredictionResultDto
+            {
+                PredictionId = State.PredictionId,
+                UserId = State.UserId,
+                PredictionDate = State.PredictionDate,
+                Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
+                CreatedAt = State.CreatedAt,
+                FromCache = true,
+                LifetimeForecast = State.YearlyForecast, // Return yearly in LifetimeForecast field for API compatibility
+                MultilingualLifetime = State.MultilingualYearly,
+                AvailableLanguages = State.YearlyGeneratedLanguages ?? new List<string> { "en" },
+                AllLanguagesGenerated = State.YearlyGeneratedLanguages?.Count == 4
+            };
+            
+            // Extract enum values for frontend (from yearly forecast)
+            ExtractEnumValues(predictionDto, null, State.YearlyForecast);
+        }
+        else if (State.LifetimeForecast != null && State.LifetimeForecast.Count > 0)
+        {
+            // This is a Lifetime prediction grain
+            predictionDto = new PredictionResultDto
+            {
+                PredictionId = State.PredictionId,
+                UserId = State.UserId,
+                PredictionDate = State.PredictionDate,
+                Results = new Dictionary<string, Dictionary<string, string>>(), // Lifetime doesn't have daily results
+                CreatedAt = State.CreatedAt,
+                FromCache = true,
+                LifetimeForecast = State.LifetimeForecast,
+                MultilingualLifetime = State.MultilingualLifetime,
+                AvailableLanguages = State.LifetimeGeneratedLanguages ?? new List<string> { "en" },
+                AllLanguagesGenerated = State.LifetimeGeneratedLanguages?.Count == 4
+            };
+            
+            // Extract enum values for frontend (from lifetime forecast)
+            ExtractEnumValues(predictionDto, null, State.LifetimeForecast);
+        }
+        else
+        {
+            // This is a Daily prediction grain
+            predictionDto = new PredictionResultDto
+            {
+                PredictionId = State.PredictionId,
+                UserId = State.UserId,
+                PredictionDate = State.PredictionDate,
+                Results = State.Results,
+                CreatedAt = State.CreatedAt,
+                FromCache = true,
+                LifetimeForecast = new Dictionary<string, string>(), // Daily doesn't have lifetime/yearly
+                MultilingualResults = State.MultilingualResults,
+                MultilingualLifetime = new Dictionary<string, Dictionary<string, string>>(),
+                AvailableLanguages = State.DailyGeneratedLanguages ?? new List<string> { "en" },
+                AllLanguagesGenerated = State.DailyGeneratedLanguages?.Count == 4
+            };
+            
+            // Extract enum values for frontend (from daily results)
+            ExtractEnumValues(predictionDto, State.Results, null);
+        }
+
+        return Task.FromResult<PredictionResultDto?>(predictionDto);
     }
 
     /// <summary>
@@ -689,7 +740,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 if (lifetimeForecast != null && !lifetimeForecast.IsNullOrEmpty())
                 {
                 lifetimeForecast["currentPhase"] = currentPhase.ToString();
-                }
+            }
             }
 
             var newPredictionDto = new PredictionResultDto
@@ -838,6 +889,10 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         }
         
         var userInfoLine = string.Join(", ", userInfoParts);
+        
+        // Calculate display name based on user language (for personalized greetings in predictions)
+        // displayName is like fullName - it should NEVER be translated across languages
+        var displayName = FortuneCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", targetLanguage);
 
         string prompt = string.Empty;
         
@@ -1024,6 +1079,7 @@ RULES:
 User: {userInfoLine}
 
 ========== PRE-CALCULATED VALUES (Use for personalization) ==========
+Display Name: {displayName} (Use this in greetings and personalized messages. NEVER translate this name.)
 Sun Sign: {sunSign}
 Zodiac Element: {zodiacElement}
 Birth Year Zodiac: {birthYearZodiac}
@@ -1035,11 +1091,11 @@ FORMAT (flattened):
     ""{targetLanguage}"": {{
       ""dayTitle"": ""[VARIED: The Day of [word1] and [word2] - choose words reflecting today's unique energy]"",
       ""todaysReading_tarotCard_name"": ""[VARIED: Select DIFFERENT card for THIS user. Consider their Sun sign ({sunSign}), element ({zodiacElement}), and today's energy. Choose from full 78-card deck - Major/Minor Arcana. DO NOT use same card for all users]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", ""todaysReading_tarotCard_orientation"": ""[VARIED: Upright/Reversed reflecting THIS user's individual life phase. Consider their {sunSign} nature]"",
-      ""todaysReading_pathTitle"": ""{{firstName}}'s Path Today - A [VARIED Adjective] Path"",
-      ""todaysReading_pathDescription"": ""[VARIED: 15-25 words greeting, describe UNIQUE energy for this user. Start 'Hi {{firstName}}']"", ""todaysReading_pathDescriptionExpanded"": ""[VARIED: 30-40 words offering FRESH wisdom and actionable guidance]"",
+      ""todaysReading_pathTitle"": ""{displayName}'s Path Today - A [VARIED Adjective] Path"",
+      ""todaysReading_pathDescription"": ""[VARIED: 15-25 words greeting, describe UNIQUE energy for this user. Start 'Hi {displayName}']"", ""todaysReading_pathDescriptionExpanded"": ""[VARIED: 30-40 words offering FRESH wisdom and actionable guidance]"",
       ""todaysReading_careerAndWork"": ""[VARIED: 10-20 words]"", ""todaysReading_loveAndRelationships"": ""[VARIED: 10-20 words]"", 
       ""todaysReading_wealthAndFinance"": ""[VARIED: 10-20 words]"", ""todaysReading_healthAndWellness"": ""[VARIED: 10-15 words]"",
-      ""todaysTakeaway"": ""[VARIED: 15-25 words starting '{{firstName}}, your...' with contrast/cause-effect pattern]"",
+      ""todaysTakeaway"": ""[VARIED: 15-25 words starting '{displayName}, your...' with contrast/cause-effect pattern]"",
       ""luckyAlignments_luckyNumber_number"": ""[VARIED: Generate different number for each user, 1-9. Word (digit) format, e.g., Seven (7)]"", ""luckyAlignments_luckyNumber_digit"": ""[VARIED: 1-9, ensure variety across users]"", 
       ""luckyAlignments_luckyNumber_description"": ""[VARIED: 15-20 words on what THIS number means for THIS user today]"",
       ""luckyAlignments_luckyNumber_calculation"": ""[VARIED: 12-18 words formula example combining today's date with birth numerology, make it look authentic]"",
@@ -1076,7 +1132,7 @@ KEY RULES - PERSONALIZATION AND VARIETY:
 - dayTitle, pathDescription, takeaway, spell, favorable/avoid lists: Must be unique and fresh
 - Each user should feel content is specifically tailored to THEM
 
-- pathDescription starts 'Hi {{firstName}}', pathDescriptionExpanded offers deeper wisdom
+- pathDescription starts 'Hi {displayName}', pathDescriptionExpanded offers deeper wisdom
 - todaysTakeaway uses contrast patterns ('not X but Y', 'the more X, the Y')
 - Twist of Fate: EXACTLY 5 activities per list, 2-3 words each, concrete actionable behaviors (not sentences)
 - Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";            
