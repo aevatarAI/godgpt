@@ -523,6 +523,86 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             parseStopwatch.Stop();
             _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
+            // ========== INJECT BACKEND-CALCULATED FIELDS (方案B优化) ==========
+            // Pre-calculate values once
+            var currentYear = DateTime.UtcNow.Year;
+            var birthYear = userInfo.BirthDate.Year;
+            
+            var sunSign = FortuneCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            var birthYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
+            var birthYearAnimal = FortuneCalculator.CalculateChineseZodiac(birthYear);
+            var currentYearStems = FortuneCalculator.CalculateStemsAndBranches(currentYear);
+            var pastCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, -1);
+            var currentCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 0);
+            var futureCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 1);
+            
+            if (type == PredictionType.Lifetime)
+            {
+                // Inject into primary language (lifetimeForecast)
+                if (lifetimeForecast != null)
+                {
+                    lifetimeForecast["welcomeNote_zodiac"] = sunSign;
+                    lifetimeForecast["welcomeNote_chineseZodiac"] = birthYearZodiac;
+                    lifetimeForecast["chineseAstrology_currentYearStems"] = currentYearStems;
+                    lifetimeForecast["sunSign_name"] = sunSign;
+                    lifetimeForecast["westernOverview_sunSign"] = sunSign;
+                    lifetimeForecast["chineseZodiac_animal"] = birthYearAnimal;
+                    lifetimeForecast["pastCycle_ageRange"] = pastCycle.AgeRange;
+                    lifetimeForecast["pastCycle_period"] = pastCycle.Period;
+                    lifetimeForecast["currentCycle_ageRange"] = currentCycle.AgeRange;
+                    lifetimeForecast["currentCycle_period"] = currentCycle.Period;
+                    lifetimeForecast["futureCycle_ageRange"] = futureCycle.AgeRange;
+                    lifetimeForecast["futureCycle_period"] = futureCycle.Period;
+                }
+                
+                // Inject into all multilingual versions
+                if (multilingualLifetime != null)
+                {
+                    foreach (var lang in multilingualLifetime.Keys)
+                    {
+                        multilingualLifetime[lang]["welcomeNote_zodiac"] = sunSign;
+                        multilingualLifetime[lang]["welcomeNote_chineseZodiac"] = birthYearZodiac;
+                        multilingualLifetime[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
+                        multilingualLifetime[lang]["sunSign_name"] = sunSign;
+                        multilingualLifetime[lang]["westernOverview_sunSign"] = sunSign;
+                        multilingualLifetime[lang]["chineseZodiac_animal"] = birthYearAnimal;
+                        multilingualLifetime[lang]["pastCycle_ageRange"] = pastCycle.AgeRange;
+                        multilingualLifetime[lang]["pastCycle_period"] = pastCycle.Period;
+                        multilingualLifetime[lang]["currentCycle_ageRange"] = currentCycle.AgeRange;
+                        multilingualLifetime[lang]["currentCycle_period"] = currentCycle.Period;
+                        multilingualLifetime[lang]["futureCycle_ageRange"] = futureCycle.AgeRange;
+                        multilingualLifetime[lang]["futureCycle_period"] = futureCycle.Period;
+                    }
+                }
+                
+                _logger.LogInformation($"[Fortune] {userInfo.UserId} Injected backend-calculated fields into Lifetime prediction");
+            }
+            else if (type == PredictionType.Yearly)
+            {
+                var yearlyYear = predictionDate.Year;
+                var yearlyYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(yearlyYear);
+                var yearlyTaishui = FortuneCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
+                var zodiacInfluence = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
+                
+                // Inject into primary language (yearlyForecast)
+                if (yearlyForecast != null)
+                {
+                    yearlyForecast["zodiacInfluence"] = zodiacInfluence;
+                }
+                
+                // Inject into all multilingual versions
+                if (multilingualYearly != null)
+                {
+                    foreach (var lang in multilingualYearly.Keys)
+                    {
+                        multilingualYearly[lang]["zodiacInfluence"] = zodiacInfluence;
+                    }
+                }
+                
+                _logger.LogInformation($"[Fortune] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
+            }
+            // Daily type: No backend-calculated fields to inject (all LLM-generated)
+            
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
 
@@ -722,6 +802,35 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
 
         string prompt = string.Empty;
         
+        // ========== PRE-CALCULATE ACCURATE ASTROLOGICAL VALUES ==========
+        var currentYear = DateTime.UtcNow.Year;
+        var birthYear = userInfo.BirthDate.Year;
+        
+        // Western Zodiac
+        var sunSign = FortuneCalculator.CalculateZodiacSign(userInfo.BirthDate);
+        
+        // Chinese Zodiac & Element
+        var birthYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
+        var birthYearAnimal = FortuneCalculator.CalculateChineseZodiac(birthYear);
+        var birthYearElement = FortuneCalculator.CalculateChineseElement(birthYear);
+        
+        var currentYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(currentYear);
+        var currentYearAnimal = FortuneCalculator.CalculateChineseZodiac(currentYear);
+        var currentYearElement = FortuneCalculator.CalculateChineseElement(currentYear);
+        
+        // Heavenly Stems & Earthly Branches (天干地支)
+        var currentYearStems = FortuneCalculator.CalculateStemsAndBranches(currentYear);
+        var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
+        
+        // Taishui Relationship
+        var taishuiRelationship = FortuneCalculator.CalculateTaishuiRelationship(birthYear, currentYear);
+        
+        // Age & 10-year Cycles
+        var currentAge = FortuneCalculator.CalculateAge(userInfo.BirthDate);
+        var pastCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, -1);
+        var currentCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 0);
+        var futureCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 1);
+        
         // Language-specific instruction prefix (single language generation for first stage)
         var languageMap = new Dictionary<string, string>
         {
@@ -745,148 +854,193 @@ Wrap response in JSON format.
         
         if (type == PredictionType.Lifetime)
         {
-            var currentYear = DateTime.UtcNow.Year;
             prompt = singleLanguagePrefix + $@"Generate lifetime profile for user.
 User: {userInfoLine}
 Current Year: {currentYear}
 
-FORMAT (flattened):
+========== PRE-CALCULATED VALUES (Use these EXACT values, do NOT recalculate) ==========
+Sun Sign: {sunSign}
+Birth Year Zodiac: {birthYearZodiac}
+Birth Year Element: {birthYearElement}
+Current Year ({currentYear}): {currentYearZodiac}
+Current Year Stems: {currentYearStems}
+Past Cycle: {pastCycle.AgeRange} · {pastCycle.Period}
+Current Cycle: {currentCycle.AgeRange} · {currentCycle.Period}
+Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
+
+FORMAT (flattened - Backend will inject: zodiac, chineseZodiac, currentYearStems, cycle ages/periods):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""welcomeNote_zodiac"": ""[zodiac]"", ""welcomeNote_chineseZodiac"": ""[Element Animal]"", ""welcomeNote_rhythm"": ""[Yin/Yang Element]"", ""welcomeNote_essence"": ""[adj] and [adj]"",
+      ""welcomeNote_rhythm"": ""[Yin/Yang + Element, e.g., 'Yang Fire' or 'Yin Water']"", ""welcomeNote_essence"": ""[VARIED: 2 adjectives reflecting personality]"",
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
-      ""fourPillars_coreIdentity_expanded"": ""[45-60 words: List Sun/Moon/Rising signs, define archetype, show contrasts using 'both...yet' patterns]"",
-      ""chineseAstrology_currentYear"": ""Year of the [Element Animal for {currentYear}]"", 
-      ""chineseAstrology_currentYearStems"": ""[天干 地支 Tiangan Dizhi for {currentYear}]"",
-      ""chineseAstrology_trait1"": ""[8-12 words]"", ""chineseAstrology_trait2"": ""[8-12 words]"", ""chineseAstrology_trait3"": ""[8-12 words]"", ""chineseAstrology_trait4"": ""[8-12 words]"",
-      ""zodiacWhisper"": ""[40-50 words: How Chinese zodiac enhances Western chart. Start '[Animal] adds...' Use 'You are not only X, but Y']"",
-      ""sunSign_name"": ""[sign]"", ""sunSign_tagline"": ""You [2-5 words poetic metaphor]"",
-      ""westernOverview_sunSign"": ""[sign]"", ""westernOverview_sunArchetype"": ""Sun in [sign] - The [3-5 words archetype title]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
-      ""westernOverview_moonSign"": ""[sign]"", ""westernOverview_moonArchetype"": ""Moon in [sign] - The [3-5 words archetype title]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
-      ""westernOverview_risingSign"": ""[sign]"", ""westernOverview_risingArchetype"": ""Rising in [sign] - The [3-5 words archetype title]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
+      ""fourPillars_coreIdentity_expanded"": ""[45-60 words: Use {sunSign} as Sun sign, define archetype, show contrasts using 'both...yet' patterns]"",
+      ""chineseAstrology_currentYear"": ""Year of the {currentYearZodiac}"", 
+      ""chineseAstrology_trait1"": ""[VARIED: 8-12 words interpretation]"", ""chineseAstrology_trait2"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait3"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait4"": ""[VARIED: 8-12 words]"",
+      ""zodiacWhisper"": ""[VARIED: 40-50 words perspective on how {birthYearAnimal} enhances Western chart. Start '{birthYearAnimal} adds...' Use 'You are not only X, but Y']"",
+      ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
+      ""westernOverview_sunArchetype"": ""[Sun in {sunSign} - The [3-5 words archetype title]]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
+      ""westernOverview_moonSign"": ""[Infer from context or use {sunSign}]"", ""westernOverview_moonArchetype"": ""[Moon in [sign] - The [3-5 words archetype title]]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
+      ""westernOverview_risingSign"": ""[Use {sunSign} if no birth time]"", ""westernOverview_risingArchetype"": ""[Rising in [sign] - The [3-5 words archetype title]]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
       ""combinedEssence"": ""[15-20 words: 'You think like [Sun], feel like [Moon], move through world like [Rising]']"",
-      ""strengths_overview"": ""[10-15 words: How they evolve/grow]"",
-      ""strengths_item1_title"": ""[2-5 words]"", ""strengths_item1_description"": ""[15-25 words: Attribute to sign combinations]"",
-      ""strengths_item2_title"": ""[2-5 words]"", ""strengths_item2_description"": ""[12-18 words]"",
-      ""strengths_item3_title"": ""[2-5 words]"", ""strengths_item3_description"": ""[12-18 words]"",
-      ""challenges_overview"": ""[12-18 words: Start 'Your power grows when...']"",
-      ""challenges_item1_title"": ""[2-5 words]"", ""challenges_item1_description"": ""[8-15 words: Frame using sign combinations]"",
-      ""challenges_item2_title"": ""[2-5 words]"", ""challenges_item2_description"": ""[10-18 words]"",
-      ""challenges_item3_title"": ""[2-5 words]"", ""challenges_item3_description"": ""[10-18 words]"",
-      ""destiny_overview"": ""[20-30 words: 'You are here to...' End with dual identity]"",
-      ""destiny_path1_title"": ""[3-5 roles separated by /]"", ""destiny_path1_description"": ""[3-6 words]"",
-      ""destiny_path2_title"": ""[3-5 roles separated by /]"", ""destiny_path2_description"": ""[5-10 words]"",
-      ""destiny_path3_title"": ""[1-3 roles]"", ""destiny_path3_description"": ""[8-15 words]"",
-      ""chineseZodiac_animal"": ""The [Animal]"", ""chineseZodiac_essence"": ""Essence like [element]"",
-      ""zodiacCycle_title"": ""Zodiac Cycle Influence (YYYY-YYYY)"", 
+      ""strengths_overview"": ""[VARIED: 10-15 words on growth path]"",
+      ""strengths_item1_title"": ""[VARIED: 2-5 words]"", ""strengths_item1_description"": ""[VARIED: 15-25 words, attribute to specific sign combinations]"",
+      ""strengths_item2_title"": ""[VARIED: 2-5 words]"", ""strengths_item2_description"": ""[VARIED: 12-18 words]"",
+      ""strengths_item3_title"": ""[VARIED: 2-5 words]"", ""strengths_item3_description"": ""[VARIED: 12-18 words]"",
+      ""challenges_overview"": ""[VARIED: 12-18 words starting 'Your power grows when...']"",
+      ""challenges_item1_title"": ""[VARIED: 2-5 words]"", ""challenges_item1_description"": ""[VARIED: 8-15 words, frame using sign combinations]"",
+      ""challenges_item2_title"": ""[VARIED: 2-5 words]"", ""challenges_item2_description"": ""[VARIED: 10-18 words]"",
+      ""challenges_item3_title"": ""[VARIED: 2-5 words]"", ""challenges_item3_description"": ""[VARIED: 10-18 words]"",
+      ""destiny_overview"": ""[VARIED: 20-30 words starting 'You are here to...', end with dual identity]"",
+      ""destiny_path1_title"": ""[VARIED: 3-5 roles separated by /]"", ""destiny_path1_description"": ""[VARIED: 3-6 words]"",
+      ""destiny_path2_title"": ""[VARIED: 3-5 roles separated by /]"", ""destiny_path2_description"": ""[VARIED: 5-10 words]"",
+      ""destiny_path3_title"": ""[VARIED: 1-3 roles]"", ""destiny_path3_description"": ""[VARIED: 8-15 words]"",
+      ""chineseZodiac_essence"": ""[Essence like {birthYearElement}]"",
+      ""zodiacCycle_title"": ""[Zodiac Cycle Influence (YYYY-YYYY), calculate 20-year period from birth year]"", 
       ""zodiacCycle_cycleName"": ""[English name]"", ""zodiacCycle_cycleNameChinese"": ""[Chinese name]"",
       ""zodiacCycle_overview"": ""[50-65 words: State zodiac+element, describe 20-year cycle, how it affects Day Master]"",
       ""zodiacCycle_dayMasterPoint1"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint2"": ""[6-10 words]"", ""zodiacCycle_dayMasterPoint3"": ""[8-12 words]"", ""zodiacCycle_dayMasterPoint4"": ""[10-15 words]"",
       ""tenYearCycles_description"": ""[40-60 words: Fate Palace sector, element, what it represents, what it aligns them with]"",
-      ""pastCycle_ageRange"": ""Age X-Y (YYYY-YYYY)"", ""pastCycle_period"": ""[干支 (Pinyin)] · [Element Animal]"", 
       ""pastCycle_influenceSummary"": ""[8-12 words]"", ""pastCycle_meaning"": ""[60-80 words: Past tense, explain element/energy, reference Ten Gods if relevant]"",
-      ""currentCycle_ageRange"": ""Age X-Y (YYYY-YYYY)"", ""currentCycle_period"": ""[干支 (Pinyin)] · [Element Animal]"", 
       ""currentCycle_influenceSummary"": ""[8-12 words]"", ""currentCycle_meaning"": ""[60-80 words: Present tense, what it empowers, reference Ten Gods]"",
-      ""futureCycle_ageRange"": ""Age X-Y (YYYY-YYYY)"", ""futureCycle_period"": ""[干支 (Pinyin)] · [Element Animal]"", 
       ""futureCycle_influenceSummary"": ""[8-12 words]"", ""futureCycle_meaning"": ""[60-80 words: Future tense, opportunities/challenges]"",
-      ""lifePlot_title"": ""You are a [10-20 words: Poetic archetype]"", 
-      ""lifePlot_chapter"": ""[30-50 words: Address by name, describe destiny]"",
-      ""lifePlot_point1"": ""[5-15 words]"", ""lifePlot_point2"": ""[5-15 words]"", ""lifePlot_point3"": ""[5-15 words]"", ""lifePlot_point4"": ""[5-15 words: Powerful identity statement]"",
-      ""activationSteps_step1_title"": ""[2-5 words]"", ""activationSteps_step1_description"": ""[10-20 words: Actionable]"",
-      ""activationSteps_step2_title"": ""[2-5 words]"", ""activationSteps_step2_description"": ""[10-20 words]"",
-      ""activationSteps_step3_title"": ""[2-5 words]"", ""activationSteps_step3_description"": ""[10-20 words]"",
-      ""activationSteps_step4_title"": ""[2-5 words]"", ""activationSteps_step4_description"": ""[10-20 words: Most powerful]"",
-      ""mantra_title"": ""[2-4 words]"", 
-      ""mantra_point1"": ""[5-15 words: 'X as if...' pattern]"", ""mantra_point2"": ""[5-15 words]"", ""mantra_point3"": ""[5-15 words: Most powerful]""
+      ""lifePlot_title"": ""[VARIED: You are a [10-20 words poetic archetype]]"", 
+      ""lifePlot_chapter"": ""[VARIED: 30-50 words addressing by name, describe destiny uniquely]"",
+      ""lifePlot_point1"": ""[VARIED: 5-15 words]"", ""lifePlot_point2"": ""[VARIED: 5-15 words]"", ""lifePlot_point3"": ""[VARIED: 5-15 words]"", ""lifePlot_point4"": ""[VARIED: 5-15 words, powerful identity statement]"",
+      ""activationSteps_step1_title"": ""[VARIED: 2-5 words]"", ""activationSteps_step1_description"": ""[VARIED: 10-20 words actionable advice]"",
+      ""activationSteps_step2_title"": ""[VARIED: 2-5 words]"", ""activationSteps_step2_description"": ""[VARIED: 10-20 words]"",
+      ""activationSteps_step3_title"": ""[VARIED: 2-5 words]"", ""activationSteps_step3_description"": ""[VARIED: 10-20 words]"",
+      ""activationSteps_step4_title"": ""[VARIED: 2-5 words]"", ""activationSteps_step4_description"": ""[VARIED: 10-20 words, most powerful]"",
+      ""mantra_title"": ""[VARIED: 2-4 words]"", 
+      ""mantra_point1"": ""[VARIED: 5-15 words using 'X as if...' pattern]"", ""mantra_point2"": ""[VARIED: 5-15 words]"", ""mantra_point3"": ""[VARIED: 5-15 words, most powerful]""
     }}
   }}
 }}
 
-KEY RULES:
-- currentYear and currentYearStems MUST be for {currentYear} (NOT user's birth year). Calculate accurate Chinese lunar calendar animal and stems.
-- currentYearStems format: '天干 地支 Tiangan Dizhi' with spaces (e.g., '乙 巳 Yi Si')
-- zodiacCycle_title: Use current 20-year period based on birth year (e.g., 'Zodiac Cycle Influence (2004-2023)')
-- Use 'both...yet' contrasts for personality, 'You are here to...' for destiny, 'Your power grows when...' for challenges
-- Attribute strengths/challenges to specific sign combinations
-- Calculate age ranges for 10-year cycles based on birth year
+RULES:
+- All fields marked [VARIED] must generate FRESH content each time (descriptions, taglines, advice, archetypes, metaphors)
+- Use 'both...yet' contrasts, 'You are here to...', 'Your power grows when...' patterns
 - Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";
         }
         else if (type == PredictionType.Yearly)
         {
-            prompt = singleLanguagePrefix + $@"Generate yearly prediction for {predictionDate.Year}.
+            var yearlyYear = predictionDate.Year;
+            var yearlyYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(yearlyYear);
+            var yearlyTaishui = FortuneCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
+            
+            prompt = singleLanguagePrefix + $@"Generate yearly prediction for {yearlyYear}.
 User: {userInfoLine}
 
-FORMAT (flattened):
+========== PRE-CALCULATED VALUES (Use these EXACT values, do NOT recalculate) ==========
+Sun Sign: {sunSign}
+Birth Year Zodiac: {birthYearZodiac}
+Yearly Year ({yearlyYear}): {yearlyYearZodiac}
+Taishui Relationship: {yearlyTaishui}
+
+FORMAT (flattened - Backend will inject: zodiacInfluence):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""zodiacInfluence"": ""[Element Animal] native in [Element Animal] year → [Taishui relationship]"",
-      ""westernAstroOverlay"": ""[Sun sign] Sun · [2-3 word archetype] — {predictionDate.Year} [Key transits]"",
-      ""yearlyTheme_overallTheme"": ""[4-7 words: Theme using 'of' structure]"", 
-      ""yearlyTheme_atAGlance"": ""[15-20 words: What systems agree on]"", 
-      ""yearlyTheme_expanded"": ""[60-80 words: 3 paragraphs (double space): P1 combination/clash, P2 what it creates, P3 define year (not X but Y)]"",
-      ""divineInfluence_career_score"": [1-4], ""divineInfluence_career_tagline"": ""[10-15 words: Start 'Your superpower this year:']"", 
-      ""divineInfluence_career_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_career_avoid"": [""[3-6 specific activities/actions, comma-separated. Examples: Job Hopping, Micromanaging, Overcommitting]"", ""[3-6 specific activities/actions, comma-separated]""], 
-      ""divineInfluence_career_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 how it feels, P3 meaning]"",
-      ""divineInfluence_love_score"": [1-4], ""divineInfluence_love_tagline"": ""[10-15 words: Philosophical]"", 
-      ""divineInfluence_love_bestMoves"": [""[6-10 words]"", ""[6-12 words]""], ""divineInfluence_love_avoid"": [""[3-6 specific activities/behaviors, comma-separated. Examples: Jealousy, Past Baggage, Unrealistic Expectations]"", ""[3-6 specific activities/behaviors, comma-separated]""], 
-      ""divineInfluence_love_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 emotional state, P3 what relationships need]"",
-      ""divineInfluence_wealth_score"": [1-4], ""divineInfluence_wealth_tagline"": ""[10-15 words]"", 
-      ""divineInfluence_wealth_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_wealth_avoid"": [""[3-6 specific activities/actions, comma-separated. Examples: Gambling, Impulse Purchases, High-Risk Loans]"", ""[3-6 specific activities/actions, comma-separated]""], 
-      ""divineInfluence_wealth_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 climate, P3 what prosperity needs]"",
-      ""divineInfluence_health_score"": [1-4], ""divineInfluence_health_tagline"": ""[10-15 words]"", 
-      ""divineInfluence_health_bestMoves"": [""[8-12 words]"", ""[8-15 words]""], ""divineInfluence_health_avoid"": [""[3-6 specific activities/habits, comma-separated. Examples: Late Nights, Junk Food, Ignoring Symptoms]"", ""[3-6 specific activities/habits, comma-separated]""], 
-      ""divineInfluence_health_inANutshell"": ""[50-70 words: 3 parts (double space): P1 formula, P2 state, P3 what wellness needs]"",
-      ""embodimentMantra"": ""[18-25 words: First-person 'My' declarations, 2-3 powerful statements, poetic and rhythmic]""
+      ""westernAstroOverlay"": ""{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits based on {sunSign}]"",
+      ""yearlyTheme_overallTheme"": ""[VARIED: 4-7 words using 'of' structure]"", 
+      ""yearlyTheme_atAGlance"": ""[VARIED: 15-20 words on what both systems agree]"", 
+      ""yearlyTheme_expanded"": ""[VARIED: 60-80 words in 3 paragraphs (double space): P1 combination/clash, P2 what it creates, P3 define year using 'not X but Y']"",
+      ""divineInfluence_career_score"": [VARIED: 1-4 based on astrological analysis], ""divineInfluence_career_tagline"": ""[VARIED: 10-15 words starting 'Your superpower this year:']"", 
+      ""divineInfluence_career_bestMoves"": [""[VARIED: 8-12 words actionable advice]"", ""[VARIED: 8-15 words]""], ""divineInfluence_career_avoid"": [""[VARIED: 3-6 specific activities, comma-separated. Examples: Job Hopping, Micromanaging, Overcommitting]"", ""[VARIED: 3-6 activities]""], 
+      ""divineInfluence_career_inANutshell"": ""[VARIED: 50-70 words in 3 parts (double space): P1 formula, P2 how it feels, P3 meaning]"",
+      ""divineInfluence_love_score"": [VARIED: 1-4], ""divineInfluence_love_tagline"": ""[VARIED: 10-15 words philosophical]"", 
+      ""divineInfluence_love_bestMoves"": [""[VARIED: 6-10 words]"", ""[VARIED: 6-12 words]""], ""divineInfluence_love_avoid"": [""[VARIED: 3-6 behaviors, comma-separated. Examples: Jealousy, Past Baggage, Unrealistic Expectations]"", ""[VARIED: 3-6 behaviors]""], 
+      ""divineInfluence_love_inANutshell"": ""[VARIED: 50-70 words in 3 parts (double space): P1 formula, P2 emotional state, P3 relationship needs]"",
+      ""divineInfluence_wealth_score"": [VARIED: 1-4], ""divineInfluence_wealth_tagline"": ""[VARIED: 10-15 words]"", 
+      ""divineInfluence_wealth_bestMoves"": [""[VARIED: 8-12 words]"", ""[VARIED: 8-15 words]""], ""divineInfluence_wealth_avoid"": [""[VARIED: 3-6 actions, comma-separated. Examples: Gambling, Impulse Purchases, High-Risk Loans]"", ""[VARIED: 3-6 actions]""], 
+      ""divineInfluence_wealth_inANutshell"": ""[VARIED: 50-70 words in 3 parts (double space): P1 formula, P2 climate, P3 prosperity needs]"",
+      ""divineInfluence_health_score"": [VARIED: 1-4], ""divineInfluence_health_tagline"": ""[VARIED: 10-15 words]"", 
+      ""divineInfluence_health_bestMoves"": [""[VARIED: 8-12 words]"", ""[VARIED: 8-15 words]""], ""divineInfluence_health_avoid"": [""[VARIED: 3-6 habits, comma-separated. Examples: Late Nights, Junk Food, Ignoring Symptoms]"", ""[VARIED: 3-6 habits]""], 
+      ""divineInfluence_health_inANutshell"": ""[VARIED: 50-70 words in 3 parts (double space): P1 formula, P2 state, P3 wellness needs]"",
+      ""embodimentMantra"": ""[VARIED: 18-25 words using first-person 'My' declarations, 2-3 powerful statements, poetic and rhythmic]""
     }}
   }}
 }}
 
-KEY RULES:
-- Theme expanded: P1 astrological combo, P2 what it creates, P3 define using contrast (not X but Y)
-- Scores: 1=challenging, 2=mixed, 3=favorable, 4=excellent
-- inANutshell: Always use formula pattern ('X + Y = Z.'), then describe state, then meaning
-- Career tagline starts 'Your superpower this year:', others are philosophical
-- Avoid fields: Must be 3-6 specific, actionable nouns/activities (e.g., 'Gambling, Impulse Purchases, High-Risk Loans' NOT sentences)
+RULES:
+- All fields marked [VARIED] must generate FRESH content (themes, scores, taglines, advice, mantras)
+- Scores: 1=challenging, 2=mixed, 3=favorable, 4=excellent (VARY based on astrological analysis)
+- inANutshell: Use formula pattern ('X + Y = Z.'), then state, then meaning
+- Career tagline starts 'Your superpower this year:', others philosophical
+- Avoid fields: 3-6 specific, actionable nouns (not sentences)
 - Use 'You/Your' (except embodimentMantra uses 'My'), warm tone, no special chars/emoji, use double space not line breaks";
         }
         else // PredictionType.Daily
         {
+            // Determine user's zodiac element for personalized recommendations
+            var zodiacElement = sunSign switch
+            {
+                "Aries" or "Leo" or "Sagittarius" => "Fire",
+                "Taurus" or "Virgo" or "Capricorn" => "Earth",
+                "Gemini" or "Libra" or "Aquarius" => "Air",
+                "Cancer" or "Scorpio" or "Pisces" => "Water",
+                _ => "Fire"
+            };
+            
             prompt = singleLanguagePrefix + $@"Generate daily prediction for {predictionDate:yyyy-MM-dd}.
 User: {userInfoLine}
+
+========== PRE-CALCULATED VALUES (Use for personalization) ==========
+Sun Sign: {sunSign}
+Zodiac Element: {zodiacElement}
+Birth Year Zodiac: {birthYearZodiac}
+Chinese Element: {birthYearElement}
 
 FORMAT (flattened):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
-      ""dayTitle"": ""The Day of [word1] and [word2]"",
-      ""todaysReading_tarotCard_name"": ""[card]"", ""todaysReading_tarotCard_represents"": ""[1-2 words]"", ""todaysReading_tarotCard_orientation"": ""[Upright/Reversed]"",
-      ""todaysReading_pathTitle"": ""{{firstName}}'s Path Today - A [Adjective] Path"",
-      ""todaysReading_pathDescription"": ""[15-25 words: Greet, describe energy]"", ""todaysReading_pathDescriptionExpanded"": ""[30-40 words: Deeper wisdom, actionable]"",
-      ""todaysReading_careerAndWork"": ""[10-20 words]"", ""todaysReading_loveAndRelationships"": ""[10-20 words]"", 
-      ""todaysReading_wealthAndFinance"": ""[10-20 words]"", ""todaysReading_healthAndWellness"": ""[10-15 words]"",
-      ""todaysTakeaway"": ""[15-25 words: Start '{{firstName}}, your...' Use contrast/cause-effect]"",
-      ""luckyAlignments_luckyNumber_number"": ""[Seven (7)]"", ""luckyAlignments_luckyNumber_digit"": ""[7]"", 
-      ""luckyAlignments_luckyNumber_description"": ""[15-20 words]"",
-      ""luckyAlignments_luckyNumber_calculation"": ""[20-30 words: How is it calculated? Numerical Energy of the Day ({predictionDate:M-d-yyyy}): formula reducing to single digit]"",
-      ""luckyAlignments_luckyStone"": ""[stone]"", ""luckyAlignments_luckyStone_description"": ""[15-20 words: How to use, what it awakens]"",
-      ""luckyAlignments_luckyStone_guidance"": ""[15-20 words: Start 'Meditate:' or 'Practice:', specific ritual]"",
-      ""luckyAlignments_luckySpell"": ""[2 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[20-30 words: Quote format first-person affirmation]"",
-      ""luckyAlignments_luckySpell_intent"": ""[10-12 words: Start 'To [verb]...']"",
-      ""twistOfFate_favorable"": [""[3-6 specific actionable words/activities, comma-separated. Examples: Networking, Starting Projects, Creative Work]"", ""[3-6 specific actionable words/activities, comma-separated. Examples: Meditation, Exercise, Reading]""], 
-      ""twistOfFate_avoid"": [""[3-6 specific actionable words/activities, comma-separated. Examples: Haircuts, Moving, Wedding]"", ""[3-6 specific actionable words/activities, comma-separated. Examples: Arguments, Impulsive Decisions, Overspending]""], 
-      ""twistOfFate_todaysRecommendation"": ""[10-15 words: Start 'Today's turning point lies in...']""
+      ""dayTitle"": ""[VARIED: The Day of [word1] and [word2] - choose words reflecting today's unique energy]"",
+      ""todaysReading_tarotCard_name"": ""[VARIED: Select DIFFERENT card for THIS user. Consider their Sun sign ({sunSign}), element ({zodiacElement}), and today's energy. Choose from full 78-card deck - Major/Minor Arcana. DO NOT use same card for all users]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", ""todaysReading_tarotCard_orientation"": ""[VARIED: Upright/Reversed reflecting THIS user's individual life phase. Consider their {sunSign} nature]"",
+      ""todaysReading_pathTitle"": ""{{firstName}}'s Path Today - A [VARIED Adjective] Path"",
+      ""todaysReading_pathDescription"": ""[VARIED: 15-25 words greeting, describe UNIQUE energy for this user. Start 'Hi {{firstName}}']"", ""todaysReading_pathDescriptionExpanded"": ""[VARIED: 30-40 words offering FRESH wisdom and actionable guidance]"",
+      ""todaysReading_careerAndWork"": ""[VARIED: 10-20 words]"", ""todaysReading_loveAndRelationships"": ""[VARIED: 10-20 words]"", 
+      ""todaysReading_wealthAndFinance"": ""[VARIED: 10-20 words]"", ""todaysReading_healthAndWellness"": ""[VARIED: 10-15 words]"",
+      ""todaysTakeaway"": ""[VARIED: 15-25 words starting '{{firstName}}, your...' with contrast/cause-effect pattern]"",
+      ""luckyAlignments_luckyNumber_number"": ""[VARIED: Generate different number for each user, 1-9. Word (digit) format, e.g., Seven (7)]"", ""luckyAlignments_luckyNumber_digit"": ""[VARIED: 1-9, ensure variety across users]"", 
+      ""luckyAlignments_luckyNumber_description"": ""[VARIED: 15-20 words on what THIS number means for THIS user today]"",
+      ""luckyAlignments_luckyNumber_calculation"": ""[VARIED: 12-18 words formula example combining today's date with birth numerology, make it look authentic]"",
+      ""luckyAlignments_luckyStone"": ""[VARIED: Select DIFFERENT stone for THIS user's element ({zodiacElement}). MUST vary by element: Fire→Carnelian/Ruby/Garnet, Earth→Jade/Emerald/Moss Agate, Air→Citrine/Aquamarine/Clear Quartz, Water→Moonstone/Pearl/Lapis Lazuli. Choose specific stone based on {sunSign} + today's energy needs. DO NOT use same stone for all {zodiacElement} users]"", ""luckyAlignments_luckyStone_description"": ""[VARIED: 15-20 words on how THIS {zodiacElement}-element stone helps THIS user today]"",
+      ""luckyAlignments_luckyStone_guidance"": ""[VARIED: 15-20 words starting 'Meditate:' or 'Practice:', SPECIFIC ritual for this user]"",
+      ""luckyAlignments_luckySpell"": ""[VARIED: 2 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[VARIED: 20-30 words in quote format, first-person affirmation]"",
+      ""luckyAlignments_luckySpell_intent"": ""[VARIED: 10-12 words starting 'To [verb]...']"",
+      ""twistOfFate_favorable"": [""[VARIED: 3-6 activities suited to this user today, comma-separated. Examples: Networking, Starting Projects, Creative Work]"", ""[VARIED: 3-6 different activities. Examples: Meditation, Exercise, Reading]""], 
+      ""twistOfFate_avoid"": [""[VARIED: 3-6 activities to avoid for this user today, comma-separated. Examples: Haircuts, Moving, Wedding]"", ""[VARIED: 3-6 different activities. Examples: Arguments, Impulsive Decisions, Overspending]""], 
+      ""twistOfFate_todaysRecommendation"": ""[VARIED: 10-15 words starting 'Today's turning point lies in...']""
     }}
   }}
 }}
 
-KEY RULES:
-- Tarot: Include orientation (Upright/Reversed) affecting tone
-- pathDescription starts 'Hi {{firstName}}', pathDescriptionExpanded offers deeper wisdom with metaphors
+KEY RULES - PERSONALIZATION AND VARIETY:
+[MUST PERSONALIZE - Based on User Profile]:
+- Tarot Card: Select DIFFERENT card for each user based on:
+  * Their Sun sign ({sunSign}) and element ({zodiacElement})
+  * Today's energy and their current life phase
+  * Choose from full 78-card deck (Major + Minor Arcana)
+  * Orientation (Upright/Reversed) varies by individual
+  
+- Lucky Stone: Select stone matching user's element ({zodiacElement}):
+  * Fire signs → Choose from Carnelian, Ruby, Garnet, Red Jasper
+  * Earth signs → Choose from Jade, Emerald, Moss Agate, Tiger's Eye
+  * Air signs → Choose from Citrine, Aquamarine, Clear Quartz, Amethyst
+  * Water signs → Choose from Moonstone, Pearl, Lapis Lazuli, Blue Lace Agate
+  * IMPORTANT: Pick DIFFERENT stones for different users, even within same element
+  
+- Lucky Number: Generate VARIED numbers (1-9) for different users. Don't default to same number.
+
+[MUST VARY - All Creative Content]:
+- All descriptions, advice, recommendations: Generate NEW perspectives each time
+- dayTitle, pathDescription, takeaway, spell, favorable/avoid lists: Must be unique and fresh
+- Each user should feel content is specifically tailored to THEM
+
+- pathDescription starts 'Hi {{firstName}}', pathDescriptionExpanded offers deeper wisdom
 - todaysTakeaway uses contrast patterns ('not X but Y', 'the more X, the Y')
-- Lucky Number: Calculate from date digits. Stone: Ritual steps. Spell: First-person affirmation with intent
-- Twist of Fate: Favorable/Avoid must be 3-6 specific, actionable nouns/activities (e.g., 'Haircuts, Moving, Wedding' NOT sentences)
+- Twist of Fate: 3-6 specific, actionable nouns (not sentences)
 - Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";            
         }
 
