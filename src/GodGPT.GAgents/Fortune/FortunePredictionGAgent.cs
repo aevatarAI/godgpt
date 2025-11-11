@@ -106,9 +106,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                             break;
                         case PredictionType.Lifetime:
                             state.LifetimeGeneratedLanguages = new List<string> { initialLang };
-                            break;
-                    }
-                }
+                break;
+        }
+    }
                 break;
                 
             case LanguagesTranslatedEvent translatedEvent:
@@ -602,7 +602,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 _logger.LogInformation($"[Fortune] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
             }
             // Daily type: No backend-calculated fields to inject (all LLM-generated)
-            
+
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
 
@@ -1136,6 +1136,7 @@ Output in JSON format with 'predictions' object containing each target language.
             }
             
             var aiResponse = response[0].Content;
+            _logger.LogDebug($"[Fortune][AsyncTranslation] {userInfo.UserId} Raw LLM Response Length: {aiResponse?.Length ?? 0} chars");
             
             // Parse response
             var parseStopwatch = Stopwatch.StartNew();
@@ -1146,6 +1147,7 @@ Output in JSON format with 'predictions' object containing each target language.
             if (codeBlockMatch.Success)
             {
                 jsonContent = codeBlockMatch.Groups[1].Value.Trim();
+                _logger.LogDebug($"[Fortune][AsyncTranslation] {userInfo.UserId} Extracted from code block");
             }
             var firstBrace = jsonContent.IndexOf('{');
             var lastBrace = jsonContent.LastIndexOf('}');
@@ -1155,11 +1157,36 @@ Output in JSON format with 'predictions' object containing each target language.
             }
             jsonContent = jsonContent.Trim();
             
-            var parsedResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            // Validate jsonContent before parsing
+            if (string.IsNullOrWhiteSpace(jsonContent))
+            {
+                _logger.LogError($"[Fortune][AsyncTranslation] {userInfo.UserId} Empty JSON content after extraction. Raw response: {aiResponse}");
+                return;
+            }
+            
+            if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
+            {
+                _logger.LogError($"[Fortune][AsyncTranslation] {userInfo.UserId} Invalid JSON format. Content starts with: {jsonContent.Substring(0, Math.Min(100, jsonContent.Length))}");
+                return;
+            }
+            
+            _logger.LogDebug($"[Fortune][AsyncTranslation] {userInfo.UserId} Attempting to parse JSON of length: {jsonContent.Length}");
+            
+            Dictionary<string, object>? parsedResponse = null;
+            try
+            {
+                parsedResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogError(jsonEx, $"[Fortune][AsyncTranslation] {userInfo.UserId} JSON parsing failed. First 500 chars: {jsonContent.Substring(0, Math.Min(500, jsonContent.Length))}");
+                return;
+            }
             
             if (parsedResponse == null || !parsedResponse.ContainsKey("predictions"))
             {
-                _logger.LogWarning($"[Fortune][AsyncTranslation] {userInfo.UserId} Invalid response format");
+                var keys = parsedResponse != null ? string.Join(", ", parsedResponse.Keys) : "null";
+                _logger.LogWarning($"[Fortune][AsyncTranslation] {userInfo.UserId} Invalid response format - missing 'predictions' key. Keys: {keys}");
                 return;
             }
             
