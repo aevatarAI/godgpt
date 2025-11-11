@@ -705,12 +705,14 @@ EXAMPLE (format reference):
         
         // Calculate rhythm (Yin/Yang + Element from birth year stems)
         var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
-        // Extract element from stems (format: "甲 子 Jiǎ Zǐ")
-        // First character is Heavenly Stem, we can map it to Yin/Yang + Element
         var rhythm = GetRhythmFromStems(birthYearStems);
         
-        // Calculate essence based on zodiac and chinese zodiac
-        var essence = GetEssenceFromZodiac(zodiac, chineseZodiac);
+        // Extract components for essence calculation
+        var (yinYang, element) = ParseRhythm(rhythm); // e.g., "Yang Wood" -> ("Yang", "Wood")
+        var chineseZodiacAnimal = ExtractChineseZodiacAnimal(chineseZodiac); // e.g., "Fire Dragon" -> "Dragon"
+        
+        // Calculate essence using deterministic random selection from 4 dimensions
+        var essence = GetDeterministicEssence(zodiac, element, yinYang, chineseZodiacAnimal, birthDate);
         
         return new Dictionary<string, string>
         {
@@ -744,30 +746,138 @@ EXAMPLE (format reference):
     }
 
     /// <summary>
-    /// Get essence (2 adjectives) based on zodiac and chinese zodiac
-    /// Simple mapping for now - can be enhanced later
+    /// Get essence by deterministically selecting 2 words from the combined trait pool
+    /// Uses birth date as seed for consistency
     /// </summary>
-    private string GetEssenceFromZodiac(string zodiac, string chineseZodiac)
+    private string GetDeterministicEssence(string zodiac, string element, string yinYang, string chineseZodiacAnimal, DateOnly birthDate)
     {
-        // Simple approach: combine zodiac personality with chinese zodiac element
-        var zodiacEssence = zodiac switch
-        {
-            "Aries" => "Bold, Passionate",
-            "Taurus" => "Steady, Loyal",
-            "Gemini" => "Curious, Adaptable",
-            "Cancer" => "Nurturing, Intuitive",
-            "Leo" => "Confident, Generous",
-            "Virgo" => "Analytical, Practical",
-            "Libra" => "Balanced, Diplomatic",
-            "Scorpio" => "Intense, Transformative",
-            "Sagittarius" => "Adventurous, Optimistic",
-            "Capricorn" => "Disciplined, Ambitious",
-            "Aquarius" => "Innovative, Independent",
-            "Pisces" => "Empathetic, Creative",
-            _ => "Unique, Dynamic"
-        };
+        // Build word pool from all 4 dimensions
+        var wordPool = new List<string>();
         
-        return zodiacEssence;
+        // Add Western Zodiac traits (3 words)
+        wordPool.AddRange(GetZodiacTraits(zodiac));
+        
+        // Add Element traits (3 words)
+        wordPool.AddRange(GetElementTraits(element));
+        
+        // Add Yin/Yang traits (3 words)
+        wordPool.AddRange(GetPolarityTraits(yinYang));
+        
+        // Add Chinese Zodiac trait (1 word)
+        wordPool.Add(GetChineseZodiacTrait(chineseZodiacAnimal));
+        
+        // Remove duplicates while preserving order
+        var uniqueWords = wordPool.Distinct().ToList();
+        
+        // Use birth date as seed for deterministic randomness
+        var seed = birthDate.Year * 10000 + birthDate.Month * 100 + birthDate.Day;
+        var random = new Random(seed);
+        
+        // Shuffle and pick first 2 words
+        var shuffled = uniqueWords.OrderBy(x => random.Next()).ToList();
+        var selectedWords = shuffled.Take(2).ToList();
+        
+        // Capitalize first letter of each word
+        return string.Join(", ", selectedWords.Select(w => char.ToUpper(w[0]) + w.Substring(1)));
+    }
+
+    /// <summary>
+    /// Parse rhythm string into Yin/Yang and Element
+    /// </summary>
+    private (string yinYang, string element) ParseRhythm(string rhythm)
+    {
+        // "Yang Wood" -> ("Yang", "Wood")
+        var parts = rhythm.Split(' ');
+        return (parts[0], parts[1]);
+    }
+
+    /// <summary>
+    /// Extract animal name from Chinese Zodiac string
+    /// </summary>
+    private string ExtractChineseZodiacAnimal(string chineseZodiac)
+    {
+        // "Fire Dragon" -> "Dragon"
+        var parts = chineseZodiac.Split(' ');
+        return parts.Length > 1 ? parts[1] : parts[0];
+    }
+
+    #endregion
+
+    #region Trait Dictionaries
+
+    /// <summary>
+    /// Get Western Zodiac traits (3 words per sign)
+    /// </summary>
+    private List<string> GetZodiacTraits(string zodiac)
+    {
+        return zodiac switch
+        {
+            "Aries" => new List<string> { "bold", "passionate", "daring" },
+            "Taurus" => new List<string> { "grounded", "loyal", "steady" },
+            "Gemini" => new List<string> { "curious", "expressive", "agile" },
+            "Cancer" => new List<string> { "nurturing", "sensitive", "intuitive" },
+            "Leo" => new List<string> { "radiant", "confident", "magnetic" },
+            "Virgo" => new List<string> { "precise", "thoughtful", "reliable" },
+            "Libra" => new List<string> { "graceful", "diplomatic", "balanced" },
+            "Scorpio" => new List<string> { "intuitive", "intense", "resilient" },
+            "Sagittarius" => new List<string> { "adventurous", "fiery", "free-spirited" },
+            "Capricorn" => new List<string> { "disciplined", "ambitious", "wise" },
+            "Aquarius" => new List<string> { "visionary", "eccentric", "insightful" },
+            "Pisces" => new List<string> { "dreamy", "empathic", "fluid" },
+            _ => new List<string> { "unique", "dynamic" }
+        };
+    }
+
+    /// <summary>
+    /// Get Element traits (3 words per element)
+    /// </summary>
+    private List<string> GetElementTraits(string element)
+    {
+        return element switch
+        {
+            "Wood" => new List<string> { "adaptable", "growth-focused", "expansive" },
+            "Fire" => new List<string> { "dynamic", "passionate", "high-energy" },
+            "Earth" => new List<string> { "stable", "practical", "grounded" },
+            "Metal" => new List<string> { "refined", "sharp", "resilient" },
+            "Water" => new List<string> { "fluid", "deep", "intuitive" },
+            _ => new List<string> { "balanced" }
+        };
+    }
+
+    /// <summary>
+    /// Get Polarity (Yin/Yang) traits (3 words per polarity)
+    /// </summary>
+    private List<string> GetPolarityTraits(string yinYang)
+    {
+        return yinYang switch
+        {
+            "Yin" => new List<string> { "introspective", "subtle", "nurturing" },
+            "Yang" => new List<string> { "expressive", "active", "assertive" },
+            _ => new List<string> { "balanced" }
+        };
+    }
+
+    /// <summary>
+    /// Get Chinese Zodiac trait (1 word per animal)
+    /// </summary>
+    private string GetChineseZodiacTrait(string animal)
+    {
+        return animal switch
+        {
+            "Rat" => "clever",
+            "Ox" => "enduring",
+            "Tiger" => "daring",
+            "Rabbit" => "graceful",
+            "Dragon" => "powerful",
+            "Snake" => "wise",
+            "Horse" => "free-spirited",
+            "Goat" => "gentle",
+            "Monkey" => "playful",
+            "Rooster" => "focused",
+            "Dog" => "loyal",
+            "Pig" => "generous",
+            _ => "unique"
+        };
     }
 
     #endregion
