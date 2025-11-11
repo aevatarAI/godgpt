@@ -644,6 +644,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             
             if (type == PredictionType.Lifetime)
             {
+                // Calculate Four Pillars (Ba Zi)
+                var fourPillars = FortuneCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+                
                 // Inject into primary language (lifetimeForecast)
                 if (lifetimeForecast != null)
                 {
@@ -657,6 +660,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     lifetimeForecast["currentCycle_period"] = currentCycle.Period;
                     lifetimeForecast["futureCycle_ageRange"] = futureCycle.AgeRange;
                     lifetimeForecast["futureCycle_period"] = futureCycle.Period;
+                    
+                    // Inject Four Pillars data (will be localized per language later)
+                    InjectFourPillarsData(lifetimeForecast, fourPillars, targetLanguage);
                 }
                 
                 // Inject into all multilingual versions
@@ -674,6 +680,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                         multilingualLifetime[lang]["currentCycle_period"] = currentCycle.Period;
                         multilingualLifetime[lang]["futureCycle_ageRange"] = futureCycle.AgeRange;
                         multilingualLifetime[lang]["futureCycle_period"] = futureCycle.Period;
+                        
+                        // Inject Four Pillars data with language-specific formatting
+                        InjectFourPillarsData(multilingualLifetime[lang], fourPillars, lang);
                     }
                 }
                 
@@ -2052,5 +2061,99 @@ Output in JSON format with 'predictions' object containing each target language.
             prediction.MultilingualLifetime = null;
         }
     }
+    
+    /// <summary>
+    /// Inject Four Pillars (Ba Zi) data into prediction dictionary with language-specific formatting
+    /// </summary>
+    private void InjectFourPillarsData(Dictionary<string, string> prediction, FourPillarsInfo fourPillars, string language)
+    {
+        // Year Pillar
+        prediction["fourPillars_yearPillar"] = fourPillars.YearPillar.GetFormattedString(language);
+        prediction["fourPillars_yearPillar_stem"] = fourPillars.YearPillar.StemChinese;
+        prediction["fourPillars_yearPillar_branch"] = fourPillars.YearPillar.BranchChinese;
+        prediction["fourPillars_yearPillar_stemPinyin"] = fourPillars.YearPillar.StemPinyin;
+        prediction["fourPillars_yearPillar_branchPinyin"] = fourPillars.YearPillar.BranchPinyin;
+        prediction["fourPillars_yearPillar_yinYang"] = TranslateYinYang(fourPillars.YearPillar.YinYang, language);
+        prediction["fourPillars_yearPillar_element"] = TranslateElement(fourPillars.YearPillar.Element, language);
+        prediction["fourPillars_yearPillar_direction"] = TranslateDirection(fourPillars.YearPillar.Direction, language);
+        
+        // Month Pillar
+        prediction["fourPillars_monthPillar"] = fourPillars.MonthPillar.GetFormattedString(language);
+        prediction["fourPillars_monthPillar_stem"] = fourPillars.MonthPillar.StemChinese;
+        prediction["fourPillars_monthPillar_branch"] = fourPillars.MonthPillar.BranchChinese;
+        prediction["fourPillars_monthPillar_stemPinyin"] = fourPillars.MonthPillar.StemPinyin;
+        prediction["fourPillars_monthPillar_branchPinyin"] = fourPillars.MonthPillar.BranchPinyin;
+        prediction["fourPillars_monthPillar_yinYang"] = TranslateYinYang(fourPillars.MonthPillar.YinYang, language);
+        prediction["fourPillars_monthPillar_element"] = TranslateElement(fourPillars.MonthPillar.Element, language);
+        prediction["fourPillars_monthPillar_direction"] = TranslateDirection(fourPillars.MonthPillar.Direction, language);
+        
+        // Day Pillar
+        prediction["fourPillars_dayPillar"] = fourPillars.DayPillar.GetFormattedString(language);
+        prediction["fourPillars_dayPillar_stem"] = fourPillars.DayPillar.StemChinese;
+        prediction["fourPillars_dayPillar_branch"] = fourPillars.DayPillar.BranchChinese;
+        prediction["fourPillars_dayPillar_stemPinyin"] = fourPillars.DayPillar.StemPinyin;
+        prediction["fourPillars_dayPillar_branchPinyin"] = fourPillars.DayPillar.BranchPinyin;
+        prediction["fourPillars_dayPillar_yinYang"] = TranslateYinYang(fourPillars.DayPillar.YinYang, language);
+        prediction["fourPillars_dayPillar_element"] = TranslateElement(fourPillars.DayPillar.Element, language);
+        prediction["fourPillars_dayPillar_direction"] = TranslateDirection(fourPillars.DayPillar.Direction, language);
+        
+        // Hour Pillar (optional)
+        if (fourPillars.HourPillar != null)
+        {
+            prediction["fourPillars_hourPillar"] = fourPillars.HourPillar.GetFormattedString(language);
+            prediction["fourPillars_hourPillar_stem"] = fourPillars.HourPillar.StemChinese;
+            prediction["fourPillars_hourPillar_branch"] = fourPillars.HourPillar.BranchChinese;
+            prediction["fourPillars_hourPillar_stemPinyin"] = fourPillars.HourPillar.StemPinyin;
+            prediction["fourPillars_hourPillar_branchPinyin"] = fourPillars.HourPillar.BranchPinyin;
+            prediction["fourPillars_hourPillar_yinYang"] = TranslateYinYang(fourPillars.HourPillar.YinYang, language);
+            prediction["fourPillars_hourPillar_element"] = TranslateElement(fourPillars.HourPillar.Element, language);
+            prediction["fourPillars_hourPillar_direction"] = TranslateDirection(fourPillars.HourPillar.Direction, language);
+        }
+    }
+    
+    private string TranslateYinYang(string yinYang, string language) => language switch
+    {
+        "zh-tw" or "zh" => yinYang == "Yang" ? "陽" : "陰",
+        "es" => yinYang == "Yang" ? "Yang" : "Yin",
+        _ => yinYang  // English default
+    };
+    
+    private string TranslateElement(string element, string language) => (element, language) switch
+    {
+        ("Wood", "zh-tw" or "zh") => "木",
+        ("Fire", "zh-tw" or "zh") => "火",
+        ("Earth", "zh-tw" or "zh") => "土",
+        ("Metal", "zh-tw" or "zh") => "金",
+        ("Water", "zh-tw" or "zh") => "水",
+        ("Wood", "es") => "Madera",
+        ("Fire", "es") => "Fuego",
+        ("Earth", "es") => "Tierra",
+        ("Metal", "es") => "Metal",
+        ("Water", "es") => "Agua",
+        _ => element  // English default
+    };
+    
+    private string TranslateDirection(string direction, string language) => (direction, language) switch
+    {
+        ("East 1", "zh-tw" or "zh") => "東一",
+        ("East 2", "zh-tw" or "zh") => "東二",
+        ("South 1", "zh-tw" or "zh") => "南一",
+        ("South 2", "zh-tw" or "zh") => "南二",
+        ("West 1", "zh-tw" or "zh") => "西一",
+        ("West 2", "zh-tw" or "zh") => "西二",
+        ("North 1", "zh-tw" or "zh") => "北一",
+        ("North 2", "zh-tw" or "zh") => "北二",
+        ("Centre", "zh-tw" or "zh") => "中",
+        ("East 1", "es") => "Este 1",
+        ("East 2", "es") => "Este 2",
+        ("South 1", "es") => "Sur 1",
+        ("South 2", "es") => "Sur 2",
+        ("West 1", "es") => "Oeste 1",
+        ("West 2", "es") => "Oeste 2",
+        ("North 1", "es") => "Norte 1",
+        ("North 2", "es") => "Norte 2",
+        ("Centre", "es") => "Centro",
+        _ => direction  // English default
+    };
 }
 
