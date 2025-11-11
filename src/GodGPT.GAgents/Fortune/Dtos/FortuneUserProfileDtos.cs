@@ -58,6 +58,12 @@ public class FortuneUserProfileDto
     [Id(14)] public string? Email { get; set; }
     [Id(15)] public DateTime UpdatedAt { get; set; }
     [Id(16)] public Dictionary<string, string> WelcomeNote { get; set; } = new(); // Backend-calculated welcome note (zodiac, chineseZodiac, rhythm, essence)
+    
+    // Astrology information (backend-calculated)
+    [Id(17)] public string ZodiacSign { get; set; } = string.Empty; // e.g., "Aries"
+    [Id(18)] public ZodiacSignEnum ZodiacSignEnum { get; set; } = ZodiacSignEnum.Unknown;
+    [Id(19)] public string ChineseZodiac { get; set; } = string.Empty; // e.g., "Fire Horse (火马)"
+    [Id(20)] public ChineseZodiacEnum ChineseZodiacEnum { get; set; } = ChineseZodiacEnum.Unknown;
 }
 
 /// <summary>

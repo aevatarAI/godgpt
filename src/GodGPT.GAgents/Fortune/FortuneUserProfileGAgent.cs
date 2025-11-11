@@ -214,6 +214,13 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
 
             // Calculate WelcomeNote using backend calculations
             var welcomeNote = GenerateWelcomeNote(State.BirthDate);
+            
+            // Calculate zodiac sign and Chinese zodiac
+            var zodiacSign = FortuneCalculator.CalculateZodiacSign(State.BirthDate);
+            var zodiacSignEnum = ParseZodiacSignEnum(zodiacSign);
+            var chineseZodiacWithElement = FortuneCalculator.GetChineseZodiacWithElement(State.BirthDate.Year);
+            var chineseZodiacAnimal = FortuneCalculator.CalculateChineseZodiac(State.BirthDate.Year);
+            var chineseZodiacEnum = ParseChineseZodiacEnum(chineseZodiacAnimal);
 
             return new GetUserProfileResult
             {
@@ -237,7 +244,11 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                     CurrentResidence = State.CurrentResidence,
                     Email = State.Email,
                     UpdatedAt = State.UpdatedAt,
-                    WelcomeNote = welcomeNote
+                    WelcomeNote = welcomeNote,
+                    ZodiacSign = zodiacSign,
+                    ZodiacSignEnum = zodiacSignEnum,
+                    ChineseZodiac = chineseZodiacWithElement,
+                    ChineseZodiacEnum = chineseZodiacEnum
                 }
             };
         }
@@ -787,6 +798,52 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             "Dog" => "loyal",
             "Pig" => "generous",
             _ => "unique"
+        };
+    }
+    
+    /// <summary>
+    /// Parse zodiac sign string to enum
+    /// </summary>
+    private ZodiacSignEnum ParseZodiacSignEnum(string zodiacSign)
+    {
+        return zodiacSign switch
+        {
+            "Aries" => ZodiacSignEnum.Aries,
+            "Taurus" => ZodiacSignEnum.Taurus,
+            "Gemini" => ZodiacSignEnum.Gemini,
+            "Cancer" => ZodiacSignEnum.Cancer,
+            "Leo" => ZodiacSignEnum.Leo,
+            "Virgo" => ZodiacSignEnum.Virgo,
+            "Libra" => ZodiacSignEnum.Libra,
+            "Scorpio" => ZodiacSignEnum.Scorpio,
+            "Sagittarius" => ZodiacSignEnum.Sagittarius,
+            "Capricorn" => ZodiacSignEnum.Capricorn,
+            "Aquarius" => ZodiacSignEnum.Aquarius,
+            "Pisces" => ZodiacSignEnum.Pisces,
+            _ => ZodiacSignEnum.Unknown
+        };
+    }
+    
+    /// <summary>
+    /// Parse Chinese zodiac animal string to enum
+    /// </summary>
+    private ChineseZodiacEnum ParseChineseZodiacEnum(string animal)
+    {
+        return animal switch
+        {
+            "Rat" => ChineseZodiacEnum.Rat,
+            "Ox" => ChineseZodiacEnum.Ox,
+            "Tiger" => ChineseZodiacEnum.Tiger,
+            "Rabbit" => ChineseZodiacEnum.Rabbit,
+            "Dragon" => ChineseZodiacEnum.Dragon,
+            "Snake" => ChineseZodiacEnum.Snake,
+            "Horse" => ChineseZodiacEnum.Horse,
+            "Goat" => ChineseZodiacEnum.Goat,
+            "Monkey" => ChineseZodiacEnum.Monkey,
+            "Rooster" => ChineseZodiacEnum.Rooster,
+            "Dog" => ChineseZodiacEnum.Dog,
+            "Pig" => ChineseZodiacEnum.Pig,
+            _ => ChineseZodiacEnum.Unknown
         };
     }
 

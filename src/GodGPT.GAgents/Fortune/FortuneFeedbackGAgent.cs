@@ -99,8 +99,8 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             }
 
             // Validate prediction method
-            var validMethods = new[]
-            {
+                var validMethods = new[]
+                {
                 // Daily prediction sections
                 "todaysReading",    // Today's Reading
                 "luckyAlignments",  // Lucky Alignments
@@ -128,15 +128,15 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 "tarot",            // Old: Tarot
                 "lifeTheme1",       // Old: Life Theme 1
                 "lifeTheme2"        // Old: Life Theme 2
-            };
-
-            if (!validMethods.Contains(request.PredictionMethod))
-            {
-                return new SubmitFeedbackResult
-                {
-                    Success = false,
-                    Message = $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}"
                 };
+
+                if (!validMethods.Contains(request.PredictionMethod))
+                {
+                    return new SubmitFeedbackResult
+                    {
+                        Success = false,
+                        Message = $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}"
+                    };
             }
 
             var now = DateTime.UtcNow;
@@ -161,7 +161,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             }
             else
             {
-                // Create new feedback
+            // Create new feedback
                 newFeedbackDetail = new FeedbackDetail
                 {
                     PredictionMethod = methodKey,
@@ -413,8 +413,8 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
         }
 
         // Validate prediction method
-        var validMethods = new[]
-        {
+            var validMethods = new[]
+            {
             // Daily prediction sections
             "todaysReading", "luckyAlignments", "twistOfFate",
             // Yearly prediction sections
@@ -423,11 +423,11 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             "fourPillars", "chineseAstrology", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps",
             // Legacy methods (deprecated but still supported)
             "opportunity", "bazi", "astrology", "tarot", "lifeTheme1", "lifeTheme2"
-        };
+            };
 
-        if (!validMethods.Contains(request.PredictionMethod))
-        {
-            return (false, $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}");
+            if (!validMethods.Contains(request.PredictionMethod))
+            {
+                return (false, $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}");
         }
 
         return (true, string.Empty);
