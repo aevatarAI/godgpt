@@ -189,31 +189,35 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             // ========== IDEMPOTENCY CHECK: Prevent concurrent generation for this type ==========
             if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
             {
-                // Check if generation timed out (5 minutes)
-                if (lockInfo.StartedAt.HasValue && 
-                    (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes < 5)
+                // Check if generation timed out (1 minute - handles service restart scenarios)
+                if (lockInfo.StartedAt.HasValue)
                 {
-                    // Generation is in progress, return waiting status
-                    totalStopwatch.Stop();
-                    _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_IN_PROGRESS - Type: {type}, StartedAt: {lockInfo.StartedAt}, Duration: {totalStopwatch.ElapsedMilliseconds}ms");
+                    var elapsed = DateTime.UtcNow - lockInfo.StartedAt.Value;
                     
-                    return new GetTodayPredictionResult
+                    if (elapsed.TotalMinutes < 1)
                     {
-                        Success = false,
-                        Message = $"{type} prediction is currently being generated. Please wait a moment and try again."
-                    };
-                }
-                else
-                {
-                    // Generation timed out, reset lock
-                    _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Resetting lock");
-                    lockInfo.IsGenerating = false;
-                    lockInfo.StartedAt = null;
+                        // Generation is in progress, return waiting status
+                        totalStopwatch.Stop();
+                        _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_IN_PROGRESS - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalSeconds:F1}s");
+                        
+                        return new GetTodayPredictionResult
+                        {
+                            Success = false,
+                            Message = $"{type} prediction is currently being generated. Please wait a moment and try again."
+                        };
+                    }
+                    else
+                    {
+                        // Generation timed out (service restart or actual timeout), reset lock and retry
+                        _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalMinutes:F2} minutes, Resetting lock and retrying");
+                        lockInfo.IsGenerating = false;
+                        lockInfo.StartedAt = null;
+                    }
                 }
             }
                 
-            // Check if profile has been updated since prediction was generated
-            var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
+                // Check if profile has been updated since prediction was generated
+                var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
                 
             // Check if prediction already exists (from cache/state) based on type
             if (type == PredictionType.Lifetime)
@@ -387,14 +391,14 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             
                 totalStopwatch.Stop();
             
-                if (!predictionResult.Success)
-                {
+            if (!predictionResult.Success)
+            {
                     _logger.LogWarning($"[PERF][Fortune] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms");
-                    return predictionResult;
-                }
+                return predictionResult;
+            }
 
                 _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
-                return predictionResult;
+            return predictionResult;
             }
             finally
             {
@@ -1043,8 +1047,8 @@ FORMAT (flattened):
       ""luckyAlignments_luckyStone_guidance"": ""[VARIED: 15-20 words starting 'Meditate:' or 'Practice:', SPECIFIC ritual for this user]"",
       ""luckyAlignments_luckySpell"": ""[VARIED: 2 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[VARIED: 20-30 words in quote format, first-person affirmation]"",
       ""luckyAlignments_luckySpell_intent"": ""[VARIED: 10-12 words starting 'To [verb]...']"",
-      ""twistOfFate_favorable"": [""[VARIED: 3-6 activities suited to this user today, comma-separated. Examples: Networking, Starting Projects, Creative Work]"", ""[VARIED: 3-6 different activities. Examples: Meditation, Exercise, Reading]""], 
-      ""twistOfFate_avoid"": [""[VARIED: 3-6 activities to avoid for this user today, comma-separated. Examples: Haircuts, Moving, Wedding]"", ""[VARIED: 3-6 different activities. Examples: Arguments, Impulsive Decisions, Overspending]""], 
+      ""twistOfFate_favorable"": [""[VARIED: EXACTLY 5 activities, 2-3 words each, concrete actions suited to this user today. Examples: Take walk, Meditate quietly, Organize workspace, Text friend, Drink water]"", ""[VARIED: EXACTLY 5 different activities. Examples: Read books, Cook meal, Early sleep, Journal thoughts, Call family]""], 
+      ""twistOfFate_avoid"": [""[VARIED: EXACTLY 5 activities to avoid, 2-3 words each, specific actions. Examples: Buy stocks, Argue unnecessarily, Overshare secrets, Start plans, Skip meals]"", ""[VARIED: EXACTLY 5 different activities. Examples: Impulse shopping, Late nights, Heavy drinking, Risky decisions, Lend money]""], 
       ""twistOfFate_todaysRecommendation"": ""[VARIED: 10-15 words starting 'Today's turning point lies in...']""
     }}
   }}
@@ -1074,7 +1078,7 @@ KEY RULES - PERSONALIZATION AND VARIETY:
 
 - pathDescription starts 'Hi {{firstName}}', pathDescriptionExpanded offers deeper wisdom
 - todaysTakeaway uses contrast patterns ('not X but Y', 'the more X, the Y')
-- Twist of Fate: 3-6 specific, actionable nouns (not sentences)
+- Twist of Fate: EXACTLY 5 activities per list, 2-3 words each, concrete actionable behaviors (not sentences)
 - Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";            
         }
 
