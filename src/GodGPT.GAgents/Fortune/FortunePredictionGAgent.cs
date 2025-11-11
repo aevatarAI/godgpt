@@ -1110,17 +1110,18 @@ TASK: Translate the following {type} prediction from {sourceLangName} into {targ
 
 CRITICAL RULES:
 1. TRANSLATE - do NOT regenerate or reinterpret. Keep the exact same meaning and content structure.
-2. PRESERVE these fields in Chinese+Pinyin regardless of target language:
+2. NEVER TRANSLATE user names - keep them exactly as they appear (e.g., ""Sean"" stays ""Sean"" in all languages)
+   - In possessives: ""Sean's Path"" → ""Sean的道路"" (keep name, only translate structure)
+3. PRESERVE these fields in Chinese+Pinyin regardless of target language:
    - chineseAstrology_currentYearStems (e.g., '乙 巳 Yi Si')
    - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
-3. Maintain natural, fluent expression in each target language (not word-for-word).
-4. Keep all field names unchanged.
-5. Preserve all numbers, dates, and proper nouns.
-6. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
-   - Possessives: ""Sean's Path"" → ""Sean的道路"" (convert 's to 的)
+4. Maintain natural, fluent expression in each target language (not word-for-word).
+5. Keep all field names unchanged.
+6. Preserve all numbers, dates, and proper nouns.
+7. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
    - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
    - Sentence structure: Adjust to natural Chinese word order
-7. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
+8. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
