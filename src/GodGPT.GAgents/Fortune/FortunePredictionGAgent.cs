@@ -433,22 +433,73 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             return Task.FromResult<PredictionResultDto?>(null);
         }
 
-        return Task.FromResult<PredictionResultDto?>(new PredictionResultDto
+        // Determine prediction type based on which fields are populated
+        // Each grain stores only one type: daily, yearly, or lifetime
+        PredictionResultDto predictionDto;
+        
+        if (State.YearlyForecast != null && State.YearlyForecast.Count > 0)
         {
-            PredictionId = State.PredictionId,
-            UserId = State.UserId,
-            PredictionDate = State.PredictionDate,
-            Results = State.Results,
-            CreatedAt = State.CreatedAt,
-            FromCache = true,
-            LifetimeForecast = State.LifetimeForecast,
-            // Include multilingual cached data
-            MultilingualResults = State.MultilingualResults,
-            MultilingualLifetime = State.MultilingualLifetime,
-            // Language status
-            AvailableLanguages = State.DailyGeneratedLanguages ?? new List<string> { "en" },
-            AllLanguagesGenerated = State.DailyGeneratedLanguages?.Count == 4
-        });
+            // This is a Yearly prediction grain
+            predictionDto = new PredictionResultDto
+            {
+                PredictionId = State.PredictionId,
+                UserId = State.UserId,
+                PredictionDate = State.PredictionDate,
+                Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
+                CreatedAt = State.CreatedAt,
+                FromCache = true,
+                LifetimeForecast = State.YearlyForecast, // Return yearly in LifetimeForecast field for API compatibility
+                MultilingualLifetime = State.MultilingualYearly,
+                AvailableLanguages = State.YearlyGeneratedLanguages ?? new List<string> { "en" },
+                AllLanguagesGenerated = State.YearlyGeneratedLanguages?.Count == 4
+            };
+            
+            // Extract enum values for frontend (from yearly forecast)
+            ExtractEnumValues(predictionDto, null, State.YearlyForecast);
+        }
+        else if (State.LifetimeForecast != null && State.LifetimeForecast.Count > 0)
+        {
+            // This is a Lifetime prediction grain
+            predictionDto = new PredictionResultDto
+            {
+                PredictionId = State.PredictionId,
+                UserId = State.UserId,
+                PredictionDate = State.PredictionDate,
+                Results = new Dictionary<string, Dictionary<string, string>>(), // Lifetime doesn't have daily results
+                CreatedAt = State.CreatedAt,
+                FromCache = true,
+                LifetimeForecast = State.LifetimeForecast,
+                MultilingualLifetime = State.MultilingualLifetime,
+                AvailableLanguages = State.LifetimeGeneratedLanguages ?? new List<string> { "en" },
+                AllLanguagesGenerated = State.LifetimeGeneratedLanguages?.Count == 4
+            };
+            
+            // Extract enum values for frontend (from lifetime forecast)
+            ExtractEnumValues(predictionDto, null, State.LifetimeForecast);
+        }
+        else
+        {
+            // This is a Daily prediction grain
+            predictionDto = new PredictionResultDto
+            {
+                PredictionId = State.PredictionId,
+                UserId = State.UserId,
+                PredictionDate = State.PredictionDate,
+                Results = State.Results,
+                CreatedAt = State.CreatedAt,
+                FromCache = true,
+                LifetimeForecast = new Dictionary<string, string>(), // Daily doesn't have lifetime/yearly
+                MultilingualResults = State.MultilingualResults,
+                MultilingualLifetime = new Dictionary<string, Dictionary<string, string>>(),
+                AvailableLanguages = State.DailyGeneratedLanguages ?? new List<string> { "en" },
+                AllLanguagesGenerated = State.DailyGeneratedLanguages?.Count == 4
+            };
+            
+            // Extract enum values for frontend (from daily results)
+            ExtractEnumValues(predictionDto, State.Results, null);
+        }
+
+        return Task.FromResult<PredictionResultDto?>(predictionDto);
     }
 
     /// <summary>
