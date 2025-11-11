@@ -267,6 +267,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     // Extract enum values for frontend (from lifetime forecast)
                     ExtractEnumValues(predictionDto, null, lifetimeWithPhase);
                     
+                    // Apply localization: only return requested language version
+                    ApplyLocalization(predictionDto, userLanguage);
+                    
                     return new GetTodayPredictionResult
                     {
                         Success = true,
@@ -311,6 +314,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     
                     // Extract enum values for frontend (from yearly forecast)
                     ExtractEnumValues(predictionDto, null, State.YearlyForecast);
+                    
+                    // Apply localization: only return requested language version
+                    ApplyLocalization(predictionDto, userLanguage);
 
                     return new GetTodayPredictionResult
                     {
@@ -357,6 +363,9 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     
                     // Extract enum values for frontend (from daily results)
                     ExtractEnumValues(predictionDto, State.Results, null);
+                    
+                    // Apply localization: only return requested language version
+                    ApplyLocalization(predictionDto, userLanguage);
                     
                     return new GetTodayPredictionResult
                     {
