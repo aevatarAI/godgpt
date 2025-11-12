@@ -1194,6 +1194,19 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     $"[ChatGAgentManager][RenameChatTitleEvent] event exist:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
                 sessionInfo.Title = @renameTitleEventLog.Title;
                 state.SessionInfoList = sessionInfoList;
+                
+                //Test Code
+                for (int i = 0; i < 50; i++)
+                {
+                    sessionInfoList.Add(new SessionInfo
+                    {
+                        SessionId = Guid.NewGuid(),
+                        Title = @renameTitleEventLog.Title,
+                    });
+                }
+                state.SessionInfoList = sessionInfoList;
+                //Test Code end
+                
                 break;
             case ClearAllEventLog:
                 state.SessionInfoList.Clear();
