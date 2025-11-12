@@ -999,7 +999,8 @@ FORMAT (flattened):
       ""luckyAlignments_luckySpell_intent"": ""[VARIED: 10-12 words starting 'To [verb]...']"",
       ""twistOfFate_favorable"": [""[VARIED: EXACTLY 5 activities, 2-3 words each, concrete actions suited to this user today. Examples: Take walk, Meditate quietly, Organize workspace, Text friend, Drink water]"", ""[VARIED: EXACTLY 5 different activities. Examples: Read books, Cook meal, Early sleep, Journal thoughts, Call family]""], 
       ""twistOfFate_avoid"": [""[VARIED: EXACTLY 5 activities to avoid, 2-3 words each, specific actions. Examples: Buy stocks, Argue unnecessarily, Overshare secrets, Start plans, Skip meals]"", ""[VARIED: EXACTLY 5 different activities. Examples: Impulse shopping, Late nights, Heavy drinking, Risky decisions, Lend money]""], 
-      ""twistOfFate_todaysRecommendation"": ""[VARIED: 10-15 words, direct statement about today's focus. NO prefixes like 'Today's turning point' - just the core message. Examples: 'Connections, collaboration, and the exchange of ideas', 'Patience, reflection, and inner peace']""
+      ""twistOfFate_todaysRecommendation"": ""[VARIED: 10-15 words starting 'Today's turning point lies in...']"",
+      ""twistOfFate_content"": ""[VARIED: 20-30 words elaborating on today's recommendation, explaining why this focus matters for THIS user today]""
     }}
   }}
 }}
