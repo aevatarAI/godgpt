@@ -70,7 +70,7 @@ public abstract class FortunePredictionEventLog : StateLogEventBase<FortunePredi
 }
 
 /// <summary>
-/// Prediction generated event (supports daily/yearly/lifetime predictions)
+/// Prediction generated event (unified for Daily/Yearly/Lifetime)
 /// </summary>
 [GenerateSerializer]
 public class PredictionGeneratedEvent : FortunePredictionEventLog
@@ -78,27 +78,18 @@ public class PredictionGeneratedEvent : FortunePredictionEventLog
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public DateOnly PredictionDate { get; set; }
-    [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new(); // Daily results
-    [Id(4)] public int Energy { get; set; }
-    [Id(5)] public DateTime CreatedAt { get; set; }
-    [Id(6)] public Dictionary<string, string> LifetimeForecast { get; set; } // Lifetime prediction
-    [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; } // Weekly forecast (deprecated)
-    [Id(8)] public DateTime? WeeklyGeneratedDate { get; set; } // Track when weekly was generated (deprecated)
-    [Id(9)] public DateTime? ProfileUpdatedAt { get; set; } // Track profile update time
+    [Id(3)] public DateTime CreatedAt { get; set; }
+    [Id(4)] public DateTime? ProfileUpdatedAt { get; set; } // Track profile update time
+    [Id(5)] public PredictionType Type { get; set; } // Daily/Yearly/Lifetime
     
-    // Multilingual support
-    [Id(10)] public Dictionary<string, Dictionary<string, Dictionary<string, string>>>? MultilingualResults { get; set; } // Daily multilingual
-    [Id(11)] public Dictionary<string, Dictionary<string, string>>? MultilingualLifetime { get; set; } // Lifetime multilingual
-    [Id(12)] public Dictionary<string, Dictionary<string, string>>? MultilingualWeekly { get; set; } // Weekly multilingual (deprecated)
+    // Unified flattened results (key-value pairs with enum fields included)
+    [Id(6)] public Dictionary<string, string> Results { get; set; } = new();
     
-    // Yearly prediction
-    [Id(13)] public Dictionary<string, string> YearlyForecast { get; set; } = new Dictionary<string, string>(); // Yearly prediction
-    [Id(14)] public DateTime? YearlyGeneratedDate { get; set; } // Track when yearly was generated
-    [Id(15)] public Dictionary<string, Dictionary<string, string>>? MultilingualYearly { get; set; } // Yearly multilingual
+    // Multilingual cache (language -> flattened results)
+    [Id(7)] public Dictionary<string, Dictionary<string, string>>? MultilingualResults { get; set; }
     
-    // Language generation tracking (two-stage generation support)
-    [Id(16)] public string? InitialLanguage { get; set; } // The language generated in first stage
-    [Id(17)] public PredictionType? PredictionTypeGenerated { get; set; } // Type of prediction generated
+    // Initial language generated in first stage
+    [Id(8)] public string? InitialLanguage { get; set; }
 }
 
 /// <summary>
@@ -265,9 +256,9 @@ public class PredictionAddedToHistoryEvent : FortunePredictionHistoryEventLog
 {
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public DateOnly PredictionDate { get; set; }
-    [Id(2)] public int Energy { get; set; }
-    [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new();
-    [Id(4)] public DateTime CreatedAt { get; set; }
+    [Id(2)] public DateTime CreatedAt { get; set; }
+    [Id(3)] public Dictionary<string, string> Results { get; set; } = new();
+    [Id(4)] public PredictionType Type { get; set; }
 }
 
 #endregion

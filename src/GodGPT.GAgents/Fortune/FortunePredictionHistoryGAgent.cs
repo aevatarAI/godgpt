@@ -13,8 +13,8 @@ namespace Aevatar.Application.Grains.Fortune;
 /// </summary>
 public interface IFortunePredictionHistoryGAgent : IGAgent
 {
-    Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, int energy, 
-        Dictionary<string, Dictionary<string, string>> results);
+    Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, 
+        Dictionary<string, string> results, PredictionType type);
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionByDateAsync(DateOnly date);
@@ -58,9 +58,9 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
                 {
                     PredictionId = addedEvent.PredictionId,
                     PredictionDate = addedEvent.PredictionDate,
-                    Energy = addedEvent.Energy,
+                    CreatedAt = addedEvent.CreatedAt,
                     Results = addedEvent.Results,
-                    CreatedAt = addedEvent.CreatedAt
+                    Type = addedEvent.Type
                 });
                 
                 // Sort by date descending (newest first)
@@ -81,13 +81,13 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
         }
     }
 
-    public async Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, int energy,
-        Dictionary<string, Dictionary<string, string>> results)
+    public async Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, 
+        Dictionary<string, string> results, PredictionType type)
     {
         try
         {
-            _logger.LogDebug("[FortunePredictionHistoryGAgent][AddPredictionAsync] Adding prediction: {PredictionId}, Date: {Date}",
-                predictionId, predictionDate);
+            _logger.LogDebug("[FortunePredictionHistoryGAgent][AddPredictionAsync] Adding prediction: {PredictionId}, Date: {Date}, Type: {Type}",
+                predictionId, predictionDate, type);
 
             var now = DateTime.UtcNow;
 
@@ -96,9 +96,9 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
             {
                 PredictionId = predictionId,
                 PredictionDate = predictionDate,
-                Energy = energy,
+                CreatedAt = now,
                 Results = results,
-                CreatedAt = now
+                Type = type
             });
 
             // Confirm events to persist state changes
@@ -173,7 +173,7 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
                 })
                 .ToList();
 
-            _logger.LogInformation("[FortunePredictionHistoryGAgent][GetRecentPredictionsAsync] Found {Count} predictions",
+            _logger.LogInformation("[FortunePredictionHistoryGAgent][GetRecentPredictionsAsync] Found {Count} predictions", 
                 recentPredictions.Count);
 
             return Task.FromResult(recentPredictions);

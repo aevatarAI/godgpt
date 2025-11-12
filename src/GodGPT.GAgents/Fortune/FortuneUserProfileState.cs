@@ -25,9 +25,8 @@ public class FortuneUserProfileState : StateBase
     [Id(13)] public string? Email { get; set; }
     [Id(14)] public DateTime CreatedAt { get; set; }
     [Id(15)] public DateTime UpdatedAt { get; set; }
-    [Id(16)] public Dictionary<string, string> Astrology { get; set; } = new();
-    [Id(17)] public Dictionary<string, string> Bazi { get; set; } = new();
-    [Id(18)] public Dictionary<string, string> Zodiac { get; set; } = new();
-    [Id(19)] public DateTime? InsightsGeneratedAt { get; set; }
+    
+    // Multilingual welcome note (language -> {rhythm, essence, ...})
+    [Id(16)] public Dictionary<string, Dictionary<string, string>> MultilingualWelcomeNote { get; set; } = new();
 }
 

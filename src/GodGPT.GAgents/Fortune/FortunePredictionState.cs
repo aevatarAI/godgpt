@@ -3,39 +3,32 @@ using Aevatar.Core.Abstractions;
 namespace Aevatar.Application.Grains.Fortune;
 
 /// <summary>
-/// Fortune prediction state data (supports daily/yearly/lifetime predictions)
+/// Fortune prediction state data (unified for daily/yearly/lifetime predictions)
 /// </summary>
 [GenerateSerializer]
 public class FortunePredictionState : StateBase
 {
+    // Metadata
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public DateOnly PredictionDate { get; set; }
-    [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new(); // Daily results
-    [Id(4)] public int Energy { get; set; }
-    [Id(5)] public DateTime CreatedAt { get; set; }
-    [Id(6)] public Dictionary<string, string> LifetimeForecast { get; set; } = new Dictionary<string, string>(); // Lifetime prediction
-    [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; } = new Dictionary<string, string>(); // Weekly forecast (deprecated)
-    [Id(8)] public DateTime? WeeklyGeneratedDate { get; set; } // Track when weekly was generated (deprecated)
-    [Id(9)] public DateTime? ProfileUpdatedAt { get; set; } // Track profile update time for prediction regeneration
+    [Id(3)] public DateTime CreatedAt { get; set; }
+    [Id(4)] public DateTime? ProfileUpdatedAt { get; set; } // Track profile update time for prediction regeneration
     
-    // Multilingual support - cache all language versions (en, zh-tw, zh, es)
-    [Id(10)] public Dictionary<string, Dictionary<string, Dictionary<string, string>>>? MultilingualResults { get; set; } // Daily multilingual
-    [Id(11)] public Dictionary<string, Dictionary<string, string>>? MultilingualLifetime { get; set; } // Lifetime multilingual
-    [Id(12)] public Dictionary<string, Dictionary<string, string>>? MultilingualWeekly { get; set; } // Weekly multilingual (deprecated)
+    // Unified prediction results (flattened key-value pairs)
+    [Id(5)] public Dictionary<string, string> Results { get; set; } = new();
     
-    // Yearly prediction (expires after 1 year)
-    [Id(13)] public Dictionary<string, string> YearlyForecast { get; set; } = new Dictionary<string, string>(); // Yearly prediction
-    [Id(14)] public DateTime? YearlyGeneratedDate { get; set; } // Track when yearly was generated for expiration check
-    [Id(15)] public Dictionary<string, Dictionary<string, string>>? MultilingualYearly { get; set; } // Yearly multilingual
+    // Multilingual cache (language -> flattened results)
+    [Id(6)] public Dictionary<string, Dictionary<string, string>> MultilingualResults { get; set; } = new();
     
-    // Language generation status (two-stage generation support)
-    [Id(16)] public List<string>? DailyGeneratedLanguages { get; set; } // Track which languages are generated for daily
-    [Id(17)] public List<string>? YearlyGeneratedLanguages { get; set; } // Track which languages are generated for yearly
-    [Id(18)] public List<string>? LifetimeGeneratedLanguages { get; set; } // Track which languages are generated for lifetime
+    // Language generation status
+    [Id(7)] public List<string> GeneratedLanguages { get; set; } = new();
     
-    // Idempotency protection - prevent concurrent generation (per prediction type)
-    [Id(19)] public Dictionary<PredictionType, GenerationLockInfo> GenerationLocks { get; set; } = new();
+    // Idempotency protection - prevent concurrent generation
+    [Id(8)] public Dictionary<PredictionType, GenerationLockInfo> GenerationLocks { get; set; } = new();
+    
+    // Prediction type
+    [Id(9)] public PredictionType Type { get; set; }
 }
 
 /// <summary>
@@ -47,4 +40,3 @@ public class GenerationLockInfo
     [Id(0)] public bool IsGenerating { get; set; }
     [Id(1)] public DateTime? StartedAt { get; set; }
 }
-
