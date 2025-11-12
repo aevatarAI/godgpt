@@ -439,11 +439,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             
-            // Use deterministic grain key based on userId + predictionType + language
-            // This enables concurrent LLM calls while keeping grain count predictable
-            // Format: userId_daily_en, userId_yearly_zh-tw, etc.
-            // Each user has max 12 grains (3 types × 4 languages)
-            var predictionGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}_{targetLanguage}");
+            // Use deterministic grain key based on userId + predictionType
+            // This enables concurrent LLM calls for different prediction types (daily/yearly/lifetime)
+            // while keeping grain count minimal (3 grains per user)
+            // Format: userId_daily, userId_yearly, userId_lifetime
+            var predictionGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}");
             var godChat = _clusterClient.GetGrain<IGodChat>(predictionGrainKey);
             var chatId = Guid.NewGuid().ToString();
 
@@ -1082,18 +1082,20 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                 return;
             }
             
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} START - Type: {type}, Source: {sourceLanguage}, Targets: {string.Join(", ", remainingLanguages)} (CONCURRENT)");
+            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} START - Type: {type}, Source: {sourceLanguage}, Targets: {string.Join(", ", remainingLanguages)}");
             
-            // ========== OPTIMIZATION: Translate each language concurrently for faster completion ==========
+            // ========== OPTIMIZATION: Translate each language separately ==========
+            // Each translation uses the same grain (userId + type), so they will be serialized
+            // This keeps grain count minimal (3 per user) while reducing prompt size per call
             // Old: 1 LLM call for 3 languages → 42+ seconds (massive output)
-            // New: 3 concurrent LLM calls → ~15 seconds (each outputs 1/3 content)
+            // New: 3 separate LLM calls → serialized by grain (still faster due to smaller output per call)
             var translationTasks = remainingLanguages.Select(targetLang => 
                 TranslateSingleLanguageAsync(userInfo, predictionDate, type, sourceLanguage, sourceContent, targetLang)
             ).ToList();
             
             await Task.WhenAll(translationTasks);
             
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} SUCCESS - All {remainingLanguages.Count} languages translated concurrently for {type}");
+            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} SUCCESS - All {remainingLanguages.Count} languages translated for {type}");
         }
         catch (Exception ex)
         {
@@ -1117,10 +1119,10 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             var llmStopwatch = Stopwatch.StartNew();
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             
-            // Use deterministic grain key based on language to enable true concurrent LLM calls
-            // while avoiding grain proliferation (same user + language always reuses same grain)
-            // Format: userId_targetLang_translation (e.g., "user123_zh-tw_translation")
-            var translationGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{targetLanguage}_translation");
+            // Use the same grain key as prediction generation (userId + type)
+            // Translation for different languages will be serialized within the same grain
+            // This keeps grain count minimal (3 grains per user)
+            var translationGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}");
             var godChat = _clusterClient.GetGrain<IGodChat>(translationGrainKey);
             var chatId = Guid.NewGuid().ToString();
             
