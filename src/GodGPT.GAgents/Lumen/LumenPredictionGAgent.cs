@@ -438,7 +438,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
             
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
-            var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
+            
+            // Use deterministic grain key based on userId + predictionType + language
+            // This enables concurrent LLM calls while keeping grain count predictable
+            // Format: userId_daily_en, userId_yearly_zh-tw, etc.
+            // Each user has max 12 grains (3 types × 4 languages)
+            var predictionGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}_{targetLanguage}");
+            var godChat = _clusterClient.GetGrain<IGodChat>(predictionGrainKey);
             var chatId = Guid.NewGuid().ToString();
 
             var settings = new ExecutionPromptSettings
