@@ -20,7 +20,7 @@ public class UpdateUserProfileRequest
     [Id(9)] public string? Interests { get; set; }
     [Id(10)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
     [Id(11)] public string? CurrentResidence { get; set; }
-    [Id(12)] public string? Email { get; set; }
+    [Id(12)] public string? Email { get; set; } // Deprecated, kept in state only
     [Id(13)] public string? Occupation { get; set; }
 }
 
@@ -49,23 +49,18 @@ public class LumenUserProfileDto
     [Id(4)] public TimeOnly? BirthTime { get; set; } // Optional
     [Id(5)] public string? BirthCountry { get; set; }
     [Id(6)] public string? BirthCity { get; set; }
-    [Id(7)] public MbtiTypeEnum? MbtiType { get; set; }
-    [Id(8)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
-    [Id(9)] public string? Interests { get; set; }
-    [Id(10)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
-    [Id(11)] public DateTime CreatedAt { get; set; }
-    [Id(12)] public List<string> Actions { get; set; } = new();
-    [Id(13)] public string? CurrentResidence { get; set; }
-    [Id(14)] public string? Email { get; set; }
-    [Id(15)] public DateTime UpdatedAt { get; set; }
-    [Id(16)] public Dictionary<string, string> WelcomeNote { get; set; } = new(); // Backend-calculated welcome note (zodiac, chineseZodiac, rhythm, essence)
+    [Id(7)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
+    [Id(8)] public DateTime CreatedAt { get; set; }
+    [Id(9)] public string? CurrentResidence { get; set; }
+    [Id(10)] public DateTime UpdatedAt { get; set; }
+    [Id(11)] public Dictionary<string, string> WelcomeNote { get; set; } = new(); // Backend-calculated welcome note (zodiac, chineseZodiac, rhythm, essence)
     
     // Astrology information (backend-calculated)
-    [Id(17)] public string ZodiacSign { get; set; } = string.Empty; // e.g., "Aries"
-    [Id(18)] public ZodiacSignEnum ZodiacSignEnum { get; set; } = ZodiacSignEnum.Unknown;
-    [Id(19)] public string ChineseZodiac { get; set; } = string.Empty; // e.g., "Fire Horse (火马)"
-    [Id(20)] public ChineseZodiacEnum ChineseZodiacEnum { get; set; } = ChineseZodiacEnum.Unknown;
-    [Id(21)] public string? Occupation { get; set; } // Optional
+    [Id(12)] public string ZodiacSign { get; set; } = string.Empty; // e.g., "Aries"
+    [Id(13)] public ZodiacSignEnum ZodiacSignEnum { get; set; } = ZodiacSignEnum.Unknown;
+    [Id(14)] public string ChineseZodiac { get; set; } = string.Empty; // e.g., "Fire Horse (火马)"
+    [Id(15)] public ChineseZodiacEnum ChineseZodiacEnum { get; set; } = ChineseZodiacEnum.Unknown;
+    [Id(16)] public string? Occupation { get; set; } // Optional
 }
 
 /// <summary>

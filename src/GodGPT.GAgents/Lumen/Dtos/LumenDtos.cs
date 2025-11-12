@@ -282,7 +282,7 @@ public class UpdateUserInfoRequest
     [Id(10)] public string? Interests { get; set; } // Optional
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
     [Id(12)] public string? CurrentResidence { get; set; } // Optional
-    [Id(13)] public string? Email { get; set; } // Optional
+    [Id(13)] public string? Email { get; set; } // Optional (deprecated, kept in state only)
     [Id(14)] public string? Occupation { get; set; } // Optional
 }
 
@@ -317,9 +317,9 @@ public class LumenUserDto
     [Id(10)] public string? Interests { get; set; } // Optional
     [Id(11)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
     [Id(12)] public DateTime CreatedAt { get; set; }
-    [Id(13)] public List<string> Actions { get; set; } = new(); // User selected lumen prediction actions
+    [Id(13)] public List<string> Actions { get; set; } = new(); // Deprecated, kept in state only
     [Id(14)] public string? CurrentResidence { get; set; } // Optional
-    [Id(15)] public string? Email { get; set; } // Optional
+    [Id(15)] public string? Email { get; set; } // Deprecated, kept in state only
     [Id(16)] public DateTime UpdatedAt { get; set; } // Track profile updates for prediction regeneration
     [Id(17)] public string? Occupation { get; set; } // Optional
 }
@@ -346,7 +346,7 @@ public class ClearUserResult
 }
 
 /// <summary>
-/// Update user actions request
+/// Update user actions request (DEPRECATED - kept for state compatibility only)
 /// </summary>
 [GenerateSerializer]
 public class UpdateUserActionsRequest
@@ -356,7 +356,7 @@ public class UpdateUserActionsRequest
 }
 
 /// <summary>
-/// Update user actions result
+/// Update user actions result (DEPRECATED - kept for state compatibility only)
 /// </summary>
 [GenerateSerializer]
 public class UpdateUserActionsResult

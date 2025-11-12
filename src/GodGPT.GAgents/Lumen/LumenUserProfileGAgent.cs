@@ -241,20 +241,16 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     BirthTime = State.BirthTime,
                     BirthCountry = State.BirthCountry,
                     BirthCity = State.BirthCity,
-                    MbtiType = State.MbtiType,
-                    RelationshipStatus = State.RelationshipStatus,
-                    Interests = State.Interests,
                     CalendarType = State.CalendarType,
-                    Actions = State.Actions,
                     CreatedAt = State.CreatedAt,
                     CurrentResidence = State.CurrentResidence,
-                    Email = State.Email,
                     UpdatedAt = State.UpdatedAt,
                     WelcomeNote = welcomeNote,
                     ZodiacSign = zodiacSign,
                     ZodiacSignEnum = zodiacSignEnum,
                     ChineseZodiac = chineseZodiac,
-                    ChineseZodiacEnum = chineseZodiacEnum
+                    ChineseZodiacEnum = chineseZodiacEnum,
+                    Occupation = State.Occupation
                 }
             };
         }
@@ -415,16 +411,12 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 BirthTime = State.BirthTime,
                 BirthCountry = State.BirthCountry,
                 BirthCity = State.BirthCity,
-                MbtiType = State.MbtiType,
-                RelationshipStatus = State.RelationshipStatus,
-                Interests = State.Interests,
                 CalendarType = State.CalendarType,
-                Actions = State.Actions,
                 CreatedAt = State.CreatedAt,
                 CurrentResidence = State.CurrentResidence,
-                Email = State.Email,
                 UpdatedAt = State.UpdatedAt,
-                WelcomeNote = new Dictionary<string, string>() // Empty, no calculation
+                WelcomeNote = new Dictionary<string, string>(), // Empty, no calculation
+                Occupation = State.Occupation
             };
 
             return Task.FromResult<LumenUserProfileDto?>(profileDto);
