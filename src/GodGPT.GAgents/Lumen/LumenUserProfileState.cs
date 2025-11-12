@@ -4,10 +4,10 @@ using Aevatar.Core.Abstractions;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Fortune user profile state data (V2 with FullName)
+/// Lumen user profile state data (V2 with FullName)
 /// </summary>
 [GenerateSerializer]
-public class FortuneUserProfileState : StateBase
+public class LumenUserProfileState : StateBase
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FullName { get; set; } = string.Empty;

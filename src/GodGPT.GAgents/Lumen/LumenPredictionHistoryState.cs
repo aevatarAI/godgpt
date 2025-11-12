@@ -20,10 +20,10 @@ public class PredictionHistoryRecord
 }
 
 /// <summary>
-/// Fortune prediction history state - stores recent N days of predictions
+/// Lumen prediction history state - stores recent N days of predictions
 /// </summary>
 [GenerateSerializer]
-public class FortunePredictionHistoryState : StateBase
+public class LumenPredictionHistoryState : StateBase
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     

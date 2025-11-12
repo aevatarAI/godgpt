@@ -281,7 +281,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         {
             _logger.LogWarning("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] User info collection not initialized");
             // Use GetRawStateAsync to prevent circular dependency
-            await TryToMigrateDataFromFortuneUserProfileAsync();
+            await TryToMigrateDataFromLumenUserProfileAsync();
         }
 
         if (!State.IsInitialized)
@@ -296,15 +296,15 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         return userInfoCollectionDto;
     }
 
-    private async Task TryToMigrateDataFromFortuneUserProfileAsync()
+    private async Task TryToMigrateDataFromLumenUserProfileAsync()
     {
         var userGrainId = CommonHelper.StringToGuid(this.GetPrimaryKey().ToString());
-        var fortuneUserProfileGAgent = GrainFactory.GetGrain<IFortuneUserProfileGAgent>(userGrainId);
-        var profile = await fortuneUserProfileGAgent.GetRawStateAsync();
+        var lumenUserProfileGAgent = GrainFactory.GetGrain<ILumenUserProfileGAgent>(userGrainId);
+        var profile = await lumenUserProfileGAgent.GetRawStateAsync();
         if (profile != null && !profile.FullName.IsNullOrWhiteSpace())
         {
             _logger.LogInformation(
-                "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Migrating data from FortuneUserProfile to UserInfoCollection, userId {UserId}",
+                "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Migrating data from LumenUserProfile to UserInfoCollection, userId {UserId}",
                 this.GetPrimaryKey().ToString());
 
             var now = DateTime.UtcNow;
@@ -390,13 +390,13 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 await ConfirmEvents();
 
                 _logger.LogInformation(
-                    "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Successfully migrated data from FortuneUserProfile {UserId}",
+                    "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Successfully migrated data from LumenUserProfile {UserId}",
                     this.GetPrimaryKey().ToString());
             }
             else
             {
                 _logger.LogDebug(
-                    "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Fortune profile exists but no data available for migration");
+                    "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Lumen profile exists but no data available for migration");
             }
         }
     }
@@ -491,17 +491,17 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             _logger.LogWarning("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] User info collection not initialized");
             
             var userGrainId = CommonHelper.StringToGuid(this.GetPrimaryKey().ToString());
-            var fortuneUserProfileGAgent = GrainFactory.GetGrain<IFortuneUserProfileGAgent>(userGrainId);
-            var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync(userGrainId);
+            var lumenUserProfileGAgent = GrainFactory.GetGrain<ILumenUserProfileGAgent>(userGrainId);
+            var profileResult = await lumenUserProfileGAgent.GetUserProfileAsync(userGrainId);
 
             if (!profileResult.Success || profileResult.UserProfile == null || profileResult.UserProfile.UserId.IsNullOrWhiteSpace())
             {
-                _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] query fortune user profile, userId {UserId} not exist.", 
+                _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] query lumen user profile, userId {UserId} not exist.", 
                     this.GetPrimaryKey().ToString());
                 return new Tuple<string, string>(string.Empty, string.Empty);
             }
 
-            return await GenerateUserInfoPromptWithFortuneUserProfileAsync(userLocalTime, profileResult.UserProfile);
+            return await GenerateUserInfoPromptWithLumenUserProfileAsync(userLocalTime, profileResult.UserProfile);
         }
 
         return await GenerateUserInfoPromptWithUserProfileAsync(userLocalTime);
@@ -588,8 +588,8 @@ User Language: {languageText}";
     }
     
     
-    private async Task<Tuple<string, string>> GenerateUserInfoPromptWithFortuneUserProfileAsync(DateTime? userLocalTime,
-        FortuneUserProfileDto userProfile)
+    private async Task<Tuple<string, string>> GenerateUserInfoPromptWithLumenUserProfileAsync(DateTime? userLocalTime,
+        LumenUserProfileDto userProfile)
     {
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         var currentTime = userLocalTime ?? DateTime.UtcNow;
@@ -635,7 +635,7 @@ User Language: {languageText}";
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
-                    "[UserInfoCollectionGAgent][GenerateUserInfoPromptWithFortuneUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
+                    "[UserInfoCollectionGAgent][GenerateUserInfoPromptWithLumenUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
                     State.Year, State.Month, State.Day);
                 age = "Unknown";
             }
@@ -664,7 +664,7 @@ User Gender: {genderText}
 User Age: {age}
 User Language: {languageText}";
 
-        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptWithFortuneUserProfileAsync] Generated prompt for user {UserId}",
+        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptWithLumenUserProfileAsync] Generated prompt for user {UserId}",
             this.GetPrimaryKey().ToString());
 
         return new Tuple<string, string>(fullName, prompt);

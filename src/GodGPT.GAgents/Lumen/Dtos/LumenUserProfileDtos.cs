@@ -39,7 +39,7 @@ public class UpdateUserProfileResult
 /// User profile DTO (V2)
 /// </summary>
 [GenerateSerializer]
-public class FortuneUserProfileDto
+public class LumenUserProfileDto
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FullName { get; set; } = string.Empty;
@@ -74,7 +74,7 @@ public class GetUserProfileResult
 {
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
-    [Id(2)] public FortuneUserProfileDto? UserProfile { get; set; }
+    [Id(2)] public LumenUserProfileDto? UserProfile { get; set; }
 }
 
 #endregion

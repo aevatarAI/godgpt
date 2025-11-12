@@ -9,9 +9,9 @@ using Orleans.Concurrency;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Interface for Fortune Prediction History GAgent - manages prediction history
+/// Interface for Lumen Prediction History GAgent - manages prediction history
 /// </summary>
-public interface IFortunePredictionHistoryGAgent : IGAgent
+public interface ILumenPredictionHistoryGAgent : IGAgent
 {
     Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, 
         Dictionary<string, string> results, PredictionType type);
@@ -23,29 +23,29 @@ public interface IFortunePredictionHistoryGAgent : IGAgent
     Task<List<PredictionResultDto>> GetRecentPredictionsAsync(int days = 7);
 }
 
-[GAgent(nameof(FortunePredictionHistoryGAgent))]
+[GAgent(nameof(LumenPredictionHistoryGAgent))]
 [Reentrant]
-public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistoryState, FortunePredictionHistoryEventLog>, 
-    IFortunePredictionHistoryGAgent
+public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistoryState, LumenPredictionHistoryEventLog>, 
+    ILumenPredictionHistoryGAgent
 {
-    private readonly ILogger<FortunePredictionHistoryGAgent> _logger;
+    private readonly ILogger<LumenPredictionHistoryGAgent> _logger;
     private const int MaxHistoryDays = 30; // Keep last 30 days
 
-    public FortunePredictionHistoryGAgent(ILogger<FortunePredictionHistoryGAgent> logger)
+    public LumenPredictionHistoryGAgent(ILogger<LumenPredictionHistoryGAgent> logger)
     {
         _logger = logger;
     }
 
     public override Task<string> GetDescriptionAsync()
     {
-        return Task.FromResult("Fortune prediction history management");
+        return Task.FromResult("Lumen prediction history management");
     }
 
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortunePredictionHistoryState state,
-        StateLogEventBase<FortunePredictionHistoryEventLog> @event)
+    protected sealed override void GAgentTransitionState(LumenPredictionHistoryState state,
+        StateLogEventBase<LumenPredictionHistoryEventLog> @event)
     {
         switch (@event)
         {
@@ -86,7 +86,7 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
     {
         try
         {
-            _logger.LogDebug("[FortunePredictionHistoryGAgent][AddPredictionAsync] Adding prediction: {PredictionId}, Date: {Date}, Type: {Type}",
+            _logger.LogDebug("[LumenPredictionHistoryGAgent][AddPredictionAsync] Adding prediction: {PredictionId}, Date: {Date}, Type: {Type}",
                 predictionId, predictionDate, type);
 
             var now = DateTime.UtcNow;
@@ -104,12 +104,12 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortunePredictionHistoryGAgent][AddPredictionAsync] Prediction added to history: {PredictionId}",
+            _logger.LogInformation("[LumenPredictionHistoryGAgent][AddPredictionAsync] Prediction added to history: {PredictionId}",
                 predictionId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionHistoryGAgent][AddPredictionAsync] Error adding prediction to history");
+            _logger.LogError(ex, "[LumenPredictionHistoryGAgent][AddPredictionAsync] Error adding prediction to history");
             throw;
         }
     }
@@ -118,13 +118,13 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
     {
         try
         {
-            _logger.LogDebug("[FortunePredictionHistoryGAgent][GetPredictionByDateAsync] Getting prediction for date: {Date}", date);
+            _logger.LogDebug("[LumenPredictionHistoryGAgent][GetPredictionByDateAsync] Getting prediction for date: {Date}", date);
 
             var prediction = State.RecentPredictions.FirstOrDefault(p => p.PredictionDate == date);
             
             if (prediction == null)
             {
-                _logger.LogInformation("[FortunePredictionHistoryGAgent][GetPredictionByDateAsync] No prediction found for date: {Date}", date);
+                _logger.LogInformation("[LumenPredictionHistoryGAgent][GetPredictionByDateAsync] No prediction found for date: {Date}", date);
                 return Task.FromResult<PredictionResultDto?>(null);
             }
 
@@ -140,7 +140,7 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionHistoryGAgent][GetPredictionByDateAsync] Error getting prediction by date");
+            _logger.LogError(ex, "[LumenPredictionHistoryGAgent][GetPredictionByDateAsync] Error getting prediction by date");
             return Task.FromResult<PredictionResultDto?>(null);
         }
     }
@@ -149,7 +149,7 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
     {
         try
         {
-            _logger.LogDebug("[FortunePredictionHistoryGAgent][GetRecentPredictionsAsync] Getting recent {Days} days predictions", days);
+            _logger.LogDebug("[LumenPredictionHistoryGAgent][GetRecentPredictionsAsync] Getting recent {Days} days predictions", days);
 
             if (days < 1 || days > MaxHistoryDays)
             {
@@ -173,14 +173,14 @@ public class FortunePredictionHistoryGAgent : GAgentBase<FortunePredictionHistor
                 })
                 .ToList();
 
-            _logger.LogInformation("[FortunePredictionHistoryGAgent][GetRecentPredictionsAsync] Found {Count} predictions", 
+            _logger.LogInformation("[LumenPredictionHistoryGAgent][GetRecentPredictionsAsync] Found {Count} predictions", 
                 recentPredictions.Count);
 
             return Task.FromResult(recentPredictions);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionHistoryGAgent][GetRecentPredictionsAsync] Error getting recent predictions");
+            _logger.LogError(ex, "[LumenPredictionHistoryGAgent][GetRecentPredictionsAsync] Error getting recent predictions");
             return Task.FromResult(new List<PredictionResultDto>());
         }
     }

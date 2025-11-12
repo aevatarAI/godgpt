@@ -3,10 +3,10 @@ using Aevatar.Core.Abstractions;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Fortune prediction state data (unified for daily/yearly/lifetime predictions)
+/// Lumen prediction state data (unified for daily/yearly/lifetime predictions)
 /// </summary>
 [GenerateSerializer]
-public class FortunePredictionState : StateBase
+public class LumenPredictionState : StateBase
 {
     // Metadata
     [Id(0)] public Guid PredictionId { get; set; }

@@ -4,10 +4,10 @@ using Aevatar.Core.Abstractions;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Fortune user state data
+/// Lumen user state data
 /// </summary>
 [GenerateSerializer]
-public class FortuneUserState : StateBase
+public class LumenUserState : StateBase
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FirstName { get; set; } = string.Empty;
@@ -23,7 +23,7 @@ public class FortuneUserState : StateBase
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; }
     [Id(12)] public DateTime CreatedAt { get; set; }
     [Id(13)] public DateTime UpdatedAt { get; set; }
-    [Id(14)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
+    [Id(14)] public List<string> Actions { get; set; } = new(); // User selected lumen prediction actions
     [Id(15)] public string? CurrentResidence { get; set; } // Optional
     [Id(16)] public string? Email { get; set; } // Optional
 }

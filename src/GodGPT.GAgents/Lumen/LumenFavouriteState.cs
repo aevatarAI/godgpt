@@ -14,10 +14,10 @@ public class FavouriteDetail
 }
 
 /// <summary>
-/// Fortune favourite state - manages user's favourite predictions
+/// Lumen favourite state - manages user's favourite predictions
 /// </summary>
 [GenerateSerializer]
-public class FortuneFavouriteState : StateBase
+public class LumenFavouriteState : StateBase
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     

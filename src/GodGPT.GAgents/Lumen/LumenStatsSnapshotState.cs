@@ -15,7 +15,7 @@ public class MethodStats
 }
 
 [GenerateSerializer]
-public class FortuneStatsSnapshotState : StateBase
+public class LumenStatsSnapshotState : StateBase
 {
     [Id(0)] public Dictionary<string, MethodStats> GlobalStats { get; set; } = new();
     [Id(1)] public Dictionary<string, Dictionary<string, MethodStats>> UserStats { get; set; } = new();

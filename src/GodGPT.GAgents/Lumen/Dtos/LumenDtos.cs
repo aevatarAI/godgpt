@@ -301,7 +301,7 @@ public class UpdateUserInfoResult
 /// User info DTO
 /// </summary>
 [GenerateSerializer]
-public class FortuneUserDto
+public class LumenUserDto
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FirstName { get; set; } = string.Empty;
@@ -316,7 +316,7 @@ public class FortuneUserDto
     [Id(10)] public string? Interests { get; set; } // Optional
     [Id(11)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
     [Id(12)] public DateTime CreatedAt { get; set; }
-    [Id(13)] public List<string> Actions { get; set; } = new(); // User selected fortune prediction actions
+    [Id(13)] public List<string> Actions { get; set; } = new(); // User selected lumen prediction actions
     [Id(14)] public string? CurrentResidence { get; set; } // Optional
     [Id(15)] public string? Email { get; set; } // Optional
     [Id(16)] public DateTime UpdatedAt { get; set; } // Track profile updates for prediction regeneration
@@ -330,7 +330,7 @@ public class GetUserInfoResult
 {
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
-    [Id(2)] public FortuneUserDto? UserInfo { get; set; }
+    [Id(2)] public LumenUserDto? UserInfo { get; set; }
 }
 
 /// <summary>

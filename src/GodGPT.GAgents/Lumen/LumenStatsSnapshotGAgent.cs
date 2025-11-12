@@ -9,9 +9,9 @@ using Orleans.Concurrency;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Interface for Fortune Stats Snapshot GAgent - stores periodic snapshots from Redis
+/// Interface for Lumen Stats Snapshot GAgent - stores periodic snapshots from Redis
 /// </summary>
-public interface IFortuneStatsSnapshotGAgent : IGAgent
+public interface ILumenStatsSnapshotGAgent : IGAgent
 {
     /// <summary>
     /// Save snapshot of all stats
@@ -19,31 +19,31 @@ public interface IFortuneStatsSnapshotGAgent : IGAgent
     Task SnapshotAsync(Dictionary<string, MethodStats> globalStats, Dictionary<string, Dictionary<string, MethodStats>> userStats);
     
     [ReadOnly]
-    Task<FortuneStatsSnapshotState> GetSnapshotAsync();
+    Task<LumenStatsSnapshotState> GetSnapshotAsync();
 }
 
-[GAgent(nameof(FortuneStatsSnapshotGAgent))]
+[GAgent(nameof(LumenStatsSnapshotGAgent))]
 [Reentrant]
-public class FortuneStatsSnapshotGAgent : GAgentBase<FortuneStatsSnapshotState, FortuneStatsSnapshotEventLog>,
-    IFortuneStatsSnapshotGAgent
+public class LumenStatsSnapshotGAgent : GAgentBase<LumenStatsSnapshotState, LumenStatsSnapshotEventLog>,
+    ILumenStatsSnapshotGAgent
 {
-    private readonly ILogger<FortuneStatsSnapshotGAgent> _logger;
+    private readonly ILogger<LumenStatsSnapshotGAgent> _logger;
 
-    public FortuneStatsSnapshotGAgent(ILogger<FortuneStatsSnapshotGAgent> logger)
+    public LumenStatsSnapshotGAgent(ILogger<LumenStatsSnapshotGAgent> logger)
     {
         _logger = logger;
     }
 
     public override Task<string> GetDescriptionAsync()
     {
-        return Task.FromResult("Fortune stats snapshot management");
+        return Task.FromResult("Lumen stats snapshot management");
     }
 
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortuneStatsSnapshotState state,
-        StateLogEventBase<FortuneStatsSnapshotEventLog> @event)
+    protected sealed override void GAgentTransitionState(LumenStatsSnapshotState state,
+        StateLogEventBase<LumenStatsSnapshotEventLog> @event)
     {
         switch (@event)
         {
@@ -59,7 +59,7 @@ public class FortuneStatsSnapshotGAgent : GAgentBase<FortuneStatsSnapshotState, 
     {
         try
         {
-            _logger.LogInformation("[FortuneStatsSnapshotGAgent][SnapshotAsync] Creating snapshot with {GlobalCount} global methods, {UserCount} users",
+            _logger.LogInformation("[LumenStatsSnapshotGAgent][SnapshotAsync] Creating snapshot with {GlobalCount} global methods, {UserCount} users",
                 globalStats.Count, userStats.Count);
 
             RaiseEvent(new StatsSnapshotEvent
@@ -71,16 +71,16 @@ public class FortuneStatsSnapshotGAgent : GAgentBase<FortuneStatsSnapshotState, 
 
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneStatsSnapshotGAgent][SnapshotAsync] Snapshot completed successfully");
+            _logger.LogInformation("[LumenStatsSnapshotGAgent][SnapshotAsync] Snapshot completed successfully");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneStatsSnapshotGAgent][SnapshotAsync] Error creating snapshot");
+            _logger.LogError(ex, "[LumenStatsSnapshotGAgent][SnapshotAsync] Error creating snapshot");
             throw;
         }
     }
 
-    public Task<FortuneStatsSnapshotState> GetSnapshotAsync()
+    public Task<LumenStatsSnapshotState> GetSnapshotAsync()
     {
         return Task.FromResult(State);
     }

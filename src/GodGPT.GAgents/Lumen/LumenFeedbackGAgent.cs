@@ -9,9 +9,9 @@ using Orleans.Concurrency;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Interface for Fortune Feedback GAgent - manages user feedback on predictions
+/// Interface for Lumen Feedback GAgent - manages user feedback on predictions
 /// </summary>
-public interface IFortuneFeedbackGAgent : IGAgent
+public interface ILumenFeedbackGAgent : IGAgent
 {
     Task<SubmitFeedbackResult> SubmitOrUpdateFeedbackAsync(SubmitFeedbackRequest request);
     
@@ -27,28 +27,28 @@ public interface IFortuneFeedbackGAgent : IGAgent
     Task<UpdateMethodRatingResult> UpdateMethodRatingAsync(UpdateMethodRatingRequest request);
 }
 
-[GAgent(nameof(FortuneFeedbackGAgent))]
+[GAgent(nameof(LumenFeedbackGAgent))]
 [Reentrant]
-public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedbackEventLog>,
-    IFortuneFeedbackGAgent
+public class LumenFeedbackGAgent : GAgentBase<LumenFeedbackState, LumenFeedbackEventLog>,
+    ILumenFeedbackGAgent
 {
-    private readonly ILogger<FortuneFeedbackGAgent> _logger;
+    private readonly ILogger<LumenFeedbackGAgent> _logger;
 
-    public FortuneFeedbackGAgent(ILogger<FortuneFeedbackGAgent> logger)
+    public LumenFeedbackGAgent(ILogger<LumenFeedbackGAgent> logger)
     {
         _logger = logger;
     }
 
     public override Task<string> GetDescriptionAsync()
     {
-        return Task.FromResult("Fortune feedback management");
+        return Task.FromResult("Lumen feedback management");
     }
 
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
     protected sealed override void GAgentTransitionState(LumenFeedbackState state,
-        StateLogEventBase<FortuneFeedbackEventLog> @event)
+        StateLogEventBase<LumenFeedbackEventLog> @event)
     {
         switch (@event)
         {
@@ -72,7 +72,7 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
     {
         try
         {
-            _logger.LogDebug("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Start - UserId: {UserId}, PredictionId: {PredictionId}",
+            _logger.LogDebug("[LumenFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Start - UserId: {UserId}, PredictionId: {PredictionId}",
                 request.UserId, request.PredictionId);
 
             // Validate rating
@@ -170,7 +170,7 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
                 feedbackId = Guid.NewGuid().ToString();
             }
 
-            _logger.LogInformation("[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Submitting feedback: {FeedbackId}",
+            _logger.LogInformation("[LumenFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Submitting feedback: {FeedbackId}",
                 feedbackId);
 
             // Raise submitted event with complete FeedbackDetail
@@ -195,7 +195,7 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Error submitting feedback");
+            _logger.LogError(ex, "[LumenFeedbackGAgent][SubmitOrUpdateFeedbackAsync] Error submitting feedback");
             return new SubmitFeedbackResult
             {
                 Success = false,
@@ -208,7 +208,7 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
     {
         try
         {
-            _logger.LogDebug("[FortuneFeedbackGAgent][GetFeedbackAsync] Getting feedback for method: {PredictionMethod}", 
+            _logger.LogDebug("[LumenFeedbackGAgent][GetFeedbackAsync] Getting feedback for method: {PredictionMethod}", 
                 predictionMethod ?? "main");
 
             if (string.IsNullOrEmpty(State.FeedbackId))
@@ -245,7 +245,7 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneFeedbackGAgent][GetFeedbackAsync] Error getting feedback");
+            _logger.LogError(ex, "[LumenFeedbackGAgent][GetFeedbackAsync] Error getting feedback");
             return Task.FromResult<FeedbackDto?>(null);
         }
     }
@@ -254,14 +254,14 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
     {
         try
         {
-            _logger.LogDebug("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Start - UserId: {UserId}, Method: {PredictionMethod}, Rating: {Rating}",
+            _logger.LogDebug("[LumenFeedbackGAgent][UpdateMethodRatingAsync] Start - UserId: {UserId}, Method: {PredictionMethod}, Rating: {Rating}",
                 request.UserId, request.PredictionMethod, request.Rating);
 
             // Validate request
             var validationResult = ValidateUpdateRatingRequest(request);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Validation failed: {Message}",
+                _logger.LogWarning("[LumenFeedbackGAgent][UpdateMethodRatingAsync] Validation failed: {Message}",
                     validationResult.Message);
                 return new UpdateMethodRatingResult
                 {
@@ -274,17 +274,17 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
             var now = DateTime.UtcNow;
             
             // Log current state before update
-            _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Current State - FeedbackId: {FeedbackId}, UserId: {UserId}, PredictionId: {PredictionId}, MethodFeedbacks Count: {Count}",
+            _logger.LogInformation("[LumenFeedbackGAgent][UpdateMethodRatingAsync] Current State - FeedbackId: {FeedbackId}, UserId: {UserId}, PredictionId: {PredictionId}, MethodFeedbacks Count: {Count}",
                 State.FeedbackId, State.UserId, State.PredictionId, State.MethodFeedbacks.Count);
             
             if (State.MethodFeedbacks.TryGetValue(methodKey, out var existingFeedbackCheck))
             {
-                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Existing feedback found for method {Method}: Rating={Rating}",
+                _logger.LogInformation("[LumenFeedbackGAgent][UpdateMethodRatingAsync] Existing feedback found for method {Method}: Rating={Rating}",
                     methodKey, existingFeedbackCheck.Rating);
             }
             else
             {
-                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] No existing feedback for method {Method}",
+                _logger.LogInformation("[LumenFeedbackGAgent][UpdateMethodRatingAsync] No existing feedback for method {Method}",
                     methodKey);
             }
             
@@ -304,7 +304,7 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
                     CreatedAt = existingFeedback.CreatedAt,
                     UpdatedAt = now
                 };
-                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Updating existing feedback: OldRating={OldRating}, NewRating={NewRating}",
+                _logger.LogInformation("[LumenFeedbackGAgent][UpdateMethodRatingAsync] Updating existing feedback: OldRating={OldRating}, NewRating={NewRating}",
                     existingFeedback.Rating, request.Rating);
             }
             else
@@ -318,7 +318,7 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
                     CreatedAt = now,
                     UpdatedAt = now
                 };
-                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Creating new feedback: Rating={Rating}",
+                _logger.LogInformation("[LumenFeedbackGAgent][UpdateMethodRatingAsync] Creating new feedback: Rating={Rating}",
                     request.Rating);
             }
 
@@ -343,16 +343,16 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
             await ConfirmEvents();
 
             // Log final state after update
-            _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] After ConfirmEvents - State.MethodFeedbacks Count: {Count}",
+            _logger.LogInformation("[LumenFeedbackGAgent][UpdateMethodRatingAsync] After ConfirmEvents - State.MethodFeedbacks Count: {Count}",
                 State.MethodFeedbacks.Count);
             
             if (State.MethodFeedbacks.TryGetValue(methodKey, out var finalFeedback))
             {
-                _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Final feedback state for method {Method}: Rating={Rating}, UpdatedAt={UpdatedAt}",
+                _logger.LogInformation("[LumenFeedbackGAgent][UpdateMethodRatingAsync] Final feedback state for method {Method}: Rating={Rating}, UpdatedAt={UpdatedAt}",
                     methodKey, finalFeedback.Rating, finalFeedback.UpdatedAt);
             }
 
-            _logger.LogInformation("[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Rating updated successfully - Method: {PredictionMethod}, Rating: {Rating}",
+            _logger.LogInformation("[LumenFeedbackGAgent][UpdateMethodRatingAsync] Rating updated successfully - Method: {PredictionMethod}, Rating: {Rating}",
                 request.PredictionMethod, request.Rating);
 
             return new UpdateMethodRatingResult
@@ -366,7 +366,7 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneFeedbackGAgent][UpdateMethodRatingAsync] Error updating method rating");
+            _logger.LogError(ex, "[LumenFeedbackGAgent][UpdateMethodRatingAsync] Error updating method rating");
             return new UpdateMethodRatingResult
             {
                 Success = false,

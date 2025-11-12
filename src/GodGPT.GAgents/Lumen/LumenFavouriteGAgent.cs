@@ -9,9 +9,9 @@ using Orleans.Concurrency;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Interface for Fortune Favourite GAgent - manages user's favourite predictions
+/// Interface for Lumen Favourite GAgent - manages user's favourite predictions
 /// </summary>
-public interface IFortuneFavouriteGAgent : IGAgent
+public interface ILumenFavouriteGAgent : IGAgent
 {
     Task<ToggleFavouriteResult> ToggleFavouriteAsync(ToggleFavouriteRequest request);
     
@@ -22,29 +22,29 @@ public interface IFortuneFavouriteGAgent : IGAgent
     Task<bool> IsFavouriteAsync(Guid predictionId);
 }
 
-[GAgent(nameof(FortuneFavouriteGAgent))]
+[GAgent(nameof(LumenFavouriteGAgent))]
 [Reentrant]
-public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneFavouriteEventLog>,
-    IFortuneFavouriteGAgent
+public class LumenFavouriteGAgent : GAgentBase<LumenFavouriteState, LumenFavouriteEventLog>,
+    ILumenFavouriteGAgent
 {
-    private readonly ILogger<FortuneFavouriteGAgent> _logger;
+    private readonly ILogger<LumenFavouriteGAgent> _logger;
     private const int MaxFavourites = 100; // Maximum 100 favourites per user
 
-    public FortuneFavouriteGAgent(ILogger<FortuneFavouriteGAgent> logger)
+    public LumenFavouriteGAgent(ILogger<LumenFavouriteGAgent> logger)
     {
         _logger = logger;
     }
 
     public override Task<string> GetDescriptionAsync()
     {
-        return Task.FromResult("Fortune favourite management");
+        return Task.FromResult("Lumen favourite management");
     }
 
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortuneFavouriteState state,
-        StateLogEventBase<FortuneFavouriteEventLog> @event)
+    protected sealed override void GAgentTransitionState(LumenFavouriteState state,
+        StateLogEventBase<LumenFavouriteEventLog> @event)
     {
         switch (@event)
         {
@@ -66,14 +66,14 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
     {
         try
         {
-            _logger.LogDebug("[FortuneFavouriteGAgent][ToggleFavouriteAsync] Start - UserId: {UserId}, PredictionId: {PredictionId}, Date: {Date}, IsFavourite: {IsFavourite}",
+            _logger.LogDebug("[LumenFavouriteGAgent][ToggleFavouriteAsync] Start - UserId: {UserId}, PredictionId: {PredictionId}, Date: {Date}, IsFavourite: {IsFavourite}",
                 request.UserId, request.PredictionId, request.Date, request.IsFavourite);
 
             // Validate request
             var validationResult = ValidateToggleRequest(request);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneFavouriteGAgent][ToggleFavouriteAsync] Validation failed: {Message}",
+                _logger.LogWarning("[LumenFavouriteGAgent][ToggleFavouriteAsync] Validation failed: {Message}",
                     validationResult.Message);
                 return new ToggleFavouriteResult
                 {
@@ -88,7 +88,7 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
             // Check if action is needed
             if (request.IsFavourite == isCurrentlyFavourite)
             {
-                _logger.LogInformation("[FortuneFavouriteGAgent][ToggleFavouriteAsync] No change needed - PredictionId: {PredictionId}, IsFavourite: {IsFavourite}",
+                _logger.LogInformation("[LumenFavouriteGAgent][ToggleFavouriteAsync] No change needed - PredictionId: {PredictionId}, IsFavourite: {IsFavourite}",
                     request.PredictionId, request.IsFavourite);
                 return new ToggleFavouriteResult
                 {
@@ -105,7 +105,7 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
                 // Check max limit
                 if (State.Favourites.Count >= MaxFavourites)
                 {
-                    _logger.LogWarning("[FortuneFavouriteGAgent][ToggleFavouriteAsync] Max favourites limit reached: {UserId}",
+                    _logger.LogWarning("[LumenFavouriteGAgent][ToggleFavouriteAsync] Max favourites limit reached: {UserId}",
                         request.UserId);
                     return new ToggleFavouriteResult
                     {
@@ -143,7 +143,7 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
 
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneFavouriteGAgent][ToggleFavouriteAsync] Success - UserId: {UserId}, PredictionId: {PredictionId}, IsFavourite: {IsFavourite}",
+            _logger.LogInformation("[LumenFavouriteGAgent][ToggleFavouriteAsync] Success - UserId: {UserId}, PredictionId: {PredictionId}, IsFavourite: {IsFavourite}",
                 request.UserId, request.PredictionId, request.IsFavourite);
 
             return new ToggleFavouriteResult
@@ -156,7 +156,7 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneFavouriteGAgent][ToggleFavouriteAsync] Error toggling favourite: {UserId}",
+            _logger.LogError(ex, "[LumenFavouriteGAgent][ToggleFavouriteAsync] Error toggling favourite: {UserId}",
                 request.UserId);
             return new ToggleFavouriteResult
             {
@@ -170,7 +170,7 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
     {
         try
         {
-            _logger.LogDebug("[FortuneFavouriteGAgent][GetFavouritesAsync] Getting favourites for user: {UserId}",
+            _logger.LogDebug("[LumenFavouriteGAgent][GetFavouritesAsync] Getting favourites for user: {UserId}",
                 State.UserId);
 
             var favourites = State.Favourites.Values
@@ -183,7 +183,7 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
                 })
                 .ToList();
 
-            _logger.LogInformation("[FortuneFavouriteGAgent][GetFavouritesAsync] Found {Count} favourites",
+            _logger.LogInformation("[LumenFavouriteGAgent][GetFavouritesAsync] Found {Count} favourites",
                 favourites.Count);
 
             return Task.FromResult(new GetFavouritesResult
@@ -195,7 +195,7 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneFavouriteGAgent][GetFavouritesAsync] Error getting favourites");
+            _logger.LogError(ex, "[LumenFavouriteGAgent][GetFavouritesAsync] Error getting favourites");
             return Task.FromResult(new GetFavouritesResult
             {
                 Success = false,
@@ -209,12 +209,12 @@ public class FortuneFavouriteGAgent : GAgentBase<FortuneFavouriteState, FortuneF
     {
         try
         {
-            _logger.LogDebug("[FortuneFavouriteGAgent][IsFavouriteAsync] Checking if prediction is favourite: {PredictionId}", predictionId);
+            _logger.LogDebug("[LumenFavouriteGAgent][IsFavouriteAsync] Checking if prediction is favourite: {PredictionId}", predictionId);
             return Task.FromResult(State.Favourites.ContainsKey(predictionId));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneFavouriteGAgent][IsFavouriteAsync] Error checking favourite");
+            _logger.LogError(ex, "[LumenFavouriteGAgent][IsFavouriteAsync] Error checking favourite");
             return Task.FromResult(false);
         }
     }

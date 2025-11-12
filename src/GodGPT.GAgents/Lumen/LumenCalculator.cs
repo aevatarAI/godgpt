@@ -5,9 +5,9 @@ using Aevatar.Application.Grains.Lumen.Dtos;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Fortune calculation utilities for accurate astrological calculations
+/// Lumen calculation utilities for accurate astrological calculations
 /// </summary>
-public static partial class FortuneCalculator
+public static partial class LumenCalculator
 {
     #region Western Zodiac
     
@@ -494,7 +494,7 @@ public class PillarInfo
     };
 }
 
-public static partial class FortuneCalculator
+public static partial class LumenCalculator
 {
     #region Enum Parsers
     

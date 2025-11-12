@@ -10,9 +10,9 @@ using Orleans.Concurrency;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Interface for Fortune User GAgent - manages user registration and info
+/// Interface for Lumen User GAgent - manages user registration and info
 /// </summary>
-public interface IFortuneUserGAgent : IGAgent
+public interface ILumenUserGAgent : IGAgent
 {
     Task<UpdateUserInfoResult> UpdateUserInfoAsync(UpdateUserInfoRequest request);
     
@@ -30,14 +30,14 @@ public interface IFortuneUserGAgent : IGAgent
     Task<ClearUserResult> ClearUserAsync();
 }
 
-[GAgent(nameof(FortuneUserGAgent))]
+[GAgent(nameof(LumenUserGAgent))]
 [Reentrant]
-public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLog>, IFortuneUserGAgent
+public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, ILumenUserGAgent
 {
-    private readonly ILogger<FortuneUserGAgent> _logger;
+    private readonly ILogger<LumenUserGAgent> _logger;
     
     /// <summary>
-    /// Valid fortune prediction actions
+    /// Valid lumen prediction actions
     /// </summary>
     private static readonly HashSet<string> ValidActions = new()
     {
@@ -46,21 +46,21 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
         "humanFigure", "tarot", "zhengYu"
     };
 
-    public FortuneUserGAgent(ILogger<FortuneUserGAgent> logger)
+    public LumenUserGAgent(ILogger<LumenUserGAgent> logger)
     {
         _logger = logger;
     }
 
     public override Task<string> GetDescriptionAsync()
     {
-        return Task.FromResult("Fortune user management");
+        return Task.FromResult("Lumen user management");
     }
 
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortuneUserState state, 
-        StateLogEventBase<FortuneUserEventLog> @event)
+    protected sealed override void GAgentTransitionState(LumenUserState state, 
+        StateLogEventBase<LumenUserEventLog> @event)
     {
         switch (@event)
         {
@@ -113,13 +113,13 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
     {
         try
         {
-            _logger.LogDebug("[FortuneUserGAgent][UpdateUserInfoAsync] Start - UserId: {UserId}", request.UserId);
+            _logger.LogDebug("[LumenUserGAgent][UpdateUserInfoAsync] Start - UserId: {UserId}", request.UserId);
 
             // Validate request
             var validationResult = ValidateRegisterRequest(request);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneUserGAgent][UpdateUserInfoAsync] Validation failed: {Message}", 
+                _logger.LogWarning("[LumenUserGAgent][UpdateUserInfoAsync] Validation failed: {Message}", 
                     validationResult.Message);
                 return new UpdateUserInfoResult
                 {
@@ -130,7 +130,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             
             if (!State.UserId.IsNullOrWhiteSpace() && State.UserId != request.UserId)
             {
-                _logger.LogWarning("[FortuneUserGAgent][UpdateUserInfoAsync] User ID mismatch: {UserId}", request.UserId);
+                _logger.LogWarning("[LumenUserGAgent][UpdateUserInfoAsync] User ID mismatch: {UserId}", request.UserId);
                 return new UpdateUserInfoResult
                 {
                     Success = false,
@@ -163,7 +163,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserGAgent][UpdateUserInfoAsync] User registered successfully: {UserId}", 
+            _logger.LogInformation("[LumenUserGAgent][UpdateUserInfoAsync] User registered successfully: {UserId}", 
                 request.UserId);
 
             return new UpdateUserInfoResult
@@ -176,7 +176,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserGAgent][UpdateUserInfoAsync] Error registering user: {UserId}", 
+            _logger.LogError(ex, "[LumenUserGAgent][UpdateUserInfoAsync] Error registering user: {UserId}", 
                 request.UserId);
             return new UpdateUserInfoResult
             {
@@ -190,7 +190,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
     {
         try
         {
-            _logger.LogDebug("[FortuneUserGAgent][GetUserInfoAsync] Getting user info for: {UserId}", 
+            _logger.LogDebug("[LumenUserGAgent][GetUserInfoAsync] Getting user info for: {UserId}", 
                 this.GetPrimaryKey());
 
             if (string.IsNullOrEmpty(State.UserId))
@@ -206,7 +206,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             {
                 Success = true,
                 Message = string.Empty,
-                UserInfo = new FortuneUserDto
+                UserInfo = new LumenUserDto
                 {
                     UserId = State.UserId,
                     FirstName = State.FirstName,
@@ -229,7 +229,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserGAgent][GetUserInfoAsync] Error getting user info");
+            _logger.LogError(ex, "[LumenUserGAgent][GetUserInfoAsync] Error getting user info");
             return Task.FromResult(new GetUserInfoResult
             {
                 Success = false,
@@ -242,12 +242,12 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
     {
         try
         {
-            _logger.LogDebug("[FortuneUserGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
+            _logger.LogDebug("[LumenUserGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
 
             // Check if user exists
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[FortuneUserGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
+                _logger.LogWarning("[LumenUserGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
                 return new UpdateUserActionsResult
                 {
                     Success = false,
@@ -258,7 +258,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             // Validate that the user ID matches
             if (State.UserId != request.UserId)
             {
-                _logger.LogWarning("[FortuneUserGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
+                _logger.LogWarning("[LumenUserGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
                     State.UserId, request.UserId);
                 return new UpdateUserActionsResult
                 {
@@ -271,7 +271,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             var validationResult = ValidateActions(request.Actions);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneUserGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
+                _logger.LogWarning("[LumenUserGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
                     validationResult.Message);
                 return new UpdateUserActionsResult
                 {
@@ -293,7 +293,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
+            _logger.LogInformation("[LumenUserGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
                 request.UserId, string.Join(", ", request.Actions));
 
             return new UpdateUserActionsResult
@@ -306,7 +306,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
+            _logger.LogError(ex, "[LumenUserGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
                 request.UserId);
             return new UpdateUserActionsResult
             {
@@ -320,13 +320,13 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
     {
         try
         {
-            _logger.LogDebug("[FortuneUserGAgent][ClearUserAsync] Clearing user data for: {GrainId}", 
+            _logger.LogDebug("[LumenUserGAgent][ClearUserAsync] Clearing user data for: {GrainId}", 
                 this.GetPrimaryKey());
 
             // Check if user exists
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[FortuneUserGAgent][ClearUserAsync] User not found");
+                _logger.LogWarning("[LumenUserGAgent][ClearUserAsync] User not found");
                 return new ClearUserResult
                 {
                     Success = false,
@@ -345,7 +345,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserGAgent][ClearUserAsync] User data cleared successfully");
+            _logger.LogInformation("[LumenUserGAgent][ClearUserAsync] User data cleared successfully");
 
             return new ClearUserResult
             {
@@ -355,7 +355,7 @@ public class FortuneUserGAgent : GAgentBase<FortuneUserState, FortuneUserEventLo
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserGAgent][ClearUserAsync] Error clearing user data");
+            _logger.LogError(ex, "[LumenUserGAgent][ClearUserAsync] Error clearing user data");
             return new ClearUserResult
             {
                 Success = false,

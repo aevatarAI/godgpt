@@ -10,9 +10,9 @@ using Orleans.Concurrency;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Interface for Fortune User Profile GAgent (V2) - manages user profile with FullName
+/// Interface for Lumen User Profile GAgent (V2) - manages user profile with FullName
 /// </summary>
-public interface IFortuneUserProfileGAgent : IGAgent
+public interface ILumenUserProfileGAgent : IGAgent
 {
     Task<UpdateUserProfileResult> UpdateUserProfileAsync(UpdateUserProfileRequest request);
     
@@ -23,7 +23,7 @@ public interface IFortuneUserProfileGAgent : IGAgent
     /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
     /// </summary>
     [ReadOnly]
-    Task<FortuneUserProfileDto?> GetRawStateAsync();
+    Task<LumenUserProfileDto?> GetRawStateAsync();
     
     Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
     
@@ -33,14 +33,14 @@ public interface IFortuneUserProfileGAgent : IGAgent
     Task<ClearUserResult> ClearUserAsync();
 }
 
-[GAgent(nameof(FortuneUserProfileGAgent))]
+[GAgent(nameof(LumenUserProfileGAgent))]
 [Reentrant]
-public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, FortuneUserProfileEventLog>, IFortuneUserProfileGAgent
+public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUserProfileEventLog>, ILumenUserProfileGAgent
 {
-    private readonly ILogger<FortuneUserProfileGAgent> _logger;
+    private readonly ILogger<LumenUserProfileGAgent> _logger;
     
     /// <summary>
-    /// Valid fortune prediction actions
+    /// Valid lumen prediction actions
     /// </summary>
     private static readonly HashSet<string> ValidActions = new()
     {
@@ -49,21 +49,21 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         "humanFigure", "tarot", "zhengYu"
     };
 
-    public FortuneUserProfileGAgent(ILogger<FortuneUserProfileGAgent> logger)
+    public LumenUserProfileGAgent(ILogger<LumenUserProfileGAgent> logger)
     {
         _logger = logger;
     }
 
     public override Task<string> GetDescriptionAsync()
     {
-        return Task.FromResult("Fortune user profile management (V2)");
+        return Task.FromResult("Lumen user profile management (V2)");
     }
 
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortuneUserProfileState state, 
-        StateLogEventBase<FortuneUserProfileEventLog> @event)
+    protected sealed override void GAgentTransitionState(LumenUserProfileState state, 
+        StateLogEventBase<LumenUserProfileEventLog> @event)
     {
         switch (@event)
         {
@@ -117,13 +117,13 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][UpdateUserProfileAsync] Start - UserId: {UserId}", request.UserId);
+            _logger.LogDebug("[LumenUserProfileGAgent][UpdateUserProfileAsync] Start - UserId: {UserId}", request.UserId);
 
             // Validate request
             var validationResult = ValidateProfileRequest(request);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserProfileAsync] Validation failed: {Message}", 
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserProfileAsync] Validation failed: {Message}", 
                     validationResult.Message);
                 return new UpdateUserProfileResult
                 {
@@ -134,7 +134,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             
             if (!State.UserId.IsNullOrWhiteSpace() && State.UserId != request.UserId)
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserProfileAsync] User ID mismatch: {UserId}", request.UserId);
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserProfileAsync] User ID mismatch: {UserId}", request.UserId);
                 return new UpdateUserProfileResult
                 {
                     Success = false,
@@ -166,7 +166,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserProfileGAgent][UpdateUserProfileAsync] User profile updated successfully: {UserId}", 
+            _logger.LogInformation("[LumenUserProfileGAgent][UpdateUserProfileAsync] User profile updated successfully: {UserId}", 
                 request.UserId);
 
             return new UpdateUserProfileResult
@@ -179,7 +179,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][UpdateUserProfileAsync] Error updating user profile: {UserId}", 
+            _logger.LogError(ex, "[LumenUserProfileGAgent][UpdateUserProfileAsync] Error updating user profile: {UserId}", 
                 request.UserId);
             return new UpdateUserProfileResult
             {
@@ -193,7 +193,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][GetUserProfileAsync] Getting user profile for: {UserId}, Language: {Language}", 
+            _logger.LogDebug("[LumenUserProfileGAgent][GetUserProfileAsync] Getting user profile for: {UserId}, Language: {Language}", 
                 this.GetPrimaryKey().ToString(), userLanguage);
 
             if (string.IsNullOrEmpty(State.UserId))
@@ -204,7 +204,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
 
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][GetUserProfileAsync] Fortune user profile not initialized {GrainId}", this.GetPrimaryKey().ToString());
+                _logger.LogWarning("[LumenUserProfileGAgent][GetUserProfileAsync] Lumen user profile not initialized {GrainId}", this.GetPrimaryKey().ToString());
                 return new GetUserProfileResult
                 {
                     Success = false,
@@ -219,20 +219,20 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             var welcomeNote = TranslateWelcomeNote(welcomeNoteBase, userLanguage);
             
             // Calculate zodiac sign and Chinese zodiac
-            var zodiacSignEn = FortuneCalculator.CalculateZodiacSign(State.BirthDate);
+            var zodiacSignEn = LumenCalculator.CalculateZodiacSign(State.BirthDate);
             var zodiacSign = TranslateZodiacSign(zodiacSignEn, userLanguage);
-            var zodiacSignEnum = FortuneCalculator.ParseZodiacSignEnum(zodiacSignEn);
+            var zodiacSignEnum = LumenCalculator.ParseZodiacSignEnum(zodiacSignEn);
             
-            var chineseZodiacWithElementEn = FortuneCalculator.GetChineseZodiacWithElement(State.BirthDate.Year);
+            var chineseZodiacWithElementEn = LumenCalculator.GetChineseZodiacWithElement(State.BirthDate.Year);
             var chineseZodiac = TranslateChineseZodiac(chineseZodiacWithElementEn, userLanguage);
-            var chineseZodiacAnimal = FortuneCalculator.CalculateChineseZodiac(State.BirthDate.Year);
-            var chineseZodiacEnum = FortuneCalculator.ParseChineseZodiacEnum(chineseZodiacAnimal);
+            var chineseZodiacAnimal = LumenCalculator.CalculateChineseZodiac(State.BirthDate.Year);
+            var chineseZodiacEnum = LumenCalculator.ParseChineseZodiacEnum(chineseZodiacAnimal);
 
             return new GetUserProfileResult
             {
                 Success = true,
                 Message = string.Empty,
-                UserProfile = new FortuneUserProfileDto
+                UserProfile = new LumenUserProfileDto
                 {
                     UserId = State.UserId,
                     FullName = State.FullName,
@@ -260,7 +260,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][GetUserProfileAsync] Error getting user profile");
+            _logger.LogError(ex, "[LumenUserProfileGAgent][GetUserProfileAsync] Error getting user profile");
             return new GetUserProfileResult
             {
                 Success = false,
@@ -272,7 +272,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     private async Task TryToMigrateDataFromUserInfoCollectionAsync(Guid userId)
     {
         _logger.LogWarning(
-            "[FortuneUserProfileGAgent][GetUserProfileAsync] Fortune user profile not initialized. {GrainId}",
+            "[LumenUserProfileGAgent][GetUserProfileAsync] Lumen user profile not initialized. {GrainId}",
             this.GetPrimaryKey().ToString());
 
         // Use GetRawStateAsync to prevent circular dependency
@@ -282,7 +282,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         if (userInfoResult != null && userInfoResult.IsInitialized && userInfoResult.NameInfo != null)
         {
             _logger.LogInformation(
-                "[FortuneUserProfileGAgent][GetUserProfileAsync] Migrating data from UserInfoCollection to FortuneUserProfile, userId {UserId}",
+                "[LumenUserProfileGAgent][GetUserProfileAsync] Migrating data from UserInfoCollection to LumenUserProfile, userId {UserId}",
                 userId.ToString());
 
             var now = DateTime.UtcNow;
@@ -327,7 +327,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex,
-                        "[FortuneUserProfileGAgent][GetUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
+                        "[LumenUserProfileGAgent][GetUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
                         userInfoResult.BirthDateInfo.Year, userInfoResult.BirthDateInfo.Month,
                         userInfoResult.BirthDateInfo.Day);
                 }
@@ -353,7 +353,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             if (hasDataToMigrate)
             {
                 _logger.LogInformation(
-                    "[FortuneUserProfileGAgent][GetUserProfileAsync] Saving migrated data for userId {UserId}, " +
+                    "[LumenUserProfileGAgent][GetUserProfileAsync] Saving migrated data for userId {UserId}, " +
                     "fullName: {FullName}, gender: {Gender}, birthDate: {BirthDate}, country: {Country}, city: {City}",
                     userId.ToString(), fullName, gender, birthDate, birthCountry, birthCity);
 
@@ -379,12 +379,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 await ConfirmEvents();
 
                 _logger.LogInformation(
-                    "[FortuneUserProfileGAgent][GetUserProfileAsync] Successfully migrated data from UserInfoCollection");
+                    "[LumenUserProfileGAgent][GetUserProfileAsync] Successfully migrated data from UserInfoCollection");
             }
             else
             {
                 _logger.LogDebug(
-                    "[FortuneUserProfileGAgent][GetUserProfileAsync] UserInfoCollection exists but insufficient data for migration (missing FullName or BirthDate)");
+                    "[LumenUserProfileGAgent][GetUserProfileAsync] UserInfoCollection exists but insufficient data for migration (missing FullName or BirthDate)");
             }
         }
     }
@@ -392,21 +392,21 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     /// <summary>
     /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
     /// </summary>
-    public Task<FortuneUserProfileDto?> GetRawStateAsync()
+    public Task<LumenUserProfileDto?> GetRawStateAsync()
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][GetRawStateAsync] Getting raw state for: {UserId}", 
+            _logger.LogDebug("[LumenUserProfileGAgent][GetRawStateAsync] Getting raw state for: {UserId}", 
                 this.GetPrimaryKey());
 
             // If not initialized, return null immediately without any migration logic
             if (string.IsNullOrEmpty(State.UserId))
             {
-                return Task.FromResult<FortuneUserProfileDto?>(null);
+                return Task.FromResult<LumenUserProfileDto?>(null);
             }
 
             // Return raw state data without any processing or migration
-            var profileDto = new FortuneUserProfileDto
+            var profileDto = new LumenUserProfileDto
             {
                 UserId = State.UserId,
                 FullName = State.FullName,
@@ -427,12 +427,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 WelcomeNote = new Dictionary<string, string>() // Empty, no calculation
             };
 
-            return Task.FromResult<FortuneUserProfileDto?>(profileDto);
+            return Task.FromResult<LumenUserProfileDto?>(profileDto);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][GetRawStateAsync] Error getting raw state");
-            return Task.FromResult<FortuneUserProfileDto?>(null);
+            _logger.LogError(ex, "[LumenUserProfileGAgent][GetRawStateAsync] Error getting raw state");
+            return Task.FromResult<LumenUserProfileDto?>(null);
         }
     }
 
@@ -440,12 +440,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
+            _logger.LogDebug("[LumenUserProfileGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
 
             // Check if user exists
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
                 return new UpdateUserActionsResult
                 {
                     Success = false,
@@ -456,7 +456,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             // Validate that the user ID matches
             if (State.UserId != request.UserId)
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
                     State.UserId, request.UserId);
                 return new UpdateUserActionsResult
                 {
@@ -469,7 +469,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             var validationResult = ValidateActions(request.Actions);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
                     validationResult.Message);
                 return new UpdateUserActionsResult
                 {
@@ -491,7 +491,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserProfileGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
+            _logger.LogInformation("[LumenUserProfileGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
                 request.UserId, string.Join(", ", request.Actions));
 
             return new UpdateUserActionsResult
@@ -504,7 +504,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
+            _logger.LogError(ex, "[LumenUserProfileGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
                 request.UserId);
             return new UpdateUserActionsResult
             {
@@ -573,13 +573,13 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][ClearUserAsync] Clearing user profile data for: {GrainId}", 
+            _logger.LogDebug("[LumenUserProfileGAgent][ClearUserAsync] Clearing user profile data for: {GrainId}", 
                 this.GetPrimaryKey());
 
             // Check if user exists
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][ClearUserAsync] User profile not found");
+                _logger.LogWarning("[LumenUserProfileGAgent][ClearUserAsync] User profile not found");
                 return new ClearUserResult
                 {
                     Success = false,
@@ -598,7 +598,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserProfileGAgent][ClearUserAsync] User profile cleared successfully");
+            _logger.LogInformation("[LumenUserProfileGAgent][ClearUserAsync] User profile cleared successfully");
 
             return new ClearUserResult
             {
@@ -608,7 +608,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][ClearUserAsync] Error clearing user profile");
+            _logger.LogError(ex, "[LumenUserProfileGAgent][ClearUserAsync] Error clearing user profile");
             return new ClearUserResult
             {
                 Success = false,
@@ -627,11 +627,11 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         var birthYear = birthDate.Year;
         
         // Calculate zodiac and chinese zodiac
-        var zodiac = FortuneCalculator.CalculateZodiacSign(birthDate);
-        var chineseZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
+        var zodiac = LumenCalculator.CalculateZodiacSign(birthDate);
+        var chineseZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
         
         // Calculate rhythm (Yin/Yang + Element from birth year stems)
-        var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
+        var birthYearStems = LumenCalculator.CalculateStemsAndBranches(birthYear);
         var rhythm = GetRhythmFromStems(birthYearStems);
         
         // Extract components for essence calculation
