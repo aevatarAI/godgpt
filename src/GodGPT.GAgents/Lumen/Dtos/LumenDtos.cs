@@ -615,3 +615,37 @@ public class FavouriteItemDto
 
 #endregion
 
+#region Prediction Status
+
+/// <summary>
+/// Prediction generation status for a single prediction type
+/// </summary>
+[GenerateSerializer]
+public class PredictionStatusDto
+{
+    [Id(0)] public PredictionType Type { get; set; }
+    [Id(1)] public bool IsGenerated { get; set; } // Whether prediction has been generated
+    [Id(2)] public bool IsGenerating { get; set; } // Whether prediction is currently being generated
+    [Id(3)] public DateTime? GeneratedAt { get; set; } // When was it generated
+    [Id(4)] public DateTime? GenerationStartedAt { get; set; } // When generation started (for in-progress)
+    [Id(5)] public DateOnly? PredictionDate { get; set; } // The date this prediction is for
+    [Id(6)] public List<string> AvailableLanguages { get; set; } = new(); // Which languages are available (e.g., ["en", "zh-tw"])
+    [Id(7)] public bool NeedsRegeneration { get; set; } // Whether prediction needs regeneration (profile updated)
+}
+
+/// <summary>
+/// Overall prediction status result
+/// </summary>
+[GenerateSerializer]
+public class GetPredictionStatusResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public PredictionStatusDto? Daily { get; set; }
+    [Id(3)] public PredictionStatusDto? Yearly { get; set; }
+    [Id(4)] public PredictionStatusDto? Lifetime { get; set; }
+    [Id(5)] public DateTime? ProfileUpdatedAt { get; set; } // User profile last update time
+}
+
+#endregion
+

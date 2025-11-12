@@ -31,6 +31,9 @@ public interface ILumenPredictionGAgent : IGAgent
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en");
+    
+    [ReadOnly]
+    Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null);
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -316,6 +319,66 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         };
 
         return Task.FromResult<PredictionResultDto?>(predictionDto);
+    }
+
+    /// <summary>
+    /// Get prediction generation status
+    /// </summary>
+    public Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null)
+    {
+        // If no prediction has been generated yet
+        if (State.PredictionId == Guid.Empty)
+        {
+            return Task.FromResult<PredictionStatusDto?>(null);
+        }
+
+        // Check if currently generating
+        var isGenerating = false;
+        DateTime? generationStartedAt = null;
+        if (State.GenerationLocks.TryGetValue(State.Type, out var lockInfo))
+        {
+            isGenerating = lockInfo.IsGenerating;
+            generationStartedAt = lockInfo.StartedAt;
+            
+            // Check for stale lock (>1 minute) and reset
+            if (isGenerating && lockInfo.StartedAt.HasValue && 
+                (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 1)
+            {
+                isGenerating = false;
+                generationStartedAt = null;
+            }
+        }
+
+        // Check if needs regeneration (profile was updated after prediction was generated)
+        var needsRegeneration = false;
+        if (profileUpdatedAt.HasValue && State.ProfileUpdatedAt.HasValue)
+        {
+            needsRegeneration = profileUpdatedAt.Value > State.ProfileUpdatedAt.Value;
+        }
+
+        // For Daily predictions, also check if prediction is for today
+        if (State.Type == PredictionType.Daily)
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            if (State.PredictionDate != today)
+            {
+                needsRegeneration = true;
+            }
+        }
+
+        var statusDto = new PredictionStatusDto
+        {
+            Type = State.Type,
+            IsGenerated = true,
+            IsGenerating = isGenerating,
+            GeneratedAt = State.CreatedAt,
+            GenerationStartedAt = generationStartedAt,
+            PredictionDate = State.PredictionDate,
+            AvailableLanguages = State.GeneratedLanguages ?? new List<string>(),
+            NeedsRegeneration = needsRegeneration
+        };
+
+        return Task.FromResult<PredictionStatusDto?>(statusDto);
     }
 
     /// <summary>
