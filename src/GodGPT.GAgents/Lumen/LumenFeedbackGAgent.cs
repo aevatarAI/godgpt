@@ -58,9 +58,6 @@ public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedb
                 state.PredictionId = submittedEvent.PredictionId;
                 state.MethodFeedbacks[submittedEvent.PredictionMethod] = submittedEvent.FeedbackDetail;
                 break;
-
-            case FeedbackUpdatedEvent updatedEvent:
-                break;
                 
             case MethodRatingUpdatedEvent ratingUpdatedEvent:
                 state.FeedbackId = ratingUpdatedEvent.FeedbackId;

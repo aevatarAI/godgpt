@@ -131,21 +131,6 @@ public class FeedbackSubmittedEvent : FortuneFeedbackEventLog
 }
 
 /// <summary>
-/// Feedback updated event
-/// </summary>
-[GenerateSerializer]
-public class FeedbackUpdatedEvent : FortuneFeedbackEventLog
-{
-    [Id(0)] public string? PredictionMethod { get; set; } // e.g., "opportunity", "bazi", "astrology", "tarot" (Obsolete event)
-    [Id(1)] public int Rating { get; set; }
-    [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
-    [Id(3)] public string? Comment { get; set; }
-    [Id(4)] public string? Email { get; set; }
-    [Id(5)] public bool AgreeToContact { get; set; }
-    [Id(6)] public DateTime UpdatedAt { get; set; }
-}
-
-/// <summary>
 /// Method rating updated event
 /// </summary>
 [GenerateSerializer]
