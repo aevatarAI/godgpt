@@ -938,13 +938,20 @@ CRITICAL RULES:
 8. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
    - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
    - Sentence structure: Adjust to natural Chinese word order
-9. Output format: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
+
+OUTPUT FORMAT REQUIREMENTS:
+- ALL field values MUST be strings, NEVER arrays or objects
+- If a field contains multiple items, join them with commas into a SINGLE string
+  Example: CORRECT: ""patience, courage, wisdom""
+           WRONG: [""patience"", ""courage"", ""wisdom""]
+- Structure: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
+- Every field value must be a simple string type
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
 
 Generate translations for: {targetLangNames}
-Output in JSON format with 'predictions' object containing each target language.
+Output ONLY valid JSON with all values as strings. No arrays, no nested objects in field values.
 ";
 
         return translationPrompt;
@@ -1047,8 +1054,53 @@ Output in JSON format with 'predictions' object containing each target language.
             }
             
             var predictionsObj = parsedResponse["predictions"];
-            var translatedLanguages = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(
+            
+            // Parse with fault tolerance for array values
+            var translatedLanguages = new Dictionary<string, Dictionary<string, string>>();
+            var predictionsDict = JsonConvert.DeserializeObject<Dictionary<string, object>>(
                 JsonConvert.SerializeObject(predictionsObj));
+            
+            if (predictionsDict != null)
+            {
+                foreach (var langKvp in predictionsDict)
+                {
+                    var language = langKvp.Key;
+                    var contentObj = langKvp.Value;
+                    
+                    // Parse content with tolerance for arrays
+                    var contentDict = new Dictionary<string, string>();
+                    var contentFields = JsonConvert.DeserializeObject<Dictionary<string, object>>(
+                        JsonConvert.SerializeObject(contentObj));
+                    
+                    if (contentFields != null)
+                    {
+                        foreach (var fieldKvp in contentFields)
+                        {
+                            var fieldName = fieldKvp.Key;
+                            var fieldValue = fieldKvp.Value;
+                            
+                            // Handle different value types
+                            if (fieldValue is Newtonsoft.Json.Linq.JArray arrayValue)
+                            {
+                                // Convert array to comma-separated string
+                                var items = arrayValue.Select(item => item.ToString()).ToArray();
+                                contentDict[fieldName] = string.Join(", ", items);
+                                _logger.LogWarning($"[Lumen][AsyncTranslation] {userInfo.UserId} Field '{language}.{fieldName}' was array, converted to string: {contentDict[fieldName]}");
+                            }
+                            else if (fieldValue != null)
+                            {
+                                contentDict[fieldName] = fieldValue.ToString();
+                            }
+                            else
+                            {
+                                contentDict[fieldName] = string.Empty;
+                            }
+                        }
+                    }
+                    
+                    translatedLanguages[language] = contentDict;
+                }
+            }
             
             parseStopwatch.Stop();
             _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms");
