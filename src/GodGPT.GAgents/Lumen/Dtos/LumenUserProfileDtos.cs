@@ -61,6 +61,10 @@ public class LumenUserProfileDto
     [Id(14)] public string ChineseZodiac { get; set; } = string.Empty; // e.g., "Fire Horse (火马)"
     [Id(15)] public ChineseZodiacEnum ChineseZodiacEnum { get; set; } = ChineseZodiacEnum.Unknown;
     [Id(16)] public string? Occupation { get; set; } // Optional
+    [Id(17)] public MbtiTypeEnum? MbtiType { get; set; }
+    [Id(18)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
+    [Id(19)] public string? Interests { get; set; }
+    [Id(20)] public string? Email { get; set; }
 }
 
 /// <summary>

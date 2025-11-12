@@ -248,7 +248,11 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     ZodiacSignEnum = zodiacSignEnum,
                     ChineseZodiac = chineseZodiac,
                     ChineseZodiacEnum = chineseZodiacEnum,
-                    Occupation = State.Occupation
+                    Occupation = State.Occupation,
+                    MbtiType = State.MbtiType,
+                    RelationshipStatus = State.RelationshipStatus,
+                    Interests = State.Interests,
+                    Email = State.Email
                 }
             };
         }
@@ -414,7 +418,11 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 CurrentResidence = State.CurrentResidence,
                 UpdatedAt = State.UpdatedAt,
                 WelcomeNote = new Dictionary<string, string>(), // Empty, no calculation
-                Occupation = State.Occupation
+                Occupation = State.Occupation,
+                MbtiType = State.MbtiType,
+                RelationshipStatus = State.RelationshipStatus,
+                Interests = State.Interests,
+                Email = State.Email
             };
 
             return Task.FromResult<LumenUserProfileDto?>(profileDto);
