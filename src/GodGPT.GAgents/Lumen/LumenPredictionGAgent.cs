@@ -751,6 +751,18 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             userInfoParts.Add($"MBTI: {userInfo.MbtiType}");
         }
         
+        // Current residence (optional)
+        if (!string.IsNullOrWhiteSpace(userInfo.CurrentResidence))
+        {
+            userInfoParts.Add($"Current Residence: {userInfo.CurrentResidence}");
+        }
+        
+        // Occupation (optional)
+        if (!string.IsNullOrWhiteSpace(userInfo.Occupation))
+        {
+            userInfoParts.Add($"Occupation: {userInfo.Occupation}");
+        }
+        
         var userInfoLine = string.Join(", ", userInfoParts);
         
         // Calculate display name based on user language (for personalized greetings in predictions)

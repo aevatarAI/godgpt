@@ -283,6 +283,7 @@ public class UpdateUserInfoRequest
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
     [Id(12)] public string? CurrentResidence { get; set; } // Optional
     [Id(13)] public string? Email { get; set; } // Optional
+    [Id(14)] public string? Occupation { get; set; } // Optional
 }
 
 /// <summary>
@@ -320,6 +321,7 @@ public class LumenUserDto
     [Id(14)] public string? CurrentResidence { get; set; } // Optional
     [Id(15)] public string? Email { get; set; } // Optional
     [Id(16)] public DateTime UpdatedAt { get; set; } // Track profile updates for prediction regeneration
+    [Id(17)] public string? Occupation { get; set; } // Optional
 }
 
 /// <summary>

@@ -21,6 +21,7 @@ public class UpdateUserProfileRequest
     [Id(10)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
     [Id(11)] public string? CurrentResidence { get; set; }
     [Id(12)] public string? Email { get; set; }
+    [Id(13)] public string? Occupation { get; set; }
 }
 
 /// <summary>
@@ -64,6 +65,7 @@ public class LumenUserProfileDto
     [Id(18)] public ZodiacSignEnum ZodiacSignEnum { get; set; } = ZodiacSignEnum.Unknown;
     [Id(19)] public string ChineseZodiac { get; set; } = string.Empty; // e.g., "Fire Horse (火马)"
     [Id(20)] public ChineseZodiacEnum ChineseZodiacEnum { get; set; } = ChineseZodiacEnum.Unknown;
+    [Id(21)] public string? Occupation { get; set; } // Optional
 }
 
 /// <summary>
