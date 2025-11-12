@@ -283,6 +283,7 @@ public class UpdateUserInfoRequest
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; } = CalendarTypeEnum.Solar;
     [Id(12)] public string? CurrentResidence { get; set; } // Optional
     [Id(13)] public string? Email { get; set; } // Optional
+    [Id(14)] public string? Occupation { get; set; } // Optional
 }
 
 /// <summary>
@@ -316,10 +317,11 @@ public class LumenUserDto
     [Id(10)] public string? Interests { get; set; } // Optional
     [Id(11)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
     [Id(12)] public DateTime CreatedAt { get; set; }
-    [Id(13)] public List<string> Actions { get; set; } = new(); // User selected lumen prediction actions
+    [Id(13)] public List<string> Actions { get; set; } = new();
     [Id(14)] public string? CurrentResidence { get; set; } // Optional
-    [Id(15)] public string? Email { get; set; } // Optional
+    [Id(15)] public string? Email { get; set; }
     [Id(16)] public DateTime UpdatedAt { get; set; } // Track profile updates for prediction regeneration
+    [Id(17)] public string? Occupation { get; set; } // Optional
 }
 
 /// <summary>
@@ -341,28 +343,6 @@ public class ClearUserResult
 {
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
-}
-
-/// <summary>
-/// Update user actions request
-/// </summary>
-[GenerateSerializer]
-public class UpdateUserActionsRequest
-{
-    [Id(0)] public string UserId { get; set; } = string.Empty;
-    [Id(1)] public List<string> Actions { get; set; } = new(); // Available actions: forecast, horoscope, bazi, ziwei, constellation, numerology, synastry, chineseZodiac, mayanTotem, humanFigure, tarot, zhengYu
-}
-
-/// <summary>
-/// Update user actions result
-/// </summary>
-[GenerateSerializer]
-public class UpdateUserActionsResult
-{
-    [Id(0)] public bool Success { get; set; }
-    [Id(1)] public string Message { get; set; } = string.Empty;
-    [Id(2)] public List<string> UpdatedActions { get; set; } = new();
-    [Id(3)] public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>
@@ -541,31 +521,6 @@ public class MethodStatsDto
     [Id(1)] public double AvgRating { get; set; }
     [Id(2)] public int TotalCount { get; set; }
     [Id(3)] public double PositiveRate { get; set; } // Positive feedback rate (3-5 stars / total), 0-100
-}
-
-/// <summary>
-/// Recommendation item DTO
-/// </summary>
-[GenerateSerializer]
-public class RecommendationItemDto
-{
-    [Id(0)] public int Rank { get; set; }
-    [Id(1)] public string Method { get; set; } = string.Empty;
-    [Id(2)] public string Source { get; set; } = string.Empty; // "global" or "personal" or "default"
-    [Id(3)] public double AvgRating { get; set; }
-    [Id(4)] public int TotalCount { get; set; }
-    [Id(5)] public double PositiveRate { get; set; } // Positive feedback rate (3-5 stars / total), 0-100
-}
-
-/// <summary>
-/// Get recommendations result
-/// </summary>
-[GenerateSerializer]
-public class GetRecommendationsResult
-{
-    [Id(0)] public bool Success { get; set; }
-    [Id(1)] public string Message { get; set; } = string.Empty;
-    [Id(2)] public List<RecommendationItemDto> Recommendations { get; set; } = new();
 }
 
 #endregion

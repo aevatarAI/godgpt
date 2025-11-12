@@ -25,8 +25,6 @@ public interface ILumenUserProfileGAgent : IGAgent
     [ReadOnly]
     Task<LumenUserProfileDto?> GetRawStateAsync();
     
-    Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
-    
     /// <summary>
     /// Clear user profile data (for testing purposes)
     /// </summary>
@@ -241,20 +239,16 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     BirthTime = State.BirthTime,
                     BirthCountry = State.BirthCountry,
                     BirthCity = State.BirthCity,
-                    MbtiType = State.MbtiType,
-                    RelationshipStatus = State.RelationshipStatus,
-                    Interests = State.Interests,
                     CalendarType = State.CalendarType,
-                    Actions = State.Actions,
                     CreatedAt = State.CreatedAt,
                     CurrentResidence = State.CurrentResidence,
-                    Email = State.Email,
                     UpdatedAt = State.UpdatedAt,
                     WelcomeNote = welcomeNote,
                     ZodiacSign = zodiacSign,
                     ZodiacSignEnum = zodiacSignEnum,
                     ChineseZodiac = chineseZodiac,
-                    ChineseZodiacEnum = chineseZodiacEnum
+                    ChineseZodiacEnum = chineseZodiacEnum,
+                    Occupation = State.Occupation
                 }
             };
         }
@@ -415,16 +409,12 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 BirthTime = State.BirthTime,
                 BirthCountry = State.BirthCountry,
                 BirthCity = State.BirthCity,
-                MbtiType = State.MbtiType,
-                RelationshipStatus = State.RelationshipStatus,
-                Interests = State.Interests,
                 CalendarType = State.CalendarType,
-                Actions = State.Actions,
                 CreatedAt = State.CreatedAt,
                 CurrentResidence = State.CurrentResidence,
-                Email = State.Email,
                 UpdatedAt = State.UpdatedAt,
-                WelcomeNote = new Dictionary<string, string>() // Empty, no calculation
+                WelcomeNote = new Dictionary<string, string>(), // Empty, no calculation
+                Occupation = State.Occupation
             };
 
             return Task.FromResult<LumenUserProfileDto?>(profileDto);
@@ -433,84 +423,6 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
         {
             _logger.LogError(ex, "[LumenUserProfileGAgent][GetRawStateAsync] Error getting raw state");
             return Task.FromResult<LumenUserProfileDto?>(null);
-        }
-    }
-
-    public async Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request)
-    {
-        try
-        {
-            _logger.LogDebug("[LumenUserProfileGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
-
-            // Check if user exists
-            if (string.IsNullOrEmpty(State.UserId))
-            {
-                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
-                return new UpdateUserActionsResult
-                {
-                    Success = false,
-                    Message = "User not found"
-                };
-            }
-
-            // Validate that the user ID matches
-            if (State.UserId != request.UserId)
-            {
-                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
-                    State.UserId, request.UserId);
-                return new UpdateUserActionsResult
-                {
-                    Success = false,
-                    Message = "User ID mismatch"
-                };
-            }
-
-            // Validate actions
-            var validationResult = ValidateActions(request.Actions);
-            if (!validationResult.IsValid)
-            {
-                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
-                    validationResult.Message);
-                return new UpdateUserActionsResult
-                {
-                    Success = false,
-                    Message = validationResult.Message
-                };
-            }
-
-            var now = DateTime.UtcNow;
-
-            // Raise event to update actions
-            RaiseEvent(new UserProfileActionsUpdatedEvent
-            {
-                UserId = request.UserId,
-                Actions = request.Actions,
-                UpdatedAt = now
-            });
-
-            // Confirm events to persist state changes
-            await ConfirmEvents();
-
-            _logger.LogInformation("[LumenUserProfileGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
-                request.UserId, string.Join(", ", request.Actions));
-
-            return new UpdateUserActionsResult
-            {
-                Success = true,
-                Message = string.Empty,
-                UpdatedActions = request.Actions,
-                UpdatedAt = now
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LumenUserProfileGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
-                request.UserId);
-            return new UpdateUserActionsResult
-            {
-                Success = false,
-                Message = "Internal error occurred"
-            };
         }
     }
 

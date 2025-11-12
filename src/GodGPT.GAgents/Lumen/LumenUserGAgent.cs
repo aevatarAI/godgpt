@@ -20,11 +20,6 @@ public interface ILumenUserGAgent : IGAgent
     Task<GetUserInfoResult> GetUserInfoAsync();
     
     /// <summary>
-    /// Update user selected actions
-    /// </summary>
-    Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
-    
-    /// <summary>
     /// Clear user data (for testing purposes)
     /// </summary>
     Task<ClearUserResult> ClearUserAsync();
@@ -235,84 +230,6 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
                 Success = false,
                 Message = "Internal error occurred"
             });
-        }
-    }
-
-    public async Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request)
-    {
-        try
-        {
-            _logger.LogDebug("[LumenUserGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
-
-            // Check if user exists
-            if (string.IsNullOrEmpty(State.UserId))
-            {
-                _logger.LogWarning("[LumenUserGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
-                return new UpdateUserActionsResult
-                {
-                    Success = false,
-                    Message = "User not found"
-                };
-            }
-
-            // Validate that the user ID matches
-            if (State.UserId != request.UserId)
-            {
-                _logger.LogWarning("[LumenUserGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
-                    State.UserId, request.UserId);
-                return new UpdateUserActionsResult
-                {
-                    Success = false,
-                    Message = "User ID mismatch"
-                };
-            }
-
-            // Validate actions
-            var validationResult = ValidateActions(request.Actions);
-            if (!validationResult.IsValid)
-            {
-                _logger.LogWarning("[LumenUserGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
-                    validationResult.Message);
-                return new UpdateUserActionsResult
-                {
-                    Success = false,
-                    Message = validationResult.Message
-                };
-            }
-
-            var now = DateTime.UtcNow;
-
-            // Raise event to update actions
-            RaiseEvent(new UserActionsUpdatedEvent
-            {
-                UserId = request.UserId,
-                Actions = request.Actions,
-                UpdatedAt = now
-            });
-
-            // Confirm events to persist state changes
-            await ConfirmEvents();
-
-            _logger.LogInformation("[LumenUserGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
-                request.UserId, string.Join(", ", request.Actions));
-
-            return new UpdateUserActionsResult
-            {
-                Success = true,
-                Message = string.Empty,
-                UpdatedActions = request.Actions,
-                UpdatedAt = now
-            };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LumenUserGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
-                request.UserId);
-            return new UpdateUserActionsResult
-            {
-                Success = false,
-                Message = "Internal error occurred"
-            };
         }
     }
 

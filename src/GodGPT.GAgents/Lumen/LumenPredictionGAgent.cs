@@ -438,7 +438,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
             
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
-            var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
+            
+            // Use deterministic grain key based on userId + predictionType + language
+            // This enables concurrent LLM calls while keeping grain count predictable
+            // Format: userId_daily_en, userId_yearly_zh-tw, etc.
+            // Each user has max 12 grains (3 types × 4 languages)
+            var predictionGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}_{targetLanguage}");
+            var godChat = _clusterClient.GetGrain<IGodChat>(predictionGrainKey);
             var chatId = Guid.NewGuid().ToString();
 
             var settings = new ExecutionPromptSettings
@@ -733,22 +739,16 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         // Gender
         userInfoParts.Add($"Gender: {userInfo.Gender}");
         
-        // Relationship status (optional)
-        if (userInfo.RelationshipStatus.HasValue)
+        // Current residence (optional)
+        if (!string.IsNullOrWhiteSpace(userInfo.CurrentResidence))
         {
-            userInfoParts.Add($"Status: {userInfo.RelationshipStatus}");
+            userInfoParts.Add($"Current Residence: {userInfo.CurrentResidence}");
         }
         
-        // Interests (optional)
-        if (!string.IsNullOrWhiteSpace(userInfo.Interests))
+        // Occupation (optional)
+        if (!string.IsNullOrWhiteSpace(userInfo.Occupation))
         {
-            userInfoParts.Add($"Interests: {userInfo.Interests}");
-        }
-        
-        // MBTI (optional)
-        if (userInfo.MbtiType.HasValue)
-        {
-            userInfoParts.Add($"MBTI: {userInfo.MbtiType}");
+            userInfoParts.Add($"Occupation: {userInfo.Occupation}");
         }
         
         var userInfoLine = string.Join(", ", userInfoParts);
@@ -1116,7 +1116,12 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             // Call LLM for translation
             var llmStopwatch = Stopwatch.StartNew();
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
-            var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
+            
+            // Use deterministic grain key based on language to enable true concurrent LLM calls
+            // while avoiding grain proliferation (same user + language always reuses same grain)
+            // Format: userId_targetLang_translation (e.g., "user123_zh-tw_translation")
+            var translationGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{targetLanguage}_translation");
+            var godChat = _clusterClient.GetGrain<IGodChat>(translationGrainKey);
             var chatId = Guid.NewGuid().ToString();
             
             var response = await godChat.ChatWithoutHistoryAsync(
