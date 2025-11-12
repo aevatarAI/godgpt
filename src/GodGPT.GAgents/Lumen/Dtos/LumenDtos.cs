@@ -440,16 +440,6 @@ public class GetTodayPredictionResult
 }
 
 /// <summary>
-/// Prediction method result with feedback
-/// </summary>
-[GenerateSerializer]
-public class PredictionMethodResult
-{
-    [Id(0)] public Dictionary<string, string> Content { get; set; } = new(); // Prediction content (summary, description, detail, etc.)
-    [Id(1)] public PredictionFeedbackSummary? Feedback { get; set; } // Associated feedback if exists
-}
-
-/// <summary>
 /// Feedback summary within prediction history
 /// </summary>
 [GenerateSerializer]
@@ -472,9 +462,9 @@ public class PredictionSummaryDto
 {
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public DateOnly PredictionDate { get; set; }
-    [Id(2)] public string? ForecastSummary { get; set; } // Brief summary from forecast
-    [Id(3)] public Dictionary<string, PredictionMethodResult> Results { get; set; } = new(); // Prediction results with feedbacks merged
-    [Id(4)] public bool HasFeedback { get; set; }
+    [Id(2)] public Dictionary<string, string> Results { get; set; } = new(); // Flattened prediction results
+    [Id(3)] public PredictionType Type { get; set; } // Daily/Yearly/Lifetime
+    [Id(4)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks if exist
     [Id(5)] public DateTime CreatedAt { get; set; }
 }
 
