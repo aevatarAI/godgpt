@@ -841,9 +841,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             SessionId = sessionId,
             Title = title,
         });
-
-        //TODO Test Code
-        //await ConfirmEvents();
+        
+        await ConfirmEvents();
         return sessionId;
     }
 
@@ -1157,6 +1156,20 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     CreateAt = @createSessionInfo.CreateAt,
                     Guider = @createSessionInfo.Guider
                 });
+
+                //Test code
+                for (int i = 0; i < 50; i++)
+                {
+                    state.SessionInfoList.Add(new SessionInfo()
+                    {
+                        SessionId = Guid.NewGuid(),
+                        Title = "天地钩就是在门的顶部和底部增加了两套锁舌有一定的抵抗异常开锁时间门打开还需另外花时间进行破解耽误了救急而且天地钩的构造复杂出现故障会十分麻",
+                        CreateAt = @createSessionInfo.CreateAt,
+                        Guider = @createSessionInfo.Guider
+                    });
+                }
+                //Test code end
+                
                 break;
             case DeleteSessionEventLog @deleteSessionEventLog:
                 var deleteSession = state.GetSession(@deleteSessionEventLog.SessionId);
@@ -1194,19 +1207,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                     $"[ChatGAgentManager][RenameChatTitleEvent] event exist:{JsonConvert.SerializeObject(@renameTitleEventLog)}");
                 sessionInfo.Title = @renameTitleEventLog.Title;
                 state.SessionInfoList = sessionInfoList;
-                
-                //Test Code
-                for (int i = 0; i < 50; i++)
-                {
-                    sessionInfoList.Add(new SessionInfo
-                    {
-                        SessionId = Guid.NewGuid(),
-                        Title = @renameTitleEventLog.Title,
-                    });
-                }
-                state.SessionInfoList = sessionInfoList;
-                //Test Code end
-                
                 break;
             case ClearAllEventLog:
                 state.SessionInfoList.Clear();
