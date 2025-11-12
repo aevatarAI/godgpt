@@ -546,7 +546,7 @@ public class MethodStatsDto
 }
 
 /// <summary>
-/// Recommendation item DTO
+/// Recommendation item DTO (DEPRECATED - kept for state compatibility only)
 /// </summary>
 [GenerateSerializer]
 public class RecommendationItemDto
@@ -560,7 +560,7 @@ public class RecommendationItemDto
 }
 
 /// <summary>
-/// Get recommendations result
+/// Get recommendations result (DEPRECATED - kept for state compatibility only)
 /// </summary>
 [GenerateSerializer]
 public class GetRecommendationsResult
