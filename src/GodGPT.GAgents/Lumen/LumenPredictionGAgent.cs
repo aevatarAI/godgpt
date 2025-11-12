@@ -984,13 +984,15 @@ FORMAT (flattened):
   ""predictions"": {{
     ""{targetLanguage}"": {{
       ""dayTitle"": ""[VARIED: The Day of [word1] and [word2] - choose words reflecting today's unique energy]"",
+      ""keywordFocus"": ""[VARIED: Single powerful word/short phrase (1-3 words) capturing today's core theme. Examples: Foundation, Transformation, Clarity, Inner Strength, New Beginnings. Make it unique for each user based on their {sunSign} and today's energy]"",
+      ""moonInfluence"": ""[VARIED: 8-15 words describing today's lunar/emotional energy flow for THIS user. Pattern: 'Emotions/Energy [action] [timing], then [outcome]. Examples: 'Emotions may peak mid-day then settle by evening', 'Energy rises slowly, peaks afternoon', 'Mood shifts from introspective to social']"",
       ""todaysReading_tarotCard_name"": ""[VARIED: Select DIFFERENT card for THIS user. Consider their Sun sign ({sunSign}), element ({zodiacElement}), and today's energy. Choose from full 78-card deck - Major/Minor Arcana. DO NOT use same card for all users]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", ""todaysReading_tarotCard_orientation"": ""[VARIED: Upright/Reversed reflecting THIS user's individual life phase. Consider their {sunSign} nature]"",
       ""todaysReading_pathTitle"": ""{displayName}'s Path Today - A [VARIED Adjective] Path"",
       ""todaysReading_pathDescription"": ""[VARIED: 15-25 words greeting, describe UNIQUE energy for this user. Start 'Hi {displayName}']"", ""todaysReading_pathDescriptionExpanded"": ""[VARIED: 30-40 words offering FRESH wisdom and actionable guidance]"",
       ""todaysReading_careerAndWork"": ""[VARIED: 10-20 words]"", ""todaysReading_loveAndRelationships"": ""[VARIED: 10-20 words]"", 
       ""todaysReading_wealthAndFinance"": ""[VARIED: 10-20 words]"", ""todaysReading_healthAndWellness"": ""[VARIED: 10-15 words]"",
       ""todaysTakeaway"": ""[VARIED: 15-25 words starting '{displayName}, your...' with contrast/cause-effect pattern]"",
-      ""luckyAlignments_luckyNumber_number"": ""[VARIED: Generate different number for each user, 1-9. MUST use 'Word (digit)' format: English→'Seven (7)', Spanish→'Siete (7)', Chinese→'七（7）' with Chinese parentheses（）]"", ""luckyAlignments_luckyNumber_digit"": ""[VARIED: 1-9, ensure variety across users]"", 
+      ""luckyAlignments_luckyNumber_number"": ""[VARIED: Generate different number for each user, 1-9. MUST use 'Word (digit)' ]"", ""luckyAlignments_luckyNumber_digit"": ""[VARIED: 1-9, ensure variety across users]"", 
       ""luckyAlignments_luckyNumber_description"": ""[VARIED: 15-20 words on what THIS number means for THIS user today]"",
       ""luckyAlignments_luckyNumber_calculation"": ""[VARIED: 12-18 words formula example combining today's date with birth numerology, make it look authentic]"",
       ""luckyAlignments_luckyStone"": ""[VARIED: Select DIFFERENT stone for THIS user's element ({zodiacElement}). MUST vary by element: Fire→Carnelian/Ruby/Garnet, Earth→Jade/Emerald/Moss Agate, Air→Citrine/Aquamarine/Clear Quartz, Water→Moonstone/Pearl/Lapis Lazuli. Choose specific stone based on {sunSign} + today's energy needs. DO NOT use same stone for all {zodiacElement} users]"", ""luckyAlignments_luckyStone_description"": ""[VARIED: 15-20 words on how THIS {zodiacElement}-element stone helps THIS user today]"",
