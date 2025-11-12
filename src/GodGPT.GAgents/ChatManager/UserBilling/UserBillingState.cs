@@ -23,7 +23,6 @@ public class PaymentSummary
     [Id(5)] public DateTime CreatedAt { get; set; }
     [Id(6)] public DateTime? CompletedAt { get; set; }
     [Id(7)] public PaymentStatus Status { get; set; }
-    [Obsolete]
     [Id(8)] public PaymentType PaymentType { get; set; }
     [Obsolete]
     [Id(9)] public PaymentMethod Method { get; set; }
@@ -88,4 +87,5 @@ public class PaymentSummaryDto
     [Id(16)] public decimal? AmountNetTotal { get; set; }
     [Id(17)] public bool IsTrial { get; set; }
     [Id(18)] public string? TrialCode { get; set; }
+    [Id(19)] public PaymentType PaymentType { get; set; }
 }

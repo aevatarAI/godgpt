@@ -65,6 +65,7 @@ public class AppleStoreWebhookHandler : IWebhookHandler
                 && notificationType != AppStoreNotificationType.REVOKE.ToString()
                 && notificationType != AppStoreNotificationType.DID_CHANGE_RENEWAL_PREF.ToString()
                 && notificationType != AppStoreNotificationType.REFUND.ToString()
+                && notificationType != AppStoreNotificationType.CONSUMPTION_REQUEST.ToString()
                )
             {
                 _logger.LogInformation("[AppleStoreWebhookHandler][webhook] Filter NotificationType {0}, SubType={1}",

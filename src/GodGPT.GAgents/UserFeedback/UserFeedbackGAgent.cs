@@ -165,7 +165,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                 ContactRequested = request.ContactRequested,
                 Email = request.Email?.Trim() ?? string.Empty,
                 SubmittedAt = DateTime.UtcNow,
-                ReasonTextsEnglish = englishReasonTexts
+                ReasonTextsEnglish = englishReasonTexts,
+                Subscription = request.Subscription
             };
 
             // Raise event to update state
@@ -265,7 +266,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                     Response = State.CurrentFeedback.Response,
                     ContactRequested = State.CurrentFeedback.ContactRequested,
                     Email = State.CurrentFeedback.Email,
-                    SubmittedAt = State.CurrentFeedback.SubmittedAt
+                    SubmittedAt = State.CurrentFeedback.SubmittedAt,
+                    Subscription = State.CurrentFeedback.Subscription
             });
         }
         
@@ -283,7 +285,8 @@ public class UserFeedbackGAgent : GAgentBase<UserFeedbackState, UserFeedbackEven
                     Response = archivedFeedback.Response,
                     ContactRequested = archivedFeedback.ContactRequested,
                     Email = archivedFeedback.Email,
-                    SubmittedAt = archivedFeedback.SubmittedAt
+                    SubmittedAt = archivedFeedback.SubmittedAt,
+                    Subscription = archivedFeedback.Subscription
                 });
             }
         }

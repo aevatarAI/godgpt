@@ -30,6 +30,7 @@ public class PaymentDetailsDto
     [Id(20)] public List<DiscountDetails> Discounts { get; set; }
     [Id(21)] public bool IsTrial { get; set; }
     [Id(22)] public string TrialCode { get; set; }
+    [Id(23)] public string PaymentIntentId { get; set; }
 }
 
 [GenerateSerializer]
