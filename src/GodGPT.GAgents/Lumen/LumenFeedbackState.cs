@@ -3,10 +3,10 @@ using Aevatar.Core.Abstractions;
 namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Fortune feedback state data
+/// Lumen feedback state data
 /// </summary>
 [GenerateSerializer]
-public class FortuneFeedbackState : StateBase
+public class LumenFeedbackState : StateBase
 {
     [Id(0)] public string FeedbackId { get; set; } = string.Empty;
     [Id(1)] public string UserId { get; set; } = string.Empty;

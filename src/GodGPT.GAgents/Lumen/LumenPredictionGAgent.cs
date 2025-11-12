@@ -312,7 +312,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             Results = localizedResults,
             AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
             AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
-            Feedbacks = null // TODO: Load feedbacks if needed
+            Feedbacks = null
         };
 
         return Task.FromResult<PredictionResultDto?>(predictionDto);
@@ -1192,74 +1192,6 @@ Output in JSON format with 'predictions' object containing each target language.
             return null;
         }
     }
-
-    /// <summary>
-    /// Parse AI JSON response (structure with energy at top level and forecast in results)
-    /// [DEPRECATED] Kept for backward compatibility
-    /// </summary>
-    private (Dictionary<string, Dictionary<string, string>>?, int) ParseAIResponse(string aiResponse)
-    {
-        try
-        {
-            // Try to extract JSON from response (in case AI adds extra text)
-            var jsonStart = aiResponse.IndexOf('{');
-            var jsonEnd = aiResponse.LastIndexOf('}');
-
-            if (jsonStart >= 0 && jsonEnd > jsonStart)
-            {
-                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
-                
-                if (fullResponse == null)
-                {
-                    return (null, 70);
-                }
-
-                // Extract energy (supporting both "energy" and "overallEnergy" for backward compatibility)
-                var energy = 70; // Default value
-                if (fullResponse.ContainsKey("energy"))
-                {
-                    if (fullResponse["energy"] is long energyLong)
-                    {
-                        energy = (int)energyLong;
-                    }
-                    else if (fullResponse["energy"] is int energyInt)
-                    {
-                        energy = energyInt;
-                    }
-                }
-                else if (fullResponse.ContainsKey("overallEnergy"))
-                {
-                    if (fullResponse["overallEnergy"] is long energyLong)
-                    {
-                        energy = (int)energyLong;
-                    }
-                    else if (fullResponse["overallEnergy"] is int energyInt)
-                    {
-                        energy = energyInt;
-                    }
-                }
-
-                // Extract results (should include forecast as first item)
-                if (fullResponse.ContainsKey("results") && fullResponse["results"] != null)
-                {
-                    var resultsJson = JsonConvert.SerializeObject(fullResponse["results"]);
-                    var results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(resultsJson);
-                    return (results, energy);
-                }
-
-                return (null, energy);
-            }
-
-            return (null, 70);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[FortunePredictionGAgent][ParseAIResponse] Failed to parse JSON");
-            return (null, 70);
-        }
-    }
-    
     /// <summary>
     /// Parse multilingual daily response from AI
     /// Returns (default English results, multilingual dictionary)
@@ -1548,22 +1480,6 @@ Output in JSON format with 'predictions' object containing each target language.
             _logger.LogError(ex, "[FortunePredictionGAgent][FlattenNestedJsonToFlat] Failed to flatten JSON");
             return null;
         }
-    }
-    
-    /// <summary>
-    /// [DEPRECATED] Old flatten method - kept for compatibility with Lifetime/Yearly parsing
-    /// </summary>
-    private Dictionary<string, Dictionary<string, string>>? FlattenNestedJson(string json)
-    {
-        var flat = FlattenNestedJsonToFlat(json);
-        if (flat == null) return null;
-        
-        // Wrap in section structure (legacy compatibility)
-        var result = new Dictionary<string, Dictionary<string, string>>
-        {
-            [""] = flat
-        };
-        return result;
     }
     
     /// <summary>

@@ -29,7 +29,7 @@ public interface IFortuneFeedbackGAgent : IGAgent
 
 [GAgent(nameof(FortuneFeedbackGAgent))]
 [Reentrant]
-public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFeedbackEventLog>,
+public class FortuneFeedbackGAgent : GAgentBase<LumenFeedbackState, FortuneFeedbackEventLog>,
     IFortuneFeedbackGAgent
 {
     private readonly ILogger<FortuneFeedbackGAgent> _logger;
@@ -47,7 +47,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortuneFeedbackState state,
+    protected sealed override void GAgentTransitionState(LumenFeedbackState state,
         StateLogEventBase<FortuneFeedbackEventLog> @event)
     {
         switch (@event)
@@ -119,15 +119,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
                 "destiny",          // Destiny Direction
                 "zodiacCycle",      // Zodiac Cycle Influence
                 "lifePlot",         // Life Plot
-                "activationSteps",  // Activation Steps
-                
-                // Legacy methods (deprecated but still supported)
-                "opportunity",      // Old: Today's opportunity
-                "bazi",             // Old: Ba Zi
-                "astrology",        // Old: Astrology
-                "tarot",            // Old: Tarot
-                "lifeTheme1",       // Old: Life Theme 1
-                "lifeTheme2"        // Old: Life Theme 2
+                "activationSteps"   // Activation Steps
                 };
 
                 if (!validMethods.Contains(request.PredictionMethod))
@@ -420,9 +412,7 @@ public class FortuneFeedbackGAgent : GAgentBase<FortuneFeedbackState, FortuneFee
             // Yearly prediction sections
             "yearlyTheme", "divineInfluence",
             // Profile (Lifetime) sections
-            "fourPillars", "chineseAstrology", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps",
-            // Legacy methods (deprecated but still supported)
-            "opportunity", "bazi", "astrology", "tarot", "lifeTheme1", "lifeTheme2"
+            "fourPillars", "chineseAstrology", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps"
             };
 
             if (!validMethods.Contains(request.PredictionMethod))
