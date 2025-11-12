@@ -842,7 +842,8 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Title = title,
         });
 
-        await ConfirmEvents();
+        //TODO Test Code
+        //await ConfirmEvents();
         return sessionId;
     }
 
