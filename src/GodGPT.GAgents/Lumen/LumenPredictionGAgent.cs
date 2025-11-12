@@ -184,12 +184,24 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     localizedResults = State.MultilingualResults["en"];
                     returnedLanguage = "en";
                     isFallback = true;
+                    
+                    // Trigger on-demand translation if requested language not available
+                    if (userLanguage != "en")
+                    {
+                        TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, "en", State.MultilingualResults["en"], userLanguage);
+                    }
                 }
                 else
                 {
                     localizedResults = State.Results;
                     returnedLanguage = "en";
                     isFallback = userLanguage != "en";
+                    
+                    // Trigger on-demand translation if requested language not available
+                    if (userLanguage != "en" && !State.Results.IsNullOrEmpty())
+                    {
+                        TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, "en", State.Results, userLanguage);
+                    }
                 }
                 
                 // Add currentPhase for Lifetime predictions
@@ -317,6 +329,14 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             returnedLanguage = "en";
             isFallback = true;
             _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found, using English fallback", userLanguage);
+            
+            // Trigger on-demand translation if requested language not available
+            if (userLanguage != "en")
+            {
+                // Need to get userInfo - create a minimal one with just userId
+                var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
+                TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, "en", State.MultilingualResults["en"], userLanguage);
+            }
         }
         else
         {
@@ -324,6 +344,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             localizedResults = State.Results;
             returnedLanguage = "en"; // Assume default is English
             isFallback = userLanguage != "en";
+            
+            // Trigger on-demand translation if requested language not available
+            if (userLanguage != "en" && !State.Results.IsNullOrEmpty())
+            {
+                var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
+                TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, "en", State.Results, userLanguage);
+            }
         }
 
         var predictionDto = new PredictionResultDto
@@ -699,27 +726,6 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 IsFallback = false, // First generation always returns the requested language
                 Feedbacks = null
             };
-            
-            // Stage 2: Trigger async generation of remaining languages
-            if (multilingualResults != null && multilingualResults.ContainsKey(targetLanguage))
-            {
-                var sourceContent = multilingualResults[targetLanguage];
-                
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Triggering async generation for remaining languages");
-                
-                // Fire and forget - run in background
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await GenerateRemainingLanguagesAsync(userInfo, predictionDate, type, targetLanguage, sourceContent);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, $"[Lumen] {userInfo.UserId} Background translation task failed");
-                    }
-                });
-            }
             
             return new GetTodayPredictionResult
             {
@@ -1105,6 +1111,49 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
 ";
 
         return translationPrompt;
+    }
+
+    /// <summary>
+    /// Trigger on-demand translation for a specific language (Fire-and-forget)
+    /// </summary>
+    private void TriggerOnDemandTranslationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
+    {
+        // Check if already being translated or already exists
+        if (State.MultilingualResults.ContainsKey(targetLanguage))
+        {
+            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists, skipping translation");
+            return;
+        }
+        
+        // Check if translation is already in progress for this language
+        var translationKey = $"{type}_{targetLanguage}";
+        if (State.TranslationInProgress.Contains(translationKey))
+        {
+            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Translation already in progress for {targetLanguage}, skipping");
+            return;
+        }
+        
+        _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering translation: {sourceLanguage} → {targetLanguage} for {type}");
+        
+        // Mark as in progress
+        State.TranslationInProgress.Add(translationKey);
+        
+        // Fire and forget - run in background
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await TranslateSingleLanguageAsync(userInfo, predictionDate, type, sourceLanguage, sourceContent, targetLanguage);
+                
+                // Remove from in-progress set after completion
+                State.TranslationInProgress.Remove(translationKey);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Lumen][OnDemand] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
+                State.TranslationInProgress.Remove(translationKey);
+            }
+        });
     }
 
     /// <summary>
