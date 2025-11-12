@@ -1,12 +1,12 @@
-using Aevatar.Application.Grains.Fortune.Dtos;
-using Aevatar.Application.Grains.Fortune.SEvents;
+using Aevatar.Application.Grains.Lumen.Dtos;
+using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Concurrency;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
 /// Interface for Fortune Stats Snapshot GAgent - stores periodic snapshots from Redis

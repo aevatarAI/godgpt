@@ -2,7 +2,7 @@ using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Orleans;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 [GenerateSerializer]
 public class MethodStats

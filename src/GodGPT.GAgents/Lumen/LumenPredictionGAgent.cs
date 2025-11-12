@@ -1,7 +1,7 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
-using Aevatar.Application.Grains.Fortune.Dtos;
-using Aevatar.Application.Grains.Fortune.SEvents;
+using Aevatar.Application.Grains.Lumen.Dtos;
+using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Options;
@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 using Orleans.Concurrency;
 using System.Diagnostics;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
 /// Prediction type enumeration

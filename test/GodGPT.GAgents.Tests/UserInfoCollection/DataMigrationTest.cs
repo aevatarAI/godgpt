@@ -1,6 +1,6 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
-using Aevatar.Application.Grains.Fortune;
-using Aevatar.Application.Grains.Fortune.Dtos;
+using Aevatar.Application.Grains.Lumen;
+using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Application.Grains.UserInfo.Dtos;
 using Shouldly;

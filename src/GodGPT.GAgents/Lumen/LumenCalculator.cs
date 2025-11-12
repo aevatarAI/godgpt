@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Aevatar.Application.Grains.Fortune.Dtos;
+using Aevatar.Application.Grains.Lumen.Dtos;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
 /// Fortune calculation utilities for accurate astrological calculations

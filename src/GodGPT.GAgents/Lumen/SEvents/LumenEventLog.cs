@@ -1,8 +1,8 @@
-using Aevatar.Application.Grains.Fortune.Dtos;
+using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Core.Abstractions;
 using Orleans;
 
-namespace Aevatar.Application.Grains.Fortune.SEvents;
+namespace Aevatar.Application.Grains.Lumen.SEvents;
 
 #region User Events
 

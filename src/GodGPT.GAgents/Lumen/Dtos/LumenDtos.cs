@@ -1,4 +1,4 @@
-namespace Aevatar.Application.Grains.Fortune.Dtos;
+namespace Aevatar.Application.Grains.Lumen.Dtos;
 
 #region Enums
 

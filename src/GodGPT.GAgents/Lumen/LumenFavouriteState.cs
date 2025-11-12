@@ -1,6 +1,6 @@
 using Aevatar.Core.Abstractions;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
 /// Favourite prediction detail
