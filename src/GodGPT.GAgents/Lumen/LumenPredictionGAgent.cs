@@ -1089,13 +1089,13 @@ CRITICAL RULES:
    - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
    - Sentence structure: Adjust to natural Chinese word order
 
-OUTPUT FORMAT REQUIREMENTS:
-- ALL field values MUST be strings, NEVER arrays or objects
-- If a field contains multiple items, join them with commas into a SINGLE string
-  Example: CORRECT: ""patience, courage, wisdom""
-           WRONG: [""patience"", ""courage"", ""wisdom""]
+OUTPUT FORMAT REQUIREMENTS - CRITICAL:
+⚠️ PRESERVE EXACT DATA TYPE OF EACH FIELD:
+- If source field is a STRING → translate as STRING
+- If source field is an ARRAY → translate as ARRAY (translate each element, keep array structure)
+- NEVER change data types: string ↔ array conversion is FORBIDDEN
+- Example: [""Take walk"", ""Meditate""] → [""散步"", ""冥想""] (NOT ""散步, 冥想"")
 - Structure: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
-- Every field value must be a simple string type
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
@@ -1228,10 +1228,9 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                     // Handle different value types
                     if (fieldValue is Newtonsoft.Json.Linq.JArray arrayValue)
                     {
-                        // Convert array to comma-separated string
-                        var items = arrayValue.Select(item => item.ToString()).ToArray();
-                        contentDict[fieldName] = string.Join(", ", items);
-                        _logger.LogWarning($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, converted to string");
+                        // Serialize array as JSON string (to match initial generation format)
+                        contentDict[fieldName] = arrayValue.ToString(Newtonsoft.Json.Formatting.None);
+                        _logger.LogDebug($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, serialized as JSON string");
                     }
                     else if (fieldValue != null)
                     {
@@ -1315,18 +1314,18 @@ CRITICAL RULES:
    - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
    - Sentence structure: Adjust to natural Chinese word order
 
-OUTPUT FORMAT REQUIREMENTS:
-- ALL field values MUST be strings, NEVER arrays or objects
-- If a field contains multiple items, join them with commas into a SINGLE string
-  Example: CORRECT: ""patience, courage, wisdom""
-           WRONG: [""patience"", ""courage"", ""wisdom""]
+OUTPUT FORMAT REQUIREMENTS - CRITICAL:
+⚠️ PRESERVE EXACT DATA TYPE OF EACH FIELD:
+- If source field is a STRING → translate as STRING
+- If source field is an ARRAY → translate as ARRAY (translate each element, keep array structure)
+- NEVER change data types: string ↔ array conversion is FORBIDDEN
+- Example: [""Take walk"", ""Meditate""] → [""散步"", ""冥想""] (NOT ""散步, 冥想"")
 - Output a flat JSON object with all translated fields
-- Every field value must be a simple string type
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
 
-Output ONLY valid JSON with all values as strings. No arrays, no nested objects in field values.
+Output ONLY valid JSON. Preserve the exact data type of each field from the source.
 ";
 
         return translationPrompt;
