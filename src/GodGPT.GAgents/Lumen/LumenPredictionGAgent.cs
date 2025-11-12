@@ -175,33 +175,32 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 
                 if (State.MultilingualResults.ContainsKey(userLanguage))
                 {
+                    // Requested language is available
                     localizedResults = State.MultilingualResults[userLanguage];
                     returnedLanguage = userLanguage;
                     isFallback = false;
                 }
-                else if (State.MultilingualResults.ContainsKey("en"))
-                {
-                    localizedResults = State.MultilingualResults["en"];
-                    returnedLanguage = "en";
-                    isFallback = true;
-                    
-                    // Trigger on-demand translation if requested language not available
-                    if (userLanguage != "en")
-                    {
-                        TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, "en", State.MultilingualResults["en"], userLanguage);
-                    }
-                }
                 else
                 {
-                    localizedResults = State.Results;
-                    returnedLanguage = "en";
-                    isFallback = userLanguage != "en";
-                    
-                    // Trigger on-demand translation if requested language not available
-                    if (userLanguage != "en" && !State.Results.IsNullOrEmpty())
+                    // Requested language not available - trigger on-demand translation and return error
+                    var sourceLanguage = State.MultilingualResults.ContainsKey("en") ? "en" : State.MultilingualResults.Keys.FirstOrDefault();
+                    if (sourceLanguage != null)
+                    {
+                        var sourceContent = State.MultilingualResults[sourceLanguage];
+                        TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, sourceLanguage, sourceContent, userLanguage);
+                    }
+                    else if (!State.Results.IsNullOrEmpty())
                     {
                         TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, "en", State.Results, userLanguage);
                     }
+                    
+                    _logger.LogWarning($"[Lumen] {userInfo.UserId} Language {userLanguage} not available for {type}, triggered translation");
+                    
+                    return new GetTodayPredictionResult
+                    {
+                        Success = false,
+                        Message = $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
+                    };
                 }
                 
                 // Add currentPhase for Lifetime predictions
@@ -311,47 +310,30 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         }
 
         // Get localized results based on user language
-        Dictionary<string, string> localizedResults;
-        string returnedLanguage;
-        bool isFallback;
-        
-        if (State.MultilingualResults.ContainsKey(userLanguage))
+        if (!State.MultilingualResults.ContainsKey(userLanguage))
         {
-            // Requested language is available
-            localizedResults = State.MultilingualResults[userLanguage];
-            returnedLanguage = userLanguage;
-            isFallback = false;
-        }
-        else if (State.MultilingualResults.ContainsKey("en"))
-        {
-            // Fallback to English
-            localizedResults = State.MultilingualResults["en"];
-            returnedLanguage = "en";
-            isFallback = true;
-            _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found, using English fallback", userLanguage);
+            // Requested language not available - trigger on-demand translation and return null
+            var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
+            var sourceLanguage = State.MultilingualResults.ContainsKey("en") ? "en" : State.MultilingualResults.Keys.FirstOrDefault();
             
-            // Trigger on-demand translation if requested language not available
-            if (userLanguage != "en")
+            if (sourceLanguage != null)
             {
-                // Need to get userInfo - create a minimal one with just userId
-                var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
-                TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, "en", State.MultilingualResults["en"], userLanguage);
+                var sourceContent = State.MultilingualResults[sourceLanguage];
+                TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, sourceLanguage, sourceContent, userLanguage);
             }
-        }
-        else
-        {
-            // Use default results if multilingual not available
-            localizedResults = State.Results;
-            returnedLanguage = "en"; // Assume default is English
-            isFallback = userLanguage != "en";
-            
-            // Trigger on-demand translation if requested language not available
-            if (userLanguage != "en" && !State.Results.IsNullOrEmpty())
+            else if (!State.Results.IsNullOrEmpty())
             {
-                var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
                 TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, "en", State.Results, userLanguage);
             }
+            
+            _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found, triggered translation", userLanguage);
+            return Task.FromResult<PredictionResultDto?>(null);
         }
+        
+        // Requested language is available
+        var localizedResults = State.MultilingualResults[userLanguage];
+        var returnedLanguage = userLanguage;
+        var isFallback = false;
 
         var predictionDto = new PredictionResultDto
         {
