@@ -26,8 +26,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
     /// </summary>
     private ILumenUserProfileGAgent GetLumenUserProfileGAgent(Guid userId)
     {
-        var fortuneGrainId = CommonHelper.StringToGuid(userId.ToString());
-        return Cluster.GrainFactory.GetGrain<ILumenUserProfileGAgent>(fortuneGrainId);
+        var lumenGrainId = CommonHelper.StringToGuid(userId.ToString());
+        return Cluster.GrainFactory.GetGrain<ILumenUserProfileGAgent>(lumenGrainId);
     }
 
     #region Migration from LumenUserProfile to UserInfoCollection

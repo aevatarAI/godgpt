@@ -382,7 +382,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
                 Month = 8,
                 Year = 1992
             },
-            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.DailyLumen, SeekingInterestEnum.CareerGuidance },
+            SeekingInterests = new List<SeekingInterestEnum> { SeekingInterestEnum.DailyFortune, SeekingInterestEnum.CareerGuidance },
             SourceChannels = new List<SourceChannelEnum> { SourceChannelEnum.Advertisement, SourceChannelEnum.Other }
         };
 
