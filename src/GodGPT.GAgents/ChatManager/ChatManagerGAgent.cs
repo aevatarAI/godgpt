@@ -119,25 +119,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             $"[ChatGAgentManager][AIStreamingErrorResponseGEvent] end:{JsonConvert.SerializeObject(@event)}");
     }
 
-
-    // [EventHandler]
-    // public async Task HandleEventAsync(AIOldStreamingResponseGEvent @event)
-    // {
-    //     Logger.LogDebug($"[ChatGAgentManager][AIStreamingResponseGEvent] start:{JsonConvert.SerializeObject(@event)}");
-    //
-    //     await PublishAsync(new ResponseStreamGodChat()
-    //     {
-    //         Response = @event.ResponseContent,
-    //         ChatId = @event.Context.ChatId,
-    //         IsLastChunk = @event.IsLastChunk,
-    //         SerialNumber = @event.SerialNumber,
-    //         SessionId = @event.Context.RequestId
-    //     });
-    //     
-    //     Logger.LogDebug($"[ChatGAgentManager][AIStreamingResponseGEvent] end:{JsonConvert.SerializeObject(@event)}");
-    //
-    // }
-
     public async Task RenameChatTitleAsync(RenameChatTitleEvent @event)
     {
         Logger.LogDebug($"[ChatGAgentManager][RenameChatTitleEvent] start:{JsonConvert.SerializeObject(@event)}");
@@ -953,22 +934,6 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         var credits = await userQuotaGAgent.GetCreditsAsync();
         var subscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync();
         var ultimateSubscriptionInfo = await userQuotaGAgent.GetAndSetSubscriptionAsync(true);
-
-        // var utcNow = DateTime.UtcNow;
-        // var scheduledRewards = (await invitationGrain.GetRewardHistoryAsync())
-        //     .Where(r => r.IsScheduled && 
-        //    r.ScheduledDate.HasValue && 
-        //    utcNow > r.ScheduledDate.Value && 
-        //    !string.IsNullOrEmpty(r.InvoiceId))
-        //     .ToList();
-        //     
-        // foreach (var reward in scheduledRewards)
-        // {
-        //     Logger.LogInformation($"[ChatGAgentManager][GetUserProfileAsync] Processing scheduled reward for user {this.GetPrimaryKey()}, credits: {reward.Credits}");
-        //     await userQuotaGAgent.AddCreditsAsync(reward.Credits);
-        //     await invitationGrain.MarkRewardAsIssuedAsync(reward.InviteeId, reward.InvoiceId);
-        //     credits.Credits += reward.Credits;
-        // }
 
         return new UserProfileDto
         {
