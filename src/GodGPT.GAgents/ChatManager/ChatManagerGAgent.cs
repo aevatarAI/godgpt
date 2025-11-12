@@ -292,7 +292,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
     [EventHandler]
     public async Task HandleEventAsync(RequestSetUserProfileEvent @event)
     {
-        Logger.LogDebug($"[ChatGAgentManager][RequestSetFortuneInfoEvent] start:{JsonConvert.SerializeObject(@event)}");
+        Logger.LogDebug($"[ChatGAgentManager][RequestSetLumenInfoEvent] start:{JsonConvert.SerializeObject(@event)}");
 
         bool success = false;
         try
@@ -302,7 +302,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
         }
         catch (Exception e)
         {
-            Logger.LogError(e, $"[ChatGAgentManager][RequestSetFortuneInfoEvent] handle error:{e.ToString()}");
+            Logger.LogError(e, $"[ChatGAgentManager][RequestSetLumenInfoEvent] handle error:{e.ToString()}");
         }
 
         await PublishAsync(new ResponseSetUserProfile()
@@ -310,7 +310,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
             Success = success
         });
 
-        Logger.LogDebug($"[ChatGAgentManager][RequestSetFortuneInfoEvent] end");
+        Logger.LogDebug($"[ChatGAgentManager][RequestSetLumenInfoEvent] end");
     }
 
     [EventHandler]
@@ -1241,11 +1241,11 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                 state.InviterId = null;
                 state.VoiceLanguage = VoiceLanguageEnum.Unset;
                 break;
-            case SetUserProfileEventLog @setFortuneInfoEventLog:
-                state.Gender = @setFortuneInfoEventLog.Gender;
-                state.BirthDate = @setFortuneInfoEventLog.BirthDate;
-                state.BirthPlace = @setFortuneInfoEventLog.BirthPlace;
-                state.FullName = @setFortuneInfoEventLog.FullName;
+            case SetUserProfileEventLog @setLumenInfoEventLog:
+                state.Gender = @setLumenInfoEventLog.Gender;
+                state.BirthDate = @setLumenInfoEventLog.BirthDate;
+                state.BirthPlace = @setLumenInfoEventLog.BirthPlace;
+                state.FullName = @setLumenInfoEventLog.FullName;
                 break;
             case SetVoiceLanguageEventLog @setVoiceLanguageEventLog:
                 // Update the voice language preference for the user

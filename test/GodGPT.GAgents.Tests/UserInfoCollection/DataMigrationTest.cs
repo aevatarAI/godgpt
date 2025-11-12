@@ -1,6 +1,6 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
-using Aevatar.Application.Grains.Fortune;
-using Aevatar.Application.Grains.Fortune.Dtos;
+using Aevatar.Application.Grains.Lumen;
+using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Application.Grains.UserInfo.Dtos;
 using Shouldly;
@@ -9,7 +9,7 @@ using Xunit.Abstractions;
 namespace Aevatar.Application.Grains.Tests.UserInfoCollection;
 
 /// <summary>
-/// Test suite for data migration between FortuneUserProfile and UserInfoCollection
+/// Test suite for data migration between LumenUserProfile and UserInfoCollection
 /// </summary>
 public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle>
 {
@@ -21,26 +21,26 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
     }
 
     /// <summary>
-    /// Helper method to get FortuneUserProfileGAgent with correct Grain ID mapping
-    /// FortuneUserProfile uses StringToGuid(userId.ToString()) as Grain ID
+    /// Helper method to get LumenUserProfileGAgent with correct Grain ID mapping
+    /// LumenUserProfile uses StringToGuid(userId.ToString()) as Grain ID
     /// </summary>
-    private IFortuneUserProfileGAgent GetFortuneUserProfileGAgent(Guid userId)
+    private ILumenUserProfileGAgent GetLumenUserProfileGAgent(Guid userId)
     {
-        var fortuneGrainId = CommonHelper.StringToGuid(userId.ToString());
-        return Cluster.GrainFactory.GetGrain<IFortuneUserProfileGAgent>(fortuneGrainId);
+        var lumenGrainId = CommonHelper.StringToGuid(userId.ToString());
+        return Cluster.GrainFactory.GetGrain<ILumenUserProfileGAgent>(lumenGrainId);
     }
 
-    #region Migration from FortuneUserProfile to UserInfoCollection
+    #region Migration from LumenUserProfile to UserInfoCollection
 
     [Fact]
-    public async Task GetUserInfoCollectionAsync_Should_Migrate_From_FortuneUserProfile_When_UserInfoCollection_Not_Initialized()
+    public async Task GetUserInfoCollectionAsync_Should_Migrate_From_LumenUserProfile_When_UserInfoCollection_Not_Initialized()
     {
         // Arrange
         var userId = Guid.NewGuid();
-        _testOutputHelper.WriteLine($"Testing migration from FortuneUserProfile to UserInfoCollection for UserId: {userId}");
+        _testOutputHelper.WriteLine($"Testing migration from LumenUserProfile to UserInfoCollection for UserId: {userId}");
 
-        // First, create and populate FortuneUserProfile
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
+        // First, create and populate LumenUserProfile
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
         var updateProfileRequest = new UpdateUserProfileRequest
         {
             UserId = userId.ToString(),
@@ -52,9 +52,9 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             BirthCity = "New York"
         };
 
-        var updateResult = await fortuneUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
+        var updateResult = await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
         updateResult.Success.ShouldBeTrue();
-        _testOutputHelper.WriteLine("FortuneUserProfile created successfully");
+        _testOutputHelper.WriteLine("LumenUserProfile created successfully");
 
         // Act - Query UserInfoCollection (should trigger migration)
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(userId);
@@ -86,7 +86,7 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         userInfoResult.LocationInfo.Country.ShouldBe("United States");
         userInfoResult.LocationInfo.City.ShouldBe("New York");
 
-        _testOutputHelper.WriteLine("Migration from FortuneUserProfile to UserInfoCollection completed successfully");
+        _testOutputHelper.WriteLine("Migration from LumenUserProfile to UserInfoCollection completed successfully");
     }
 
     [Fact]
@@ -96,8 +96,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing female gender migration for UserId: {userId}");
 
-        // Create FortuneUserProfile with Female gender
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
+        // Create LumenUserProfile with Female gender
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
         var updateProfileRequest = new UpdateUserProfileRequest
         {
             UserId = userId.ToString(),
@@ -108,7 +108,7 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             BirthCity = "Toronto"
         };
 
-        await fortuneUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
+        await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
 
         // Act
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(userId);
@@ -131,8 +131,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing single name migration for UserId: {userId}");
 
-        // Create FortuneUserProfile with single name
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
+        // Create LumenUserProfile with single name
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
         var updateProfileRequest = new UpdateUserProfileRequest
         {
             UserId = userId.ToString(),
@@ -143,7 +143,7 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             BirthCity = "Bay City"
         };
 
-        await fortuneUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
+        await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
 
         // Act
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(userId);
@@ -165,7 +165,7 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing no migration when both not initialized for UserId: {userId}");
 
-        // Act - Query UserInfoCollection without initializing FortuneUserProfile
+        // Act - Query UserInfoCollection without initializing LumenUserProfile
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(userId);
         var userInfoResult = await userInfoCollectionGAgent.GetUserInfoCollectionAsync();
 
@@ -177,14 +177,14 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
 
     #endregion
 
-    #region Migration from UserInfoCollection to FortuneUserProfile
+    #region Migration from UserInfoCollection to LumenUserProfile
 
     [Fact]
-    public async Task GetUserProfileAsync_Should_Migrate_From_UserInfoCollection_When_FortuneUserProfile_Not_Initialized()
+    public async Task GetUserProfileAsync_Should_Migrate_From_UserInfoCollection_When_LumenUserProfile_Not_Initialized()
     {
         // Arrange
         var userId = Guid.NewGuid();
-        _testOutputHelper.WriteLine($"Testing migration from UserInfoCollection to FortuneUserProfile for UserId: {userId}");
+        _testOutputHelper.WriteLine($"Testing migration from UserInfoCollection to LumenUserProfile for UserId: {userId}");
 
         // First, create and populate UserInfoCollection
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(userId);
@@ -218,9 +218,9 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         updateResult.Success.ShouldBeTrue();
         _testOutputHelper.WriteLine("UserInfoCollection created successfully");
 
-        // Act - Query FortuneUserProfile (should trigger migration)
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
-        var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync(userId);
+        // Act - Query LumenUserProfile (should trigger migration)
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
+        var profileResult = await lumenUserProfileGAgent.GetUserProfileAsync(userId);
 
         // Assert
         profileResult.ShouldNotBeNull();
@@ -245,7 +245,7 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         profileResult.UserProfile.BirthCountry.ShouldBe("United Kingdom");
         profileResult.UserProfile.BirthCity.ShouldBe("London");
 
-        _testOutputHelper.WriteLine("Migration from UserInfoCollection to FortuneUserProfile completed successfully");
+        _testOutputHelper.WriteLine("Migration from UserInfoCollection to LumenUserProfile completed successfully");
     }
 
     [Fact]
@@ -276,8 +276,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
-        var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync(userId);
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
+        var profileResult = await lumenUserProfileGAgent.GetUserProfileAsync(userId);
 
         // Assert
         profileResult.ShouldNotBeNull();
@@ -316,8 +316,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         var updateUserInfoCollectionResponseDto = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
-        var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync(userId);
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
+        var profileResult = await lumenUserProfileGAgent.GetUserProfileAsync(userId);
 
         // Assert
         profileResult.ShouldNotBeNull();
@@ -334,9 +334,9 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing no migration when both not initialized for UserId: {userId}");
 
-        // Act - Query FortuneUserProfile without initializing UserInfoCollection
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
-        var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync(userId);
+        // Act - Query LumenUserProfile without initializing UserInfoCollection
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
+        var profileResult = await lumenUserProfileGAgent.GetUserProfileAsync(userId);
 
         // Assert - Should return failure when not initialized
         profileResult.ShouldNotBeNull();
@@ -351,14 +351,14 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
     #region Circular Dependency Prevention Tests
 
     [Fact]
-    public async Task GetRawStateAsync_Should_Not_Trigger_Migration_From_FortuneUserProfile()
+    public async Task GetRawStateAsync_Should_Not_Trigger_Migration_From_LumenUserProfile()
     {
         // Arrange
         var userId = Guid.NewGuid();
         _testOutputHelper.WriteLine($"Testing GetRawStateAsync does not trigger migration for UserId: {userId}");
 
-        // Create FortuneUserProfile
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
+        // Create LumenUserProfile
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
         var updateProfileRequest = new UpdateUserProfileRequest
         {
             UserId = userId.ToString(),
@@ -369,7 +369,7 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             BirthCity = "Test City"
         };
 
-        await fortuneUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
+        await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
 
         // Act - Call GetRawStateAsync on UserInfoCollection (should not trigger migration)
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(userId);
@@ -408,11 +408,11 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
 
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
-        // Act - Call GetRawStateAsync on FortuneUserProfile (should not trigger migration)
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
-        var rawState = await fortuneUserProfileGAgent.GetRawStateAsync();
+        // Act - Call GetRawStateAsync on LumenUserProfile (should not trigger migration)
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
+        var rawState = await lumenUserProfileGAgent.GetRawStateAsync();
 
-        // Assert - Should return null because FortuneUserProfile is not initialized
+        // Assert - Should return null because LumenUserProfile is not initialized
         rawState.ShouldBeNull();
 
         _testOutputHelper.WriteLine("GetRawStateAsync correctly returned null without triggering migration");
@@ -423,14 +423,14 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
     #region Edge Cases
 
     [Fact]
-    public async Task Migration_Should_Handle_Partial_Data_From_FortuneUserProfile()
+    public async Task Migration_Should_Handle_Partial_Data_From_LumenUserProfile()
     {
         // Arrange
         var userId = Guid.NewGuid();
-        _testOutputHelper.WriteLine($"Testing partial data migration from FortuneUserProfile for UserId: {userId}");
+        _testOutputHelper.WriteLine($"Testing partial data migration from LumenUserProfile for UserId: {userId}");
 
-        // Create FortuneUserProfile with minimal data (no birth time)
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
+        // Create LumenUserProfile with minimal data (no birth time)
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
         var updateProfileRequest = new UpdateUserProfileRequest
         {
             UserId = userId.ToString(),
@@ -440,7 +440,7 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             // No BirthTime, BirthCountry, BirthCity
         };
 
-        await fortuneUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
+        await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
 
         // Act
         var userInfoCollectionGAgent = Cluster.GrainFactory.GetGrain<IUserInfoCollectionGAgent>(userId);
@@ -486,8 +486,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(updateDto);
 
         // Act
-        var fortuneUserProfileGAgent = GetFortuneUserProfileGAgent(userId);
-        var profileResult = await fortuneUserProfileGAgent.GetUserProfileAsync(userId);
+        var lumenUserProfileGAgent = GetLumenUserProfileGAgent(userId);
+        var profileResult = await lumenUserProfileGAgent.GetUserProfileAsync(userId);
 
         // Assert
         profileResult.ShouldNotBeNull();

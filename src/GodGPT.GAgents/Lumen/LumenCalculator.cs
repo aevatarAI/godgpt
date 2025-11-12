@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
+using Aevatar.Application.Grains.Lumen.Dtos;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Fortune calculation utilities for accurate astrological calculations
+/// Lumen calculation utilities for accurate astrological calculations
 /// </summary>
-public static class FortuneCalculator
+public static partial class LumenCalculator
 {
     #region Western Zodiac
     
@@ -491,6 +492,67 @@ public class PillarInfo
         ("Centre", "es") => "Centro",
         _ => direction  // English default
     };
+}
+
+public static partial class LumenCalculator
+{
+    #region Enum Parsers
+    
+    /// <summary>
+    /// Parse zodiac sign name to enum
+    /// </summary>
+    public static ZodiacSignEnum ParseZodiacSignEnum(string zodiacSign)
+    {
+        if (string.IsNullOrWhiteSpace(zodiacSign)) return ZodiacSignEnum.Unknown;
+        
+        return zodiacSign.Trim() switch
+        {
+            "Aries" => ZodiacSignEnum.Aries,
+            "Taurus" => ZodiacSignEnum.Taurus,
+            "Gemini" => ZodiacSignEnum.Gemini,
+            "Cancer" => ZodiacSignEnum.Cancer,
+            "Leo" => ZodiacSignEnum.Leo,
+            "Virgo" => ZodiacSignEnum.Virgo,
+            "Libra" => ZodiacSignEnum.Libra,
+            "Scorpio" => ZodiacSignEnum.Scorpio,
+            "Sagittarius" => ZodiacSignEnum.Sagittarius,
+            "Capricorn" => ZodiacSignEnum.Capricorn,
+            "Aquarius" => ZodiacSignEnum.Aquarius,
+            "Pisces" => ZodiacSignEnum.Pisces,
+            _ => ZodiacSignEnum.Unknown
+        };
+    }
+    
+    /// <summary>
+    /// Parse Chinese zodiac animal to enum
+    /// </summary>
+    public static ChineseZodiacEnum ParseChineseZodiacEnum(string chineseZodiac)
+    {
+        if (string.IsNullOrWhiteSpace(chineseZodiac)) return ChineseZodiacEnum.Unknown;
+        
+        // Extract animal name (e.g., "Wood Pig" -> "Pig")
+        var parts = chineseZodiac.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var animalName = parts.Length > 0 ? parts[^1] : chineseZodiac;
+        
+        return animalName.Trim() switch
+        {
+            "Rat" => ChineseZodiacEnum.Rat,
+            "Ox" => ChineseZodiacEnum.Ox,
+            "Tiger" => ChineseZodiacEnum.Tiger,
+            "Rabbit" => ChineseZodiacEnum.Rabbit,
+            "Dragon" => ChineseZodiacEnum.Dragon,
+            "Snake" => ChineseZodiacEnum.Snake,
+            "Horse" => ChineseZodiacEnum.Horse,
+            "Goat" or "Sheep" => ChineseZodiacEnum.Goat,
+            "Monkey" => ChineseZodiacEnum.Monkey,
+            "Rooster" => ChineseZodiacEnum.Rooster,
+            "Dog" => ChineseZodiacEnum.Dog,
+            "Pig" or "Boar" => ChineseZodiacEnum.Pig,
+            _ => ChineseZodiacEnum.Unknown
+        };
+    }
+    
+    #endregion
 }
 
 /// <summary>

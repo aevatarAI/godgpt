@@ -1,16 +1,16 @@
-using Aevatar.Application.Grains.Fortune.Dtos;
+using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Core.Abstractions;
 using Orleans;
 
-namespace Aevatar.Application.Grains.Fortune.SEvents;
+namespace Aevatar.Application.Grains.Lumen.SEvents;
 
 #region User Events
 
 /// <summary>
-/// Base event log for Fortune User GAgent
+/// Base event log for Lumen User GAgent
 /// </summary>
 [GenerateSerializer]
-public abstract class FortuneUserEventLog : StateLogEventBase<FortuneUserEventLog>
+public abstract class LumenUserEventLog : StateLogEventBase<LumenUserEventLog>
 {
 }
 
@@ -18,7 +18,7 @@ public abstract class FortuneUserEventLog : StateLogEventBase<FortuneUserEventLo
 /// User registered event
 /// </summary>
 [GenerateSerializer]
-public class UserRegisteredEvent : FortuneUserEventLog
+public class UserRegisteredEvent : LumenUserEventLog
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FirstName { get; set; } = string.Empty;
@@ -41,7 +41,7 @@ public class UserRegisteredEvent : FortuneUserEventLog
 /// User cleared event (for testing)
 /// </summary>
 [GenerateSerializer]
-public class UserClearedEvent : FortuneUserEventLog
+public class UserClearedEvent : LumenUserEventLog
 {
     [Id(0)] public DateTime ClearedAt { get; set; }
 }
@@ -50,7 +50,7 @@ public class UserClearedEvent : FortuneUserEventLog
 /// User actions updated event
 /// </summary>
 [GenerateSerializer]
-public class UserActionsUpdatedEvent : FortuneUserEventLog
+public class UserActionsUpdatedEvent : LumenUserEventLog
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public List<string> Actions { get; set; } = new();
@@ -62,50 +62,41 @@ public class UserActionsUpdatedEvent : FortuneUserEventLog
 #region Prediction Events
 
 /// <summary>
-/// Base event log for Fortune Prediction GAgent
+/// Base event log for Lumen Prediction GAgent
 /// </summary>
 [GenerateSerializer]
-public abstract class FortunePredictionEventLog : StateLogEventBase<FortunePredictionEventLog>
+public abstract class LumenPredictionEventLog : StateLogEventBase<LumenPredictionEventLog>
 {
 }
 
 /// <summary>
-/// Prediction generated event (supports daily/yearly/lifetime predictions)
+/// Prediction generated event (unified for Daily/Yearly/Lifetime)
 /// </summary>
 [GenerateSerializer]
-public class PredictionGeneratedEvent : FortunePredictionEventLog
+public class PredictionGeneratedEvent : LumenPredictionEventLog
 {
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public string UserId { get; set; } = string.Empty;
     [Id(2)] public DateOnly PredictionDate { get; set; }
-    [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new(); // Daily results
-    [Id(4)] public int Energy { get; set; }
-    [Id(5)] public DateTime CreatedAt { get; set; }
-    [Id(6)] public Dictionary<string, string> LifetimeForecast { get; set; } // Lifetime prediction
-    [Id(7)] public Dictionary<string, string> WeeklyForecast { get; set; } // Weekly forecast (deprecated)
-    [Id(8)] public DateTime? WeeklyGeneratedDate { get; set; } // Track when weekly was generated (deprecated)
-    [Id(9)] public DateTime? ProfileUpdatedAt { get; set; } // Track profile update time
+    [Id(3)] public DateTime CreatedAt { get; set; }
+    [Id(4)] public DateTime? ProfileUpdatedAt { get; set; } // Track profile update time
+    [Id(5)] public PredictionType Type { get; set; } // Daily/Yearly/Lifetime
     
-    // Multilingual support
-    [Id(10)] public Dictionary<string, Dictionary<string, Dictionary<string, string>>>? MultilingualResults { get; set; } // Daily multilingual
-    [Id(11)] public Dictionary<string, Dictionary<string, string>>? MultilingualLifetime { get; set; } // Lifetime multilingual
-    [Id(12)] public Dictionary<string, Dictionary<string, string>>? MultilingualWeekly { get; set; } // Weekly multilingual (deprecated)
+    // Unified flattened results (key-value pairs with enum fields included)
+    [Id(6)] public Dictionary<string, string> Results { get; set; } = new();
     
-    // Yearly prediction
-    [Id(13)] public Dictionary<string, string> YearlyForecast { get; set; } = new Dictionary<string, string>(); // Yearly prediction
-    [Id(14)] public DateTime? YearlyGeneratedDate { get; set; } // Track when yearly was generated
-    [Id(15)] public Dictionary<string, Dictionary<string, string>>? MultilingualYearly { get; set; } // Yearly multilingual
+    // Multilingual cache (language -> flattened results)
+    [Id(7)] public Dictionary<string, Dictionary<string, string>>? MultilingualResults { get; set; }
     
-    // Language generation tracking (two-stage generation support)
-    [Id(16)] public string? InitialLanguage { get; set; } // The language generated in first stage
-    [Id(17)] public PredictionType? PredictionTypeGenerated { get; set; } // Type of prediction generated
+    // Initial language generated in first stage
+    [Id(8)] public string? InitialLanguage { get; set; }
 }
 
 /// <summary>
 /// Event raised when remaining languages are generated asynchronously (second stage)
 /// </summary>
 [GenerateSerializer]
-public class LanguagesTranslatedEvent : FortunePredictionEventLog
+public class LanguagesTranslatedEvent : LumenPredictionEventLog
 {
     [Id(0)] public PredictionType Type { get; set; }
     [Id(1)] public DateOnly PredictionDate { get; set; }
@@ -118,10 +109,10 @@ public class LanguagesTranslatedEvent : FortunePredictionEventLog
 #region Feedback Events
 
 /// <summary>
-/// Base event log for Fortune Feedback GAgent
+/// Base event log for Lumen Feedback GAgent
 /// </summary>
 [GenerateSerializer]
-public abstract class FortuneFeedbackEventLog : StateLogEventBase<FortuneFeedbackEventLog>
+public abstract class LumenFeedbackEventLog : StateLogEventBase<LumenFeedbackEventLog>
 {
 }
 
@@ -129,7 +120,7 @@ public abstract class FortuneFeedbackEventLog : StateLogEventBase<FortuneFeedbac
 /// Feedback submitted event
 /// </summary>
 [GenerateSerializer]
-public class FeedbackSubmittedEvent : FortuneFeedbackEventLog
+public class FeedbackSubmittedEvent : LumenFeedbackEventLog
 {
     [Id(0)] public string FeedbackId { get; set; } = string.Empty;
     [Id(1)] public string UserId { get; set; } = string.Empty;
@@ -140,25 +131,10 @@ public class FeedbackSubmittedEvent : FortuneFeedbackEventLog
 }
 
 /// <summary>
-/// Feedback updated event
-/// </summary>
-[GenerateSerializer]
-public class FeedbackUpdatedEvent : FortuneFeedbackEventLog
-{
-    [Id(0)] public string? PredictionMethod { get; set; } // e.g., "opportunity", "bazi", "astrology", "tarot" (Obsolete event)
-    [Id(1)] public int Rating { get; set; }
-    [Id(2)] public List<string> FeedbackTypes { get; set; } = new();
-    [Id(3)] public string? Comment { get; set; }
-    [Id(4)] public string? Email { get; set; }
-    [Id(5)] public bool AgreeToContact { get; set; }
-    [Id(6)] public DateTime UpdatedAt { get; set; }
-}
-
-/// <summary>
 /// Method rating updated event
 /// </summary>
 [GenerateSerializer]
-public class MethodRatingUpdatedEvent : FortuneFeedbackEventLog
+public class MethodRatingUpdatedEvent : LumenFeedbackEventLog
 {
     [Id(0)] public string FeedbackId { get; set; } = string.Empty;
     [Id(1)] public string UserId { get; set; } = string.Empty;
@@ -173,10 +149,10 @@ public class MethodRatingUpdatedEvent : FortuneFeedbackEventLog
 #region Stats Snapshot Events
 
 /// <summary>
-/// Base event log for Fortune Stats Snapshot GAgent
+/// Base event log for Lumen Stats Snapshot GAgent
 /// </summary>
 [GenerateSerializer]
-public abstract class FortuneStatsSnapshotEventLog : StateLogEventBase<FortuneStatsSnapshotEventLog>
+public abstract class LumenStatsSnapshotEventLog : StateLogEventBase<LumenStatsSnapshotEventLog>
 {
 }
 
@@ -184,7 +160,7 @@ public abstract class FortuneStatsSnapshotEventLog : StateLogEventBase<FortuneSt
 /// Stats snapshot event
 /// </summary>
 [GenerateSerializer]
-public class StatsSnapshotEvent : FortuneStatsSnapshotEventLog
+public class StatsSnapshotEvent : LumenStatsSnapshotEventLog
 {
     [Id(0)] public Dictionary<string, MethodStats> GlobalStats { get; set; } = new();
     [Id(1)] public Dictionary<string, Dictionary<string, MethodStats>> UserStats { get; set; } = new();
@@ -196,10 +172,10 @@ public class StatsSnapshotEvent : FortuneStatsSnapshotEventLog
 #region User Profile Events (V2)
 
 /// <summary>
-/// Base event log for Fortune User Profile GAgent (V2)
+/// Base event log for Lumen User Profile GAgent (V2)
 /// </summary>
 [GenerateSerializer]
-public abstract class FortuneUserProfileEventLog : StateLogEventBase<FortuneUserProfileEventLog>
+public abstract class LumenUserProfileEventLog : StateLogEventBase<LumenUserProfileEventLog>
 {
 }
 
@@ -207,7 +183,7 @@ public abstract class FortuneUserProfileEventLog : StateLogEventBase<FortuneUser
 /// User profile updated event (V2)
 /// </summary>
 [GenerateSerializer]
-public class UserProfileUpdatedEvent : FortuneUserProfileEventLog
+public class UserProfileUpdatedEvent : LumenUserProfileEventLog
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FullName { get; set; } = string.Empty;
@@ -229,7 +205,7 @@ public class UserProfileUpdatedEvent : FortuneUserProfileEventLog
 /// User profile actions updated event (V2)
 /// </summary>
 [GenerateSerializer]
-public class UserProfileActionsUpdatedEvent : FortuneUserProfileEventLog
+public class UserProfileActionsUpdatedEvent : LumenUserProfileEventLog
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public List<string> Actions { get; set; } = new();
@@ -240,7 +216,7 @@ public class UserProfileActionsUpdatedEvent : FortuneUserProfileEventLog
 /// User profile cleared event (for testing)
 /// </summary>
 [GenerateSerializer]
-public class UserProfileClearedEvent : FortuneUserProfileEventLog
+public class UserProfileClearedEvent : LumenUserProfileEventLog
 {
     [Id(0)] public DateTime ClearedAt { get; set; }
 }
@@ -250,10 +226,10 @@ public class UserProfileClearedEvent : FortuneUserProfileEventLog
 #region Prediction History Events
 
 /// <summary>
-/// Base event log for Fortune Prediction History GAgent
+/// Base event log for Lumen Prediction History GAgent
 /// </summary>
 [GenerateSerializer]
-public abstract class FortunePredictionHistoryEventLog : StateLogEventBase<FortunePredictionHistoryEventLog>
+public abstract class LumenPredictionHistoryEventLog : StateLogEventBase<LumenPredictionHistoryEventLog>
 {
 }
 
@@ -261,13 +237,13 @@ public abstract class FortunePredictionHistoryEventLog : StateLogEventBase<Fortu
 /// Prediction added to history event
 /// </summary>
 [GenerateSerializer]
-public class PredictionAddedToHistoryEvent : FortunePredictionHistoryEventLog
+public class PredictionAddedToHistoryEvent : LumenPredictionHistoryEventLog
 {
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public DateOnly PredictionDate { get; set; }
-    [Id(2)] public int Energy { get; set; }
-    [Id(3)] public Dictionary<string, Dictionary<string, string>> Results { get; set; } = new();
-    [Id(4)] public DateTime CreatedAt { get; set; }
+    [Id(2)] public DateTime CreatedAt { get; set; }
+    [Id(3)] public Dictionary<string, string> Results { get; set; } = new();
+    [Id(4)] public PredictionType Type { get; set; }
 }
 
 #endregion
@@ -275,10 +251,10 @@ public class PredictionAddedToHistoryEvent : FortunePredictionHistoryEventLog
 #region Favourite Events
 
 /// <summary>
-/// Base event log for Fortune Favourite GAgent
+/// Base event log for Lumen Favourite GAgent
 /// </summary>
 [GenerateSerializer]
-public abstract class FortuneFavouriteEventLog : StateLogEventBase<FortuneFavouriteEventLog>
+public abstract class LumenFavouriteEventLog : StateLogEventBase<LumenFavouriteEventLog>
 {
 }
 
@@ -286,7 +262,7 @@ public abstract class FortuneFavouriteEventLog : StateLogEventBase<FortuneFavour
 /// Prediction favourited event
 /// </summary>
 [GenerateSerializer]
-public class PredictionFavouritedEvent : FortuneFavouriteEventLog
+public class PredictionFavouritedEvent : LumenFavouriteEventLog
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public DateOnly Date { get; set; }
@@ -299,7 +275,7 @@ public class PredictionFavouritedEvent : FortuneFavouriteEventLog
 /// Prediction unfavourited event
 /// </summary>
 [GenerateSerializer]
-public class PredictionUnfavouritedEvent : FortuneFavouriteEventLog
+public class PredictionUnfavouritedEvent : LumenFavouriteEventLog
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }

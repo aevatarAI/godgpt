@@ -1,7 +1,7 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
-using Aevatar.Application.Grains.Fortune.Dtos;
-using Aevatar.Application.Grains.Fortune.SEvents;
+using Aevatar.Application.Grains.Lumen.Dtos;
+using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Options;
@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 using Orleans.Concurrency;
 using System.Diagnostics;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
 /// Prediction type enumeration
@@ -23,26 +23,26 @@ public enum PredictionType
 }
 
 /// <summary>
-/// Interface for Fortune Prediction GAgent - manages fortune prediction generation
+/// Interface for Lumen Prediction GAgent - manages lumen prediction generation
 /// </summary>
-public interface IFortunePredictionGAgent : IGAgent
+public interface ILumenPredictionGAgent : IGAgent
 {
-    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en");
+    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(LumenUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en");
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en");
 }
 
-[GAgent(nameof(FortunePredictionGAgent))]
+[GAgent(nameof(LumenPredictionGAgent))]
 [Reentrant]
-public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, FortunePredictionEventLog>, 
-    IFortunePredictionGAgent
+public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredictionEventLog>, 
+    ILumenPredictionGAgent
 {
-    private readonly ILogger<FortunePredictionGAgent> _logger;
+    private readonly ILogger<LumenPredictionGAgent> _logger;
     private readonly IClusterClient _clusterClient;
 
-    public FortunePredictionGAgent(
-        ILogger<FortunePredictionGAgent> logger,
+    public LumenPredictionGAgent(
+        ILogger<LumenPredictionGAgent> logger,
         IClusterClient clusterClient)
     {
         _logger = logger;
@@ -51,14 +51,14 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
 
     public override Task<string> GetDescriptionAsync()
     {
-        return Task.FromResult("Fortune prediction generation and caching");
+        return Task.FromResult("Lumen prediction generation and caching");
     }
 
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortunePredictionState state,
-        StateLogEventBase<FortunePredictionEventLog> @event)
+    protected sealed override void GAgentTransitionState(LumenPredictionState state,
+        StateLogEventBase<LumenPredictionEventLog> @event)
     {
         switch (@event)
         {
@@ -66,117 +66,43 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 state.PredictionId = generatedEvent.PredictionId;
                 state.UserId = generatedEvent.UserId;
                 state.PredictionDate = generatedEvent.PredictionDate;
-                state.Results = generatedEvent.Results;
-                state.Energy = generatedEvent.Energy; // Deprecated field
                 state.CreatedAt = generatedEvent.CreatedAt;
                 state.ProfileUpdatedAt = generatedEvent.ProfileUpdatedAt;
-                if (!generatedEvent.LifetimeForecast.IsNullOrEmpty())
-                {
-                    state.LifetimeForecast = generatedEvent.LifetimeForecast;
-                }
-                if (!generatedEvent.YearlyForecast.IsNullOrEmpty())
-                {
-                    state.YearlyForecast = generatedEvent.YearlyForecast;
-                    state.YearlyGeneratedDate = generatedEvent.YearlyGeneratedDate;
-                }
-                // Update multilingual caches
+                state.Type = generatedEvent.Type;
+                
+                // Store flattened results
+                state.Results = generatedEvent.Results;
+                
+                // Store multilingual results
                 if (generatedEvent.MultilingualResults != null)
                 {
                     state.MultilingualResults = generatedEvent.MultilingualResults;
                 }
-                if (generatedEvent.MultilingualLifetime != null)
+                
+                // Initialize language generation status
+                if (!string.IsNullOrEmpty(generatedEvent.InitialLanguage))
                 {
-                    state.MultilingualLifetime = generatedEvent.MultilingualLifetime;
+                    state.GeneratedLanguages = new List<string> { generatedEvent.InitialLanguage };
                 }
-                if (generatedEvent.MultilingualYearly != null)
-                {
-                    state.MultilingualYearly = generatedEvent.MultilingualYearly;
-                }
-                // Initialize language generation status (only initial language is available)
-                if (!string.IsNullOrEmpty(generatedEvent.InitialLanguage) && generatedEvent.PredictionTypeGenerated.HasValue)
-                {
-                    var initialLang = generatedEvent.InitialLanguage;
-                    switch (generatedEvent.PredictionTypeGenerated.Value)
-                    {
-                        case PredictionType.Daily:
-                            state.DailyGeneratedLanguages = new List<string> { initialLang };
-                            break;
-                        case PredictionType.Yearly:
-                            state.YearlyGeneratedLanguages = new List<string> { initialLang };
-                            break;
-                        case PredictionType.Lifetime:
-                            state.LifetimeGeneratedLanguages = new List<string> { initialLang };
-                break;
-        }
-    }
                 break;
                 
             case LanguagesTranslatedEvent translatedEvent:
                 // Update multilingual cache with translated languages
-                switch (translatedEvent.Type)
+                if (translatedEvent.TranslatedLanguages != null)
                 {
-                    case PredictionType.Daily:
-                        if (state.MultilingualResults == null)
-                        {
-                            state.MultilingualResults = new Dictionary<string, Dictionary<string, Dictionary<string, string>>>();
-                        }
-                        
-                        var dateKey = translatedEvent.PredictionDate.ToString("yyyy-MM-dd");
-                        if (!state.MultilingualResults.ContainsKey(dateKey))
-                        {
-                            state.MultilingualResults[dateKey] = new Dictionary<string, Dictionary<string, string>>();
-                        }
-                        
-                        if (translatedEvent.TranslatedLanguages != null)
-                        {
-                            foreach (var lang in translatedEvent.TranslatedLanguages)
-                            {
-                                state.MultilingualResults[dateKey][lang.Key] = lang.Value;
-                            }
-                        }
-                        
-                        state.DailyGeneratedLanguages = translatedEvent.AllGeneratedLanguages;
-                        break;
-                        
-                    case PredictionType.Yearly:
-                        if (state.MultilingualYearly == null)
-                        {
-                            state.MultilingualYearly = new Dictionary<string, Dictionary<string, string>>();
-                        }
-                        
-                        if (translatedEvent.TranslatedLanguages != null)
-                        {
-                            foreach (var lang in translatedEvent.TranslatedLanguages)
-                            {
-                                state.MultilingualYearly[lang.Key] = lang.Value;
-                            }
-                        }
-                        
-                        state.YearlyGeneratedLanguages = translatedEvent.AllGeneratedLanguages;
-                        break;
-                        
-                    case PredictionType.Lifetime:
-                        if (state.MultilingualLifetime == null)
-                        {
-                            state.MultilingualLifetime = new Dictionary<string, Dictionary<string, string>>();
-                        }
-                        
-                        if (translatedEvent.TranslatedLanguages != null)
-                        {
-                            foreach (var lang in translatedEvent.TranslatedLanguages)
-                            {
-                                state.MultilingualLifetime[lang.Key] = lang.Value;
-                            }
-                        }
-                        
-                        state.LifetimeGeneratedLanguages = translatedEvent.AllGeneratedLanguages;
-                        break;
+                    foreach (var lang in translatedEvent.TranslatedLanguages)
+                    {
+                        state.MultilingualResults[lang.Key] = lang.Value;
+                    }
                 }
+                
+                // Update generated languages list
+                state.GeneratedLanguages = translatedEvent.AllGeneratedLanguages;
                 break;
         }
     }
 
-    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(FortuneUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en")
+    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(LumenUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en")
     {
         var totalStopwatch = Stopwatch.StartNew();
         try
@@ -184,7 +110,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var currentYear = today.Year;
             
-            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} START - Type: {type}, Date: {today}, Language: {userLanguage}");
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {today}, Language: {userLanguage}");
             
             // ========== IDEMPOTENCY CHECK: Prevent concurrent generation for this type ==========
             if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
@@ -198,7 +124,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     {
                         // Generation is in progress, return waiting status
                         totalStopwatch.Stop();
-                        _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_IN_PROGRESS - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalSeconds:F1}s");
+                        _logger.LogWarning($"[Lumen] {userInfo.UserId} GENERATION_IN_PROGRESS - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalSeconds:F1}s");
                         
                         return new GetTodayPredictionResult
                         {
@@ -209,7 +135,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     else
                     {
                         // Generation timed out (service restart or actual timeout), reset lock and retry
-                        _logger.LogWarning($"[Fortune] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalMinutes:F2} minutes, Resetting lock and retrying");
+                        _logger.LogWarning($"[Lumen] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalMinutes:F2} minutes, Resetting lock and retrying");
                         lockInfo.IsGenerating = false;
                         lockInfo.StartedAt = null;
                     }
@@ -219,170 +145,85 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 // Check if profile has been updated since prediction was generated
                 var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
                 
-            // Check if prediction already exists (from cache/state) based on type
-            if (type == PredictionType.Lifetime)
+            // Check if prediction already exists (from cache/state)
+            var hasCachedPrediction = State.PredictionId != Guid.Empty && 
+                                     !State.Results.IsNullOrEmpty() && 
+                                     State.Type == type;
+            
+            // Check expiration based on type
+            bool notExpired = type switch
             {
-                // Lifetime: never expires unless profile changes
-                var hasLifetime = !State.LifetimeForecast.IsNullOrEmpty();
-                
-                if (hasLifetime && profileNotChanged)
-                {
-                    totalStopwatch.Stop();
-                    _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Lifetime");
-
-                    // Calculate and add currentPhase to all language versions
-                    var lifetimeWithPhase = new Dictionary<string, string>(State.LifetimeForecast);
-                    var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
-                    lifetimeWithPhase["currentPhase"] = currentPhase.ToString();
-
-                    // Add currentPhase to multilingual versions too
-                    Dictionary<string, Dictionary<string, string>>? multilingualLifetimeWithPhase = null;
-                    if (State.MultilingualLifetime != null)
-                    {
-                        multilingualLifetimeWithPhase = new Dictionary<string, Dictionary<string, string>>();
-                        foreach (var kvp in State.MultilingualLifetime)
-                        {
-                            var lifetimeCopy = new Dictionary<string, string>(kvp.Value);
-                            lifetimeCopy["currentPhase"] = currentPhase.ToString();
-                            multilingualLifetimeWithPhase[kvp.Key] = lifetimeCopy;
-                        }
-                    }
-
-                    var predictionDto = new PredictionResultDto
-                        {
-                            PredictionId = State.PredictionId,
-                            UserId = State.UserId,
-                            PredictionDate = State.PredictionDate,
-                            Results = new Dictionary<string, Dictionary<string, string>>(), // Lifetime doesn't have daily results
-                            CreatedAt = State.CreatedAt,
-                            FromCache = true,
-                            LifetimeForecast = lifetimeWithPhase,
-                        // Include multilingual cached data
-                        MultilingualLifetime = multilingualLifetimeWithPhase,
-                        // Language status
-                        AvailableLanguages = State.LifetimeGeneratedLanguages ?? new List<string> { "en" },
-                        AllLanguagesGenerated = State.LifetimeGeneratedLanguages?.Count == 4
-                    };
-                    
-                    // Extract enum values for frontend (from lifetime forecast)
-                    ExtractEnumValues(predictionDto, null, lifetimeWithPhase);
-                    
-                    // Apply localization: only return requested language version
-                    ApplyLocalization(predictionDto, userLanguage);
-                    
-                    return new GetTodayPredictionResult
-                    {
-                        Success = true,
-                        Message = string.Empty,
-                        Prediction = predictionDto
-                    };
-                }
-                
-                // Log reason for regeneration
-                if (!profileNotChanged)
-                {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating lifetime prediction for {UserId}",
-                        userInfo.UserId);
-                }
-            } 
-            else if (type == PredictionType.Yearly)
+                PredictionType.Lifetime => true, // Lifetime never expires
+                PredictionType.Yearly => State.PredictionDate.Year == currentYear, // Yearly expires after 1 year
+                PredictionType.Daily => State.PredictionDate == today, // Daily expires every day
+                _ => false
+            };
+            
+            if (hasCachedPrediction && notExpired && profileNotChanged)
             {
-                // Yearly: expires after 1 year OR if profile changes
-                var hasYearly = !State.YearlyForecast.IsNullOrEmpty();
-                var yearlyNotExpired = State.YearlyGeneratedDate.HasValue && 
-                                      State.YearlyGeneratedDate.Value.Year == currentYear;
+                // Return cached prediction
+                totalStopwatch.Stop();
+                _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
                 
-                if (hasYearly && yearlyNotExpired && profileNotChanged)
+                // Get localized results
+                Dictionary<string, string> localizedResults;
+                if (State.MultilingualResults.ContainsKey(userLanguage))
                 {
-                    totalStopwatch.Stop();
-                    _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Yearly");
-
-                    var predictionDto = new PredictionResultDto
-                    {
-                        PredictionId = State.PredictionId,
-                        UserId = State.UserId,
-                        PredictionDate = State.PredictionDate,
-                        Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
-                        CreatedAt = State.CreatedAt,
-                        FromCache = true,
-                        LifetimeForecast = State.YearlyForecast, // Return yearly in LifetimeForecast field for API compatibility
-                        MultilingualLifetime = State.MultilingualYearly, // Return yearly multilingual
-                        // Language status
-                        AvailableLanguages = State.YearlyGeneratedLanguages ?? new List<string> { "en" },
-                        AllLanguagesGenerated = State.YearlyGeneratedLanguages?.Count == 4
-                    };
-                    
-                    // Extract enum values for frontend (from yearly forecast)
-                    ExtractEnumValues(predictionDto, null, State.YearlyForecast);
-                    
-                    // Apply localization: only return requested language version
-                    ApplyLocalization(predictionDto, userLanguage);
-
-                    return new GetTodayPredictionResult
-                    {
-                        Success = true,
-                        Message = string.Empty,
-                        Prediction = predictionDto
-                    };
+                    localizedResults = State.MultilingualResults[userLanguage];
                 }
-                
-                // Log reason for regeneration
-                if (!yearlyNotExpired)
+                else if (State.MultilingualResults.ContainsKey("en"))
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Yearly expired, regenerating for {UserId}",
-                        userInfo.UserId);
-                }
-                if (!profileNotChanged)
-                {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating yearly prediction for {UserId}",
-                        userInfo.UserId);
-                }
-            } 
-            else // PredictionType.Daily
-            {
-                // Daily: expires every day OR if profile changes
-                if (State.PredictionId != Guid.Empty && State.PredictionDate == today && profileNotChanged)
-                {
-                    totalStopwatch.Stop();
-                    _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: Daily");
-
-                    var predictionDto = new PredictionResultDto
-                        {
-                            PredictionId = State.PredictionId,
-                            UserId = State.UserId,
-                            PredictionDate = State.PredictionDate,
-                            Results = State.Results,
-                            CreatedAt = State.CreatedAt,
-                        FromCache = true,
-                        // Include multilingual cached data
-                        MultilingualResults = State.MultilingualResults,
-                        // Language status
-                        AvailableLanguages = State.DailyGeneratedLanguages ?? new List<string> { "en" },
-                        AllLanguagesGenerated = State.DailyGeneratedLanguages?.Count == 4
-                    };
-                    
-                    // Extract enum values for frontend (from daily results)
-                    ExtractEnumValues(predictionDto, State.Results, null);
-                    
-                    // Apply localization: only return requested language version
-                    ApplyLocalization(predictionDto, userLanguage);
-                    
-                    return new GetTodayPredictionResult
-                    {
-                        Success = true,
-                        Message = string.Empty,
-                        Prediction = predictionDto
-                    };
+                    localizedResults = State.MultilingualResults["en"];
                 }
                 else
                 {
-                    _logger.LogInformation("[FortunePredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating daily prediction for {UserId}",
-                        userInfo.UserId);
+                    localizedResults = State.Results;
                 }
+                
+                // Add currentPhase for Lifetime predictions
+                if (type == PredictionType.Lifetime)
+                {
+                    var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                    localizedResults = new Dictionary<string, string>(localizedResults);
+                    localizedResults["currentPhase"] = currentPhase.ToString();
+                }
+                
+                var cachedDto = new PredictionResultDto
+                {
+                    PredictionId = State.PredictionId,
+                    UserId = State.UserId,
+                    PredictionDate = State.PredictionDate,
+                    CreatedAt = State.CreatedAt,
+                    FromCache = true,
+                    Type = State.Type,
+                    Results = localizedResults,
+                    AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
+                    AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
+                    Feedbacks = null
+                };
+                
+                return new GetTodayPredictionResult
+                {
+                    Success = true,
+                    Message = string.Empty,
+                    Prediction = cachedDto
+                };
+            }
+            
+            // Log reason for regeneration
+            if (hasCachedPrediction && !notExpired)
+            {
+                _logger.LogInformation("[LumenPredictionGAgent][GetOrGeneratePredictionAsync] {Type} expired, regenerating for {UserId}", 
+                    type, userInfo.UserId);
+            }
+            if (hasCachedPrediction && !profileNotChanged)
+            {
+                _logger.LogInformation("[LumenPredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating {Type} prediction for {UserId}",
+                    type, userInfo.UserId);
             }
 
             // Generate new prediction
-            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Cache_Miss - Generating new prediction, Type: {type}, Language: {userLanguage}");
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Cache_Miss - Generating new prediction, Type: {type}, Language: {userLanguage}");
 
             // Set generation lock
             if (!State.GenerationLocks.ContainsKey(type))
@@ -402,11 +243,11 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             
             if (!predictionResult.Success)
             {
-                    _logger.LogWarning($"[PERF][Fortune] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms");
+                    _logger.LogWarning($"[PERF][Lumen] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms");
                 return predictionResult;
             }
 
-                _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+                _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
             return predictionResult;
             }
             finally
@@ -416,14 +257,14 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 {
                     State.GenerationLocks[type].IsGenerating = false;
                     State.GenerationLocks[type].StartedAt = null;
-                    _logger.LogInformation($"[Fortune] {userInfo.UserId} GENERATION_LOCK_RELEASED - Type: {type}");
+                    _logger.LogInformation($"[Lumen] {userInfo.UserId} GENERATION_LOCK_RELEASED - Type: {type}");
                 }
             }
         }
         catch (Exception ex)
         {
             totalStopwatch.Stop();
-            _logger.LogError(ex, $"[PERF][Fortune] {userInfo.UserId} Error: {totalStopwatch.ElapsedMilliseconds}ms - Exception in GetOrGeneratePredictionAsync");
+            _logger.LogError(ex, $"[PERF][Lumen] {userInfo.UserId} Error: {totalStopwatch.ElapsedMilliseconds}ms - Exception in GetOrGeneratePredictionAsync");
             return new GetTodayPredictionResult
             {
                 Success = false,
@@ -442,74 +283,37 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             return Task.FromResult<PredictionResultDto?>(null);
         }
 
-        // Determine prediction type based on which fields are populated
-        // Each grain stores only one type: daily, yearly, or lifetime
-        PredictionResultDto predictionDto;
-        
-        if (State.YearlyForecast != null && State.YearlyForecast.Count > 0)
+        // Get localized results based on user language
+        Dictionary<string, string> localizedResults;
+        if (State.MultilingualResults.ContainsKey(userLanguage))
         {
-            // This is a Yearly prediction grain
-            predictionDto = new PredictionResultDto
+            localizedResults = State.MultilingualResults[userLanguage];
+        }
+        else if (State.MultilingualResults.ContainsKey("en"))
+        {
+            // Fallback to English
+            localizedResults = State.MultilingualResults["en"];
+            _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found, using English fallback", userLanguage);
+        }
+        else
+        {
+            // Use default results if multilingual not available
+            localizedResults = State.Results;
+        }
+
+        var predictionDto = new PredictionResultDto
         {
             PredictionId = State.PredictionId,
             UserId = State.UserId,
             PredictionDate = State.PredictionDate,
-                Results = new Dictionary<string, Dictionary<string, string>>(), // Yearly doesn't have daily results
-                CreatedAt = State.CreatedAt,
-                FromCache = true,
-                LifetimeForecast = State.YearlyForecast, // Return yearly in LifetimeForecast field for API compatibility
-                MultilingualLifetime = State.MultilingualYearly,
-                AvailableLanguages = State.YearlyGeneratedLanguages ?? new List<string> { "en" },
-                AllLanguagesGenerated = State.YearlyGeneratedLanguages?.Count == 4
-            };
-            
-            // Extract enum values for frontend (from yearly forecast)
-            ExtractEnumValues(predictionDto, null, State.YearlyForecast);
-        }
-        else if (State.LifetimeForecast != null && State.LifetimeForecast.Count > 0)
-        {
-            // This is a Lifetime prediction grain
-            predictionDto = new PredictionResultDto
-            {
-                PredictionId = State.PredictionId,
-                UserId = State.UserId,
-                PredictionDate = State.PredictionDate,
-                Results = new Dictionary<string, Dictionary<string, string>>(), // Lifetime doesn't have daily results
             CreatedAt = State.CreatedAt,
             FromCache = true,
-            LifetimeForecast = State.LifetimeForecast,
-                MultilingualLifetime = State.MultilingualLifetime,
-                AvailableLanguages = State.LifetimeGeneratedLanguages ?? new List<string> { "en" },
-                AllLanguagesGenerated = State.LifetimeGeneratedLanguages?.Count == 4
-            };
-            
-            // Extract enum values for frontend (from lifetime forecast)
-            ExtractEnumValues(predictionDto, null, State.LifetimeForecast);
-        }
-        else
-        {
-            // This is a Daily prediction grain
-            predictionDto = new PredictionResultDto
-            {
-                PredictionId = State.PredictionId,
-                UserId = State.UserId,
-                PredictionDate = State.PredictionDate,
-                Results = State.Results,
-                CreatedAt = State.CreatedAt,
-                FromCache = true,
-                LifetimeForecast = new Dictionary<string, string>(), // Daily doesn't have lifetime/yearly
-                MultilingualResults = State.MultilingualResults,
-                MultilingualLifetime = new Dictionary<string, Dictionary<string, string>>(),
-                AvailableLanguages = State.DailyGeneratedLanguages ?? new List<string> { "en" },
-                AllLanguagesGenerated = State.DailyGeneratedLanguages?.Count == 4
-            };
-            
-            // Extract enum values for frontend (from daily results)
-            ExtractEnumValues(predictionDto, State.Results, null);
-        }
-
-        // Apply localization: only return requested language version
-        ApplyLocalization(predictionDto, userLanguage);
+            Type = State.Type,
+            Results = localizedResults,
+            AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
+            AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
+            Feedbacks = null
+        };
 
         return Task.FromResult<PredictionResultDto?>(predictionDto);
     }
@@ -517,7 +321,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     /// <summary>
     /// Generate new prediction using AI
     /// </summary>
-    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
+    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
     {
         try
         {
@@ -525,7 +329,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             var promptStopwatch = Stopwatch.StartNew();
             var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage);
             promptStopwatch.Stop();
-            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
             
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
@@ -536,8 +340,8 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 Temperature = "0.7"
             };
 
-            // Use dedicated "FORTUNE" region for independent LLM configuration
-            // This allows Fortune to use cost-optimized models (e.g., GPT-4o-mini)
+            // Use dedicated "LUMEN" region for independent LLM configuration
+            // This allows Lumen to use cost-optimized models (e.g., GPT-4o-mini)
             // separate from the main chat experience
             var llmStopwatch = Stopwatch.StartNew();
             var response = await godChat.ChatWithoutHistoryAsync(
@@ -547,13 +351,13 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                 chatId, 
                 settings, 
                 true, 
-                "FORTUNE");
+                "LUMEN");
             llmStopwatch.Stop();
-            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             if (response == null || response.Count() == 0)
             {
-                _logger.LogWarning("[FortunePredictionGAgent][GeneratePredictionAsync] No response from AI for user {UserId}",
+                _logger.LogWarning("[LumenPredictionGAgent][GeneratePredictionAsync] No response from AI for user {UserId}",
                     userInfo.UserId);
                 return new GetTodayPredictionResult
                 {
@@ -563,263 +367,190 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
             }
 
             var aiResponse = response[0].Content;
-            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} LLM_Response: {aiResponse.Length} chars");
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Response: {aiResponse.Length} chars");
 
-            Dictionary<string, Dictionary<string, string>>? parsedResults = null;
-            Dictionary<string, string>? lifetimeForecast = new Dictionary<string, string>();
-            Dictionary<string, string>? yearlyForecast = new Dictionary<string, string>();
-            
-            // Multilingual caches
-            Dictionary<string, Dictionary<string, Dictionary<string, string>>>? multilingualResults = null;
-            Dictionary<string, Dictionary<string, string>>? multilingualLifetime = null;
-            Dictionary<string, Dictionary<string, string>>? multilingualYearly = null;
+            // Unified flat results structure (all types use same format now)
+            Dictionary<string, string>? parsedResults = null;
+            Dictionary<string, Dictionary<string, string>>? multilingualResults = null;
 
-            // Parse AI response based on type
+            // Parse AI response based on type (returns flattened structure)
             var parseStopwatch = Stopwatch.StartNew();
-            if (type == PredictionType.Lifetime)
+            (parsedResults, multilingualResults) = type switch
             {
-                // Parse Lifetime (multilingual)
-                var (parsedLifetime, mlLifetime) = ParseMultilingualLifetimeResponse(aiResponse);
-                if (parsedLifetime == null)
-                {
-                    _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Lifetime response");
-                    return new GetTodayPredictionResult
-                    {
-                        Success = false,
-                        Message = "Failed to parse AI response"
-                    };
-                }
-                
-                lifetimeForecast = parsedLifetime;
-                multilingualLifetime = mlLifetime;
-                parsedResults = new Dictionary<string, Dictionary<string, string>>(); // Empty for lifetime mode
-            }
-            else if (type == PredictionType.Yearly)
+                PredictionType.Lifetime => ParseMultilingualLifetimeResponse(aiResponse),
+                PredictionType.Yearly => ParseMultilingualLifetimeResponse(aiResponse), // Yearly uses same parser
+                PredictionType.Daily => ParseMultilingualDailyResponse(aiResponse),
+                _ => throw new ArgumentException($"Unsupported prediction type: {type}")
+            };
+            
+            if (parsedResults == null)
             {
-                // Parse Yearly (multilingual) - reuse lifetime parser as structure is similar
-                var (parsedYearly, mlYearly) = ParseMultilingualLifetimeResponse(aiResponse);
-                if (parsedYearly == null)
+                _logger.LogError("[LumenPredictionGAgent][GeneratePredictionAsync] Failed to parse {Type} response", type);
+                return new GetTodayPredictionResult
                 {
-                    _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Yearly response");
-                    return new GetTodayPredictionResult
-                    {
-                        Success = false,
-                        Message = "Failed to parse AI response"
-                    };
-                }
-                
-                yearlyForecast = parsedYearly;
-                multilingualYearly = mlYearly;
-                parsedResults = new Dictionary<string, Dictionary<string, string>>(); // Empty for yearly mode
+                    Success = false,
+                    Message = "Failed to parse AI response"
+                };
             }
-            else // PredictionType.Daily
-            {
-                // Parse Daily (6 dimensions, multilingual)
-                (parsedResults, multilingualResults) = ParseMultilingualDailyResponse(aiResponse);
-                if (parsedResults == null)
-                {
-                    _logger.LogError("[FortunePredictionGAgent][GeneratePredictionAsync] Failed to parse Daily response");
-                    return new GetTodayPredictionResult
-                    {
-                        Success = false,
-                        Message = "Failed to parse AI response"
-                    };
-                }
-            }
+            
             parseStopwatch.Stop();
-            _logger.LogInformation($"[PERF][Fortune] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             // ========== INJECT BACKEND-CALCULATED FIELDS ==========
             // Pre-calculate values once
             var currentYear = DateTime.UtcNow.Year;
             var birthYear = userInfo.BirthDate.Year;
             
-            var sunSign = FortuneCalculator.CalculateZodiacSign(userInfo.BirthDate);
-            var birthYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
-            var birthYearAnimal = FortuneCalculator.CalculateChineseZodiac(birthYear);
-            var currentYearStems = FortuneCalculator.CalculateStemsAndBranches(currentYear);
-            var pastCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, -1);
-            var currentCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 0);
-            var futureCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 1);
+            var sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
+            var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
+            var currentYearStems = LumenCalculator.CalculateStemsAndBranches(currentYear);
+            var pastCycle = LumenCalculator.CalculateTenYearCycle(birthYear, -1);
+            var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
+            var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
             
             if (type == PredictionType.Lifetime)
             {
                 // Calculate Four Pillars (Ba Zi)
-                var fourPillars = FortuneCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+                var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
                 
-                // Inject into primary language (lifetimeForecast)
-                if (lifetimeForecast != null)
-                {
-                    lifetimeForecast["chineseAstrology_currentYearStems"] = currentYearStems;
-                    lifetimeForecast["sunSign_name"] = sunSign;
-                    lifetimeForecast["westernOverview_sunSign"] = sunSign;
-                    lifetimeForecast["chineseZodiac_animal"] = birthYearAnimal;
-                    lifetimeForecast["chineseZodiac_title"] = $"The {birthYearAnimal.Split(' ').Last()}"; // Extract animal name only (e.g., "The Pig")
-                    lifetimeForecast["pastCycle_ageRange"] = pastCycle.AgeRange;
-                    lifetimeForecast["pastCycle_period"] = pastCycle.Period;
-                    lifetimeForecast["currentCycle_ageRange"] = currentCycle.AgeRange;
-                    lifetimeForecast["currentCycle_period"] = currentCycle.Period;
-                    lifetimeForecast["futureCycle_ageRange"] = futureCycle.AgeRange;
-                    lifetimeForecast["futureCycle_period"] = futureCycle.Period;
-                    
-                    // Inject Four Pillars data (will be localized per language later)
-                    InjectFourPillarsData(lifetimeForecast, fourPillars, targetLanguage);
-                }
+                // Inject into primary language results
+                parsedResults["chineseAstrology_currentYearStems"] = currentYearStems;
+                parsedResults["sunSign_name"] = sunSign;
+                parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+                parsedResults["westernOverview_sunSign"] = sunSign;
+                parsedResults["chineseZodiac_animal"] = birthYearAnimal;
+                parsedResults["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                parsedResults["chineseZodiac_title"] = $"The {birthYearAnimal.Split(' ').Last()}";
+                parsedResults["pastCycle_ageRange"] = pastCycle.AgeRange;
+                parsedResults["pastCycle_period"] = pastCycle.Period;
+                parsedResults["currentCycle_ageRange"] = currentCycle.AgeRange;
+                parsedResults["currentCycle_period"] = currentCycle.Period;
+                parsedResults["futureCycle_ageRange"] = futureCycle.AgeRange;
+                parsedResults["futureCycle_period"] = futureCycle.Period;
+                
+                // Inject Four Pillars data
+                InjectFourPillarsData(parsedResults, fourPillars, targetLanguage);
                 
                 // Inject into all multilingual versions
-                if (multilingualLifetime != null)
+                if (multilingualResults != null)
                 {
-                    foreach (var lang in multilingualLifetime.Keys)
+                    foreach (var lang in multilingualResults.Keys)
                     {
-                        multilingualLifetime[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
-                        multilingualLifetime[lang]["sunSign_name"] = sunSign;
-                        multilingualLifetime[lang]["westernOverview_sunSign"] = sunSign;
-                        multilingualLifetime[lang]["chineseZodiac_animal"] = birthYearAnimal;
-                        multilingualLifetime[lang]["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, lang);
-                        multilingualLifetime[lang]["pastCycle_ageRange"] = pastCycle.AgeRange;
-                        multilingualLifetime[lang]["pastCycle_period"] = pastCycle.Period;
-                        multilingualLifetime[lang]["currentCycle_ageRange"] = currentCycle.AgeRange;
-                        multilingualLifetime[lang]["currentCycle_period"] = currentCycle.Period;
-                        multilingualLifetime[lang]["futureCycle_ageRange"] = futureCycle.AgeRange;
-                        multilingualLifetime[lang]["futureCycle_period"] = futureCycle.Period;
+                        multilingualResults[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
+                        multilingualResults[lang]["sunSign_name"] = sunSign;
+                        multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+                        multilingualResults[lang]["westernOverview_sunSign"] = sunSign;
+                        multilingualResults[lang]["chineseZodiac_animal"] = birthYearAnimal;
+                        multilingualResults[lang]["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                        multilingualResults[lang]["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, lang);
+                        multilingualResults[lang]["pastCycle_ageRange"] = pastCycle.AgeRange;
+                        multilingualResults[lang]["pastCycle_period"] = pastCycle.Period;
+                        multilingualResults[lang]["currentCycle_ageRange"] = currentCycle.AgeRange;
+                        multilingualResults[lang]["currentCycle_period"] = currentCycle.Period;
+                        multilingualResults[lang]["futureCycle_ageRange"] = futureCycle.AgeRange;
+                        multilingualResults[lang]["futureCycle_period"] = futureCycle.Period;
                         
                         // Inject Four Pillars data with language-specific formatting
-                        InjectFourPillarsData(multilingualLifetime[lang], fourPillars, lang);
+                        InjectFourPillarsData(multilingualResults[lang], fourPillars, lang);
                     }
                 }
                 
-                _logger.LogInformation($"[Fortune] {userInfo.UserId} Injected backend-calculated fields into Lifetime prediction");
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Lifetime prediction");
             }
             else if (type == PredictionType.Yearly)
             {
                 var yearlyYear = predictionDate.Year;
-                var yearlyYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(yearlyYear);
-                var yearlyTaishui = FortuneCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
-                var zodiacInfluence = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
+                var yearlyYearZodiac = LumenCalculator.GetChineseZodiacWithElement(yearlyYear);
+                var yearlyTaishui = LumenCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
                 
-                // Inject into primary language (yearlyForecast)
-                if (yearlyForecast != null)
-                {
-                    yearlyForecast["zodiacInfluence"] = zodiacInfluence;
-                }
+                // Inject into primary language results
+                parsedResults["sunSign_name"] = sunSign;
+                parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+                parsedResults["chineseZodiac_animal"] = birthYearAnimal;
+                parsedResults["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                parsedResults["chineseAstrology_currentYearStems"] = currentYearStems;
+                parsedResults["chineseAstrology_taishuiRelationship"] = yearlyTaishui;
+                parsedResults["zodiacInfluence"] = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
                 
                 // Inject into all multilingual versions
-                if (multilingualYearly != null)
+                if (multilingualResults != null)
                 {
-                    foreach (var lang in multilingualYearly.Keys)
+                    foreach (var lang in multilingualResults.Keys)
                     {
-                        multilingualYearly[lang]["zodiacInfluence"] = zodiacInfluence;
+                        multilingualResults[lang]["sunSign_name"] = sunSign;
+                        multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+                        multilingualResults[lang]["chineseZodiac_animal"] = birthYearAnimal;
+                        multilingualResults[lang]["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                        multilingualResults[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
+                        multilingualResults[lang]["chineseAstrology_taishuiRelationship"] = yearlyTaishui;
+                        multilingualResults[lang]["zodiacInfluence"] = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
                     }
                 }
                 
-                _logger.LogInformation($"[Fortune] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
             }
-            // Daily type: No backend-calculated fields to inject (all LLM-generated)
+            // Daily type: Enum fields are already extracted by parser during flattening
 
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
 
-            // Raise event to save prediction (with multilingual support)
+            // Add currentPhase for lifetime predictions
+            if (type == PredictionType.Lifetime)
+            {
+                var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                parsedResults["currentPhase"] = currentPhase.ToString();
+                
+                if (multilingualResults != null)
+                {
+                    foreach (var lang in multilingualResults.Keys)
+                    {
+                        multilingualResults[lang]["currentPhase"] = currentPhase.ToString();
+                    }
+                }
+            }
+
+            // Raise event to save prediction (unified structure)
             RaiseEvent(new PredictionGeneratedEvent
             {
                 PredictionId = predictionId,
                 UserId = userInfo.UserId,
                 PredictionDate = predictionDate,
-                Results = parsedResults,
-                Energy = 0, // Deprecated field, kept for backward compatibility
                 CreatedAt = now,
-                LifetimeForecast = lifetimeForecast,
-                WeeklyForecast = new Dictionary<string, string>(), // Deprecated field
-                WeeklyGeneratedDate = null, // Deprecated field
                 ProfileUpdatedAt = userInfo.UpdatedAt,
-                // Multilingual data
+                Type = type,
+                Results = parsedResults,
                 MultilingualResults = multilingualResults,
-                MultilingualLifetime = multilingualLifetime,
-                MultilingualWeekly = null, // Deprecated field
-                // Yearly data
-                YearlyForecast = yearlyForecast,
-                YearlyGeneratedDate = type == PredictionType.Yearly ? now : State.YearlyGeneratedDate,
-                MultilingualYearly = multilingualYearly,
-                // Language generation tracking
-                InitialLanguage = targetLanguage,
-                PredictionTypeGenerated = type
+                InitialLanguage = targetLanguage
             });
 
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortunePredictionGAgent][GeneratePredictionAsync] Prediction generated successfully (multilingual) for user {UserId}",
-                userInfo.UserId);
+            _logger.LogInformation("[LumenPredictionGAgent][GeneratePredictionAsync] {Type} prediction generated successfully for user {UserId}",
+                type, userInfo.UserId);
 
-            // Add currentPhase to all language versions if lifetime was generated
-            if (type == PredictionType.Lifetime && multilingualLifetime != null)
-            {
-                var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
-                foreach (var lang in multilingualLifetime.Keys)
-                {
-                    multilingualLifetime[lang]["currentPhase"] = currentPhase.ToString();
-                }
-                // Also add to default version
-                if (lifetimeForecast != null && !lifetimeForecast.IsNullOrEmpty())
-                {
-                lifetimeForecast["currentPhase"] = currentPhase.ToString();
-            }
-            }
-
+            // Build return DTO
             var newPredictionDto = new PredictionResultDto
-                {
-                    PredictionId = predictionId,
-                    UserId = userInfo.UserId,
-                    PredictionDate = predictionDate,
-                    Results = parsedResults,
-                    CreatedAt = now,
-                    FromCache = false,
-                // For yearly, return in LifetimeForecast field for API compatibility
-                LifetimeForecast = type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast,
-                // Multilingual data
-                MultilingualResults = multilingualResults,
-                MultilingualLifetime = type == PredictionType.Yearly ? multilingualYearly : multilingualLifetime,
-                // Language status (only target language is available initially)
+            {
+                PredictionId = predictionId,
+                UserId = userInfo.UserId,
+                PredictionDate = predictionDate,
+                CreatedAt = now,
+                FromCache = false,
+                Type = type,
+                Results = parsedResults,
                 AvailableLanguages = new List<string> { targetLanguage },
-                AllLanguagesGenerated = false // Will be true after async generation completes
+                AllLanguagesGenerated = false, // Will be true after async generation completes
+                Feedbacks = null
             };
             
-            // Extract enum values for frontend
-            ExtractEnumValues(newPredictionDto, parsedResults, 
-                type == PredictionType.Yearly ? yearlyForecast : lifetimeForecast);
-            
             // Stage 2: Trigger async generation of remaining languages
-            Dictionary<string, string>? sourceContent = null;
-            switch (type)
+            if (multilingualResults != null && multilingualResults.ContainsKey(targetLanguage))
             {
-                case PredictionType.Daily:
-                    if (multilingualResults != null && multilingualResults.Count > 0)
-                    {
-                        var dateKey = predictionDate.ToString("yyyy-MM-dd");
-                        if (multilingualResults.ContainsKey(dateKey) && multilingualResults[dateKey].ContainsKey(targetLanguage))
-                        {
-                            sourceContent = multilingualResults[dateKey][targetLanguage];
-                        }
-                    }
-                    break;
-                case PredictionType.Yearly:
-                    if (multilingualYearly != null && multilingualYearly.ContainsKey(targetLanguage))
-                    {
-                        sourceContent = multilingualYearly[targetLanguage];
-                    }
-                    break;
-                case PredictionType.Lifetime:
-                    if (multilingualLifetime != null && multilingualLifetime.ContainsKey(targetLanguage))
-                    {
-                        sourceContent = multilingualLifetime[targetLanguage];
-                    }
-                    break;
-            }
-            
-            // Trigger async generation for remaining languages (non-blocking)
-            if (sourceContent != null && sourceContent.Count > 0)
-            {
-                _logger.LogInformation($"[Fortune] {userInfo.UserId} Triggering async generation for remaining languages");
+                var sourceContent = multilingualResults[targetLanguage];
+                
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Triggering async generation for remaining languages");
                 
                 // Fire and forget - run in background
                 _ = Task.Run(async () =>
@@ -830,7 +561,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, $"[Fortune] {userInfo.UserId} Background translation task failed");
+                        _logger.LogError(ex, $"[Lumen] {userInfo.UserId} Background translation task failed");
                     }
                 });
             }
@@ -844,7 +575,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionGAgent][GeneratePredictionAsync] Error in AI generation");
+            _logger.LogError(ex, "[LumenPredictionGAgent][GeneratePredictionAsync] Error in AI generation");
             return new GetTodayPredictionResult
             {
                 Success = false,
@@ -856,7 +587,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
     /// <summary>
     /// Build prediction prompt for AI (single language generation for first stage)
     /// </summary>
-    private string BuildPredictionPrompt(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
+    private string BuildPredictionPrompt(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
     {
         // Build user info line dynamically based on available fields
         var userInfoParts = new List<string>();
@@ -915,7 +646,7 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         
         // Calculate display name based on user language (for personalized greetings in predictions)
         // displayName is like fullName - it should NEVER be translated across languages
-        var displayName = FortuneCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", targetLanguage);
+        var displayName = LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", targetLanguage);
 
         string prompt = string.Empty;
         
@@ -924,29 +655,29 @@ public class FortunePredictionGAgent : GAgentBase<FortunePredictionState, Fortun
         var birthYear = userInfo.BirthDate.Year;
         
         // Western Zodiac
-        var sunSign = FortuneCalculator.CalculateZodiacSign(userInfo.BirthDate);
+        var sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
         
         // Chinese Zodiac & Element
-        var birthYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
-        var birthYearAnimal = FortuneCalculator.CalculateChineseZodiac(birthYear);
-        var birthYearElement = FortuneCalculator.CalculateChineseElement(birthYear);
+        var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
+        var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
+        var birthYearElement = LumenCalculator.CalculateChineseElement(birthYear);
         
-        var currentYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(currentYear);
-        var currentYearAnimal = FortuneCalculator.CalculateChineseZodiac(currentYear);
-        var currentYearElement = FortuneCalculator.CalculateChineseElement(currentYear);
+        var currentYearZodiac = LumenCalculator.GetChineseZodiacWithElement(currentYear);
+        var currentYearAnimal = LumenCalculator.CalculateChineseZodiac(currentYear);
+        var currentYearElement = LumenCalculator.CalculateChineseElement(currentYear);
         
         // Heavenly Stems & Earthly Branches
-        var currentYearStems = FortuneCalculator.CalculateStemsAndBranches(currentYear);
-        var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
+        var currentYearStems = LumenCalculator.CalculateStemsAndBranches(currentYear);
+        var birthYearStems = LumenCalculator.CalculateStemsAndBranches(birthYear);
         
         // Taishui Relationship
-        var taishuiRelationship = FortuneCalculator.CalculateTaishuiRelationship(birthYear, currentYear);
+        var taishuiRelationship = LumenCalculator.CalculateTaishuiRelationship(birthYear, currentYear);
         
         // Age & 10-year Cycles
-        var currentAge = FortuneCalculator.CalculateAge(userInfo.BirthDate);
-        var pastCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, -1);
-        var currentCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 0);
-        var futureCycle = FortuneCalculator.CalculateTenYearCycle(birthYear, 1);
+        var currentAge = LumenCalculator.CalculateAge(userInfo.BirthDate);
+        var pastCycle = LumenCalculator.CalculateTenYearCycle(birthYear, -1);
+        var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
+        var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
         
         // Language-specific instruction prefix (single language generation for first stage)
         var languageMap = new Dictionary<string, string>
@@ -1044,8 +775,8 @@ RULES:
         else if (type == PredictionType.Yearly)
         {
             var yearlyYear = predictionDate.Year;
-            var yearlyYearZodiac = FortuneCalculator.GetChineseZodiacWithElement(yearlyYear);
-            var yearlyTaishui = FortuneCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
+            var yearlyYearZodiac = LumenCalculator.GetChineseZodiacWithElement(yearlyYear);
+            var yearlyTaishui = LumenCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
             
             prompt = singleLanguagePrefix + $@"Generate yearly prediction for {yearlyYear}.
 User: {userInfoLine}
@@ -1222,7 +953,7 @@ Output in JSON format with 'predictions' object containing each target language.
     /// <summary>
     /// Generate remaining languages asynchronously (second stage)
     /// </summary>
-    private async Task GenerateRemainingLanguagesAsync(FortuneUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent)
+    private async Task GenerateRemainingLanguagesAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent)
     {
         try
         {
@@ -1231,11 +962,11 @@ Output in JSON format with 'predictions' object containing each target language.
             
             if (remainingLanguages.Count == 0)
             {
-                _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} No remaining languages to generate for {type}");
+                _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} No remaining languages to generate for {type}");
                 return;
             }
             
-            _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} START - Type: {type}, Source: {sourceLanguage}, Targets: {string.Join(", ", remainingLanguages)}");
+            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} START - Type: {type}, Source: {sourceLanguage}, Targets: {string.Join(", ", remainingLanguages)}");
             
             // Build translation prompt
             var translationPrompt = BuildTranslationPrompt(sourceContent, sourceLanguage, remainingLanguages, type);
@@ -1250,18 +981,18 @@ Output in JSON format with 'predictions' object containing each target language.
                 userGuid,
                 chatId,
                 translationPrompt,
-                "FORTUNE");
+                "LUMEN");
             llmStopwatch.Stop();
-            _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
+            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
             
             if (response == null || response.Count() == 0)
             {
-                _logger.LogWarning($"[Fortune][AsyncTranslation] {userInfo.UserId} No response from LLM");
+                _logger.LogWarning($"[Lumen][AsyncTranslation] {userInfo.UserId} No response from LLM");
                 return;
             }
             
             var aiResponse = response[0].Content;
-            _logger.LogDebug($"[Fortune][AsyncTranslation] {userInfo.UserId} Raw LLM Response Length: {aiResponse?.Length ?? 0} chars");
+            _logger.LogDebug($"[Lumen][AsyncTranslation] {userInfo.UserId} Raw LLM Response Length: {aiResponse?.Length ?? 0} chars");
             
             // Parse response
             var parseStopwatch = Stopwatch.StartNew();
@@ -1272,7 +1003,7 @@ Output in JSON format with 'predictions' object containing each target language.
             if (codeBlockMatch.Success)
             {
                 jsonContent = codeBlockMatch.Groups[1].Value.Trim();
-                _logger.LogDebug($"[Fortune][AsyncTranslation] {userInfo.UserId} Extracted from code block");
+                _logger.LogDebug($"[Lumen][AsyncTranslation] {userInfo.UserId} Extracted from code block");
             }
             var firstBrace = jsonContent.IndexOf('{');
             var lastBrace = jsonContent.LastIndexOf('}');
@@ -1285,17 +1016,17 @@ Output in JSON format with 'predictions' object containing each target language.
             // Validate jsonContent before parsing
             if (string.IsNullOrWhiteSpace(jsonContent))
             {
-                _logger.LogError($"[Fortune][AsyncTranslation] {userInfo.UserId} Empty JSON content after extraction. Raw response: {aiResponse}");
+                _logger.LogError($"[Lumen][AsyncTranslation] {userInfo.UserId} Empty JSON content after extraction. Raw response: {aiResponse}");
                 return;
             }
             
             if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
             {
-                _logger.LogError($"[Fortune][AsyncTranslation] {userInfo.UserId} Invalid JSON format. Content starts with: {jsonContent.Substring(0, Math.Min(100, jsonContent.Length))}");
+                _logger.LogError($"[Lumen][AsyncTranslation] {userInfo.UserId} Invalid JSON format. Content starts with: {jsonContent.Substring(0, Math.Min(100, jsonContent.Length))}");
                 return;
             }
             
-            _logger.LogDebug($"[Fortune][AsyncTranslation] {userInfo.UserId} Attempting to parse JSON of length: {jsonContent.Length}");
+            _logger.LogDebug($"[Lumen][AsyncTranslation] {userInfo.UserId} Attempting to parse JSON of length: {jsonContent.Length}");
             
             Dictionary<string, object>? parsedResponse = null;
             try
@@ -1304,14 +1035,14 @@ Output in JSON format with 'predictions' object containing each target language.
             }
             catch (JsonException jsonEx)
             {
-                _logger.LogError(jsonEx, $"[Fortune][AsyncTranslation] {userInfo.UserId} JSON parsing failed. First 500 chars: {jsonContent.Substring(0, Math.Min(500, jsonContent.Length))}");
+                _logger.LogError(jsonEx, $"[Lumen][AsyncTranslation] {userInfo.UserId} JSON parsing failed. First 500 chars: {jsonContent.Substring(0, Math.Min(500, jsonContent.Length))}");
                 return;
             }
             
             if (parsedResponse == null || !parsedResponse.ContainsKey("predictions"))
             {
                 var keys = parsedResponse != null ? string.Join(", ", parsedResponse.Keys) : "null";
-                _logger.LogWarning($"[Fortune][AsyncTranslation] {userInfo.UserId} Invalid response format - missing 'predictions' key. Keys: {keys}");
+                _logger.LogWarning($"[Lumen][AsyncTranslation] {userInfo.UserId} Invalid response format - missing 'predictions' key. Keys: {keys}");
                 return;
             }
             
@@ -1320,7 +1051,7 @@ Output in JSON format with 'predictions' object containing each target language.
                 JsonConvert.SerializeObject(predictionsObj));
             
             parseStopwatch.Stop();
-            _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms");
+            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms");
             
             // Raise event to update state with translated languages
             RaiseEvent(new LanguagesTranslatedEvent
@@ -1334,11 +1065,11 @@ Output in JSON format with 'predictions' object containing each target language.
             // Confirm events to persist state changes
             await ConfirmEvents();
             
-            _logger.LogInformation($"[Fortune][AsyncTranslation] {userInfo.UserId} SUCCESS - Generated {translatedLanguages.Count} languages for {type}");
+            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} SUCCESS - Generated {translatedLanguages.Count} languages for {type}");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[Fortune][AsyncTranslation] {userInfo.UserId} Error generating remaining languages for {type}");
+            _logger.LogError(ex, $"[Lumen][AsyncTranslation] {userInfo.UserId} Error generating remaining languages for {type}");
         }
     }
 
@@ -1417,7 +1148,7 @@ Output in JSON format with 'predictions' object containing each target language.
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionGAgent][ParseLifetimeWeeklyResponse] Failed to parse");
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeWeeklyResponse] Failed to parse");
             return (null, null);
         }
     }
@@ -1457,83 +1188,15 @@ Output in JSON format with 'predictions' object containing each target language.
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionGAgent][ParseDailyResponse] Failed to parse");
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Failed to parse");
             return null;
         }
     }
-
-    /// <summary>
-    /// Parse AI JSON response (structure with energy at top level and forecast in results)
-    /// [DEPRECATED] Kept for backward compatibility
-    /// </summary>
-    private (Dictionary<string, Dictionary<string, string>>?, int) ParseAIResponse(string aiResponse)
-    {
-        try
-        {
-            // Try to extract JSON from response (in case AI adds extra text)
-            var jsonStart = aiResponse.IndexOf('{');
-            var jsonEnd = aiResponse.LastIndexOf('}');
-
-            if (jsonStart >= 0 && jsonEnd > jsonStart)
-            {
-                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
-                
-                if (fullResponse == null)
-                {
-                    return (null, 70);
-                }
-
-                // Extract energy (supporting both "energy" and "overallEnergy" for backward compatibility)
-                var energy = 70; // Default value
-                if (fullResponse.ContainsKey("energy"))
-                {
-                    if (fullResponse["energy"] is long energyLong)
-                    {
-                        energy = (int)energyLong;
-                    }
-                    else if (fullResponse["energy"] is int energyInt)
-                    {
-                        energy = energyInt;
-                    }
-                }
-                else if (fullResponse.ContainsKey("overallEnergy"))
-                {
-                    if (fullResponse["overallEnergy"] is long energyLong)
-                    {
-                        energy = (int)energyLong;
-                    }
-                    else if (fullResponse["overallEnergy"] is int energyInt)
-                    {
-                        energy = energyInt;
-                    }
-                }
-
-                // Extract results (should include forecast as first item)
-                if (fullResponse.ContainsKey("results") && fullResponse["results"] != null)
-                {
-                    var resultsJson = JsonConvert.SerializeObject(fullResponse["results"]);
-                    var results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(resultsJson);
-                    return (results, energy);
-                }
-
-                return (null, energy);
-            }
-
-            return (null, 70);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[FortunePredictionGAgent][ParseAIResponse] Failed to parse JSON");
-            return (null, 70);
-        }
-    }
-    
     /// <summary>
     /// Parse multilingual daily response from AI
     /// Returns (default English results, multilingual dictionary)
     /// </summary>
-    private (Dictionary<string, Dictionary<string, string>>?, Dictionary<string, Dictionary<string, Dictionary<string, string>>>?) ParseMultilingualDailyResponse(string aiResponse)
+    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseMultilingualDailyResponse(string aiResponse)
     {
         try
         {
@@ -1559,7 +1222,7 @@ Output in JSON format with 'predictions' object containing each target language.
             // Clean up any trailing characters
             jsonContent = jsonContent.Trim();
             
-            _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Extracted JSON length: {Length}", jsonContent.Length);
+            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
             Dictionary<string, object>? fullResponse = null;
             try
@@ -1568,16 +1231,16 @@ Output in JSON format with 'predictions' object containing each target language.
             }
             catch (JsonException jsonEx)
             {
-                _logger.LogError(jsonEx, "[FortunePredictionGAgent][ParseMultilingualDailyResponse] JSON parse error. First 500 chars: {JsonPreview}", 
+                _logger.LogError(jsonEx, "[LumenPredictionGAgent][ParseMultilingualDailyResponse] JSON parse error. First 500 chars: {JsonPreview}", 
                     jsonContent.Length > 500 ? jsonContent.Substring(0, 500) : jsonContent);
-                _logger.LogError("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Last 200 chars: {JsonEnd}", 
+                _logger.LogError("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Last 200 chars: {JsonEnd}", 
                     jsonContent.Length > 200 ? jsonContent.Substring(jsonContent.Length - 200) : jsonContent);
                 return (null, null);
             }
             
             if (fullResponse == null)
             {
-                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] Failed to deserialize response");
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Failed to deserialize response");
                 return (null, null);
             }
 
@@ -1585,9 +1248,15 @@ Output in JSON format with 'predictions' object containing each target language.
             if (!fullResponse.ContainsKey("predictions"))
             {
                 // Fallback to old format (single language)
-                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] No predictions wrapper found, using old format");
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] No predictions wrapper found, using old format");
                 var singleLangResults = ParseDailyResponse(aiResponse);
-                return (singleLangResults, null);
+                if (singleLangResults != null && singleLangResults.Count > 0)
+                {
+                    // Flatten nested structure
+                    var firstResult = singleLangResults.Values.FirstOrDefault();
+                    return (firstResult, null);
+                }
+                return (null, null);
             }
 
             var predictionsJson = JsonConvert.SerializeObject(fullResponse["predictions"]);
@@ -1595,18 +1264,18 @@ Output in JSON format with 'predictions' object containing each target language.
             
             if (predictions == null || predictions.Count == 0)
             {
-                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualDailyResponse] No predictions found");
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] No predictions found");
                 return (null, null);
             }
 
             // Convert each language's nested structure to flattened Dictionary<string, string>
-            var multilingualResults = new Dictionary<string, Dictionary<string, Dictionary<string, string>>>();
+            var multilingualResults = new Dictionary<string, Dictionary<string, string>>();
             
             foreach (var langKvp in predictions)
             {
                 var lang = langKvp.Key;
                 var langDataJson = JsonConvert.SerializeObject(langKvp.Value);
-                var langDataFlat = FlattenNestedJson(langDataJson);
+                var langDataFlat = FlattenNestedJsonToFlat(langDataJson);
                 
                 if (langDataFlat != null && langDataFlat.Count > 0)
                 {
@@ -1614,8 +1283,8 @@ Output in JSON format with 'predictions' object containing each target language.
                 }
             }
 
-            // Extract English version as default
-            Dictionary<string, Dictionary<string, string>>? defaultResults = null;
+            // Extract English version as default (flat structure)
+            Dictionary<string, string>? defaultResults = null;
             if (multilingualResults.ContainsKey("en"))
             {
                 defaultResults = multilingualResults["en"];
@@ -1625,14 +1294,20 @@ Output in JSON format with 'predictions' object containing each target language.
                 // Use first available language as fallback
                 defaultResults = multilingualResults.Values.FirstOrDefault();
             }
-
+            
             return (defaultResults, multilingualResults);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionGAgent][ParseMultilingualDailyResponse] Failed to parse multilingual response");
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualDailyResponse] Failed to parse multilingual response");
             // Fallback to old format
-            return (ParseDailyResponse(aiResponse), null);
+            var fallbackResults = ParseDailyResponse(aiResponse);
+            if (fallbackResults != null && fallbackResults.Count > 0)
+            {
+                var firstResult = fallbackResults.Values.FirstOrDefault();
+                return (firstResult, null);
+            }
+            return (null, null);
         }
     }
     
@@ -1666,7 +1341,7 @@ Output in JSON format with 'predictions' object containing each target language.
             // Clean up any trailing characters
             jsonContent = jsonContent.Trim();
             
-            _logger.LogDebug("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Extracted JSON length: {Length}", jsonContent.Length);
+            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Extracted JSON length: {Length}", jsonContent.Length);
 
             Dictionary<string, object>? fullResponse = null;
             try
@@ -1675,16 +1350,16 @@ Output in JSON format with 'predictions' object containing each target language.
             }
             catch (JsonException jsonEx)
             {
-                _logger.LogError(jsonEx, "[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] JSON parse error. First 500 chars: {JsonPreview}", 
+                _logger.LogError(jsonEx, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] JSON parse error. First 500 chars: {JsonPreview}", 
                     jsonContent.Length > 500 ? jsonContent.Substring(0, 500) : jsonContent);
-                _logger.LogError("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Last 200 chars: {JsonEnd}", 
+                _logger.LogError("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Last 200 chars: {JsonEnd}", 
                     jsonContent.Length > 200 ? jsonContent.Substring(jsonContent.Length - 200) : jsonContent);
                 return (null, null);
             }
             
             if (fullResponse == null)
             {
-                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Failed to deserialize response");
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Failed to deserialize response");
                 return (null, null);
             }
 
@@ -1692,7 +1367,7 @@ Output in JSON format with 'predictions' object containing each target language.
             if (!fullResponse.ContainsKey("predictions"))
             {
                 // Fallback to old format (single language)
-                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] No predictions wrapper found, using old format");
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] No predictions wrapper found, using old format");
                 var (lifetime, _) = ParseLifetimeWeeklyResponse(aiResponse);
                 return (lifetime, null);
             }
@@ -1702,7 +1377,7 @@ Output in JSON format with 'predictions' object containing each target language.
             
             if (predictions == null || predictions.Count == 0)
             {
-                _logger.LogWarning("[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] No predictions found");
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] No predictions found");
                 return (null, null);
             }
 
@@ -1762,7 +1437,7 @@ Output in JSON format with 'predictions' object containing each target language.
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionGAgent][ParseMultilingualLifetimeResponse] Failed to parse multilingual response");
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Failed to parse multilingual response");
             // Fallback to old format
             var (lifetime, _) = ParseLifetimeWeeklyResponse(aiResponse);
             return (lifetime, null);
@@ -1780,37 +1455,29 @@ Output in JSON format with 'predictions' object containing each target language.
     }
     
     /// <summary>
-    /// Flatten nested JSON into Dictionary<section, Dictionary<field, value>>
-    /// Uses underscore to join nested keys (e.g., "tarotCard.name" → "tarotCard_name")
-    /// This allows frontend to access nested fields without JSON.parse()
+    /// Flatten nested JSON into Dictionary<field, value>
+    /// Uses underscore to join nested keys (e.g., "tarotCard_name")
+    /// Returns a completely flat dictionary
     /// </summary>
-    private Dictionary<string, Dictionary<string, string>>? FlattenNestedJson(string json)
+    private Dictionary<string, string>? FlattenNestedJsonToFlat(string json)
     {
         try
         {
             var data = JsonConvert.DeserializeObject<Dictionary<string, object>>(json);
             if (data == null) return null;
             
-            var result = new Dictionary<string, Dictionary<string, string>>();
+            var flatResult = new Dictionary<string, string>();
             
-            foreach (var kvp in data)
-            {
-                var sectionName = kvp.Key;
-                var sectionData = new Dictionary<string, string>();
-                
-                // Recursively flatten the section data
-                FlattenObject(kvp.Value, "", sectionData);
-                
-                result[sectionName] = sectionData;
-            }
+            // Recursively flatten the entire object into a single-level dictionary
+            FlattenObject(data, "", flatResult);
             
-            _logger.LogDebug("[FortunePredictionGAgent][FlattenNestedJson] Flattened {Count} sections", result.Count);
+            _logger.LogDebug("[LumenPredictionGAgent][FlattenNestedJsonToFlat] Flattened {Count} fields", flatResult.Count);
             
-            return result;
+            return flatResult;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortunePredictionGAgent][FlattenNestedJson] Failed to flatten JSON");
+            _logger.LogError(ex, "[LumenPredictionGAgent][FlattenNestedJsonToFlat] Failed to flatten JSON");
             return null;
         }
     }
@@ -1834,7 +1501,21 @@ Output in JSON format with 'predictions' object containing each target language.
         {
             case string strValue:
                 // Simple string - store directly
-                result[prefix] = strValue;
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    result[prefix] = strValue;
+                }
+                break;
+                
+            case Dictionary<string, object> dict:
+                // Dictionary - recurse into each key-value pair
+                foreach (var kvp in dict)
+                {
+                    var newKey = string.IsNullOrEmpty(prefix) 
+                        ? kvp.Key 
+                        : $"{prefix}_{kvp.Key}";
+                    FlattenObject(kvp.Value, newKey, result);
+                }
                 break;
                 
             case Newtonsoft.Json.Linq.JObject jObject:
@@ -1850,12 +1531,18 @@ Output in JSON format with 'predictions' object containing each target language.
                 
             case Newtonsoft.Json.Linq.JArray jArray:
                 // Array - store as JSON string for now (could expand to array_0, array_1, etc.)
-                result[prefix] = jArray.ToString(Newtonsoft.Json.Formatting.None);
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    result[prefix] = jArray.ToString(Newtonsoft.Json.Formatting.None);
+                }
                 break;
                 
             case Newtonsoft.Json.Linq.JValue jValue:
                 // Primitive value (number, boolean, etc.)
-                result[prefix] = jValue.ToString();
+                if (!string.IsNullOrEmpty(prefix))
+                {
+                    result[prefix] = jValue.ToString();
+                }
                 break;
                 
             default:
@@ -1893,47 +1580,6 @@ Output in JSON format with 'predictions' object containing each target language.
     /// <summary>
     /// Extract enum values from prediction results
     /// </summary>
-    private void ExtractEnumValues(PredictionResultDto prediction, Dictionary<string, Dictionary<string, string>>? results, Dictionary<string, string>? lifetime)
-    {
-        // Extract Tarot Card from daily prediction (from en language version)
-        if (results != null && results.TryGetValue("en", out var enResults))
-        {
-            if (enResults.TryGetValue("todaysReading_tarotCard_name", out var tarotName))
-            {
-                prediction.TodaysTarotCard = ParseTarotCard(tarotName);
-            }
-            
-            if (enResults.TryGetValue("luckyAlignments_luckyStone", out var stoneName))
-            {
-                prediction.LuckyStone = ParseCrystalStone(stoneName);
-            }
-        }
-        
-        // Extract Zodiac signs from lifetime prediction
-        if (lifetime != null)
-        {
-            if (lifetime.TryGetValue("westernOverview_sunSign", out var sunSign))
-            {
-                prediction.SunSign = ParseZodiacSign(sunSign);
-            }
-            
-            if (lifetime.TryGetValue("westernOverview_moonSign", out var moonSign))
-            {
-                prediction.MoonSign = ParseZodiacSign(moonSign);
-            }
-            
-            if (lifetime.TryGetValue("westernOverview_risingSign", out var risingSign))
-            {
-                prediction.RisingSign = ParseZodiacSign(risingSign);
-            }
-            
-            if (lifetime.TryGetValue("chineseZodiac_animal", out var chineseZodiac))
-            {
-                prediction.ChineseZodiac = ParseChineseZodiac(chineseZodiac);
-            }
-        }
-    }
-    
     /// <summary>
     /// Parse tarot card name to enum
     /// </summary>
@@ -1949,7 +1595,7 @@ Output in JSON format with 'predictions' object containing each target language.
             return result;
         }
         
-        _logger.LogWarning($"[FortunePredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}");
+        _logger.LogWarning($"[LumenPredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}");
         return TarotCardEnum.Unknown;
     }
     
@@ -1967,7 +1613,7 @@ Output in JSON format with 'predictions' object containing each target language.
             return result;
         }
         
-        _logger.LogWarning($"[FortunePredictionGAgent][ParseZodiacSign] Unknown zodiac sign: {signName}");
+        _logger.LogWarning($"[LumenPredictionGAgent][ParseZodiacSign] Unknown zodiac sign: {signName}");
         return ZodiacSignEnum.Unknown;
     }
     
@@ -1986,7 +1632,7 @@ Output in JSON format with 'predictions' object containing each target language.
             return result;
         }
         
-        _logger.LogWarning($"[FortunePredictionGAgent][ParseChineseZodiac] Unknown chinese zodiac: {animalName}");
+        _logger.LogWarning($"[LumenPredictionGAgent][ParseChineseZodiac] Unknown chinese zodiac: {animalName}");
         return ChineseZodiacEnum.Unknown;
     }
     
@@ -2023,52 +1669,8 @@ Output in JSON format with 'predictions' object containing each target language.
             return result;
         }
         
-        _logger.LogWarning($"[FortunePredictionGAgent][ParseCrystalStone] Unknown crystal stone: {stoneName}");
+        _logger.LogWarning($"[LumenPredictionGAgent][ParseCrystalStone] Unknown crystal stone: {stoneName}");
         return CrystalStoneEnum.Unknown;
-    }
-    
-    /// <summary>
-    /// Apply localization: only keep requested language version, remove other languages
-    /// </summary>
-    private void ApplyLocalization(PredictionResultDto prediction, string userLanguage)
-    {
-        // Apply localization to daily results
-        if (prediction.MultilingualResults != null && prediction.MultilingualResults.Count > 0)
-        {
-            if (prediction.MultilingualResults.TryGetValue(userLanguage, out var localizedResults))
-            {
-                prediction.Results = localizedResults;
-            }
-            else if (prediction.MultilingualResults.TryGetValue("en", out var englishResults))
-            {
-                // Fallback to English if requested language not available
-                prediction.Results = englishResults;
-                _logger.LogWarning("[FortunePredictionGAgent][ApplyLocalization] Language {UserLanguage} not found, using English fallback",
-                    userLanguage);
-            }
-            
-            // Clear multilingual field to avoid returning all languages
-            prediction.MultilingualResults = null;
-        }
-        
-        // Apply localization to lifetime/yearly forecast
-        if (prediction.MultilingualLifetime != null && prediction.MultilingualLifetime.Count > 0)
-        {
-            if (prediction.MultilingualLifetime.TryGetValue(userLanguage, out var localizedLifetime))
-            {
-                prediction.LifetimeForecast = localizedLifetime;
-            }
-            else if (prediction.MultilingualLifetime.TryGetValue("en", out var englishLifetime))
-            {
-                // Fallback to English
-                prediction.LifetimeForecast = englishLifetime;
-                _logger.LogWarning("[FortunePredictionGAgent][ApplyLocalization] Lifetime/Yearly {UserLanguage} not found, using English fallback",
-                    userLanguage);
-            }
-            
-            // Clear multilingual field to avoid returning all languages
-            prediction.MultilingualLifetime = null;
-        }
     }
     
     /// <summary>

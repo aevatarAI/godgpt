@@ -1,13 +1,13 @@
-using Aevatar.Application.Grains.Fortune.Dtos;
+using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Core.Abstractions;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Fortune user profile state data (V2 with FullName)
+/// Lumen user profile state data (V2 with FullName)
 /// </summary>
 [GenerateSerializer]
-public class FortuneUserProfileState : StateBase
+public class LumenUserProfileState : StateBase
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FullName { get; set; } = string.Empty;
@@ -25,9 +25,8 @@ public class FortuneUserProfileState : StateBase
     [Id(13)] public string? Email { get; set; }
     [Id(14)] public DateTime CreatedAt { get; set; }
     [Id(15)] public DateTime UpdatedAt { get; set; }
-    [Id(16)] public Dictionary<string, string> Astrology { get; set; } = new();
-    [Id(17)] public Dictionary<string, string> Bazi { get; set; } = new();
-    [Id(18)] public Dictionary<string, string> Zodiac { get; set; } = new();
-    [Id(19)] public DateTime? InsightsGeneratedAt { get; set; }
+    
+    // Multilingual welcome note (language -> {rhythm, essence, ...})
+    [Id(16)] public Dictionary<string, Dictionary<string, string>> MultilingualWelcomeNote { get; set; } = new();
 }
 

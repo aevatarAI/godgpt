@@ -21,8 +21,8 @@ public enum SeekingInterestEnum
     [Description("Love & relationships")]
     LoveAndRelationships = 3,
     
-    [Description("Daily fortune telling")]
-    DailyFortuneTelling = 4,
+    [Description("Daily fortune prediction")]
+    DailyFortune = 4,
     
     [Description("Career guidance")]
     CareerGuidance = 5

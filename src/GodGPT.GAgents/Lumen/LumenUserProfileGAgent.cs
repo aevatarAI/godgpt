@@ -1,5 +1,5 @@
-using Aevatar.Application.Grains.Fortune.Dtos;
-using Aevatar.Application.Grains.Fortune.SEvents;
+using Aevatar.Application.Grains.Lumen.Dtos;
+using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
@@ -7,23 +7,23 @@ using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Concurrency;
 
-namespace Aevatar.Application.Grains.Fortune;
+namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
-/// Interface for Fortune User Profile GAgent (V2) - manages user profile with FullName
+/// Interface for Lumen User Profile GAgent (V2) - manages user profile with FullName
 /// </summary>
-public interface IFortuneUserProfileGAgent : IGAgent
+public interface ILumenUserProfileGAgent : IGAgent
 {
     Task<UpdateUserProfileResult> UpdateUserProfileAsync(UpdateUserProfileRequest request);
     
     [ReadOnly]
-    Task<GetUserProfileResult> GetUserProfileAsync(Guid userId);
+    Task<GetUserProfileResult> GetUserProfileAsync(Guid userId, string userLanguage = "en");
     
     /// <summary>
     /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
     /// </summary>
     [ReadOnly]
-    Task<FortuneUserProfileDto?> GetRawStateAsync();
+    Task<LumenUserProfileDto?> GetRawStateAsync();
     
     Task<UpdateUserActionsResult> UpdateUserActionsAsync(UpdateUserActionsRequest request);
     
@@ -33,14 +33,14 @@ public interface IFortuneUserProfileGAgent : IGAgent
     Task<ClearUserResult> ClearUserAsync();
 }
 
-[GAgent(nameof(FortuneUserProfileGAgent))]
+[GAgent(nameof(LumenUserProfileGAgent))]
 [Reentrant]
-public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, FortuneUserProfileEventLog>, IFortuneUserProfileGAgent
+public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUserProfileEventLog>, ILumenUserProfileGAgent
 {
-    private readonly ILogger<FortuneUserProfileGAgent> _logger;
+    private readonly ILogger<LumenUserProfileGAgent> _logger;
     
     /// <summary>
-    /// Valid fortune prediction actions
+    /// Valid lumen prediction actions
     /// </summary>
     private static readonly HashSet<string> ValidActions = new()
     {
@@ -49,21 +49,21 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         "humanFigure", "tarot", "zhengYu"
     };
 
-    public FortuneUserProfileGAgent(ILogger<FortuneUserProfileGAgent> logger)
+    public LumenUserProfileGAgent(ILogger<LumenUserProfileGAgent> logger)
     {
         _logger = logger;
     }
 
     public override Task<string> GetDescriptionAsync()
     {
-        return Task.FromResult("Fortune user profile management (V2)");
+        return Task.FromResult("Lumen user profile management (V2)");
     }
 
     /// <summary>
     /// Event-driven state transition handler
     /// </summary>
-    protected sealed override void GAgentTransitionState(FortuneUserProfileState state, 
-        StateLogEventBase<FortuneUserProfileEventLog> @event)
+    protected sealed override void GAgentTransitionState(LumenUserProfileState state, 
+        StateLogEventBase<LumenUserProfileEventLog> @event)
     {
         switch (@event)
         {
@@ -117,13 +117,13 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][UpdateUserProfileAsync] Start - UserId: {UserId}", request.UserId);
+            _logger.LogDebug("[LumenUserProfileGAgent][UpdateUserProfileAsync] Start - UserId: {UserId}", request.UserId);
 
             // Validate request
             var validationResult = ValidateProfileRequest(request);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserProfileAsync] Validation failed: {Message}", 
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserProfileAsync] Validation failed: {Message}", 
                     validationResult.Message);
                 return new UpdateUserProfileResult
                 {
@@ -134,7 +134,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             
             if (!State.UserId.IsNullOrWhiteSpace() && State.UserId != request.UserId)
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserProfileAsync] User ID mismatch: {UserId}", request.UserId);
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserProfileAsync] User ID mismatch: {UserId}", request.UserId);
                 return new UpdateUserProfileResult
                 {
                     Success = false,
@@ -166,7 +166,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserProfileGAgent][UpdateUserProfileAsync] User profile updated successfully: {UserId}", 
+            _logger.LogInformation("[LumenUserProfileGAgent][UpdateUserProfileAsync] User profile updated successfully: {UserId}", 
                 request.UserId);
 
             return new UpdateUserProfileResult
@@ -179,7 +179,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][UpdateUserProfileAsync] Error updating user profile: {UserId}", 
+            _logger.LogError(ex, "[LumenUserProfileGAgent][UpdateUserProfileAsync] Error updating user profile: {UserId}", 
                 request.UserId);
             return new UpdateUserProfileResult
             {
@@ -189,12 +189,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
     }
 
-    public async Task<GetUserProfileResult> GetUserProfileAsync(Guid userId)
+    public async Task<GetUserProfileResult> GetUserProfileAsync(Guid userId, string userLanguage = "en")
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][GetUserProfileAsync] Getting user profile for: {UserId}", 
-                this.GetPrimaryKey().ToString());
+            _logger.LogDebug("[LumenUserProfileGAgent][GetUserProfileAsync] Getting user profile for: {UserId}, Language: {Language}", 
+                this.GetPrimaryKey().ToString(), userLanguage);
 
             if (string.IsNullOrEmpty(State.UserId))
             {
@@ -204,7 +204,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
 
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][GetUserProfileAsync] Fortune user profile not initialized {GrainId}", this.GetPrimaryKey().ToString());
+                _logger.LogWarning("[LumenUserProfileGAgent][GetUserProfileAsync] Lumen user profile not initialized {GrainId}", this.GetPrimaryKey().ToString());
                 return new GetUserProfileResult
                 {
                     Success = false,
@@ -212,21 +212,27 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 };
             }
 
-            // Calculate WelcomeNote using backend calculations
-            var welcomeNote = GenerateWelcomeNote(State.BirthDate);
+            // Calculate WelcomeNote using backend calculations (English base)
+            var welcomeNoteBase = GenerateWelcomeNote(State.BirthDate);
+            
+            // Translate WelcomeNote to requested language
+            var welcomeNote = TranslateWelcomeNote(welcomeNoteBase, userLanguage);
             
             // Calculate zodiac sign and Chinese zodiac
-            var zodiacSign = FortuneCalculator.CalculateZodiacSign(State.BirthDate);
-            var zodiacSignEnum = ParseZodiacSignEnum(zodiacSign);
-            var chineseZodiacWithElement = FortuneCalculator.GetChineseZodiacWithElement(State.BirthDate.Year);
-            var chineseZodiacAnimal = FortuneCalculator.CalculateChineseZodiac(State.BirthDate.Year);
-            var chineseZodiacEnum = ParseChineseZodiacEnum(chineseZodiacAnimal);
+            var zodiacSignEn = LumenCalculator.CalculateZodiacSign(State.BirthDate);
+            var zodiacSign = TranslateZodiacSign(zodiacSignEn, userLanguage);
+            var zodiacSignEnum = LumenCalculator.ParseZodiacSignEnum(zodiacSignEn);
+            
+            var chineseZodiacWithElementEn = LumenCalculator.GetChineseZodiacWithElement(State.BirthDate.Year);
+            var chineseZodiac = TranslateChineseZodiac(chineseZodiacWithElementEn, userLanguage);
+            var chineseZodiacAnimal = LumenCalculator.CalculateChineseZodiac(State.BirthDate.Year);
+            var chineseZodiacEnum = LumenCalculator.ParseChineseZodiacEnum(chineseZodiacAnimal);
 
             return new GetUserProfileResult
             {
                 Success = true,
                 Message = string.Empty,
-                UserProfile = new FortuneUserProfileDto
+                UserProfile = new LumenUserProfileDto
                 {
                     UserId = State.UserId,
                     FullName = State.FullName,
@@ -247,14 +253,14 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                     WelcomeNote = welcomeNote,
                     ZodiacSign = zodiacSign,
                     ZodiacSignEnum = zodiacSignEnum,
-                    ChineseZodiac = chineseZodiacWithElement,
+                    ChineseZodiac = chineseZodiac,
                     ChineseZodiacEnum = chineseZodiacEnum
                 }
             };
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][GetUserProfileAsync] Error getting user profile");
+            _logger.LogError(ex, "[LumenUserProfileGAgent][GetUserProfileAsync] Error getting user profile");
             return new GetUserProfileResult
             {
                 Success = false,
@@ -266,7 +272,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     private async Task TryToMigrateDataFromUserInfoCollectionAsync(Guid userId)
     {
         _logger.LogWarning(
-            "[FortuneUserProfileGAgent][GetUserProfileAsync] Fortune user profile not initialized. {GrainId}",
+            "[LumenUserProfileGAgent][GetUserProfileAsync] Lumen user profile not initialized. {GrainId}",
             this.GetPrimaryKey().ToString());
 
         // Use GetRawStateAsync to prevent circular dependency
@@ -276,7 +282,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         if (userInfoResult != null && userInfoResult.IsInitialized && userInfoResult.NameInfo != null)
         {
             _logger.LogInformation(
-                "[FortuneUserProfileGAgent][GetUserProfileAsync] Migrating data from UserInfoCollection to FortuneUserProfile, userId {UserId}",
+                "[LumenUserProfileGAgent][GetUserProfileAsync] Migrating data from UserInfoCollection to LumenUserProfile, userId {UserId}",
                 userId.ToString());
 
             var now = DateTime.UtcNow;
@@ -321,7 +327,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex,
-                        "[FortuneUserProfileGAgent][GetUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
+                        "[LumenUserProfileGAgent][GetUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
                         userInfoResult.BirthDateInfo.Year, userInfoResult.BirthDateInfo.Month,
                         userInfoResult.BirthDateInfo.Day);
                 }
@@ -347,7 +353,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             if (hasDataToMigrate)
             {
                 _logger.LogInformation(
-                    "[FortuneUserProfileGAgent][GetUserProfileAsync] Saving migrated data for userId {UserId}, " +
+                    "[LumenUserProfileGAgent][GetUserProfileAsync] Saving migrated data for userId {UserId}, " +
                     "fullName: {FullName}, gender: {Gender}, birthDate: {BirthDate}, country: {Country}, city: {City}",
                     userId.ToString(), fullName, gender, birthDate, birthCountry, birthCity);
 
@@ -373,12 +379,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 await ConfirmEvents();
 
                 _logger.LogInformation(
-                    "[FortuneUserProfileGAgent][GetUserProfileAsync] Successfully migrated data from UserInfoCollection");
+                    "[LumenUserProfileGAgent][GetUserProfileAsync] Successfully migrated data from UserInfoCollection");
             }
             else
             {
                 _logger.LogDebug(
-                    "[FortuneUserProfileGAgent][GetUserProfileAsync] UserInfoCollection exists but insufficient data for migration (missing FullName or BirthDate)");
+                    "[LumenUserProfileGAgent][GetUserProfileAsync] UserInfoCollection exists but insufficient data for migration (missing FullName or BirthDate)");
             }
         }
     }
@@ -386,21 +392,21 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     /// <summary>
     /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
     /// </summary>
-    public Task<FortuneUserProfileDto?> GetRawStateAsync()
+    public Task<LumenUserProfileDto?> GetRawStateAsync()
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][GetRawStateAsync] Getting raw state for: {UserId}", 
+            _logger.LogDebug("[LumenUserProfileGAgent][GetRawStateAsync] Getting raw state for: {UserId}", 
                 this.GetPrimaryKey());
 
             // If not initialized, return null immediately without any migration logic
             if (string.IsNullOrEmpty(State.UserId))
             {
-                return Task.FromResult<FortuneUserProfileDto?>(null);
+                return Task.FromResult<LumenUserProfileDto?>(null);
             }
 
             // Return raw state data without any processing or migration
-            var profileDto = new FortuneUserProfileDto
+            var profileDto = new LumenUserProfileDto
             {
                 UserId = State.UserId,
                 FullName = State.FullName,
@@ -421,12 +427,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 WelcomeNote = new Dictionary<string, string>() // Empty, no calculation
             };
 
-            return Task.FromResult<FortuneUserProfileDto?>(profileDto);
+            return Task.FromResult<LumenUserProfileDto?>(profileDto);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][GetRawStateAsync] Error getting raw state");
-            return Task.FromResult<FortuneUserProfileDto?>(null);
+            _logger.LogError(ex, "[LumenUserProfileGAgent][GetRawStateAsync] Error getting raw state");
+            return Task.FromResult<LumenUserProfileDto?>(null);
         }
     }
 
@@ -434,12 +440,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
+            _logger.LogDebug("[LumenUserProfileGAgent][UpdateUserActionsAsync] Start - UserId: {UserId}", request.UserId);
 
             // Check if user exists
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] User not found: {UserId}", request.UserId);
                 return new UpdateUserActionsResult
                 {
                     Success = false,
@@ -450,7 +456,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             // Validate that the user ID matches
             if (State.UserId != request.UserId)
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] User ID mismatch. State: {StateUserId}, Request: {RequestUserId}", 
                     State.UserId, request.UserId);
                 return new UpdateUserActionsResult
                 {
@@ -463,7 +469,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             var validationResult = ValidateActions(request.Actions);
             if (!validationResult.IsValid)
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateUserActionsAsync] Validation failed: {Message}", 
                     validationResult.Message);
                 return new UpdateUserActionsResult
                 {
@@ -485,7 +491,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserProfileGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
+            _logger.LogInformation("[LumenUserProfileGAgent][UpdateUserActionsAsync] User actions updated successfully: {UserId}, Actions: {Actions}", 
                 request.UserId, string.Join(", ", request.Actions));
 
             return new UpdateUserActionsResult
@@ -498,7 +504,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
+            _logger.LogError(ex, "[LumenUserProfileGAgent][UpdateUserActionsAsync] Error updating user actions: {UserId}", 
                 request.UserId);
             return new UpdateUserActionsResult
             {
@@ -567,13 +573,13 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][ClearUserAsync] Clearing user profile data for: {GrainId}", 
+            _logger.LogDebug("[LumenUserProfileGAgent][ClearUserAsync] Clearing user profile data for: {GrainId}", 
                 this.GetPrimaryKey());
 
             // Check if user exists
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[FortuneUserProfileGAgent][ClearUserAsync] User profile not found");
+                _logger.LogWarning("[LumenUserProfileGAgent][ClearUserAsync] User profile not found");
                 return new ClearUserResult
                 {
                     Success = false,
@@ -592,7 +598,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[FortuneUserProfileGAgent][ClearUserAsync] User profile cleared successfully");
+            _logger.LogInformation("[LumenUserProfileGAgent][ClearUserAsync] User profile cleared successfully");
 
             return new ClearUserResult
             {
@@ -602,7 +608,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[FortuneUserProfileGAgent][ClearUserAsync] Error clearing user profile");
+            _logger.LogError(ex, "[LumenUserProfileGAgent][ClearUserAsync] Error clearing user profile");
             return new ClearUserResult
             {
                 Success = false,
@@ -621,11 +627,11 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         var birthYear = birthDate.Year;
         
         // Calculate zodiac and chinese zodiac
-        var zodiac = FortuneCalculator.CalculateZodiacSign(birthDate);
-        var chineseZodiac = FortuneCalculator.GetChineseZodiacWithElement(birthYear);
+        var zodiac = LumenCalculator.CalculateZodiacSign(birthDate);
+        var chineseZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
         
         // Calculate rhythm (Yin/Yang + Element from birth year stems)
-        var birthYearStems = FortuneCalculator.CalculateStemsAndBranches(birthYear);
+        var birthYearStems = LumenCalculator.CalculateStemsAndBranches(birthYear);
         var rhythm = GetRhythmFromStems(birthYearStems);
         
         // Extract components for essence calculation
@@ -845,6 +851,252 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             "Pig" => ChineseZodiacEnum.Pig,
             _ => ChineseZodiacEnum.Unknown
         };
+    }
+    
+    /// <summary>
+    /// Translate WelcomeNote fields to requested language
+    /// </summary>
+    private Dictionary<string, string> TranslateWelcomeNote(Dictionary<string, string> baseNote, string language)
+    {
+        if (language == "en" || string.IsNullOrEmpty(language))
+        {
+            return baseNote; // Already in English
+        }
+        
+        var translated = new Dictionary<string, string>();
+        
+        // Translate zodiac
+        if (baseNote.TryGetValue("zodiac", out var zodiac))
+        {
+            translated["zodiac"] = TranslateZodiacSign(zodiac, language);
+        }
+        
+        // Translate chineseZodiac
+        if (baseNote.TryGetValue("chineseZodiac", out var chineseZodiac))
+        {
+            translated["chineseZodiac"] = TranslateChineseZodiac(chineseZodiac, language);
+        }
+        
+        // Translate rhythm (Yin/Yang + Element)
+        if (baseNote.TryGetValue("rhythm", out var rhythm))
+        {
+            translated["rhythm"] = TranslateRhythm(rhythm, language);
+        }
+        
+        // Translate essence (personality traits)
+        if (baseNote.TryGetValue("essence", out var essence))
+        {
+            translated["essence"] = TranslateEssence(essence, language);
+        }
+        
+        return translated;
+    }
+    
+    /// <summary>
+    /// Translate Zodiac sign name
+    /// </summary>
+    private string TranslateZodiacSign(string zodiacSign, string language)
+    {
+        return language switch
+        {
+            "zh-tw" or "zh" => zodiacSign switch
+            {
+                "Aries" => "白羊座",
+                "Taurus" => "金牛座",
+                "Gemini" => "雙子座",
+                "Cancer" => "巨蟹座",
+                "Leo" => "獅子座",
+                "Virgo" => "處女座",
+                "Libra" => "天秤座",
+                "Scorpio" => "天蠍座",
+                "Sagittarius" => "射手座",
+                "Capricorn" => "摩羯座",
+                "Aquarius" => "水瓶座",
+                "Pisces" => "雙魚座",
+                _ => zodiacSign
+            },
+            "es" => zodiacSign switch
+            {
+                "Aries" => "Aries",
+                "Taurus" => "Tauro",
+                "Gemini" => "Géminis",
+                "Cancer" => "Cáncer",
+                "Leo" => "Leo",
+                "Virgo" => "Virgo",
+                "Libra" => "Libra",
+                "Scorpio" => "Escorpio",
+                "Sagittarius" => "Sagitario",
+                "Capricorn" => "Capricornio",
+                "Aquarius" => "Acuario",
+                "Pisces" => "Piscis",
+                _ => zodiacSign
+            },
+            _ => zodiacSign // English default
+        };
+    }
+    
+    /// <summary>
+    /// Translate Chinese Zodiac (with element)
+    /// </summary>
+    private string TranslateChineseZodiac(string chineseZodiac, string language)
+    {
+        // Extract element and animal from format "Fire Dragon"
+        var parts = chineseZodiac.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+        {
+            return chineseZodiac; // Return as-is if format is unexpected
+        }
+        
+        var element = parts[0];
+        var animal = parts[^1];
+        
+        return language switch
+        {
+            "zh-tw" or "zh" => $"{TranslateElement(element, language)}{TranslateAnimal(animal, language)}",
+            "es" => $"{TranslateAnimal(animal, language)} de {TranslateElement(element, language)}",
+            _ => chineseZodiac // English default
+        };
+    }
+    
+    private string TranslateElement(string element, string language)
+    {
+        return (element, language) switch
+        {
+            ("Wood", "zh-tw" or "zh") => "木",
+            ("Fire", "zh-tw" or "zh") => "火",
+            ("Earth", "zh-tw" or "zh") => "土",
+            ("Metal", "zh-tw" or "zh") => "金",
+            ("Water", "zh-tw" or "zh") => "水",
+            ("Wood", "es") => "Madera",
+            ("Fire", "es") => "Fuego",
+            ("Earth", "es") => "Tierra",
+            ("Metal", "es") => "Metal",
+            ("Water", "es") => "Agua",
+            _ => element
+        };
+    }
+    
+    private string TranslateAnimal(string animal, string language)
+    {
+        return (animal, language) switch
+        {
+            ("Rat", "zh-tw" or "zh") => "鼠",
+            ("Ox", "zh-tw" or "zh") => "牛",
+            ("Tiger", "zh-tw" or "zh") => "虎",
+            ("Rabbit", "zh-tw" or "zh") => "兔",
+            ("Dragon", "zh-tw" or "zh") => "龍",
+            ("Snake", "zh-tw" or "zh") => "蛇",
+            ("Horse", "zh-tw" or "zh") => "馬",
+            ("Goat", "zh-tw" or "zh") => "羊",
+            ("Monkey", "zh-tw" or "zh") => "猴",
+            ("Rooster", "zh-tw" or "zh") => "雞",
+            ("Dog", "zh-tw" or "zh") => "狗",
+            ("Pig", "zh-tw" or "zh") => "豬",
+            ("Rat", "es") => "Rata",
+            ("Ox", "es") => "Buey",
+            ("Tiger", "es") => "Tigre",
+            ("Rabbit", "es") => "Conejo",
+            ("Dragon", "es") => "Dragón",
+            ("Snake", "es") => "Serpiente",
+            ("Horse", "es") => "Caballo",
+            ("Goat", "es") => "Cabra",
+            ("Monkey", "es") => "Mono",
+            ("Rooster", "es") => "Gallo",
+            ("Dog", "es") => "Perro",
+            ("Pig", "es") => "Cerdo",
+            _ => animal
+        };
+    }
+    
+    private string TranslateRhythm(string rhythm, string language)
+    {
+        // Format: "Yang Wood", "Yin Fire", etc.
+        var parts = rhythm.Split(' ');
+        if (parts.Length != 2) return rhythm;
+        
+        var yinYang = parts[0];
+        var element = parts[1];
+        
+        return language switch
+        {
+            "zh-tw" or "zh" => $"{(yinYang == "Yang" ? "陽" : "陰")}{TranslateElement(element, language)}",
+            "es" => $"{TranslateElement(element, language)} {yinYang}",
+            _ => rhythm
+        };
+    }
+    
+    private string TranslateEssence(string essence, string language)
+    {
+        // Format: "Adventurous, Passionate" - comma-separated traits
+        if (language == "en" || string.IsNullOrEmpty(language))
+        {
+            return essence;
+        }
+        
+        var traits = essence.Split(',').Select(t => t.Trim()).ToList();
+        var translatedTraits = traits.Select(trait => TranslateTrait(trait, language)).ToList();
+        
+        return string.Join(", ", translatedTraits);
+    }
+    
+    private string TranslateTrait(string trait, string language)
+    {
+        // Common personality traits translation (simplified version)
+        var lowerTrait = trait.ToLower();
+        
+        if (language == "zh-tw" || language == "zh")
+        {
+            return lowerTrait switch
+            {
+                "adventurous" => "冒險的",
+                "bold" => "勇敢的",
+                "passionate" => "熱情的",
+                "reliable" => "可靠的",
+                "patient" => "耐心的",
+                "practical" => "務實的",
+                "curious" => "好奇的",
+                "adaptable" => "適應力強的",
+                "confident" => "自信的",
+                "generous" => "慷慨的",
+                "analytical" => "分析的",
+                "diplomatic" => "圓融的",
+                "intense" => "強烈的",
+                "optimistic" => "樂觀的",
+                "ambitious" => "有抱負的",
+                "innovative" => "創新的",
+                "intuitive" => "直覺的",
+                "compassionate" => "富有同情心的",
+                _ => trait
+            };
+        }
+        
+        if (language == "es")
+        {
+            return lowerTrait switch
+            {
+                "adventurous" => "Aventurero",
+                "bold" => "Audaz",
+                "passionate" => "Apasionado",
+                "reliable" => "Confiable",
+                "patient" => "Paciente",
+                "practical" => "Práctico",
+                "curious" => "Curioso",
+                "adaptable" => "Adaptable",
+                "confident" => "Seguro",
+                "generous" => "Generoso",
+                "analytical" => "Analítico",
+                "diplomatic" => "Diplomático",
+                "intense" => "Intenso",
+                "optimistic" => "Optimista",
+                "ambitious" => "Ambicioso",
+                "innovative" => "Innovador",
+                "intuitive" => "Intuitivo",
+                "compassionate" => "Compasivo",
+                _ => trait
+            };
+        }
+        
+        return trait;
     }
 
     #endregion
