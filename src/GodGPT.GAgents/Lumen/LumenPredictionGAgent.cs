@@ -351,26 +351,54 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// </summary>
     public Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null)
     {
-        // If no prediction has been generated yet
+        // If no prediction has been generated yet, return a status indicating "never generated"
         if (State.PredictionId == Guid.Empty)
         {
-            return Task.FromResult<PredictionStatusDto?>(null);
+            // Check if currently generating for the first time
+            var isGenerating = false;
+            DateTime? generationStartedAt = null;
+            if (State.GenerationLocks.TryGetValue(State.Type, out var lockInfo))
+            {
+                isGenerating = lockInfo.IsGenerating;
+                generationStartedAt = lockInfo.StartedAt;
+                
+                // Check for stale lock (>1 minute) and reset
+                if (isGenerating && lockInfo.StartedAt.HasValue && 
+                    (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 1)
+                {
+                    isGenerating = false;
+                    generationStartedAt = null;
+                }
+            }
+            
+            return Task.FromResult<PredictionStatusDto?>(new PredictionStatusDto
+            {
+                Type = State.Type,
+                IsGenerated = false,
+                IsGenerating = isGenerating,
+                GeneratedAt = null,
+                GenerationStartedAt = generationStartedAt,
+                PredictionDate = null,
+                AvailableLanguages = new List<string>(),
+                NeedsRegeneration = true, // Always needs generation if never generated
+                TranslationStatus = null
+            });
         }
 
         // Check if currently generating
-        var isGenerating = false;
-        DateTime? generationStartedAt = null;
-        if (State.GenerationLocks.TryGetValue(State.Type, out var lockInfo))
+        var isGenerating2 = false;
+        DateTime? generationStartedAt2 = null;
+        if (State.GenerationLocks.TryGetValue(State.Type, out var lockInfo2))
         {
-            isGenerating = lockInfo.IsGenerating;
-            generationStartedAt = lockInfo.StartedAt;
+            isGenerating2 = lockInfo2.IsGenerating;
+            generationStartedAt2 = lockInfo2.StartedAt;
             
             // Check for stale lock (>1 minute) and reset
-            if (isGenerating && lockInfo.StartedAt.HasValue && 
-                (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 1)
+            if (isGenerating2 && lockInfo2.StartedAt.HasValue && 
+                (DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes > 1)
             {
-                isGenerating = false;
-                generationStartedAt = null;
+                isGenerating2 = false;
+                generationStartedAt2 = null;
             }
         }
 
@@ -393,7 +421,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 
         // Build translation status if translating
         TranslationStatusInfo? translationStatus = null;
-        if (isGenerating && generationStartedAt.HasValue)
+        if (isGenerating2 && generationStartedAt2.HasValue)
         {
             var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
             var availableLanguages = State.GeneratedLanguages ?? new List<string>();
@@ -402,9 +430,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             translationStatus = new TranslationStatusInfo
             {
                 IsTranslating = true,
-                StartedAt = generationStartedAt.Value,
+                StartedAt = generationStartedAt2.Value,
                 TargetLanguages = targetLanguages,
-                EstimatedCompletion = generationStartedAt.Value.AddSeconds(30) // Estimate 30 seconds for translation
+                EstimatedCompletion = generationStartedAt2.Value.AddSeconds(30) // Estimate 30 seconds for translation
             };
         }
 
@@ -412,9 +440,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         {
             Type = State.Type,
             IsGenerated = true,
-            IsGenerating = isGenerating,
+            IsGenerating = isGenerating2,
             GeneratedAt = State.CreatedAt,
-            GenerationStartedAt = generationStartedAt,
+            GenerationStartedAt = generationStartedAt2,
             PredictionDate = State.PredictionDate,
             AvailableLanguages = State.GeneratedLanguages ?? new List<string>(),
             NeedsRegeneration = needsRegeneration,
@@ -962,7 +990,7 @@ FORMAT (flattened):
       ""todaysReading_careerAndWork"": ""[VARIED: 10-20 words]"", ""todaysReading_loveAndRelationships"": ""[VARIED: 10-20 words]"", 
       ""todaysReading_wealthAndFinance"": ""[VARIED: 10-20 words]"", ""todaysReading_healthAndWellness"": ""[VARIED: 10-15 words]"",
       ""todaysTakeaway"": ""[VARIED: 15-25 words starting '{displayName}, your...' with contrast/cause-effect pattern]"",
-      ""luckyAlignments_luckyNumber_number"": ""[VARIED: Generate different number for each user, 1-9. Word (digit) format, e.g., Seven (7)]"", ""luckyAlignments_luckyNumber_digit"": ""[VARIED: 1-9, ensure variety across users]"", 
+      ""luckyAlignments_luckyNumber_number"": ""[VARIED: Generate different number for each user, 1-9. MUST use 'Word (digit)' format: English→'Seven (7)', Spanish→'Siete (7)', Chinese→'七（7）' with Chinese parentheses（）]"", ""luckyAlignments_luckyNumber_digit"": ""[VARIED: 1-9, ensure variety across users]"", 
       ""luckyAlignments_luckyNumber_description"": ""[VARIED: 15-20 words on what THIS number means for THIS user today]"",
       ""luckyAlignments_luckyNumber_calculation"": ""[VARIED: 12-18 words formula example combining today's date with birth numerology, make it look authentic]"",
       ""luckyAlignments_luckyStone"": ""[VARIED: Select DIFFERENT stone for THIS user's element ({zodiacElement}). MUST vary by element: Fire→Carnelian/Ruby/Garnet, Earth→Jade/Emerald/Moss Agate, Air→Citrine/Aquamarine/Clear Quartz, Water→Moonstone/Pearl/Lapis Lazuli. Choose specific stone based on {sunSign} + today's energy needs. DO NOT use same stone for all {zodiacElement} users]"", ""luckyAlignments_luckyStone_description"": ""[VARIED: 15-20 words on how THIS {zodiacElement}-element stone helps THIS user today]"",
@@ -1038,9 +1066,9 @@ CRITICAL RULES:
    - chineseAstrology_currentYearStems (e.g., '乙 巳 Yi Si')
    - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
 4. TRANSLATE luckyNumber format correctly:
-   - English/Spanish: ""Seven (7)"" - translate word, keep (digit)
-   - Spanish example: ""Siete (7)""
-   - Chinese: Keep original format or use ""七 (7)""
+   - English: ""Seven (7)"" - word + space + English parentheses ()
+   - Spanish: ""Siete (7)"" - word + space + English parentheses ()
+   - Chinese: ""七（7）"" - word + NO space + Chinese full-width parentheses （）
 5. Maintain natural, fluent expression in each target language (not word-for-word).
 6. Keep all field names unchanged.
 7. Preserve all numbers, dates, and proper nouns.
@@ -1265,9 +1293,9 @@ CRITICAL RULES:
    - chineseAstrology_currentYearStems (e.g., '乙 巳 Yi Si')
    - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
 4. TRANSLATE luckyNumber format correctly:
-   - English/Spanish: ""Seven (7)"" - translate word, keep (digit)
-   - Spanish example: ""Siete (7)""
-   - Chinese: Keep original format or use ""七 (7)""
+   - English: ""Seven (7)"" - word + space + English parentheses ()
+   - Spanish: ""Siete (7)"" - word + space + English parentheses ()
+   - Chinese: ""七（7）"" - word + NO space + Chinese full-width parentheses （）
 5. Maintain natural, fluent expression in {targetLangName} (not word-for-word).
 6. Keep all field names unchanged.
 7. Preserve all numbers, dates, and proper nouns.
