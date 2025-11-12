@@ -136,6 +136,26 @@ public static partial class LumenCalculator
         return $"{HeavenlyStems[stemIndex]} {EarthlyBranches[branchIndex]} {HeavenlyStemsPinyin[stemIndex]} {EarthlyBranchesPinyin[branchIndex]}";
     }
     
+    /// <summary>
+    /// Calculate Stems and Branches for a year and return structured data
+    /// </summary>
+    public static (string stemChinese, string stemPinyin, string branchChinese, string branchPinyin) GetStemsAndBranchesComponents(int year)
+    {
+        // Year 4 AD is 甲子 (Jia Zi), the start of the 60-year cycle
+        var stemIndex = (year - 4) % 10;
+        var branchIndex = (year - 4) % 12;
+        
+        if (stemIndex < 0) stemIndex += 10;
+        if (branchIndex < 0) branchIndex += 12;
+        
+        return (
+            stemChinese: HeavenlyStems[stemIndex],
+            stemPinyin: HeavenlyStemsPinyin[stemIndex],
+            branchChinese: EarthlyBranches[branchIndex],
+            branchPinyin: EarthlyBranchesPinyin[branchIndex]
+        );
+    }
+    
     #endregion
     
     #region Taishui Relationship (太岁关系)
@@ -379,10 +399,16 @@ public class PillarInfo
     public string StemPinyin { get; }
     public string BranchPinyin { get; }
     
-    // Attributes
-    public string YinYang { get; }  // Yang or Yin
-    public string Element { get; }  // Wood, Fire, Earth, Metal, Water
-    public string Direction { get; }  // e.g., "East 1"
+    // Stem Attributes
+    public string YinYang { get; }  // Yang or Yin (for Stem)
+    public string Element { get; }  // Wood, Fire, Earth, Metal, Water (for Stem)
+    public string Direction { get; }  // e.g., "East 1" (for Stem)
+    
+    // Branch Attributes
+    public string BranchYinYang { get; }  // Yang or Yin (for Branch)
+    public string BranchElement { get; }  // Wood, Fire, Earth, Metal, Water (for Branch)
+    public string BranchDirection { get; }  // e.g., "North 1" (for Branch)
+    public string BranchZodiac { get; }  // Zodiac animal (e.g., "Rat", "Ox")
     
     private static readonly string[] HeavenlyStems = { "甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸" };
     private static readonly string[] HeavenlyStemsPinyin = { "Jia", "Yi", "Bing", "Ding", "Wu", "Ji", "Geng", "Xin", "Ren", "Gui" };
@@ -419,6 +445,22 @@ public class PillarInfo
         ("Yin", "Water", "North 2")         // 亥 Pig
     };
     
+    // Branch zodiac animals (must match EarthlyBranches order)
+    private static readonly string[] BranchZodiacs = { 
+        "Rat",      // 子 (index 0)
+        "Ox",       // 丑 (index 1)
+        "Tiger",    // 寅 (index 2)
+        "Rabbit",   // 卯 (index 3)
+        "Dragon",   // 辰 (index 4)
+        "Snake",    // 巳 (index 5)
+        "Horse",    // 午 (index 6)
+        "Goat",     // 未 (index 7)
+        "Monkey",   // 申 (index 8)
+        "Rooster",  // 酉 (index 9)
+        "Dog",      // 戌 (index 10)
+        "Pig"       // 亥 (index 11)
+    };
+    
     public PillarInfo(int stemIndex, int branchIndex)
     {
         StemIndex = stemIndex;
@@ -430,10 +472,18 @@ public class PillarInfo
         StemPinyin = HeavenlyStemsPinyin[stemIndex];
         BranchPinyin = EarthlyBranchesPinyin[branchIndex];
         
+        // Stem attributes
         var stemAttr = StemAttributes[stemIndex];
         YinYang = stemAttr.yinYang;
         Element = stemAttr.element;
         Direction = stemAttr.direction;
+        
+        // Branch attributes
+        var branchAttr = BranchAttributes[branchIndex];
+        BranchYinYang = branchAttr.yinYang;
+        BranchElement = branchAttr.element;
+        BranchDirection = branchAttr.direction;
+        BranchZodiac = BranchZodiacs[branchIndex];
     }
     
     /// <summary>

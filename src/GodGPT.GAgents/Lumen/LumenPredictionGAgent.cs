@@ -544,7 +544,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
             var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
             var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
-            var currentYearStems = LumenCalculator.CalculateStemsAndBranches(currentYear);
+            var currentYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(currentYear);
             var pastCycle = LumenCalculator.CalculateTenYearCycle(birthYear, -1);
             var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
             var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
@@ -555,7 +555,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
                 
                 // Inject into primary language results
-                parsedResults["chineseAstrology_currentYearStems"] = currentYearStems;
+                parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
+                parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
+                parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
+                parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
                 parsedResults["sunSign_name"] = sunSign;
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                 parsedResults["westernOverview_sunSign"] = sunSign;
@@ -577,7 +580,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 {
                     foreach (var lang in multilingualResults.Keys)
                     {
-                        multilingualResults[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
+                        multilingualResults[lang]["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
+                        multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
+                        multilingualResults[lang]["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
+                        multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
                         multilingualResults[lang]["sunSign_name"] = sunSign;
                         multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                         multilingualResults[lang]["westernOverview_sunSign"] = sunSign;
@@ -609,7 +615,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                 parsedResults["chineseZodiac_animal"] = birthYearAnimal;
                 parsedResults["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
-                parsedResults["chineseAstrology_currentYearStems"] = currentYearStems;
+                parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
+                parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
+                parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
+                parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
                 parsedResults["chineseAstrology_taishuiRelationship"] = yearlyTaishui;
                 parsedResults["zodiacInfluence"] = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
                 
@@ -622,7 +631,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                         multilingualResults[lang]["chineseZodiac_animal"] = birthYearAnimal;
                         multilingualResults[lang]["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
-                        multilingualResults[lang]["chineseAstrology_currentYearStems"] = currentYearStems;
+                        multilingualResults[lang]["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
+                        multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
+                        multilingualResults[lang]["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
+                        multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
                         multilingualResults[lang]["chineseAstrology_taishuiRelationship"] = yearlyTaishui;
                         multilingualResults[lang]["zodiacInfluence"] = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
                     }
@@ -804,7 +816,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         var currentYearElement = LumenCalculator.CalculateChineseElement(currentYear);
         
         // Heavenly Stems & Earthly Branches
-        var currentYearStems = LumenCalculator.CalculateStemsAndBranches(currentYear);
+        var currentYearStemsFormatted = LumenCalculator.CalculateStemsAndBranches(currentYear);
         var birthYearStems = LumenCalculator.CalculateStemsAndBranches(birthYear);
         
         // Taishui Relationship
@@ -831,7 +843,6 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 
 Generate prediction in {languageName} only.
 EXCEPTIONS:
-- chineseAstrology_currentYearStems always stays in Chinese+Pinyin with space separation (e.g., '乙 巳 Yi Si'), regardless of target language.
 - For Chinese (zh-tw/zh): Properly adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
 Wrap response in JSON format.
 
@@ -849,14 +860,14 @@ Birth Year Zodiac (USER'S ZODIAC): {birthYearZodiac}
 Birth Year Animal (USER'S ANIMAL): {birthYearAnimal}
 Birth Year Element: {birthYearElement}
 Current Year ({currentYear}): {currentYearZodiac}
-Current Year Stems: {currentYearStems}
+Current Year Stems: {currentYearStemsFormatted}
 Past Cycle: {pastCycle.AgeRange} · {pastCycle.Period}
 Current Cycle: {currentCycle.AgeRange} · {currentCycle.Period}
 Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
 
 IMPORTANT: All Chinese Zodiac content must be based on USER'S Birth Year Zodiac ({birthYearZodiac}), NOT the current year zodiac ({currentYearZodiac}).
 
-FORMAT (flattened - Backend will inject: chineseZodiac_title, chineseZodiac_animal, sunSign_name, currentYearStems, cycle ages/periods, fourPillars details):
+FORMAT (flattened - Backend will inject: chineseZodiac_title, chineseZodiac_animal, sunSign_name, chineseAstrology_currentYearStem/StemPinyin/Branch/BranchPinyin, cycle ages/periods, fourPillars details):
 {{
   ""predictions"": {{
     ""{targetLanguage}"": {{
@@ -1066,7 +1077,6 @@ CRITICAL RULES:
 2. NEVER TRANSLATE user names - keep them exactly as they appear (e.g., ""Sean"" stays ""Sean"" in all languages)
    - In possessives: ""Sean's Path"" → ""Sean的道路"" (keep name, only translate structure)
 3. PRESERVE these fields in Chinese+Pinyin regardless of target language:
-   - chineseAstrology_currentYearStems (e.g., '乙 巳 Yi Si')
    - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
 4. TRANSLATE luckyNumber format correctly:
    - English: ""Seven (7)"" - word + space + English parentheses ()
@@ -1293,7 +1303,6 @@ CRITICAL RULES:
 2. NEVER TRANSLATE user names - keep them exactly as they appear (e.g., ""Sean"" stays ""Sean"")
    - In possessives: ""Sean's Path"" → ""Sean的道路"" (keep name, only translate structure)
 3. PRESERVE these fields in Chinese+Pinyin regardless of target language:
-   - chineseAstrology_currentYearStems (e.g., '乙 巳 Yi Si')
    - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
 4. TRANSLATE luckyNumber format correctly:
    - English: ""Seven (7)"" - word + space + English parentheses ()
@@ -1937,6 +1946,10 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         prediction["fourPillars_yearPillar_yinYang"] = TranslateYinYang(fourPillars.YearPillar.YinYang, language);
         prediction["fourPillars_yearPillar_element"] = TranslateElement(fourPillars.YearPillar.Element, language);
         prediction["fourPillars_yearPillar_direction"] = TranslateDirection(fourPillars.YearPillar.Direction, language);
+        prediction["fourPillars_yearPillar_branchYinYang"] = TranslateYinYang(fourPillars.YearPillar.BranchYinYang, language);
+        prediction["fourPillars_yearPillar_branchElement"] = TranslateElement(fourPillars.YearPillar.BranchElement, language);
+        prediction["fourPillars_yearPillar_branchDirection"] = TranslateDirection(fourPillars.YearPillar.BranchDirection, language);
+        prediction["fourPillars_yearPillar_branchZodiac"] = TranslateZodiac(fourPillars.YearPillar.BranchZodiac, language);
         
         // Month Pillar
         prediction["fourPillars_monthPillar"] = fourPillars.MonthPillar.GetFormattedString(language);
@@ -1947,6 +1960,10 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         prediction["fourPillars_monthPillar_yinYang"] = TranslateYinYang(fourPillars.MonthPillar.YinYang, language);
         prediction["fourPillars_monthPillar_element"] = TranslateElement(fourPillars.MonthPillar.Element, language);
         prediction["fourPillars_monthPillar_direction"] = TranslateDirection(fourPillars.MonthPillar.Direction, language);
+        prediction["fourPillars_monthPillar_branchYinYang"] = TranslateYinYang(fourPillars.MonthPillar.BranchYinYang, language);
+        prediction["fourPillars_monthPillar_branchElement"] = TranslateElement(fourPillars.MonthPillar.BranchElement, language);
+        prediction["fourPillars_monthPillar_branchDirection"] = TranslateDirection(fourPillars.MonthPillar.BranchDirection, language);
+        prediction["fourPillars_monthPillar_branchZodiac"] = TranslateZodiac(fourPillars.MonthPillar.BranchZodiac, language);
         
         // Day Pillar
         prediction["fourPillars_dayPillar"] = fourPillars.DayPillar.GetFormattedString(language);
@@ -1957,6 +1974,10 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         prediction["fourPillars_dayPillar_yinYang"] = TranslateYinYang(fourPillars.DayPillar.YinYang, language);
         prediction["fourPillars_dayPillar_element"] = TranslateElement(fourPillars.DayPillar.Element, language);
         prediction["fourPillars_dayPillar_direction"] = TranslateDirection(fourPillars.DayPillar.Direction, language);
+        prediction["fourPillars_dayPillar_branchYinYang"] = TranslateYinYang(fourPillars.DayPillar.BranchYinYang, language);
+        prediction["fourPillars_dayPillar_branchElement"] = TranslateElement(fourPillars.DayPillar.BranchElement, language);
+        prediction["fourPillars_dayPillar_branchDirection"] = TranslateDirection(fourPillars.DayPillar.BranchDirection, language);
+        prediction["fourPillars_dayPillar_branchZodiac"] = TranslateZodiac(fourPillars.DayPillar.BranchZodiac, language);
         
         // Hour Pillar (optional)
         if (fourPillars.HourPillar != null)
@@ -1969,6 +1990,10 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             prediction["fourPillars_hourPillar_yinYang"] = TranslateYinYang(fourPillars.HourPillar.YinYang, language);
             prediction["fourPillars_hourPillar_element"] = TranslateElement(fourPillars.HourPillar.Element, language);
             prediction["fourPillars_hourPillar_direction"] = TranslateDirection(fourPillars.HourPillar.Direction, language);
+            prediction["fourPillars_hourPillar_branchYinYang"] = TranslateYinYang(fourPillars.HourPillar.BranchYinYang, language);
+            prediction["fourPillars_hourPillar_branchElement"] = TranslateElement(fourPillars.HourPillar.BranchElement, language);
+            prediction["fourPillars_hourPillar_branchDirection"] = TranslateDirection(fourPillars.HourPillar.BranchDirection, language);
+            prediction["fourPillars_hourPillar_branchZodiac"] = TranslateZodiac(fourPillars.HourPillar.BranchZodiac, language);
         }
     }
     
@@ -2015,6 +2040,35 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         ("North 2", "es") => "Norte 2",
         ("Centre", "es") => "Centro",
         _ => direction  // English default
+    };
+    
+    private string TranslateZodiac(string zodiac, string language) => (zodiac, language) switch
+    {
+        ("Rat", "zh-tw" or "zh") => "鼠",
+        ("Ox", "zh-tw" or "zh") => "牛",
+        ("Tiger", "zh-tw" or "zh") => "虎",
+        ("Rabbit", "zh-tw" or "zh") => "兔",
+        ("Dragon", "zh-tw" or "zh") => "龍",
+        ("Snake", "zh-tw" or "zh") => "蛇",
+        ("Horse", "zh-tw" or "zh") => "馬",
+        ("Goat", "zh-tw" or "zh") => "羊",
+        ("Monkey", "zh-tw" or "zh") => "猴",
+        ("Rooster", "zh-tw" or "zh") => "雞",
+        ("Dog", "zh-tw" or "zh") => "狗",
+        ("Pig", "zh-tw" or "zh") => "豬",
+        ("Rat", "es") => "Rata",
+        ("Ox", "es") => "Buey",
+        ("Tiger", "es") => "Tigre",
+        ("Rabbit", "es") => "Conejo",
+        ("Dragon", "es") => "Dragón",
+        ("Snake", "es") => "Serpiente",
+        ("Horse", "es") => "Caballo",
+        ("Goat", "es") => "Cabra",
+        ("Monkey", "es") => "Mono",
+        ("Rooster", "es") => "Gallo",
+        ("Dog", "es") => "Perro",
+        ("Pig", "es") => "Cerdo",
+        _ => zodiac  // English default
     };
     
     /// <summary>
