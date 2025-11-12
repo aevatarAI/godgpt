@@ -20,7 +20,7 @@ public class UpdateUserProfileRequest
     [Id(9)] public string? Interests { get; set; }
     [Id(10)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
     [Id(11)] public string? CurrentResidence { get; set; }
-    [Id(12)] public string? Email { get; set; } // Deprecated, kept in state only
+    [Id(12)] public string? Email { get; set; }
     [Id(13)] public string? Occupation { get; set; }
 }
 

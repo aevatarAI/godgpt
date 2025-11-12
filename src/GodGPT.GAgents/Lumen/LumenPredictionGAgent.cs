@@ -1110,7 +1110,11 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             // Call LLM for translation
             var llmStopwatch = Stopwatch.StartNew();
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
-            var godChat = _clusterClient.GetGrain<IGodChat>(userGuid);
+            
+            // Use different GodChat grain for each translation to enable true concurrent LLM calls
+            // Instead of reusing the same grain (which would serialize requests), create unique grain per task
+            var translationGrainKey = Guid.NewGuid(); // Unique grain instance for this translation
+            var godChat = _clusterClient.GetGrain<IGodChat>(translationGrainKey);
             var chatId = Guid.NewGuid().ToString();
             
             var response = await godChat.ChatWithoutHistoryAsync(
