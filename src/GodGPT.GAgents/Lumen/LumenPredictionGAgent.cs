@@ -170,17 +170,26 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 
                 // Get localized results
                 Dictionary<string, string> localizedResults;
+                string returnedLanguage;
+                bool isFallback;
+                
                 if (State.MultilingualResults.ContainsKey(userLanguage))
                 {
                     localizedResults = State.MultilingualResults[userLanguage];
+                    returnedLanguage = userLanguage;
+                    isFallback = false;
                 }
                 else if (State.MultilingualResults.ContainsKey("en"))
                 {
                     localizedResults = State.MultilingualResults["en"];
+                    returnedLanguage = "en";
+                    isFallback = true;
                 }
                 else
                 {
                     localizedResults = State.Results;
+                    returnedLanguage = "en";
+                    isFallback = userLanguage != "en";
                 }
                 
                 // Add currentPhase for Lifetime predictions
@@ -202,6 +211,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     Results = localizedResults,
                     AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
                     AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
+                    RequestedLanguage = userLanguage,
+                    ReturnedLanguage = returnedLanguage,
+                    IsFallback = isFallback,
                     Feedbacks = null
                 };
                 
@@ -288,20 +300,30 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 
         // Get localized results based on user language
         Dictionary<string, string> localizedResults;
+        string returnedLanguage;
+        bool isFallback;
+        
         if (State.MultilingualResults.ContainsKey(userLanguage))
         {
+            // Requested language is available
             localizedResults = State.MultilingualResults[userLanguage];
+            returnedLanguage = userLanguage;
+            isFallback = false;
         }
         else if (State.MultilingualResults.ContainsKey("en"))
         {
             // Fallback to English
             localizedResults = State.MultilingualResults["en"];
+            returnedLanguage = "en";
+            isFallback = true;
             _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found, using English fallback", userLanguage);
         }
         else
         {
             // Use default results if multilingual not available
             localizedResults = State.Results;
+            returnedLanguage = "en"; // Assume default is English
+            isFallback = userLanguage != "en";
         }
 
         var predictionDto = new PredictionResultDto
@@ -315,6 +337,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             Results = localizedResults,
             AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
             AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
+            RequestedLanguage = userLanguage,
+            ReturnedLanguage = returnedLanguage,
+            IsFallback = isFallback,
             Feedbacks = null
         };
 
@@ -366,6 +391,23 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             }
         }
 
+        // Build translation status if translating
+        TranslationStatusInfo? translationStatus = null;
+        if (isGenerating && generationStartedAt.HasValue)
+        {
+            var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
+            var availableLanguages = State.GeneratedLanguages ?? new List<string>();
+            var targetLanguages = allLanguages.Where(lang => !availableLanguages.Contains(lang)).ToList();
+            
+            translationStatus = new TranslationStatusInfo
+            {
+                IsTranslating = true,
+                StartedAt = generationStartedAt.Value,
+                TargetLanguages = targetLanguages,
+                EstimatedCompletion = generationStartedAt.Value.AddSeconds(30) // Estimate 30 seconds for translation
+            };
+        }
+
         var statusDto = new PredictionStatusDto
         {
             Type = State.Type,
@@ -375,7 +417,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             GenerationStartedAt = generationStartedAt,
             PredictionDate = State.PredictionDate,
             AvailableLanguages = State.GeneratedLanguages ?? new List<string>(),
-            NeedsRegeneration = needsRegeneration
+            NeedsRegeneration = needsRegeneration,
+            TranslationStatus = translationStatus
         };
 
         return Task.FromResult<PredictionStatusDto?>(statusDto);
@@ -605,6 +648,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Results = parsedResults,
                 AvailableLanguages = new List<string> { targetLanguage },
                 AllLanguagesGenerated = false, // Will be true after async generation completes
+                RequestedLanguage = targetLanguage,
+                ReturnedLanguage = targetLanguage,
+                IsFallback = false, // First generation always returns the requested language
                 Feedbacks = null
             };
             

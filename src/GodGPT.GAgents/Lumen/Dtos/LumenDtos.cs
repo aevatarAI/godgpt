@@ -424,6 +424,11 @@ public class PredictionResultDto
     [Id(7)] public List<string> AvailableLanguages { get; set; } = new();
     [Id(8)] public bool AllLanguagesGenerated { get; set; } // True if all 4 languages (en, zh-tw, zh, es) are generated
     
+    // Minimal language metadata (for content query interface)
+    [Id(10)] public string RequestedLanguage { get; set; } = "en"; // Language user requested
+    [Id(11)] public string ReturnedLanguage { get; set; } = "en";  // Language actually returned
+    [Id(12)] public bool IsFallback { get; set; } = false;         // Whether returned language is a fallback
+    
     // User feedbacks (if exist)
     [Id(9)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } = null;
 }
@@ -631,6 +636,19 @@ public class PredictionStatusDto
     [Id(5)] public DateOnly? PredictionDate { get; set; } // The date this prediction is for
     [Id(6)] public List<string> AvailableLanguages { get; set; } = new(); // Which languages are available (e.g., ["en", "zh-tw"])
     [Id(7)] public bool NeedsRegeneration { get; set; } // Whether prediction needs regeneration (profile updated)
+    [Id(8)] public TranslationStatusInfo? TranslationStatus { get; set; } // Detailed translation status (only in /status endpoint)
+}
+
+/// <summary>
+/// Translation status information (detailed, only in /status endpoint)
+/// </summary>
+[GenerateSerializer]
+public class TranslationStatusInfo
+{
+    [Id(0)] public bool IsTranslating { get; set; } // Whether translation is in progress
+    [Id(1)] public DateTime? StartedAt { get; set; } // When translation started
+    [Id(2)] public List<string> TargetLanguages { get; set; } = new(); // Languages being translated (e.g., ["zh-tw", "zh", "es"])
+    [Id(3)] public DateTime? EstimatedCompletion { get; set; } // Estimated completion time (optional)
 }
 
 /// <summary>
