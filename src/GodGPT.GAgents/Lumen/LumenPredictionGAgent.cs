@@ -733,24 +733,6 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         // Gender
         userInfoParts.Add($"Gender: {userInfo.Gender}");
         
-        // Relationship status (optional)
-        if (userInfo.RelationshipStatus.HasValue)
-        {
-            userInfoParts.Add($"Status: {userInfo.RelationshipStatus}");
-        }
-        
-        // Interests (optional)
-        if (!string.IsNullOrWhiteSpace(userInfo.Interests))
-        {
-            userInfoParts.Add($"Interests: {userInfo.Interests}");
-        }
-        
-        // MBTI (optional)
-        if (userInfo.MbtiType.HasValue)
-        {
-            userInfoParts.Add($"MBTI: {userInfo.MbtiType}");
-        }
-        
         // Current residence (optional)
         if (!string.IsNullOrWhiteSpace(userInfo.CurrentResidence))
         {
