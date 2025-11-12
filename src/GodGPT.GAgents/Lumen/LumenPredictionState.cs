@@ -29,6 +29,9 @@ public class LumenPredictionState : StateBase
     
     // Prediction type
     [Id(9)] public PredictionType Type { get; set; }
+    
+    // Track on-demand translations in progress (to avoid duplicate triggers)
+    [Id(10)] public HashSet<string> TranslationInProgress { get; set; } = new();
 }
 
 /// <summary>
