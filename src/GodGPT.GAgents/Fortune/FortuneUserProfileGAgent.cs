@@ -17,7 +17,7 @@ public interface IFortuneUserProfileGAgent : IGAgent
     Task<UpdateUserProfileResult> UpdateUserProfileAsync(UpdateUserProfileRequest request);
     
     [ReadOnly]
-    Task<GetUserProfileResult> GetUserProfileAsync(Guid userId);
+    Task<GetUserProfileResult> GetUserProfileAsync(Guid userId, string userLanguage = "en");
     
     /// <summary>
     /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
@@ -189,12 +189,12 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
         }
     }
 
-    public async Task<GetUserProfileResult> GetUserProfileAsync(Guid userId)
+    public async Task<GetUserProfileResult> GetUserProfileAsync(Guid userId, string userLanguage = "en")
     {
         try
         {
-            _logger.LogDebug("[FortuneUserProfileGAgent][GetUserProfileAsync] Getting user profile for: {UserId}", 
-                this.GetPrimaryKey().ToString());
+            _logger.LogDebug("[FortuneUserProfileGAgent][GetUserProfileAsync] Getting user profile for: {UserId}, Language: {Language}", 
+                this.GetPrimaryKey().ToString(), userLanguage);
 
             if (string.IsNullOrEmpty(State.UserId))
             {
@@ -212,15 +212,21 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                 };
             }
 
-            // Calculate WelcomeNote using backend calculations
-            var welcomeNote = GenerateWelcomeNote(State.BirthDate);
+            // Calculate WelcomeNote using backend calculations (English base)
+            var welcomeNoteBase = GenerateWelcomeNote(State.BirthDate);
+            
+            // Translate WelcomeNote to requested language
+            var welcomeNote = TranslateWelcomeNote(welcomeNoteBase, userLanguage);
             
             // Calculate zodiac sign and Chinese zodiac
-            var zodiacSign = FortuneCalculator.CalculateZodiacSign(State.BirthDate);
-            var zodiacSignEnum = ParseZodiacSignEnum(zodiacSign);
-            var chineseZodiacWithElement = FortuneCalculator.GetChineseZodiacWithElement(State.BirthDate.Year);
+            var zodiacSignEn = FortuneCalculator.CalculateZodiacSign(State.BirthDate);
+            var zodiacSign = TranslateZodiacSign(zodiacSignEn, userLanguage);
+            var zodiacSignEnum = FortuneCalculator.ParseZodiacSignEnum(zodiacSignEn);
+            
+            var chineseZodiacWithElementEn = FortuneCalculator.GetChineseZodiacWithElement(State.BirthDate.Year);
+            var chineseZodiac = TranslateChineseZodiac(chineseZodiacWithElementEn, userLanguage);
             var chineseZodiacAnimal = FortuneCalculator.CalculateChineseZodiac(State.BirthDate.Year);
-            var chineseZodiacEnum = ParseChineseZodiacEnum(chineseZodiacAnimal);
+            var chineseZodiacEnum = FortuneCalculator.ParseChineseZodiacEnum(chineseZodiacAnimal);
 
             return new GetUserProfileResult
             {
@@ -247,7 +253,7 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
                     WelcomeNote = welcomeNote,
                     ZodiacSign = zodiacSign,
                     ZodiacSignEnum = zodiacSignEnum,
-                    ChineseZodiac = chineseZodiacWithElement,
+                    ChineseZodiac = chineseZodiac,
                     ChineseZodiacEnum = chineseZodiacEnum
                 }
             };
@@ -845,6 +851,252 @@ public class FortuneUserProfileGAgent : GAgentBase<FortuneUserProfileState, Fort
             "Pig" => ChineseZodiacEnum.Pig,
             _ => ChineseZodiacEnum.Unknown
         };
+    }
+    
+    /// <summary>
+    /// Translate WelcomeNote fields to requested language
+    /// </summary>
+    private Dictionary<string, string> TranslateWelcomeNote(Dictionary<string, string> baseNote, string language)
+    {
+        if (language == "en" || string.IsNullOrEmpty(language))
+        {
+            return baseNote; // Already in English
+        }
+        
+        var translated = new Dictionary<string, string>();
+        
+        // Translate zodiac
+        if (baseNote.TryGetValue("zodiac", out var zodiac))
+        {
+            translated["zodiac"] = TranslateZodiacSign(zodiac, language);
+        }
+        
+        // Translate chineseZodiac
+        if (baseNote.TryGetValue("chineseZodiac", out var chineseZodiac))
+        {
+            translated["chineseZodiac"] = TranslateChineseZodiac(chineseZodiac, language);
+        }
+        
+        // Translate rhythm (Yin/Yang + Element)
+        if (baseNote.TryGetValue("rhythm", out var rhythm))
+        {
+            translated["rhythm"] = TranslateRhythm(rhythm, language);
+        }
+        
+        // Translate essence (personality traits)
+        if (baseNote.TryGetValue("essence", out var essence))
+        {
+            translated["essence"] = TranslateEssence(essence, language);
+        }
+        
+        return translated;
+    }
+    
+    /// <summary>
+    /// Translate Zodiac sign name
+    /// </summary>
+    private string TranslateZodiacSign(string zodiacSign, string language)
+    {
+        return language switch
+        {
+            "zh-tw" or "zh" => zodiacSign switch
+            {
+                "Aries" => "白羊座",
+                "Taurus" => "金牛座",
+                "Gemini" => "雙子座",
+                "Cancer" => "巨蟹座",
+                "Leo" => "獅子座",
+                "Virgo" => "處女座",
+                "Libra" => "天秤座",
+                "Scorpio" => "天蠍座",
+                "Sagittarius" => "射手座",
+                "Capricorn" => "摩羯座",
+                "Aquarius" => "水瓶座",
+                "Pisces" => "雙魚座",
+                _ => zodiacSign
+            },
+            "es" => zodiacSign switch
+            {
+                "Aries" => "Aries",
+                "Taurus" => "Tauro",
+                "Gemini" => "Géminis",
+                "Cancer" => "Cáncer",
+                "Leo" => "Leo",
+                "Virgo" => "Virgo",
+                "Libra" => "Libra",
+                "Scorpio" => "Escorpio",
+                "Sagittarius" => "Sagitario",
+                "Capricorn" => "Capricornio",
+                "Aquarius" => "Acuario",
+                "Pisces" => "Piscis",
+                _ => zodiacSign
+            },
+            _ => zodiacSign // English default
+        };
+    }
+    
+    /// <summary>
+    /// Translate Chinese Zodiac (with element)
+    /// </summary>
+    private string TranslateChineseZodiac(string chineseZodiac, string language)
+    {
+        // Extract element and animal from format "Fire Dragon"
+        var parts = chineseZodiac.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+        {
+            return chineseZodiac; // Return as-is if format is unexpected
+        }
+        
+        var element = parts[0];
+        var animal = parts[^1];
+        
+        return language switch
+        {
+            "zh-tw" or "zh" => $"{TranslateElement(element, language)}{TranslateAnimal(animal, language)}",
+            "es" => $"{TranslateAnimal(animal, language)} de {TranslateElement(element, language)}",
+            _ => chineseZodiac // English default
+        };
+    }
+    
+    private string TranslateElement(string element, string language)
+    {
+        return (element, language) switch
+        {
+            ("Wood", "zh-tw" or "zh") => "木",
+            ("Fire", "zh-tw" or "zh") => "火",
+            ("Earth", "zh-tw" or "zh") => "土",
+            ("Metal", "zh-tw" or "zh") => "金",
+            ("Water", "zh-tw" or "zh") => "水",
+            ("Wood", "es") => "Madera",
+            ("Fire", "es") => "Fuego",
+            ("Earth", "es") => "Tierra",
+            ("Metal", "es") => "Metal",
+            ("Water", "es") => "Agua",
+            _ => element
+        };
+    }
+    
+    private string TranslateAnimal(string animal, string language)
+    {
+        return (animal, language) switch
+        {
+            ("Rat", "zh-tw" or "zh") => "鼠",
+            ("Ox", "zh-tw" or "zh") => "牛",
+            ("Tiger", "zh-tw" or "zh") => "虎",
+            ("Rabbit", "zh-tw" or "zh") => "兔",
+            ("Dragon", "zh-tw" or "zh") => "龍",
+            ("Snake", "zh-tw" or "zh") => "蛇",
+            ("Horse", "zh-tw" or "zh") => "馬",
+            ("Goat", "zh-tw" or "zh") => "羊",
+            ("Monkey", "zh-tw" or "zh") => "猴",
+            ("Rooster", "zh-tw" or "zh") => "雞",
+            ("Dog", "zh-tw" or "zh") => "狗",
+            ("Pig", "zh-tw" or "zh") => "豬",
+            ("Rat", "es") => "Rata",
+            ("Ox", "es") => "Buey",
+            ("Tiger", "es") => "Tigre",
+            ("Rabbit", "es") => "Conejo",
+            ("Dragon", "es") => "Dragón",
+            ("Snake", "es") => "Serpiente",
+            ("Horse", "es") => "Caballo",
+            ("Goat", "es") => "Cabra",
+            ("Monkey", "es") => "Mono",
+            ("Rooster", "es") => "Gallo",
+            ("Dog", "es") => "Perro",
+            ("Pig", "es") => "Cerdo",
+            _ => animal
+        };
+    }
+    
+    private string TranslateRhythm(string rhythm, string language)
+    {
+        // Format: "Yang Wood", "Yin Fire", etc.
+        var parts = rhythm.Split(' ');
+        if (parts.Length != 2) return rhythm;
+        
+        var yinYang = parts[0];
+        var element = parts[1];
+        
+        return language switch
+        {
+            "zh-tw" or "zh" => $"{(yinYang == "Yang" ? "陽" : "陰")}{TranslateElement(element, language)}",
+            "es" => $"{TranslateElement(element, language)} {yinYang}",
+            _ => rhythm
+        };
+    }
+    
+    private string TranslateEssence(string essence, string language)
+    {
+        // Format: "Adventurous, Passionate" - comma-separated traits
+        if (language == "en" || string.IsNullOrEmpty(language))
+        {
+            return essence;
+        }
+        
+        var traits = essence.Split(',').Select(t => t.Trim()).ToList();
+        var translatedTraits = traits.Select(trait => TranslateTrait(trait, language)).ToList();
+        
+        return string.Join(", ", translatedTraits);
+    }
+    
+    private string TranslateTrait(string trait, string language)
+    {
+        // Common personality traits translation (simplified version)
+        var lowerTrait = trait.ToLower();
+        
+        if (language == "zh-tw" || language == "zh")
+        {
+            return lowerTrait switch
+            {
+                "adventurous" => "冒險的",
+                "bold" => "勇敢的",
+                "passionate" => "熱情的",
+                "reliable" => "可靠的",
+                "patient" => "耐心的",
+                "practical" => "務實的",
+                "curious" => "好奇的",
+                "adaptable" => "適應力強的",
+                "confident" => "自信的",
+                "generous" => "慷慨的",
+                "analytical" => "分析的",
+                "diplomatic" => "圓融的",
+                "intense" => "強烈的",
+                "optimistic" => "樂觀的",
+                "ambitious" => "有抱負的",
+                "innovative" => "創新的",
+                "intuitive" => "直覺的",
+                "compassionate" => "富有同情心的",
+                _ => trait
+            };
+        }
+        
+        if (language == "es")
+        {
+            return lowerTrait switch
+            {
+                "adventurous" => "Aventurero",
+                "bold" => "Audaz",
+                "passionate" => "Apasionado",
+                "reliable" => "Confiable",
+                "patient" => "Paciente",
+                "practical" => "Práctico",
+                "curious" => "Curioso",
+                "adaptable" => "Adaptable",
+                "confident" => "Seguro",
+                "generous" => "Generoso",
+                "analytical" => "Analítico",
+                "diplomatic" => "Diplomático",
+                "intense" => "Intenso",
+                "optimistic" => "Optimista",
+                "ambitious" => "Ambicioso",
+                "innovative" => "Innovador",
+                "intuitive" => "Intuitivo",
+                "compassionate" => "Compasivo",
+                _ => trait
+            };
+        }
+        
+        return trait;
     }
 
     #endregion
