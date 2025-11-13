@@ -1029,7 +1029,7 @@ FORMAT (flattened - Backend will inject: chineseZodiac_title, chineseZodiac_anim
     ""{targetLanguage}"": {{
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: Use {sunSign} as Sun sign, define archetype, show contrasts using 'both...yet' patterns]"",
-      ""chineseAstrology_currentYear"": ""[LANGUAGE-SPECIFIC: English→'Year of the {currentYearZodiac}', Chinese→'{currentYearZodiac}年', Spanish→'Año del {currentYearZodiac}']"", 
+      ""chineseAstrology_currentYear"": ""[⚠️CRITICAL - MUST match target language: en='Year of the Snake', zh/zh-tw='蛇年', es='Año de la Serpiente'. Use {currentYearZodiac} animal name. NO mixed languages!]"", 
       ""chineseAstrology_trait1"": ""[VARIED: 8-12 words interpretation]"", ""chineseAstrology_trait2"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait3"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait4"": ""[VARIED: 8-12 words]"",
       ""zodiacWhisper"": ""[VARIED: 40-50 words perspective on how {birthYearAnimal} enhances Western chart. Start '{birthYearAnimal} adds...' Use 'You are not only X, but Y']"",
       ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
