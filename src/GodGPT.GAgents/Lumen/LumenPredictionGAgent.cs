@@ -185,23 +185,41 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 {
                     // Requested language not available - trigger on-demand translation and return error
                     var sourceLanguage = State.MultilingualResults.ContainsKey("en") ? "en" : State.MultilingualResults.Keys.FirstOrDefault();
-                    if (sourceLanguage != null)
+                    if (sourceLanguage != null && State.MultilingualResults[sourceLanguage] != null && State.MultilingualResults[sourceLanguage].Count > 0)
                     {
                         var sourceContent = State.MultilingualResults[sourceLanguage];
                         TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, sourceLanguage, sourceContent, userLanguage);
+                        
+                        _logger.LogWarning($"[Lumen] {userInfo.UserId} Language {userLanguage} not available for {type}, triggered translation");
+                        
+                        return new GetTodayPredictionResult
+                        {
+                            Success = false,
+                            Message = $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
+                        };
                     }
                     else if (!State.Results.IsNullOrEmpty())
                     {
                         TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, "en", State.Results, userLanguage);
+                        
+                        _logger.LogWarning($"[Lumen] {userInfo.UserId} Language {userLanguage} not available for {type}, triggered translation from legacy Results");
+                        
+                        return new GetTodayPredictionResult
+                        {
+                            Success = false,
+                            Message = $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
+                        };
                     }
-                    
-                    _logger.LogWarning($"[Lumen] {userInfo.UserId} Language {userLanguage} not available for {type}, triggered translation");
-                    
-                    return new GetTodayPredictionResult
+                    else
                     {
-                        Success = false,
-                        Message = $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
-                    };
+                        _logger.LogWarning($"[Lumen] {userInfo.UserId} No valid source content available for translation to {userLanguage}");
+                        
+                        return new GetTodayPredictionResult
+                        {
+                            Success = false,
+                            Message = $"No valid prediction data available. Please regenerate the prediction."
+                        };
+                    }
                 }
                 
                 // Add currentPhase for Lifetime predictions
@@ -213,8 +231,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 }
                 
                 // Get available languages from MultilingualResults (actual available languages)
-                var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
-                                         (State.GeneratedLanguages ?? new List<string>());
+                // If MultilingualResults is empty (but not null), fallback to GeneratedLanguages
+                var availableLanguages = (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
+                                         ? State.MultilingualResults.Keys.ToList()
+                                         : (State.GeneratedLanguages ?? new List<string>());
                 
                 var cachedDto = new PredictionResultDto
                 {
@@ -288,35 +308,70 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             return Task.FromResult<PredictionResultDto?>(null);
         }
 
-        // Get localized results based on user language
-        if (!State.MultilingualResults.ContainsKey(userLanguage))
+        Dictionary<string, string> localizedResults;
+        string returnedLanguage;
+        bool isFallback = false;
+
+        // Check if MultilingualResults has the requested language
+        if (State.MultilingualResults != null && State.MultilingualResults.ContainsKey(userLanguage))
         {
-            // Requested language not available - trigger on-demand translation and return null
+            // Requested language is available in MultilingualResults
+            localizedResults = State.MultilingualResults[userLanguage];
+            returnedLanguage = userLanguage;
+        }
+        else if (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
+        {
+            // MultilingualResults exists but doesn't have requested language - trigger translation
             var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
             var sourceLanguage = State.MultilingualResults.ContainsKey("en") ? "en" : State.MultilingualResults.Keys.FirstOrDefault();
             
-            if (sourceLanguage != null)
+            if (sourceLanguage != null && State.MultilingualResults[sourceLanguage] != null && State.MultilingualResults[sourceLanguage].Count > 0)
             {
                 var sourceContent = State.MultilingualResults[sourceLanguage];
                 TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, sourceLanguage, sourceContent, userLanguage);
+                _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found in MultilingualResults, triggered translation", userLanguage);
+                return Task.FromResult<PredictionResultDto?>(null);
             }
-            else if (!State.Results.IsNullOrEmpty())
+            else
             {
-                TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, "en", State.Results, userLanguage);
+                _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Source language content is empty, cannot translate");
+                return Task.FromResult<PredictionResultDto?>(null);
             }
+        }
+        else if (!State.Results.IsNullOrEmpty())
+        {
+            // Fallback to legacy Results field (old data format)
+            // Check if user is requesting the original language (from GeneratedLanguages)
+            var originalLanguage = State.GeneratedLanguages?.FirstOrDefault() ?? "en";
             
-            _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found, triggered translation", userLanguage);
+            if (userLanguage == originalLanguage)
+            {
+                // User is requesting the same language as the original - return Results directly
+                localizedResults = State.Results;
+                returnedLanguage = originalLanguage;
+                _logger.LogInformation("[LumenPredictionGAgent][GetPredictionAsync] Using legacy Results field for {Language}", originalLanguage);
+            }
+            else
+            {
+                // User is requesting a different language - trigger translation
+                var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
+                TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, originalLanguage, State.Results, userLanguage);
+                _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found, triggered translation from legacy Results", userLanguage);
+                return Task.FromResult<PredictionResultDto?>(null);
+            }
+        }
+        else
+        {
+            // No data at all
+            _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] No prediction data found");
             return Task.FromResult<PredictionResultDto?>(null);
         }
-        
-        // Requested language is available
-        var localizedResults = State.MultilingualResults[userLanguage];
-        var returnedLanguage = userLanguage;
-        var isFallback = false;
 
         // Get available languages from MultilingualResults (actual available languages)
-        var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
-                                 (State.GeneratedLanguages ?? new List<string>());
+        // If MultilingualResults is empty (but not null), fallback to GeneratedLanguages
+        var availableLanguages = (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
+                                 ? State.MultilingualResults.Keys.ToList()
+                                 : (State.GeneratedLanguages ?? new List<string>());
         
         var predictionDto = new PredictionResultDto
         {
@@ -417,8 +472,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         {
             var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
             // Get available languages from MultilingualResults (actual available languages)
-            var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
-                                    (State.GeneratedLanguages ?? new List<string>());
+            var availableLanguages = (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
+                                    ? State.MultilingualResults.Keys.ToList()
+                                    : (State.GeneratedLanguages ?? new List<string>());
             var targetLanguages = allLanguages.Where(lang => !availableLanguages.Contains(lang)).ToList();
             
             translationStatus = new TranslationStatusInfo
@@ -431,8 +487,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         }
 
         // Get available languages from MultilingualResults (actual available languages)
-        var statusAvailableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
-                                      (State.GeneratedLanguages ?? new List<string>());
+        // If MultilingualResults is empty (but not null), fallback to GeneratedLanguages
+        var statusAvailableLanguages = (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
+                                      ? State.MultilingualResults.Keys.ToList()
+                                      : (State.GeneratedLanguages ?? new List<string>());
 
         var statusDto = new PredictionStatusDto
         {
@@ -592,18 +650,18 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
                 parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
                 parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
-                parsedResults["sunSign_name"] = sunSign;
+                parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
-                parsedResults["westernOverview_sunSign"] = sunSign;
-                parsedResults["chineseZodiac_animal"] = birthYearAnimal;
+                parsedResults["westernOverview_sunSign"] = TranslateSunSign(sunSign, targetLanguage);
+                parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
                 parsedResults["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
-                parsedResults["chineseZodiac_title"] = $"The {birthYearAnimal.Split(' ').Last()}";
-                parsedResults["pastCycle_ageRange"] = pastCycle.AgeRange;
-                parsedResults["pastCycle_period"] = pastCycle.Period;
-                parsedResults["currentCycle_ageRange"] = currentCycle.AgeRange;
-                parsedResults["currentCycle_period"] = currentCycle.Period;
-                parsedResults["futureCycle_ageRange"] = futureCycle.AgeRange;
-                parsedResults["futureCycle_period"] = futureCycle.Period;
+                parsedResults["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, targetLanguage);
+                parsedResults["pastCycle_ageRange"] = TranslateCycleAgeRange(pastCycle.AgeRange, targetLanguage);
+                parsedResults["pastCycle_period"] = TranslateCyclePeriod(pastCycle.Period, targetLanguage);
+                parsedResults["currentCycle_ageRange"] = TranslateCycleAgeRange(currentCycle.AgeRange, targetLanguage);
+                parsedResults["currentCycle_period"] = TranslateCyclePeriod(currentCycle.Period, targetLanguage);
+                parsedResults["futureCycle_ageRange"] = TranslateCycleAgeRange(futureCycle.AgeRange, targetLanguage);
+                parsedResults["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, targetLanguage);
                 
                 // Inject Four Pillars data
                 InjectFourPillarsData(parsedResults, fourPillars, targetLanguage);
@@ -617,18 +675,18 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
                         multilingualResults[lang]["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
-                        multilingualResults[lang]["sunSign_name"] = sunSign;
+                        multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
                         multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
-                        multilingualResults[lang]["westernOverview_sunSign"] = sunSign;
-                        multilingualResults[lang]["chineseZodiac_animal"] = birthYearAnimal;
+                        multilingualResults[lang]["westernOverview_sunSign"] = TranslateSunSign(sunSign, lang);
+                        multilingualResults[lang]["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, lang);
                         multilingualResults[lang]["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                         multilingualResults[lang]["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, lang);
-                        multilingualResults[lang]["pastCycle_ageRange"] = pastCycle.AgeRange;
-                        multilingualResults[lang]["pastCycle_period"] = pastCycle.Period;
-                        multilingualResults[lang]["currentCycle_ageRange"] = currentCycle.AgeRange;
-                        multilingualResults[lang]["currentCycle_period"] = currentCycle.Period;
-                        multilingualResults[lang]["futureCycle_ageRange"] = futureCycle.AgeRange;
-                        multilingualResults[lang]["futureCycle_period"] = futureCycle.Period;
+                        multilingualResults[lang]["pastCycle_ageRange"] = TranslateCycleAgeRange(pastCycle.AgeRange, lang);
+                        multilingualResults[lang]["pastCycle_period"] = TranslateCyclePeriod(pastCycle.Period, lang);
+                        multilingualResults[lang]["currentCycle_ageRange"] = TranslateCycleAgeRange(currentCycle.AgeRange, lang);
+                        multilingualResults[lang]["currentCycle_period"] = TranslateCyclePeriod(currentCycle.Period, lang);
+                        multilingualResults[lang]["futureCycle_ageRange"] = TranslateCycleAgeRange(futureCycle.AgeRange, lang);
+                        multilingualResults[lang]["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, lang);
                         
                         // Inject Four Pillars data with language-specific formatting
                         InjectFourPillarsData(multilingualResults[lang], fourPillars, lang);
@@ -644,32 +702,32 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 var yearlyTaishui = LumenCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
                 
                 // Inject into primary language results
-                parsedResults["sunSign_name"] = sunSign;
+                parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
-                parsedResults["chineseZodiac_animal"] = birthYearAnimal;
+                parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
                 parsedResults["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                 parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
                 parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
                 parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
                 parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
-                parsedResults["chineseAstrology_taishuiRelationship"] = yearlyTaishui;
-                parsedResults["zodiacInfluence"] = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
+                parsedResults["chineseAstrology_taishuiRelationship"] = TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
+                parsedResults["zodiacInfluence"] = BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, targetLanguage);
                 
                 // Inject into all multilingual versions
                 if (multilingualResults != null)
                 {
                     foreach (var lang in multilingualResults.Keys)
                     {
-                        multilingualResults[lang]["sunSign_name"] = sunSign;
+                        multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
                         multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
-                        multilingualResults[lang]["chineseZodiac_animal"] = birthYearAnimal;
+                        multilingualResults[lang]["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, lang);
                         multilingualResults[lang]["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                         multilingualResults[lang]["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
                         multilingualResults[lang]["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
-                        multilingualResults[lang]["chineseAstrology_taishuiRelationship"] = yearlyTaishui;
-                        multilingualResults[lang]["zodiacInfluence"] = $"{birthYearZodiac} native in {yearlyYearZodiac} year → {yearlyTaishui}";
+                        multilingualResults[lang]["chineseAstrology_taishuiRelationship"] = TranslateTaishuiRelationship(yearlyTaishui, lang);
+                        multilingualResults[lang]["zodiacInfluence"] = BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, lang);
                     }
                 }
                 
@@ -856,10 +914,19 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         
         var singleLanguagePrefix = $@"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
 
-⚠️ LANGUAGE REQUIREMENT: Generate all content in {languageName} ({targetLanguage}). Some fields may contain Chinese characters (e.g., Chinese zodiac names, heavenly stems/branches) - these are acceptable and should be preserved.
+⚠️ LANGUAGE REQUIREMENT - STRICTLY ENFORCE:
+- Generate ALL content in {languageName} ({targetLanguage}) ONLY.
+- DO NOT mix other languages in the output.
+- For Chinese (zh-tw/zh): Use FULL Chinese text. NO English words except proper names.
+- For English/Spanish: Use target language for all content. Chinese characters are ONLY allowed for:
+  * Heavenly Stems/Earthly Branches (天干地支): e.g., ""甲子 (Jiǎzǐ)""
+  * Chinese Zodiac names if needed: e.g., ""Rat 鼠""
+- NEVER translate user names (e.g., ""Sean"" stays ""Sean"" in all languages).
 
-EXCEPTIONS:
-- For Chinese (zh-tw/zh): Properly adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
+LANGUAGE-SPECIFIC RULES:
+- For Chinese (zh-tw/zh): Adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
+- For English/Spanish: Use natural target language sentence structure.
+
 Wrap response in JSON format.
 
 ";
@@ -889,7 +956,7 @@ FORMAT (flattened - Backend will inject: chineseZodiac_title, chineseZodiac_anim
     ""{targetLanguage}"": {{
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: Use {sunSign} as Sun sign, define archetype, show contrasts using 'both...yet' patterns]"",
-      ""chineseAstrology_currentYear"": ""Year of the {currentYearZodiac}"", 
+      ""chineseAstrology_currentYear"": ""[LANGUAGE-SPECIFIC: English→'Year of the {currentYearZodiac}', Chinese→'{currentYearZodiac}年', Spanish→'Año del {currentYearZodiac}']"", 
       ""chineseAstrology_trait1"": ""[VARIED: 8-12 words interpretation]"", ""chineseAstrology_trait2"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait3"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait4"": ""[VARIED: 8-12 words]"",
       ""zodiacWhisper"": ""[VARIED: 40-50 words perspective on how {birthYearAnimal} enhances Western chart. Start '{birthYearAnimal} adds...' Use 'You are not only X, but Y']"",
       ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
@@ -1025,9 +1092,17 @@ FORMAT (flattened):
       ""luckyAlignments_luckySpell"": ""[VARIED: 2 words poetic name]"", ""luckyAlignments_luckySpell_description"": ""[VARIED: 20-30 words in quote format, first-person affirmation]"",
       ""luckyAlignments_luckySpell_intent"": ""[VARIED: 10-12 words starting 'To [verb]...']"",
       ""twistOfFate_title"": ""[VARIED: 4-8 words poetic card title. Use metaphorical, philosophical language with imagery. Evoke transformation, wisdom, or paradox. Style: contemplative, timeless, slightly mysterious]"",
-      ""twistOfFate_favorable"": [""[VARIED: EXACTLY 5 activities, 2-3 words each, concrete actions suited to this user today. Examples: Take walk, Meditate quietly, Organize workspace, Text friend, Drink water]"", ""[VARIED: EXACTLY 5 different activities. Examples: Read books, Cook meal, Early sleep, Journal thoughts, Call family]""], 
-      ""twistOfFate_avoid"": [""[VARIED: EXACTLY 5 activities to avoid, 2-3 words each, specific actions. Examples: Buy stocks, Argue unnecessarily, Overshare secrets, Start plans, Skip meals]"", ""[VARIED: EXACTLY 5 different activities. Examples: Impulse shopping, Late nights, Heavy drinking, Risky decisions, Lend money]""], 
+      ""twistOfFate_favorable"": [""[2-3 words, activity 1]"", ""[2-3 words, activity 2]"", ""[2-3 words, activity 3]"", ""[2-3 words, activity 4]"", ""[2-3 words, activity 5]""], 
+      ""twistOfFate_avoid"": [""[2-3 words, activity 1]"", ""[2-3 words, activity 2]"", ""[2-3 words, activity 3]"", ""[2-3 words, activity 4]"", ""[2-3 words, activity 5]""], 
       ""twistOfFate_todaysRecommendation"": ""[VARIED: 10-15 words starting 'Today's turning point lies in...']""
+      
+IMPORTANT - twistOfFate arrays:
+- twistOfFate_favorable: Array with EXACTLY 5 elements (strings)
+- twistOfFate_avoid: Array with EXACTLY 5 elements (strings)
+- Each element: 2-3 words describing ONE concrete action
+- VARIED: Generate different activities for each user based on their profile
+- Examples for favorable: ""Take walk"", ""Meditate quietly"", ""Organize workspace"", ""Text friend"", ""Drink water""
+- Examples for avoid: ""Buy stocks"", ""Argue unnecessarily"", ""Overshare secrets"", ""Start plans"", ""Skip meals""
     }}
   }}
 }}
@@ -1378,6 +1453,14 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         var translationPrompt = $@"You are a professional translator specializing in astrology and divination content.
 
 TASK: Translate the following {type} prediction from {sourceLangName} into {targetLangName}.
+
+⚠️ LANGUAGE REQUIREMENT - STRICTLY ENFORCE:
+- Translate ALL content into {targetLangName} ONLY.
+- DO NOT mix other languages in the output.
+- For Chinese (zh-tw/zh): Use FULL Chinese text. NO English words except proper names.
+- For English/Spanish: Use target language for all content. Chinese characters are ONLY allowed for:
+  * Heavenly Stems/Earthly Branches (天干地支): e.g., ""甲子 (Jiǎzǐ)""
+  * Chinese Zodiac names if needed: e.g., ""Rat 鼠""
 
 CRITICAL RULES:
 1. TRANSLATE - do NOT regenerate or reinterpret. Keep the exact same meaning and content structure.
@@ -2018,62 +2101,66 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
     /// </summary>
     private void InjectFourPillarsData(Dictionary<string, string> prediction, FourPillarsInfo fourPillars, string language)
     {
-        // Year Pillar
+        // Year Pillar - Standardized field naming: separate stem and branch attributes
         prediction["fourPillars_yearPillar"] = fourPillars.YearPillar.GetFormattedString(language);
-        prediction["fourPillars_yearPillar_stem"] = fourPillars.YearPillar.StemChinese;
-        prediction["fourPillars_yearPillar_branch"] = fourPillars.YearPillar.BranchChinese;
+        // Stem attributes
+        prediction["fourPillars_yearPillar_stemChinese"] = fourPillars.YearPillar.StemChinese;
         prediction["fourPillars_yearPillar_stemPinyin"] = fourPillars.YearPillar.StemPinyin;
+        prediction["fourPillars_yearPillar_stemYinYang"] = TranslateYinYang(fourPillars.YearPillar.YinYang, language);
+        prediction["fourPillars_yearPillar_stemElement"] = TranslateElement(fourPillars.YearPillar.Element, language);
+        prediction["fourPillars_yearPillar_stemDirection"] = TranslateDirection(fourPillars.YearPillar.Direction, language);
+        // Branch attributes
+        prediction["fourPillars_yearPillar_branchChinese"] = fourPillars.YearPillar.BranchChinese;
         prediction["fourPillars_yearPillar_branchPinyin"] = fourPillars.YearPillar.BranchPinyin;
-        prediction["fourPillars_yearPillar_yinYang"] = TranslateYinYang(fourPillars.YearPillar.YinYang, language);
-        prediction["fourPillars_yearPillar_element"] = TranslateElement(fourPillars.YearPillar.Element, language);
-        prediction["fourPillars_yearPillar_direction"] = TranslateDirection(fourPillars.YearPillar.Direction, language);
         prediction["fourPillars_yearPillar_branchYinYang"] = TranslateYinYang(fourPillars.YearPillar.BranchYinYang, language);
         prediction["fourPillars_yearPillar_branchElement"] = TranslateElement(fourPillars.YearPillar.BranchElement, language);
-        prediction["fourPillars_yearPillar_branchDirection"] = TranslateDirection(fourPillars.YearPillar.BranchDirection, language);
         prediction["fourPillars_yearPillar_branchZodiac"] = TranslateZodiac(fourPillars.YearPillar.BranchZodiac, language);
         
         // Month Pillar
         prediction["fourPillars_monthPillar"] = fourPillars.MonthPillar.GetFormattedString(language);
-        prediction["fourPillars_monthPillar_stem"] = fourPillars.MonthPillar.StemChinese;
-        prediction["fourPillars_monthPillar_branch"] = fourPillars.MonthPillar.BranchChinese;
+        // Stem attributes
+        prediction["fourPillars_monthPillar_stemChinese"] = fourPillars.MonthPillar.StemChinese;
         prediction["fourPillars_monthPillar_stemPinyin"] = fourPillars.MonthPillar.StemPinyin;
+        prediction["fourPillars_monthPillar_stemYinYang"] = TranslateYinYang(fourPillars.MonthPillar.YinYang, language);
+        prediction["fourPillars_monthPillar_stemElement"] = TranslateElement(fourPillars.MonthPillar.Element, language);
+        prediction["fourPillars_monthPillar_stemDirection"] = TranslateDirection(fourPillars.MonthPillar.Direction, language);
+        // Branch attributes
+        prediction["fourPillars_monthPillar_branchChinese"] = fourPillars.MonthPillar.BranchChinese;
         prediction["fourPillars_monthPillar_branchPinyin"] = fourPillars.MonthPillar.BranchPinyin;
-        prediction["fourPillars_monthPillar_yinYang"] = TranslateYinYang(fourPillars.MonthPillar.YinYang, language);
-        prediction["fourPillars_monthPillar_element"] = TranslateElement(fourPillars.MonthPillar.Element, language);
-        prediction["fourPillars_monthPillar_direction"] = TranslateDirection(fourPillars.MonthPillar.Direction, language);
         prediction["fourPillars_monthPillar_branchYinYang"] = TranslateYinYang(fourPillars.MonthPillar.BranchYinYang, language);
         prediction["fourPillars_monthPillar_branchElement"] = TranslateElement(fourPillars.MonthPillar.BranchElement, language);
-        prediction["fourPillars_monthPillar_branchDirection"] = TranslateDirection(fourPillars.MonthPillar.BranchDirection, language);
         prediction["fourPillars_monthPillar_branchZodiac"] = TranslateZodiac(fourPillars.MonthPillar.BranchZodiac, language);
         
         // Day Pillar
         prediction["fourPillars_dayPillar"] = fourPillars.DayPillar.GetFormattedString(language);
-        prediction["fourPillars_dayPillar_stem"] = fourPillars.DayPillar.StemChinese;
-        prediction["fourPillars_dayPillar_branch"] = fourPillars.DayPillar.BranchChinese;
+        // Stem attributes
+        prediction["fourPillars_dayPillar_stemChinese"] = fourPillars.DayPillar.StemChinese;
         prediction["fourPillars_dayPillar_stemPinyin"] = fourPillars.DayPillar.StemPinyin;
+        prediction["fourPillars_dayPillar_stemYinYang"] = TranslateYinYang(fourPillars.DayPillar.YinYang, language);
+        prediction["fourPillars_dayPillar_stemElement"] = TranslateElement(fourPillars.DayPillar.Element, language);
+        prediction["fourPillars_dayPillar_stemDirection"] = TranslateDirection(fourPillars.DayPillar.Direction, language);
+        // Branch attributes
+        prediction["fourPillars_dayPillar_branchChinese"] = fourPillars.DayPillar.BranchChinese;
         prediction["fourPillars_dayPillar_branchPinyin"] = fourPillars.DayPillar.BranchPinyin;
-        prediction["fourPillars_dayPillar_yinYang"] = TranslateYinYang(fourPillars.DayPillar.YinYang, language);
-        prediction["fourPillars_dayPillar_element"] = TranslateElement(fourPillars.DayPillar.Element, language);
-        prediction["fourPillars_dayPillar_direction"] = TranslateDirection(fourPillars.DayPillar.Direction, language);
         prediction["fourPillars_dayPillar_branchYinYang"] = TranslateYinYang(fourPillars.DayPillar.BranchYinYang, language);
         prediction["fourPillars_dayPillar_branchElement"] = TranslateElement(fourPillars.DayPillar.BranchElement, language);
-        prediction["fourPillars_dayPillar_branchDirection"] = TranslateDirection(fourPillars.DayPillar.BranchDirection, language);
         prediction["fourPillars_dayPillar_branchZodiac"] = TranslateZodiac(fourPillars.DayPillar.BranchZodiac, language);
         
-        // Hour Pillar (optional)
+        // Hour Pillar (optional - only if birth time is provided)
         if (fourPillars.HourPillar != null)
         {
             prediction["fourPillars_hourPillar"] = fourPillars.HourPillar.GetFormattedString(language);
-            prediction["fourPillars_hourPillar_stem"] = fourPillars.HourPillar.StemChinese;
-            prediction["fourPillars_hourPillar_branch"] = fourPillars.HourPillar.BranchChinese;
+            // Stem attributes
+            prediction["fourPillars_hourPillar_stemChinese"] = fourPillars.HourPillar.StemChinese;
             prediction["fourPillars_hourPillar_stemPinyin"] = fourPillars.HourPillar.StemPinyin;
+            prediction["fourPillars_hourPillar_stemYinYang"] = TranslateYinYang(fourPillars.HourPillar.YinYang, language);
+            prediction["fourPillars_hourPillar_stemElement"] = TranslateElement(fourPillars.HourPillar.Element, language);
+            prediction["fourPillars_hourPillar_stemDirection"] = TranslateDirection(fourPillars.HourPillar.Direction, language);
+            // Branch attributes
+            prediction["fourPillars_hourPillar_branchChinese"] = fourPillars.HourPillar.BranchChinese;
             prediction["fourPillars_hourPillar_branchPinyin"] = fourPillars.HourPillar.BranchPinyin;
-            prediction["fourPillars_hourPillar_yinYang"] = TranslateYinYang(fourPillars.HourPillar.YinYang, language);
-            prediction["fourPillars_hourPillar_element"] = TranslateElement(fourPillars.HourPillar.Element, language);
-            prediction["fourPillars_hourPillar_direction"] = TranslateDirection(fourPillars.HourPillar.Direction, language);
             prediction["fourPillars_hourPillar_branchYinYang"] = TranslateYinYang(fourPillars.HourPillar.BranchYinYang, language);
             prediction["fourPillars_hourPillar_branchElement"] = TranslateElement(fourPillars.HourPillar.BranchElement, language);
-            prediction["fourPillars_hourPillar_branchDirection"] = TranslateDirection(fourPillars.HourPillar.BranchDirection, language);
             prediction["fourPillars_hourPillar_branchZodiac"] = TranslateZodiac(fourPillars.HourPillar.BranchZodiac, language);
         }
     }
@@ -2122,6 +2209,268 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         ("Centre", "es") => "Centro",
         _ => direction  // English default
     };
+    
+    /// <summary>
+    /// Build zodiacInfluence string based on language
+    /// Format: "{birthYearZodiac} native in {yearlyYearZodiac} year → {taishuiRelationship}"
+    /// </summary>
+    private string BuildZodiacInfluence(string birthYearZodiac, string yearlyYearZodiac, string taishuiRelationship, string language)
+    {
+        // Parse taishui to extract Chinese, Pinyin, and English parts
+        // Example input: "相害 (Xiang Hai - Harm)"
+        var taishuiParts = ParseTaishuiRelationship(taishuiRelationship);
+        
+        if (language == "zh" || language == "zh-tw")
+        {
+            // Chinese: "木蛇生人遇木龙年 → 相害"
+            var birthZodiacChinese = TranslateZodiacWithElementToChinese(birthYearZodiac);
+            var yearlyZodiacChinese = TranslateZodiacWithElementToChinese(yearlyYearZodiac);
+            return $"{birthZodiacChinese}生人遇{yearlyZodiacChinese}年 → {taishuiParts.chinese}";
+        }
+        else if (language == "es")
+        {
+            // Spanish: "Serpiente de Madera nativo en año del Dragón de Madera → Daño (相害 Xiang Hai)"
+            var birthZodiacSpanish = TranslateZodiacWithElementToSpanish(birthYearZodiac);
+            var yearlyZodiacSpanish = TranslateZodiacWithElementToSpanish(yearlyYearZodiac);
+            return $"{birthZodiacSpanish} nativo en año del {yearlyZodiacSpanish} → {taishuiParts.spanish} ({taishuiParts.chinese} {taishuiParts.pinyin})";
+        }
+        else
+        {
+            // English: "Wood Snake native in Wood Dragon year → Harm (相害 Xiang Hai)"
+            return $"{birthYearZodiac} native in {yearlyYearZodiac} year → {taishuiParts.english} ({taishuiParts.chinese} {taishuiParts.pinyin})";
+        }
+    }
+    
+    /// <summary>
+    /// Parse taishui relationship string to extract Chinese, Pinyin, and English
+    /// Example: "相害 (Xiang Hai - Harm)" → (chinese: "相害", pinyin: "Xiang Hai", english: "Harm")
+    /// </summary>
+    private (string chinese, string pinyin, string english, string spanish) ParseTaishuiRelationship(string taishui)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(taishui, @"^(.*?)\s*\((.*?)\s*-\s*(.*?)\)$");
+        if (match.Success)
+        {
+            var chinese = match.Groups[1].Value.Trim();
+            var pinyin = match.Groups[2].Value.Trim();
+            var english = match.Groups[3].Value.Trim();
+            var spanish = TranslateTaishuiToSpanish(english);
+            return (chinese, pinyin, english, spanish);
+        }
+        
+        // Fallback if parsing fails
+        return (taishui, "", taishui, taishui);
+    }
+    
+    /// <summary>
+    /// Translate "Element + Zodiac" format to Chinese
+    /// Example: "Wood Snake" → "木蛇"
+    /// </summary>
+    private string TranslateZodiacWithElementToChinese(string zodiacWithElement)
+    {
+        var parts = zodiacWithElement.Split(' ', 2);
+        if (parts.Length != 2) return zodiacWithElement;
+        
+        var element = parts[0];
+        var zodiac = parts[1];
+        
+        var elementChinese = element switch
+        {
+            "Wood" => "木",
+            "Fire" => "火",
+            "Earth" => "土",
+            "Metal" => "金",
+            "Water" => "水",
+            _ => element
+        };
+        
+        var zodiacChinese = zodiac switch
+        {
+            "Rat" => "鼠",
+            "Ox" => "牛",
+            "Tiger" => "虎",
+            "Rabbit" => "兔",
+            "Dragon" => "龙",
+            "Snake" => "蛇",
+            "Horse" => "马",
+            "Goat" => "羊",
+            "Monkey" => "猴",
+            "Rooster" => "鸡",
+            "Dog" => "狗",
+            "Pig" => "猪",
+            _ => zodiac
+        };
+        
+        return $"{elementChinese}{zodiacChinese}";
+    }
+    
+    /// <summary>
+    /// Translate "Element + Zodiac" format to Spanish
+    /// Example: "Wood Snake" → "Serpiente de Madera"
+    /// </summary>
+    private string TranslateZodiacWithElementToSpanish(string zodiacWithElement)
+    {
+        var parts = zodiacWithElement.Split(' ', 2);
+        if (parts.Length != 2) return zodiacWithElement;
+        
+        var element = parts[0];
+        var zodiac = parts[1];
+        
+        var elementSpanish = element switch
+        {
+            "Wood" => "Madera",
+            "Fire" => "Fuego",
+            "Earth" => "Tierra",
+            "Metal" => "Metal",
+            "Water" => "Agua",
+            _ => element
+        };
+        
+        var zodiacSpanish = zodiac switch
+        {
+            "Rat" => "Rata",
+            "Ox" => "Buey",
+            "Tiger" => "Tigre",
+            "Rabbit" => "Conejo",
+            "Dragon" => "Dragón",
+            "Snake" => "Serpiente",
+            "Horse" => "Caballo",
+            "Goat" => "Cabra",
+            "Monkey" => "Mono",
+            "Rooster" => "Gallo",
+            "Dog" => "Perro",
+            "Pig" => "Cerdo",
+            _ => zodiac
+        };
+        
+        return $"{zodiacSpanish} de {elementSpanish}";
+    }
+    
+    /// <summary>
+    /// Translate Taishui relationship English term to Spanish
+    /// </summary>
+    private string TranslateTaishuiToSpanish(string english) => english switch
+    {
+        "Birth Year" => "Año de Nacimiento",
+        "Harm" => "Daño",
+        "Neutral" => "Neutral",
+        "Triple Harmony" => "Triple Armonía",
+        "Six Harmony" => "Seis Armonía",
+        "Clash" => "Choque",
+        "Break" => "Ruptura",
+        _ => english
+    };
+    
+    /// <summary>
+    /// Translate taishui relationship based on language
+    /// Input format: "相害 (Xiang Hai - Harm)"
+    /// </summary>
+    private string TranslateTaishuiRelationship(string taishui, string language)
+    {
+        var parts = ParseTaishuiRelationship(taishui);
+        
+        if (language == "zh" || language == "zh-tw")
+        {
+            // Chinese: only Chinese text
+            return parts.chinese;
+        }
+        else if (language == "es")
+        {
+            // Spanish: "Daño (相害 Xiang Hai)"
+            return $"{parts.spanish} ({parts.chinese} {parts.pinyin})";
+        }
+        else
+        {
+            // English: "Harm (相害 Xiang Hai)"
+            return $"{parts.english} ({parts.chinese} {parts.pinyin})";
+        }
+    }
+    
+    /// <summary>
+    /// Translate sun sign based on language
+    /// </summary>
+    private string TranslateSunSign(string sunSign, string language) => (sunSign, language) switch
+    {
+        ("Aries", "zh" or "zh-tw") => "白羊座",
+        ("Taurus", "zh" or "zh-tw") => "金牛座",
+        ("Gemini", "zh" or "zh-tw") => "双子座",
+        ("Cancer", "zh" or "zh-tw") => "巨蟹座",
+        ("Leo", "zh" or "zh-tw") => "狮子座",
+        ("Virgo", "zh" or "zh-tw") => "处女座",
+        ("Libra", "zh" or "zh-tw") => "天秤座",
+        ("Scorpio", "zh" or "zh-tw") => "天蝎座",
+        ("Sagittarius", "zh" or "zh-tw") => "射手座",
+        ("Capricorn", "zh" or "zh-tw") => "摩羯座",
+        ("Aquarius", "zh" or "zh-tw") => "水瓶座",
+        ("Pisces", "zh" or "zh-tw") => "双鱼座",
+        _ => sunSign  // English and Spanish use same names
+    };
+    
+    /// <summary>
+    /// Translate Chinese zodiac with element based on language
+    /// Input: "Wood Pig"
+    /// </summary>
+    private string TranslateChineseZodiacAnimal(string zodiacWithElement, string language)
+    {
+        if (language == "zh" || language == "zh-tw")
+        {
+            return TranslateZodiacWithElementToChinese(zodiacWithElement);
+        }
+        else if (language == "es")
+        {
+            return TranslateZodiacWithElementToSpanish(zodiacWithElement);
+        }
+        else
+        {
+            return zodiacWithElement; // English
+        }
+    }
+    
+    /// <summary>
+    /// Translate cycle age range based on language
+    /// Input: "Age 20-29 (1990-1999)"
+    /// </summary>
+    private string TranslateCycleAgeRange(string ageRange, string language)
+    {
+        // Extract numbers using regex: "Age 20-29 (1990-1999)"
+        var match = System.Text.RegularExpressions.Regex.Match(ageRange, @"Age (\d+)-(\d+) \((\d+)-(\d+)\)");
+        if (!match.Success) return ageRange;
+        
+        var startAge = match.Groups[1].Value;
+        var endAge = match.Groups[2].Value;
+        var startYear = match.Groups[3].Value;
+        var endYear = match.Groups[4].Value;
+        
+        if (language == "zh" || language == "zh-tw")
+        {
+            return $"{startAge}-{endAge}岁 ({startYear}-{endYear})";
+        }
+        else if (language == "es")
+        {
+            return $"Edad {startAge}-{endAge} ({startYear}-{endYear})";
+        }
+        else
+        {
+            return ageRange; // English
+        }
+    }
+    
+    /// <summary>
+    /// Translate cycle period based on language
+    /// Input: "甲子 (Jiǎzǐ) · Wood Rat"
+    /// </summary>
+    private string TranslateCyclePeriod(string period, string language)
+    {
+        // Extract parts: "甲子 (Jiǎzǐ) · Wood Rat"
+        var parts = period.Split(" · ", 2);
+        if (parts.Length != 2) return period;
+        
+        var stemsBranch = parts[0]; // "甲子 (Jiǎzǐ)"
+        var zodiacWithElement = parts[1]; // "Wood Rat"
+        
+        var translatedZodiac = TranslateChineseZodiacAnimal(zodiacWithElement, language);
+        
+        return $"{stemsBranch} · {translatedZodiac}";
+    }
     
     private string TranslateZodiac(string zodiac, string language) => (zodiac, language) switch
     {
