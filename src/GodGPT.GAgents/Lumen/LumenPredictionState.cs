@@ -32,6 +32,12 @@ public class LumenPredictionState : StateBase
     
     // Track on-demand translations in progress (to avoid duplicate triggers)
     [Id(10)] public HashSet<string> TranslationInProgress { get; set; } = new();
+    
+    // Daily reminder management (for auto-generation at UTC 00:00)
+    [Id(11)] public DateTime LastActiveDate { get; set; } // Track user activity for auto-reminder management
+    [Id(12)] public Guid DailyReminderTargetId { get; set; } // Used to manually enable/disable daily reminders
+    [Id(13)] public bool IsDailyReminderEnabled { get; set; } // Whether daily auto-generation is enabled
+    [Id(14)] public DateOnly? LastGeneratedDate { get; set; } // Track the last date when prediction was generated (for deduplication)
 }
 
 /// <summary>

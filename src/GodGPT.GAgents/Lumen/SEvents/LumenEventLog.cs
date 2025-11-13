@@ -90,6 +90,9 @@ public class PredictionGeneratedEvent : LumenPredictionEventLog
     
     // Initial language generated in first stage
     [Id(8)] public string? InitialLanguage { get; set; }
+    
+    // Track generation date for daily reminder deduplication
+    [Id(9)] public DateOnly? LastGeneratedDate { get; set; }
 }
 
 /// <summary>
@@ -102,6 +105,7 @@ public class LanguagesTranslatedEvent : LumenPredictionEventLog
     [Id(1)] public DateOnly PredictionDate { get; set; }
     [Id(2)] public Dictionary<string, Dictionary<string, string>>? TranslatedLanguages { get; set; } // Key: language code, Value: content
     [Id(3)] public List<string>? AllGeneratedLanguages { get; set; } // All languages now available
+    [Id(4)] public DateOnly? LastGeneratedDate { get; set; } // Track translation date for daily limit
 }
 
 #endregion
