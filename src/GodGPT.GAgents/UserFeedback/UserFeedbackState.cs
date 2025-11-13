@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.UserFeedback.Dtos;
 using Aevatar.Core.Abstractions;
 
 namespace Aevatar.Application.Grains.UserFeedback;
@@ -87,4 +88,6 @@ public class UserFeedbackInfo
     /// English text representations of the selected reasons
     /// </summary>
     [Id(7)] public List<string> ReasonTextsEnglish { get; set; } = new();
+
+    [Id(8)] public UserSubscription? Subscription { get; set; } = null;
 }
