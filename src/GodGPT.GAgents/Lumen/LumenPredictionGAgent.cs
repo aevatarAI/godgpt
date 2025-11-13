@@ -45,14 +45,20 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 {
     private readonly ILogger<LumenPredictionGAgent> _logger;
     private readonly IClusterClient _clusterClient;
-    
+
     private const string DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
     
     /// <summary>
     /// Global prompt version - increment this when prompt content is updated
     /// This will allow all users to regenerate predictions on the same day
+    /// 
+    /// ⚠️ TODO: REMOVE THIS FEATURE BEFORE PRODUCTION LAUNCH
+    /// Currently set to 1 for testing purposes (all existing users will regenerate).
+    /// Before launch, either:
+    /// 1. Remove prompt version checking entirely, OR
+    /// 2. Set CURRENT_PROMPT_VERSION = 0 to avoid mass regeneration
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 1;
+    private const int CURRENT_PROMPT_VERSION = 1; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -181,6 +187,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _ => false
             };
             
+            // TODO: REMOVE BEFORE PRODUCTION - Prompt version check for testing only
             // Check if prompt version matches (if version changed, allow regeneration on the same day)
             var promptVersionMatches = State.PromptVersion == CURRENT_PROMPT_VERSION;
             if (!promptVersionMatches)
@@ -219,11 +226,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         returnedLanguage = availableLanguage;
                         isFallback = true;
                         _logger.LogInformation($"[Lumen] {userInfo.UserId} Today already processed ({today}), returning available language '{availableLanguage}' instead of '{userLanguage}'");
-                    }
-                    else
-                    {
+                }
+                else
+                {
                         // Fallback to legacy Results field
-                        localizedResults = State.Results;
+                    localizedResults = State.Results;
                         returnedLanguage = "en"; // Default assumption
                         isFallback = true;
                         _logger.LogWarning($"[Lumen] {userInfo.UserId} Today already processed but no multilingual results, using legacy Results field");
@@ -382,9 +389,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 isFallback = true;
                 _logger.LogInformation("[LumenPredictionGAgent][GetPredictionAsync] Today already processed ({Today}), returning available language '{AvailableLanguage}' instead of '{RequestedLanguage}'", 
                     today, availableLanguage, userLanguage);
-            }
-            else
-            {
+        }
+        else
+        {
                 // New day - allow translation
                 var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
                 var sourceLanguage = State.MultilingualResults.ContainsKey("en") ? "en" : State.MultilingualResults.Keys.FirstOrDefault();
@@ -412,7 +419,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             if (userLanguage == originalLanguage)
             {
                 // User is requesting the same language as the original - return Results directly
-                localizedResults = State.Results;
+            localizedResults = State.Results;
                 returnedLanguage = originalLanguage;
                 _logger.LogInformation("[LumenPredictionGAgent][GetPredictionAsync] Using legacy Results field for {Language}", originalLanguage);
             }
@@ -1362,9 +1369,9 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         if (sourceContent == null || sourceContent.Count == 0)
         {
             _logger.LogError($"[Lumen][OnDemand] {userInfo.UserId} Cannot translate to {targetLanguage}: Source content is empty (sourceLanguage: {sourceLanguage})");
-            return;
-        }
-        
+                return;
+            }
+            
         // Check if already exists (most reliable check - persisted state)
         if (State.MultilingualResults.ContainsKey(targetLanguage))
         {
