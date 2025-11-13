@@ -58,7 +58,8 @@ public class UserPaymentState
             AmountNetTotal = this.AmountNetTotal,
             Discounts = this.Discounts,
             IsTrial = this.IsTrial,
-            TrialCode = this.TrialCode
+            TrialCode = this.TrialCode,
+            PaymentIntentId = PaymentIntentId
         };
     }
 
@@ -115,7 +116,8 @@ public class UserPaymentState
             AmountNetTotal = dto.AmountNetTotal,
             Discounts = dto.Discounts,
             IsTrial = dto.IsTrial,
-            TrialCode = dto.TrialCode
+            TrialCode = dto.TrialCode,
+            PaymentIntentId = dto.PaymentIntentId
         };
     }
 

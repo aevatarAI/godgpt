@@ -37,5 +37,11 @@ namespace Aevatar.Application.Grains.Common.Options
         public string Currency { get; set; }
         public bool IsSubscription { get; set; }
         public bool IsUltimate { get; set; }
+        
+        /// <summary>
+        /// Number of credits to add for one-time purchase products.
+        /// Set to 0 for subscription products.
+        /// </summary>
+        public int Credits { get; set; } = 0;
     }
 }

@@ -20,6 +20,7 @@ public class UserQuotaGAgentState : StateBase
     [Id(9)] public bool IsInitializedFromGrain { get; set; } = false;
     [Id(10)] public DailyImageConversationInfo DailyImageConversation { get; set; } = new DailyImageConversationInfo();
     [Id(11)] public FreeTrialInfo? FreeTrialInfo { get; set; }
+    [Id(12)] public List<string> OneTimeTransactionIds { get; set; } = new List<string>();
 }
 
 [GenerateSerializer]

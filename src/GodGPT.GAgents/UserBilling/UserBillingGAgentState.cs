@@ -12,5 +12,6 @@ public class UserBillingGAgentState : StateBase
     [Id(3)] public List<PaymentSummary> PaymentHistory { get; set; } = new List<PaymentSummary>();
     [Id(4)] public int TotalPayments { get; set; }
     [Id(5)] public int RefundedPayments { get; set; }
+    [Id(6)] public DateTime? LastClearTime { get; set; }
     
 }

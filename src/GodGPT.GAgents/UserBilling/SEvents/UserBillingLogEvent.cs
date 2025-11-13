@@ -32,6 +32,7 @@ public class UpdatePaymentStatusLogEvent : UserBillingLogEvent
 [GenerateSerializer]
 public class ClearAllLogEvent : UserBillingLogEvent
 {
+    [Id(0)] public DateTime ClearTime { get; set; }
 }
 
 [GenerateSerializer]
