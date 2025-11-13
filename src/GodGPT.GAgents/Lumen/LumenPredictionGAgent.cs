@@ -1011,8 +1011,6 @@ FORMAT (flattened):
   ""predictions"": {{
     ""{targetLanguage}"": {{
       ""dayTitle"": ""[VARIED: The Day of [word1] and [word2] - choose words reflecting today's unique energy]"",
-      ""keywordFocus"": ""[VARIED: Single powerful word capturing today's core theme. Examples: Foundation, Transformation, Clarity, Resilience, Renewal, Balance, Focus, Courage. Make it unique for each user based on their {sunSign} and today's energy]"",
-      ""moonInfluence"": ""[VARIED: 8-15 words describing today's lunar/emotional energy flow for THIS user. Pattern: 'Emotions/Energy [action] [timing], then [outcome]. Examples: 'Emotions may peak mid-day then settle by evening', 'Energy rises slowly, peaks afternoon', 'Mood shifts from introspective to social']"",
       ""todaysReading_tarotCard_name"": ""[VARIED: Select DIFFERENT card for THIS user. Consider their Sun sign ({sunSign}), element ({zodiacElement}), and today's energy. Choose from full 78-card deck - Major/Minor Arcana. DO NOT use same card for all users]"", ""todaysReading_tarotCard_represents"": ""[1-2 words essence]"", ""todaysReading_tarotCard_orientation"": ""[VARIED: Upright/Reversed reflecting THIS user's individual life phase. Consider their {sunSign} nature]"",
       ""todaysReading_pathTitle"": ""{displayName}'s Path Today - A [VARIED Adjective] Path"",
       ""todaysReading_pathDescription"": ""[VARIED: 15-25 words greeting, describe UNIQUE energy for this user. Start 'Hi {displayName}']"", ""todaysReading_pathDescriptionExpanded"": ""[VARIED: 30-40 words offering FRESH wisdom and actionable guidance]"",
