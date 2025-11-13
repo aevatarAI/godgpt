@@ -1333,14 +1333,21 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     /// </summary>
     private void TriggerOnDemandTranslationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
     {
+        // Validate source content first
+        if (sourceContent == null || sourceContent.Count == 0)
+        {
+            _logger.LogError($"[Lumen][OnDemand] {userInfo.UserId} Cannot translate to {targetLanguage}: Source content is empty (sourceLanguage: {sourceLanguage})");
+            return;
+        }
+        
         // Check if already exists (most reliable check - persisted state)
         if (State.MultilingualResults.ContainsKey(targetLanguage))
         {
             _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists, skipping translation");
-                return;
-            }
+            return;
+        }
             
-        _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering translation: {sourceLanguage} → {targetLanguage} for {type}");
+        _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering translation: {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
         
         // Fire and forget - Process directly in the grain context instead of using Task.Run
         // This ensures proper Orleans activation context access
@@ -1376,7 +1383,14 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     {
         try
         {
-            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}");
+            // Validate source content early
+            if (sourceContent == null || sourceContent.Count == 0)
+            {
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} Cannot translate {sourceLanguage} → {targetLanguage}: Source content is empty");
+                return;
+            }
+            
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
             
             // Build single-language translation prompt
             var promptBuildStopwatch = Stopwatch.StartNew();
@@ -1422,6 +1436,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             if (codeBlockMatch.Success)
             {
                 jsonContent = codeBlockMatch.Groups[1].Value.Trim();
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Extracted JSON from code block");
             }
             var firstBrace = jsonContent.IndexOf('{');
             var lastBrace = jsonContent.LastIndexOf('}');
@@ -1434,7 +1449,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             // Validate jsonContent
             if (string.IsNullOrWhiteSpace(jsonContent))
             {
-                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content after extraction. Original response preview: {(aiResponse.Length > 200 ? aiResponse.Substring(0, 200) : aiResponse)}...");
                 return;
             }
             
@@ -1510,6 +1525,13 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     /// </summary>
     private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent, string sourceLanguage, string targetLanguage, PredictionType type)
     {
+        // Validate source content (should not happen as callers check, but defensive)
+        if (sourceContent == null || sourceContent.Count == 0)
+        {
+            _logger.LogError($"[Lumen][BuildTranslationPrompt] Source content is empty for {type}, sourceLanguage: {sourceLanguage}, targetLanguage: {targetLanguage}");
+            return string.Empty; // Return empty prompt to avoid exception in fire-and-forget task
+        }
+        
         var languageMap = new Dictionary<string, string>
         {
             { "en", "English" },
