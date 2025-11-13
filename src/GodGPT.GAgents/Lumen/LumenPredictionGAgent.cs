@@ -556,6 +556,40 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 };
             }
             
+            // Filter multilingualResults to only include targetLanguage (LLM may return multiple languages, but we only requested one)
+            if (multilingualResults != null && multilingualResults.Count > 0)
+            {
+                // Check if LLM returned extra languages (before filtering)
+                var originalLanguages = multilingualResults.Keys.ToList();
+                
+                if (multilingualResults.ContainsKey(targetLanguage))
+                {
+                    // Log warning if LLM returned extra languages
+                    if (originalLanguages.Count > 1)
+                    {
+                        var extraLanguages = originalLanguages.Where(k => k != targetLanguage).ToList();
+                        _logger.LogWarning("[LumenPredictionGAgent][GeneratePredictionAsync] LLM returned extra languages {ExtraLanguages} for {TargetLanguage}, filtering them out", 
+                            string.Join(", ", extraLanguages), targetLanguage);
+                    }
+                    
+                    // Only keep the requested language
+                    var filteredResults = new Dictionary<string, Dictionary<string, string>>
+                    {
+                        [targetLanguage] = multilingualResults[targetLanguage]
+                    };
+                    multilingualResults = filteredResults;
+                    
+                    // Update parsedResults to use targetLanguage version
+                    parsedResults = multilingualResults[targetLanguage];
+                }
+                else
+                {
+                    // Target language not found, log warning but keep what we have
+                    _logger.LogWarning("[LumenPredictionGAgent][GeneratePredictionAsync] Target language {TargetLanguage} not found in LLM response, available: {AvailableLanguages}", 
+                        targetLanguage, string.Join(", ", originalLanguages));
+                }
+            }
+            
             parseStopwatch.Stop();
             _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
