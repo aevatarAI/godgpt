@@ -47,6 +47,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     private readonly IClusterClient _clusterClient;
     
     private const string DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
+    
+    // Daily reminder version control - change this GUID to invalidate all existing reminders
+    // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
+    private static readonly Guid CURRENT_REMINDER_TARGET_ID = new Guid("00000000-0000-0000-0000-000000000001");
 
     public LumenPredictionGAgent(
         ILogger<LumenPredictionGAgent> logger,
@@ -2631,6 +2635,14 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         {
             _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder triggered at {DateTime.UtcNow}");
             
+            // Check if reminder TargetId matches current version
+            if (State.DailyReminderTargetId != CURRENT_REMINDER_TARGET_ID)
+            {
+                _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} TargetId mismatch (State: {State.DailyReminderTargetId}, Current: {CURRENT_REMINDER_TARGET_ID}), unregistering old reminder");
+                await UnregisterDailyReminderAsync();
+                return;  // User will re-register with new logic when active
+            }
+            
             // Check if this is a Daily prediction grain
             if (State.Type != PredictionType.Daily)
             {
@@ -2716,6 +2728,9 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
             return;
         }
         
+        // Record current TargetId for version control
+        State.DailyReminderTargetId = CURRENT_REMINDER_TARGET_ID;
+        
         // Calculate next UTC 00:00
         var now = DateTime.UtcNow;
         var nextMidnight = now.Date.AddDays(1); // Tomorrow at 00:00 UTC
@@ -2728,7 +2743,7 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         );
         
         State.IsDailyReminderEnabled = true;
-        _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder registered, next execution at {nextMidnight} UTC");
+        _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, next execution at {nextMidnight} UTC");
     }
     
     /// <summary>
