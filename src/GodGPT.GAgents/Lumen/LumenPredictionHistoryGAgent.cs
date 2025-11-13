@@ -21,6 +21,9 @@ public interface ILumenPredictionHistoryGAgent : IGAgent
     
     [ReadOnly]
     Task<List<PredictionResultDto>> GetRecentPredictionsAsync(int days = 7);
+    
+    [ReadOnly]
+    Task<List<PredictionResultDto>> GetMonthlyPredictionsAsync(int year, int month);
 }
 
 [GAgent(nameof(LumenPredictionHistoryGAgent))]
@@ -181,6 +184,44 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LumenPredictionHistoryGAgent][GetRecentPredictionsAsync] Error getting recent predictions");
+            return Task.FromResult(new List<PredictionResultDto>());
+        }
+    }
+
+    public Task<List<PredictionResultDto>> GetMonthlyPredictionsAsync(int year, int month)
+    {
+        try
+        {
+            _logger.LogDebug("[LumenPredictionHistoryGAgent][GetMonthlyPredictionsAsync] Getting predictions for {Year}-{Month}", 
+                year, month);
+
+            // Get first and last day of the month
+            var firstDayOfMonth = new DateOnly(year, month, 1);
+            var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
+
+            var monthlyPredictions = State.RecentPredictions
+                .Where(p => p.PredictionDate >= firstDayOfMonth && p.PredictionDate <= lastDayOfMonth)
+                .OrderByDescending(p => p.PredictionDate)
+                .Select(p => new PredictionResultDto
+                {
+                    PredictionId = p.PredictionId,
+                    UserId = State.UserId,
+                    PredictionDate = p.PredictionDate,
+                    Results = p.Results,
+                    CreatedAt = p.CreatedAt,
+                    FromCache = true,
+                    Type = p.Type
+                })
+                .ToList();
+
+            _logger.LogInformation("[LumenPredictionHistoryGAgent][GetMonthlyPredictionsAsync] Found {Count} predictions for {Year}-{Month}", 
+                monthlyPredictions.Count, year, month);
+
+            return Task.FromResult(monthlyPredictions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionHistoryGAgent][GetMonthlyPredictionsAsync] Error getting monthly predictions");
             return Task.FromResult(new List<PredictionResultDto>());
         }
     }
