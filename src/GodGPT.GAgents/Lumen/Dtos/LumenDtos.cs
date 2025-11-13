@@ -447,10 +447,11 @@ public class PredictionSummaryDto
 {
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public DateOnly PredictionDate { get; set; }
-    [Id(2)] public Dictionary<string, string> Results { get; set; } = new(); // Flattened prediction results
+    [Id(2)] public Dictionary<string, string> Results { get; set; } = new(); // Flattened prediction results (deprecated for /history/recent)
     [Id(3)] public PredictionType Type { get; set; } // Daily/Yearly/Lifetime
-    [Id(4)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks if exist
+    [Id(4)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks if exist (deprecated for /history/recent)
     [Id(5)] public DateTime CreatedAt { get; set; }
+    [Id(6)] public string? DayTitle { get; set; } // Daily prediction title (e.g., twistOfFate_title)
 }
 
 /// <summary>
