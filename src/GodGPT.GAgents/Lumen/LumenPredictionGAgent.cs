@@ -880,7 +880,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         
         var singleLanguagePrefix = $@"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
 
-Generate prediction in {languageName} only.
+⚠️ LANGUAGE REQUIREMENT: Generate ALL content in {languageName} ({targetLanguage}) ONLY. Do NOT include any other languages.
+
 EXCEPTIONS:
 - For Chinese (zh-tw/zh): Properly adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
 Wrap response in JSON format.
