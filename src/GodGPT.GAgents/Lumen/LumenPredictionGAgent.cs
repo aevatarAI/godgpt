@@ -1200,7 +1200,10 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}");
             
             // Build single-language translation prompt
+            var promptBuildStopwatch = Stopwatch.StartNew();
             var translationPrompt = BuildSingleLanguageTranslationPrompt(sourceContent, sourceLanguage, targetLanguage, type);
+            promptBuildStopwatch.Stop();
+            _logger.LogInformation($"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Prompt_Build: {promptBuildStopwatch.ElapsedMilliseconds}ms, Prompt_Length: {translationPrompt.Length} chars, Source_Fields: {sourceContent.Count}");
             
             // Call LLM for translation
             var llmStopwatch = Stopwatch.StartNew();
@@ -1228,6 +1231,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             }
             
             var aiResponse = response[0].Content;
+            _logger.LogInformation($"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Response_Length: {aiResponse.Length} chars");
             
             // Parse response
             var parseStopwatch = Stopwatch.StartNew();
