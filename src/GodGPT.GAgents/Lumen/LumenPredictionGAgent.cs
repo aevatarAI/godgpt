@@ -2220,7 +2220,7 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         prediction["fourPillars_dayPillar_branchElement"] = TranslateElement(fourPillars.DayPillar.BranchElement, language);
         prediction["fourPillars_dayPillar_branchZodiac"] = TranslateZodiac(fourPillars.DayPillar.BranchZodiac, language);
         
-        // Hour Pillar (optional - only if birth time is provided)
+        // Hour Pillar (always include fields, empty if birth time not provided)
         if (fourPillars.HourPillar != null)
         {
             prediction["fourPillars_hourPillar"] = fourPillars.HourPillar.GetFormattedString(language);
@@ -2236,6 +2236,23 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
             prediction["fourPillars_hourPillar_branchYinYang"] = TranslateYinYang(fourPillars.HourPillar.BranchYinYang, language);
             prediction["fourPillars_hourPillar_branchElement"] = TranslateElement(fourPillars.HourPillar.BranchElement, language);
             prediction["fourPillars_hourPillar_branchZodiac"] = TranslateZodiac(fourPillars.HourPillar.BranchZodiac, language);
+        }
+        else
+        {
+            // Birth time not provided - fill with empty strings
+            prediction["fourPillars_hourPillar"] = "";
+            // Stem attributes
+            prediction["fourPillars_hourPillar_stemChinese"] = "";
+            prediction["fourPillars_hourPillar_stemPinyin"] = "";
+            prediction["fourPillars_hourPillar_stemYinYang"] = "";
+            prediction["fourPillars_hourPillar_stemElement"] = "";
+            prediction["fourPillars_hourPillar_stemDirection"] = "";
+            // Branch attributes
+            prediction["fourPillars_hourPillar_branchChinese"] = "";
+            prediction["fourPillars_hourPillar_branchPinyin"] = "";
+            prediction["fourPillars_hourPillar_branchYinYang"] = "";
+            prediction["fourPillars_hourPillar_branchElement"] = "";
+            prediction["fourPillars_hourPillar_branchZodiac"] = "";
         }
     }
     
