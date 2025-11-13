@@ -45,8 +45,20 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 {
     private readonly ILogger<LumenPredictionGAgent> _logger;
     private readonly IClusterClient _clusterClient;
-    
+
     private const string DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
+    
+    /// <summary>
+    /// Global prompt version - increment this when prompt content is updated
+    /// This will allow all users to regenerate predictions on the same day
+    /// 
+    /// ⚠️ TODO: REMOVE THIS FEATURE BEFORE PRODUCTION LAUNCH
+    /// Currently set to 1 for testing purposes (all existing users will regenerate).
+    /// Before launch, either:
+    /// 1. Remove prompt version checking entirely, OR
+    /// 2. Set CURRENT_PROMPT_VERSION = 0 to avoid mass regeneration
+    /// </summary>
+    private const int CURRENT_PROMPT_VERSION = 1; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -175,7 +187,15 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _ => false
             };
             
-            if (hasCachedPrediction && notExpired && profileNotChanged)
+            // TODO: REMOVE BEFORE PRODUCTION - Prompt version check for testing only
+            // Check if prompt version matches (if version changed, allow regeneration on the same day)
+            var promptVersionMatches = State.PromptVersion == CURRENT_PROMPT_VERSION;
+            if (!promptVersionMatches)
+            {
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {CURRENT_PROMPT_VERSION}, Will regenerate prediction");
+            }
+            
+            if (hasCachedPrediction && notExpired && profileNotChanged && promptVersionMatches)
             {
                 // Return cached prediction
                 totalStopwatch.Stop();
@@ -206,11 +226,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         returnedLanguage = availableLanguage;
                         isFallback = true;
                         _logger.LogInformation($"[Lumen] {userInfo.UserId} Today already processed ({today}), returning available language '{availableLanguage}' instead of '{userLanguage}'");
-                    }
-                    else
-                    {
+                }
+                else
+                {
                         // Fallback to legacy Results field
-                        localizedResults = State.Results;
+                    localizedResults = State.Results;
                         returnedLanguage = "en"; // Default assumption
                         isFallback = true;
                         _logger.LogWarning($"[Lumen] {userInfo.UserId} Today already processed but no multilingual results, using legacy Results field");
@@ -369,9 +389,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 isFallback = true;
                 _logger.LogInformation("[LumenPredictionGAgent][GetPredictionAsync] Today already processed ({Today}), returning available language '{AvailableLanguage}' instead of '{RequestedLanguage}'", 
                     today, availableLanguage, userLanguage);
-            }
-            else
-            {
+        }
+        else
+        {
                 // New day - allow translation
                 var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
                 var sourceLanguage = State.MultilingualResults.ContainsKey("en") ? "en" : State.MultilingualResults.Keys.FirstOrDefault();
@@ -399,7 +419,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             if (userLanguage == originalLanguage)
             {
                 // User is requesting the same language as the original - return Results directly
-                localizedResults = State.Results;
+            localizedResults = State.Results;
                 returnedLanguage = originalLanguage;
                 _logger.LogInformation("[LumenPredictionGAgent][GetPredictionAsync] Using legacy Results field for {Language}", originalLanguage);
             }
@@ -837,7 +857,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Results = parsedResults,
                 MultilingualResults = multilingualResults,
                 InitialLanguage = targetLanguage,
-                LastGeneratedDate = predictionDate
+                LastGeneratedDate = predictionDate,
+                PromptVersion = CURRENT_PROMPT_VERSION
             });
 
             // Confirm events to persist state changes
@@ -1029,7 +1050,7 @@ FORMAT (flattened - Backend will inject: chineseZodiac_title, chineseZodiac_anim
     ""{targetLanguage}"": {{
       ""fourPillars_coreIdentity"": ""[12-18 words: Address by name, describe chart as fusion of elements]"", 
       ""fourPillars_coreIdentity_expanded"": ""[45-60 words: Use {sunSign} as Sun sign, define archetype, show contrasts using 'both...yet' patterns]"",
-      ""chineseAstrology_currentYear"": ""[LANGUAGE-SPECIFIC: English→'Year of the {currentYearZodiac}', Chinese→'{currentYearZodiac}年', Spanish→'Año del {currentYearZodiac}']"", 
+      ""chineseAstrology_currentYear"": ""[⚠️CRITICAL - MUST match target language: en='Year of the Snake', zh/zh-tw='蛇年', es='Año de la Serpiente'. Use {currentYearZodiac} animal name. NO mixed languages!]"", 
       ""chineseAstrology_trait1"": ""[VARIED: 8-12 words interpretation]"", ""chineseAstrology_trait2"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait3"": ""[VARIED: 8-12 words]"", ""chineseAstrology_trait4"": ""[VARIED: 8-12 words]"",
       ""zodiacWhisper"": ""[VARIED: 40-50 words perspective on how {birthYearAnimal} enhances Western chart. Start '{birthYearAnimal} adds...' Use 'You are not only X, but Y']"",
       ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
@@ -1348,9 +1369,9 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         if (sourceContent == null || sourceContent.Count == 0)
         {
             _logger.LogError($"[Lumen][OnDemand] {userInfo.UserId} Cannot translate to {targetLanguage}: Source content is empty (sourceLanguage: {sourceLanguage})");
-            return;
-        }
-        
+                return;
+            }
+            
         // Check if already exists (most reliable check - persisted state)
         if (State.MultilingualResults.ContainsKey(targetLanguage))
         {
