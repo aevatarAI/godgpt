@@ -30,8 +30,8 @@ public class LumenPredictionState : StateBase
     // Prediction type
     [Id(9)] public PredictionType Type { get; set; }
     
-    // Track on-demand translations in progress (to avoid duplicate triggers)
-    [Id(10)] public HashSet<string> TranslationInProgress { get; set; } = new();
+    // Track on-demand translations in progress (language -> translation status)
+    [Id(10)] public Dictionary<string, TranslationLockInfo> TranslationLocks { get; set; } = new();
     
     // Daily reminder management (for auto-generation at UTC 00:00)
     [Id(11)] public DateTime LastActiveDate { get; set; } // Track user activity for auto-reminder management
@@ -48,4 +48,15 @@ public class GenerationLockInfo
 {
     [Id(0)] public bool IsGenerating { get; set; }
     [Id(1)] public DateTime? StartedAt { get; set; }
+}
+
+/// <summary>
+/// Translation lock information for progress tracking
+/// </summary>
+[GenerateSerializer]
+public class TranslationLockInfo
+{
+    [Id(0)] public bool IsTranslating { get; set; }
+    [Id(1)] public DateTime? StartedAt { get; set; }
+    [Id(2)] public string SourceLanguage { get; set; } = string.Empty;
 }

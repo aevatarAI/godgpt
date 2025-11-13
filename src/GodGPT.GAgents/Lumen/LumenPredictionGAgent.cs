@@ -527,24 +527,36 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             }
         }
 
-        // Build translation status if translating
+        // Build translation status by checking TranslationLocks
         TranslationStatusInfo? translationStatus = null;
-        if (isGenerating2 && generationStartedAt2.HasValue)
+        var activeTranslations = State.TranslationLocks
+            .Where(kvp => kvp.Value.IsTranslating && kvp.Value.StartedAt.HasValue)
+            .ToList();
+        
+        if (activeTranslations.Any())
         {
-            var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
-            // Get available languages from MultilingualResults (actual available languages)
-            var availableLanguages = (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
-                                    ? State.MultilingualResults.Keys.ToList()
-                                    : (State.GeneratedLanguages ?? new List<string>());
-            var targetLanguages = allLanguages.Where(lang => !availableLanguages.Contains(lang)).ToList();
+            // Find the earliest translation start time
+            var earliestStart = activeTranslations.Min(kvp => kvp.Value.StartedAt!.Value);
+            var translatingLanguages = activeTranslations.Select(kvp => kvp.Key).ToList();
             
             translationStatus = new TranslationStatusInfo
             {
                 IsTranslating = true,
-                StartedAt = generationStartedAt2.Value,
-                TargetLanguages = targetLanguages,
-                EstimatedCompletion = generationStartedAt2.Value.AddSeconds(30) // Estimate 30 seconds for translation
+                StartedAt = earliestStart,
+                TargetLanguages = translatingLanguages,
+                EstimatedCompletion = earliestStart.AddSeconds(30 * translatingLanguages.Count) // Estimate 30 seconds per language
             };
+            
+            // Check for stale translation locks (>2 minutes) and reset
+            foreach (var kvp in activeTranslations)
+            {
+                if ((DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes > 2)
+                {
+                    State.TranslationLocks[kvp.Key].IsTranslating = false;
+                    State.TranslationLocks[kvp.Key].StartedAt = null;
+                    _logger.LogWarning($"[Lumen] Reset stale translation lock for language: {kvp.Key}");
+                }
+            }
         }
 
         // Get available languages from MultilingualResults (actual available languages)
@@ -1368,11 +1380,31 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                 return;
             }
             
+            // Set translation lock for progress tracking
+            if (!State.TranslationLocks.ContainsKey(targetLanguage))
+            {
+                State.TranslationLocks[targetLanguage] = new TranslationLockInfo();
+            }
+            State.TranslationLocks[targetLanguage].IsTranslating = true;
+            State.TranslationLocks[targetLanguage].StartedAt = DateTime.UtcNow;
+            State.TranslationLocks[targetLanguage].SourceLanguage = sourceLanguage;
+            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} TRANSLATION_LOCK_SET - Language: {targetLanguage}, Source: {sourceLanguage}");
+            
             await TranslateSingleLanguageAsync(userInfo, predictionDate, type, sourceLanguage, sourceContent, targetLanguage);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, $"[Lumen][OnDemand] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
+        }
+        finally
+        {
+            // Clear translation lock
+            if (State.TranslationLocks.ContainsKey(targetLanguage))
+            {
+                State.TranslationLocks[targetLanguage].IsTranslating = false;
+                State.TranslationLocks[targetLanguage].StartedAt = null;
+                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} TRANSLATION_LOCK_RELEASED - Language: {targetLanguage}");
+            }
         }
     }
 
