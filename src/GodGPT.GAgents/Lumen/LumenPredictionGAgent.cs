@@ -211,6 +211,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     localizedResults["currentPhase"] = currentPhase.ToString();
                 }
                 
+                // Get available languages from MultilingualResults (actual available languages)
+                var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
+                                         (State.GeneratedLanguages ?? new List<string>());
+                
                 var cachedDto = new PredictionResultDto
                 {
                     PredictionId = State.PredictionId,
@@ -220,8 +224,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     FromCache = true,
                     Type = State.Type,
                     Results = localizedResults,
-                    AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
-                    AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
+                    AvailableLanguages = availableLanguages,
+                    AllLanguagesGenerated = availableLanguages.Count == 4,
                     RequestedLanguage = userLanguage,
                     ReturnedLanguage = returnedLanguage,
                     IsFallback = isFallback,
@@ -335,6 +339,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         var returnedLanguage = userLanguage;
         var isFallback = false;
 
+        // Get available languages from MultilingualResults (actual available languages)
+        var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
+                                 (State.GeneratedLanguages ?? new List<string>());
+        
         var predictionDto = new PredictionResultDto
         {
             PredictionId = State.PredictionId,
@@ -344,8 +352,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             FromCache = true,
             Type = State.Type,
             Results = localizedResults,
-            AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
-            AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
+            AvailableLanguages = availableLanguages,
+            AllLanguagesGenerated = availableLanguages.Count == 4,
             RequestedLanguage = userLanguage,
             ReturnedLanguage = returnedLanguage,
             IsFallback = isFallback,
@@ -433,7 +441,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         if (isGenerating2 && generationStartedAt2.HasValue)
         {
             var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
-            var availableLanguages = State.GeneratedLanguages ?? new List<string>();
+            // Get available languages from MultilingualResults (actual available languages)
+            var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
+                                    (State.GeneratedLanguages ?? new List<string>());
             var targetLanguages = allLanguages.Where(lang => !availableLanguages.Contains(lang)).ToList();
             
             translationStatus = new TranslationStatusInfo
@@ -445,6 +455,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             };
         }
 
+        // Get available languages from MultilingualResults (actual available languages)
+        var statusAvailableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
+                                      (State.GeneratedLanguages ?? new List<string>());
+
         var statusDto = new PredictionStatusDto
         {
             Type = State.Type,
@@ -453,7 +467,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             GeneratedAt = State.CreatedAt,
             GenerationStartedAt = generationStartedAt2,
             PredictionDate = State.PredictionDate,
-            AvailableLanguages = State.GeneratedLanguages ?? new List<string>(),
+            AvailableLanguages = statusAvailableLanguages,
             NeedsRegeneration = needsRegeneration,
             TranslationStatus = translationStatus
         };
@@ -691,6 +705,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             _logger.LogInformation("[LumenPredictionGAgent][GeneratePredictionAsync] {Type} prediction generated successfully for user {UserId}",
                 type, userInfo.UserId);
 
+            // Get available languages from multilingualResults (actual available languages)
+            var availableLanguages = multilingualResults?.Keys.ToList() ?? new List<string> { targetLanguage };
+            
             // Build return DTO
             var newPredictionDto = new PredictionResultDto
             {
@@ -701,8 +718,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 FromCache = false,
                 Type = type,
                 Results = parsedResults,
-                AvailableLanguages = new List<string> { targetLanguage },
-                AllLanguagesGenerated = false, // Will be true after async generation completes
+                AvailableLanguages = availableLanguages,
+                AllLanguagesGenerated = availableLanguages.Count == 4, // Will be true after async generation completes
                 RequestedLanguage = targetLanguage,
                 ReturnedLanguage = targetLanguage,
                 IsFallback = false, // First generation always returns the requested language
