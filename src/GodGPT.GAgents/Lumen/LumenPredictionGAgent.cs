@@ -211,6 +211,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     localizedResults["currentPhase"] = currentPhase.ToString();
                 }
                 
+                // Get available languages from MultilingualResults (actual available languages)
+                var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
+                                         (State.GeneratedLanguages ?? new List<string>());
+                
                 var cachedDto = new PredictionResultDto
                 {
                     PredictionId = State.PredictionId,
@@ -220,8 +224,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     FromCache = true,
                     Type = State.Type,
                     Results = localizedResults,
-                    AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
-                    AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
+                    AvailableLanguages = availableLanguages,
+                    AllLanguagesGenerated = availableLanguages.Count == 4,
                     RequestedLanguage = userLanguage,
                     ReturnedLanguage = returnedLanguage,
                     IsFallback = isFallback,
@@ -335,6 +339,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         var returnedLanguage = userLanguage;
         var isFallback = false;
 
+        // Get available languages from MultilingualResults (actual available languages)
+        var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
+                                 (State.GeneratedLanguages ?? new List<string>());
+        
         var predictionDto = new PredictionResultDto
         {
             PredictionId = State.PredictionId,
@@ -344,8 +352,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             FromCache = true,
             Type = State.Type,
             Results = localizedResults,
-            AvailableLanguages = State.GeneratedLanguages ?? new List<string> { "en" },
-            AllLanguagesGenerated = State.GeneratedLanguages?.Count == 4,
+            AvailableLanguages = availableLanguages,
+            AllLanguagesGenerated = availableLanguages.Count == 4,
             RequestedLanguage = userLanguage,
             ReturnedLanguage = returnedLanguage,
             IsFallback = isFallback,
@@ -433,7 +441,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         if (isGenerating2 && generationStartedAt2.HasValue)
         {
             var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
-            var availableLanguages = State.GeneratedLanguages ?? new List<string>();
+            // Get available languages from MultilingualResults (actual available languages)
+            var availableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
+                                    (State.GeneratedLanguages ?? new List<string>());
             var targetLanguages = allLanguages.Where(lang => !availableLanguages.Contains(lang)).ToList();
             
             translationStatus = new TranslationStatusInfo
@@ -445,6 +455,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             };
         }
 
+        // Get available languages from MultilingualResults (actual available languages)
+        var statusAvailableLanguages = State.MultilingualResults?.Keys.ToList() ?? 
+                                      (State.GeneratedLanguages ?? new List<string>());
+
         var statusDto = new PredictionStatusDto
         {
             Type = State.Type,
@@ -453,7 +467,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             GeneratedAt = State.CreatedAt,
             GenerationStartedAt = generationStartedAt2,
             PredictionDate = State.PredictionDate,
-            AvailableLanguages = State.GeneratedLanguages ?? new List<string>(),
+            AvailableLanguages = statusAvailableLanguages,
             NeedsRegeneration = needsRegeneration,
             TranslationStatus = translationStatus
         };
@@ -540,6 +554,40 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     Success = false,
                     Message = "Failed to parse AI response"
                 };
+            }
+            
+            // Filter multilingualResults to only include targetLanguage (LLM may return multiple languages, but we only requested one)
+            if (multilingualResults != null && multilingualResults.Count > 0)
+            {
+                // Check if LLM returned extra languages (before filtering)
+                var originalLanguages = multilingualResults.Keys.ToList();
+                
+                if (multilingualResults.ContainsKey(targetLanguage))
+                {
+                    // Log warning if LLM returned extra languages
+                    if (originalLanguages.Count > 1)
+                    {
+                        var extraLanguages = originalLanguages.Where(k => k != targetLanguage).ToList();
+                        _logger.LogWarning("[LumenPredictionGAgent][GeneratePredictionAsync] LLM returned extra languages {ExtraLanguages} for {TargetLanguage}, filtering them out", 
+                            string.Join(", ", extraLanguages), targetLanguage);
+                    }
+                    
+                    // Only keep the requested language
+                    var filteredResults = new Dictionary<string, Dictionary<string, string>>
+                    {
+                        [targetLanguage] = multilingualResults[targetLanguage]
+                    };
+                    multilingualResults = filteredResults;
+                    
+                    // Update parsedResults to use targetLanguage version
+                    parsedResults = multilingualResults[targetLanguage];
+                }
+                else
+                {
+                    // Target language not found, log warning but keep what we have
+                    _logger.LogWarning("[LumenPredictionGAgent][GeneratePredictionAsync] Target language {TargetLanguage} not found in LLM response, available: {AvailableLanguages}", 
+                        targetLanguage, string.Join(", ", originalLanguages));
+                }
             }
             
             parseStopwatch.Stop();
@@ -691,6 +739,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             _logger.LogInformation("[LumenPredictionGAgent][GeneratePredictionAsync] {Type} prediction generated successfully for user {UserId}",
                 type, userInfo.UserId);
 
+            // Get available languages from multilingualResults (actual available languages)
+            var availableLanguages = multilingualResults?.Keys.ToList() ?? new List<string> { targetLanguage };
+            
             // Build return DTO
             var newPredictionDto = new PredictionResultDto
             {
@@ -701,8 +752,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 FromCache = false,
                 Type = type,
                 Results = parsedResults,
-                AvailableLanguages = new List<string> { targetLanguage },
-                AllLanguagesGenerated = false, // Will be true after async generation completes
+                AvailableLanguages = availableLanguages,
+                AllLanguagesGenerated = availableLanguages.Count == 4, // Will be true after async generation completes
                 RequestedLanguage = targetLanguage,
                 ReturnedLanguage = targetLanguage,
                 IsFallback = false, // First generation always returns the requested language
@@ -829,7 +880,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         
         var singleLanguagePrefix = $@"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
 
-Generate prediction in {languageName} only.
+⚠️ LANGUAGE REQUIREMENT: Generate all content in {languageName} ({targetLanguage}). Some fields may contain Chinese characters (e.g., Chinese zodiac names, heavenly stems/branches) - these are acceptable and should be preserved.
+
 EXCEPTIONS:
 - For Chinese (zh-tw/zh): Properly adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
 Wrap response in JSON format.
@@ -1139,53 +1191,19 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     }
 
     /// <summary>
-    /// Generate remaining languages asynchronously (second stage) - CONCURRENT translation for better performance
-    /// </summary>
-    private async Task GenerateRemainingLanguagesAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent)
-    {
-        try
-        {
-            var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
-            var remainingLanguages = allLanguages.Where(lang => lang != sourceLanguage).ToList();
-            
-            if (remainingLanguages.Count == 0)
-            {
-                _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} No remaining languages to generate for {type}");
-                return;
-            }
-            
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} START - Type: {type}, Source: {sourceLanguage}, Targets: {string.Join(", ", remainingLanguages)}");
-            
-            // ========== OPTIMIZATION: Translate each language separately ==========
-            // Each translation uses the same grain (userId + type), so they will be serialized
-            // This keeps grain count minimal (3 per user) while reducing prompt size per call
-            // Old: 1 LLM call for 3 languages → 42+ seconds (massive output)
-            // New: 3 separate LLM calls → serialized by grain (still faster due to smaller output per call)
-            var translationTasks = remainingLanguages.Select(targetLang => 
-                TranslateSingleLanguageAsync(userInfo, predictionDate, type, sourceLanguage, sourceContent, targetLang)
-            ).ToList();
-            
-            await Task.WhenAll(translationTasks);
-            
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} SUCCESS - All {remainingLanguages.Count} languages translated for {type}");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"[Lumen][AsyncTranslation] {userInfo.UserId} Error generating remaining languages for {type}");
-        }
-    }
-
-    /// <summary>
-    /// Translate to a single language (used for concurrent translation)
+    /// Translate to a single language (used for on-demand translation)
     /// </summary>
     private async Task TranslateSingleLanguageAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
     {
         try
         {
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}");
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}");
             
             // Build single-language translation prompt
+            var promptBuildStopwatch = Stopwatch.StartNew();
             var translationPrompt = BuildSingleLanguageTranslationPrompt(sourceContent, sourceLanguage, targetLanguage, type);
+            promptBuildStopwatch.Stop();
+            _logger.LogInformation($"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Prompt_Build: {promptBuildStopwatch.ElapsedMilliseconds}ms, Prompt_Length: {translationPrompt.Length} chars, Source_Fields: {sourceContent.Count}");
             
             // Call LLM for translation
             var llmStopwatch = Stopwatch.StartNew();
@@ -1204,15 +1222,16 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                 translationPrompt,
                 "LUMEN");
             llmStopwatch.Stop();
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
             
             if (response == null || response.Count() == 0)
             {
-                _logger.LogWarning($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} No response from LLM");
+                _logger.LogWarning($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} No response from LLM");
                 return;
             }
             
             var aiResponse = response[0].Content;
+            _logger.LogInformation($"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Response_Length: {aiResponse.Length} chars");
             
             // Parse response
             var parseStopwatch = Stopwatch.StartNew();
@@ -1235,13 +1254,13 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             // Validate jsonContent
             if (string.IsNullOrWhiteSpace(jsonContent))
             {
-                _logger.LogError($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content");
                 return;
             }
             
             if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
             {
-                _logger.LogError($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} Invalid JSON format");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Invalid JSON format");
                 return;
             }
             
@@ -1261,7 +1280,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                     {
                         // Serialize array as JSON string (to match initial generation format)
                         contentDict[fieldName] = arrayValue.ToString(Newtonsoft.Json.Formatting.None);
-                        _logger.LogDebug($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, serialized as JSON string");
+                        _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, serialized as JSON string");
                     }
                     else if (fieldValue != null)
                     {
@@ -1275,7 +1294,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             }
             
             parseStopwatch.Stop();
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} Parse: {parseStopwatch.ElapsedMilliseconds}ms, Fields: {contentDict.Count}");
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Parse: {parseStopwatch.ElapsedMilliseconds}ms, Fields: {contentDict.Count}");
             
             // Raise event to update state with this language
             var translatedLanguages = new Dictionary<string, Dictionary<string, string>>
@@ -1297,16 +1316,16 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             // Confirm events to persist state changes
             await ConfirmEvents();
             
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} COMPLETED - Total: {llmStopwatch.ElapsedMilliseconds + parseStopwatch.ElapsedMilliseconds}ms");
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} COMPLETED - Total: {llmStopwatch.ElapsedMilliseconds + parseStopwatch.ElapsedMilliseconds}ms");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[Lumen][AsyncTranslation] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
+            _logger.LogError(ex, $"[Lumen][OnDemandTranslation] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
         }
     }
 
     /// <summary>
-    /// Build single-language translation prompt (for concurrent translation)
+    /// Build single-language translation prompt (for on-demand translation)
     /// </summary>
     private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent, string sourceLanguage, string targetLanguage, PredictionType type)
     {
