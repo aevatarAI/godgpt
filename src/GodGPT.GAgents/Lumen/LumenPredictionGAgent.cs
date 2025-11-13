@@ -1500,13 +1500,19 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
             var updatedLanguages = (State.GeneratedLanguages ?? new List<string>()).Union(new[] { targetLanguage }).ToList();
             
+            // For Daily: LastGeneratedDate = predictionDate (since predictionDate changes daily)
+            // For Yearly/Lifetime: LastGeneratedDate = today (to prevent duplicate translations on the same day)
+            var lastGenDate = type == PredictionType.Daily 
+                ? predictionDate 
+                : DateOnly.FromDateTime(DateTime.UtcNow);
+            
             RaiseEvent(new LanguagesTranslatedEvent
             {
                 Type = type,
                 PredictionDate = predictionDate,
                 TranslatedLanguages = translatedLanguages,
                 AllGeneratedLanguages = updatedLanguages,
-                LastGeneratedDate = DateOnly.FromDateTime(DateTime.UtcNow)
+                LastGeneratedDate = lastGenDate
             });
             
             // Confirm events to persist state changes
