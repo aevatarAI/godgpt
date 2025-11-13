@@ -38,6 +38,11 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
     private readonly ILogger<LumenUserProfileGAgent> _logger;
     
     /// <summary>
+    /// Maximum number of profile updates allowed per week (for testing: 100)
+    /// </summary>
+    private const int MaxProfileUpdatesPerWeek = 100;
+    
+    /// <summary>
     /// Valid lumen prediction actions
     /// </summary>
     private static readonly HashSet<string> ValidActions = new()
@@ -80,6 +85,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.UpdatedAt = updateEvent.UpdatedAt;
                 state.CurrentResidence = updateEvent.CurrentResidence;
                 state.Email = updateEvent.Email;
+                // Record update timestamp for rate limiting
+                state.UpdateHistory.Add(updateEvent.UpdatedAt);
                 if (state.CreatedAt == default)
                 {
                     state.CreatedAt = updateEvent.UpdatedAt;
@@ -107,6 +114,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Actions = new List<string>();
                 state.CreatedAt = default;
                 state.UpdatedAt = clearEvent.ClearedAt;
+                state.UpdateHistory.Clear();
                 break;
         }
     }
@@ -140,7 +148,34 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 };
             }
 
+            // Check rate limit: maximum updates per week
             var now = DateTime.UtcNow;
+            var oneWeekAgo = now.AddDays(-7);
+            
+            // Clean up old update history (older than 1 week)
+            State.UpdateHistory = State.UpdateHistory
+                .Where(timestamp => timestamp > oneWeekAgo)
+                .ToList();
+            
+            // Check if limit exceeded
+            if (State.UpdateHistory.Count >= MaxProfileUpdatesPerWeek)
+            {
+                var oldestUpdateInWeek = State.UpdateHistory.Min();
+                var nextAllowedUpdate = oldestUpdateInWeek.AddDays(7);
+                var remainingTime = nextAllowedUpdate - now;
+                
+                _logger.LogWarning(
+                    "[LumenUserProfileGAgent][UpdateUserProfileAsync] Rate limit exceeded for UserId: {UserId}. " +
+                    "Updates this week: {Count}/{Max}, Next allowed update: {NextAllowedUpdate}",
+                    request.UserId, State.UpdateHistory.Count, MaxProfileUpdatesPerWeek, nextAllowedUpdate);
+                
+                return new UpdateUserProfileResult
+                {
+                    Success = false,
+                    Message = $"Profile update limit exceeded. You have reached the maximum of {MaxProfileUpdatesPerWeek} updates per week. " +
+                              $"Please try again in {remainingTime.Days} day(s) and {remainingTime.Hours} hour(s)."
+                };
+            }
 
             // Raise event to update state
             RaiseEvent(new UserProfileUpdatedEvent

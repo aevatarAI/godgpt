@@ -1,5 +1,6 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Core;
@@ -252,44 +253,18 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     type, userInfo.UserId);
             }
 
-            // Generate new prediction
-            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Cache_Miss - Generating new prediction, Type: {type}, Language: {userLanguage}");
-
-            // Set generation lock
-            if (!State.GenerationLocks.ContainsKey(type))
-            {
-                State.GenerationLocks[type] = new GenerationLockInfo();
-            }
-            State.GenerationLocks[type].IsGenerating = true;
-            State.GenerationLocks[type].StartedAt = DateTime.UtcNow;
+            // Prediction not found - trigger async generation and return error
+            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Prediction not found for {type}, triggering async generation");
             
-            try
-            {
-                var generateStopwatch = Stopwatch.StartNew();
-                var predictionResult = await GeneratePredictionAsync(userInfo, today, type, userLanguage);
-                generateStopwatch.Stop();
+            // Trigger async generation (fire-and-forget)
+            TriggerOnDemandGenerationAsync(userInfo, today, type, userLanguage);
             
-                totalStopwatch.Stop();
-            
-            if (!predictionResult.Success)
+            totalStopwatch.Stop();
+            return new GetTodayPredictionResult
             {
-                    _logger.LogWarning($"[PERF][Lumen] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms");
-                return predictionResult;
-            }
-
-                _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms, TOTAL: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
-            return predictionResult;
-            }
-            finally
-            {
-                // Clear generation lock
-                if (State.GenerationLocks.ContainsKey(type))
-                {
-                    State.GenerationLocks[type].IsGenerating = false;
-                    State.GenerationLocks[type].StartedAt = null;
-                    _logger.LogInformation($"[Lumen] {userInfo.UserId} GENERATION_LOCK_RELEASED - Type: {type}");
-                }
-            }
+                Success = false,
+                Message = $"{type} prediction is not available yet. Generation has been triggered, please check status or try again in a moment."
+            };
         }
         catch (Exception ex)
         {
@@ -486,7 +461,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var promptStopwatch = Stopwatch.StartNew();
             var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage);
             promptStopwatch.Stop();
-            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars");
+            var promptTokens = TokenHelper.EstimateTokenCount(prompt);
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}");
             
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             
@@ -1148,6 +1124,63 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     }
 
     /// <summary>
+    /// Trigger on-demand generation for a prediction (Fire-and-forget)
+    /// </summary>
+    private void TriggerOnDemandGenerationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
+    {
+        // Check if generation is already in progress
+        if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
+        {
+            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Generation already in progress for {type}, skipping");
+            return;
+        }
+        
+        _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering async generation for {type}, Language: {targetLanguage}");
+        
+        // Set generation lock
+        if (!State.GenerationLocks.ContainsKey(type))
+        {
+            State.GenerationLocks[type] = new GenerationLockInfo();
+        }
+        State.GenerationLocks[type].IsGenerating = true;
+        State.GenerationLocks[type].StartedAt = DateTime.UtcNow;
+        
+        // Fire and forget - run in background
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var generateStopwatch = Stopwatch.StartNew();
+                var predictionResult = await GeneratePredictionAsync(userInfo, predictionDate, type, targetLanguage);
+                generateStopwatch.Stop();
+                
+                if (!predictionResult.Success)
+                {
+                    _logger.LogWarning($"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
+                }
+                else
+                {
+                    _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"[Lumen][OnDemand] {userInfo.UserId} Error generating {type}");
+            }
+            finally
+            {
+                // Clear generation lock
+                if (State.GenerationLocks.ContainsKey(type))
+                {
+                    State.GenerationLocks[type].IsGenerating = false;
+                    State.GenerationLocks[type].StartedAt = null;
+                    _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} GENERATION_LOCK_RELEASED - Type: {type}");
+                }
+            }
+        });
+    }
+
+    /// <summary>
     /// Trigger on-demand translation for a specific language (Fire-and-forget)
     /// </summary>
     private void TriggerOnDemandTranslationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
@@ -1203,7 +1236,8 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             var promptBuildStopwatch = Stopwatch.StartNew();
             var translationPrompt = BuildSingleLanguageTranslationPrompt(sourceContent, sourceLanguage, targetLanguage, type);
             promptBuildStopwatch.Stop();
-            _logger.LogInformation($"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Prompt_Build: {promptBuildStopwatch.ElapsedMilliseconds}ms, Prompt_Length: {translationPrompt.Length} chars, Source_Fields: {sourceContent.Count}");
+            var translationPromptTokens = TokenHelper.EstimateTokenCount(translationPrompt);
+            _logger.LogInformation($"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Prompt_Build: {promptBuildStopwatch.ElapsedMilliseconds}ms, Prompt_Length: {translationPrompt.Length} chars, Tokens: ~{translationPromptTokens}, Source_Fields: {sourceContent.Count}");
             
             // Call LLM for translation
             var llmStopwatch = Stopwatch.StartNew();

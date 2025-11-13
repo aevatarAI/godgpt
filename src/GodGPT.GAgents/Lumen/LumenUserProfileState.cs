@@ -29,5 +29,8 @@ public class LumenUserProfileState : StateBase
     
     // Multilingual welcome note (language -> {rhythm, essence, ...})
     [Id(16)] public Dictionary<string, Dictionary<string, string>> MultilingualWelcomeNote { get; set; } = new();
+    
+    // Profile update history (timestamps) for rate limiting
+    [Id(18)] public List<DateTime> UpdateHistory { get; set; } = new();
 }
 
