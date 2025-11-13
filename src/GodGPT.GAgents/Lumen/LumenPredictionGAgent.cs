@@ -48,6 +48,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     
     private const string DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
     
+    /// <summary>
+    /// Global prompt version - increment this when prompt content is updated
+    /// This will allow all users to regenerate predictions on the same day
+    /// </summary>
+    private const int CURRENT_PROMPT_VERSION = 1;
+    
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
     private static readonly Guid CURRENT_REMINDER_TARGET_ID = new Guid("00000000-0000-0000-0000-000000000001");
@@ -175,7 +181,14 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _ => false
             };
             
-            if (hasCachedPrediction && notExpired && profileNotChanged)
+            // Check if prompt version matches (if version changed, allow regeneration on the same day)
+            var promptVersionMatches = State.PromptVersion == CURRENT_PROMPT_VERSION;
+            if (!promptVersionMatches)
+            {
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {CURRENT_PROMPT_VERSION}, Will regenerate prediction");
+            }
+            
+            if (hasCachedPrediction && notExpired && profileNotChanged && promptVersionMatches)
             {
                 // Return cached prediction
                 totalStopwatch.Stop();
@@ -837,7 +850,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Results = parsedResults,
                 MultilingualResults = multilingualResults,
                 InitialLanguage = targetLanguage,
-                LastGeneratedDate = predictionDate
+                LastGeneratedDate = predictionDate,
+                PromptVersion = CURRENT_PROMPT_VERSION
             });
 
             // Confirm events to persist state changes

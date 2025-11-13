@@ -38,6 +38,9 @@ public class LumenPredictionState : StateBase
     [Id(12)] public Guid DailyReminderTargetId { get; set; } // Used to manually enable/disable daily reminders
     [Id(13)] public bool IsDailyReminderEnabled { get; set; } // Whether daily auto-generation is enabled
     [Id(14)] public DateOnly? LastGeneratedDate { get; set; } // Track the last date when prediction was generated (for deduplication)
+    
+    // Prompt version tracking (for prompt updates triggering regeneration)
+    [Id(15)] public int PromptVersion { get; set; } // Version of prompt used to generate this prediction (default: 0)
 }
 
 /// <summary>

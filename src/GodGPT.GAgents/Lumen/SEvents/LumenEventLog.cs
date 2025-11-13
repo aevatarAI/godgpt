@@ -93,6 +93,9 @@ public class PredictionGeneratedEvent : LumenPredictionEventLog
     
     // Track generation date for daily reminder deduplication
     [Id(9)] public DateOnly? LastGeneratedDate { get; set; }
+    
+    // Prompt version used for this generation
+    [Id(10)] public int PromptVersion { get; set; }
 }
 
 /// <summary>
