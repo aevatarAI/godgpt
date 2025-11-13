@@ -543,8 +543,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             {
                 IsTranslating = true,
                 StartedAt = earliestStart,
-                TargetLanguages = translatingLanguages,
-                EstimatedCompletion = earliestStart.AddSeconds(30 * translatingLanguages.Count) // Estimate 30 seconds per language
+                TargetLanguages = translatingLanguages
             };
             
             // Check for stale translation locks (>2 minutes) and reset

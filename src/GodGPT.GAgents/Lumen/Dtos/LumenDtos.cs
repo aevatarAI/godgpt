@@ -604,7 +604,6 @@ public class TranslationStatusInfo
     [Id(0)] public bool IsTranslating { get; set; } // Whether translation is in progress
     [Id(1)] public DateTime? StartedAt { get; set; } // When translation started
     [Id(2)] public List<string> TargetLanguages { get; set; } = new(); // Languages being translated (e.g., ["zh-tw", "zh", "es"])
-    [Id(3)] public DateTime? EstimatedCompletion { get; set; } // Estimated completion time (optional)
 }
 
 /// <summary>
