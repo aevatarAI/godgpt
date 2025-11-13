@@ -90,6 +90,9 @@ public class PredictionGeneratedEvent : LumenPredictionEventLog
     
     // Initial language generated in first stage
     [Id(8)] public string? InitialLanguage { get; set; }
+    
+    // Track generation date for daily reminder deduplication
+    [Id(9)] public DateOnly? LastGeneratedDate { get; set; }
 }
 
 /// <summary>
