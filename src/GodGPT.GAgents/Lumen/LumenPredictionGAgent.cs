@@ -1191,50 +1191,13 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     }
 
     /// <summary>
-    /// Generate remaining languages asynchronously (second stage) - CONCURRENT translation for better performance
-    /// </summary>
-    private async Task GenerateRemainingLanguagesAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent)
-    {
-        try
-        {
-            var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
-            var remainingLanguages = allLanguages.Where(lang => lang != sourceLanguage).ToList();
-            
-            if (remainingLanguages.Count == 0)
-            {
-                _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} No remaining languages to generate for {type}");
-                return;
-            }
-            
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} START - Type: {type}, Source: {sourceLanguage}, Targets: {string.Join(", ", remainingLanguages)}");
-            
-            // ========== OPTIMIZATION: Translate each language separately ==========
-            // Each translation uses the same grain (userId + type), so they will be serialized
-            // This keeps grain count minimal (3 per user) while reducing prompt size per call
-            // Old: 1 LLM call for 3 languages → 42+ seconds (massive output)
-            // New: 3 separate LLM calls → serialized by grain (still faster due to smaller output per call)
-            var translationTasks = remainingLanguages.Select(targetLang => 
-                TranslateSingleLanguageAsync(userInfo, predictionDate, type, sourceLanguage, sourceContent, targetLang)
-            ).ToList();
-            
-            await Task.WhenAll(translationTasks);
-            
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} SUCCESS - All {remainingLanguages.Count} languages translated for {type}");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, $"[Lumen][AsyncTranslation] {userInfo.UserId} Error generating remaining languages for {type}");
-        }
-    }
-
-    /// <summary>
-    /// Translate to a single language (used for concurrent translation)
+    /// Translate to a single language (used for on-demand translation)
     /// </summary>
     private async Task TranslateSingleLanguageAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
     {
         try
         {
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}");
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}");
             
             // Build single-language translation prompt
             var translationPrompt = BuildSingleLanguageTranslationPrompt(sourceContent, sourceLanguage, targetLanguage, type);
@@ -1256,11 +1219,11 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                 translationPrompt,
                 "LUMEN");
             llmStopwatch.Stop();
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
             
             if (response == null || response.Count() == 0)
             {
-                _logger.LogWarning($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} No response from LLM");
+                _logger.LogWarning($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} No response from LLM");
                 return;
             }
             
@@ -1287,13 +1250,13 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             // Validate jsonContent
             if (string.IsNullOrWhiteSpace(jsonContent))
             {
-                _logger.LogError($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content");
                 return;
             }
             
             if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
             {
-                _logger.LogError($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} Invalid JSON format");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Invalid JSON format");
                 return;
             }
             
@@ -1313,7 +1276,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                     {
                         // Serialize array as JSON string (to match initial generation format)
                         contentDict[fieldName] = arrayValue.ToString(Newtonsoft.Json.Formatting.None);
-                        _logger.LogDebug($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, serialized as JSON string");
+                        _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, serialized as JSON string");
                     }
                     else if (fieldValue != null)
                     {
@@ -1327,7 +1290,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             }
             
             parseStopwatch.Stop();
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} Parse: {parseStopwatch.ElapsedMilliseconds}ms, Fields: {contentDict.Count}");
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Parse: {parseStopwatch.ElapsedMilliseconds}ms, Fields: {contentDict.Count}");
             
             // Raise event to update state with this language
             var translatedLanguages = new Dictionary<string, Dictionary<string, string>>
@@ -1349,16 +1312,16 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             // Confirm events to persist state changes
             await ConfirmEvents();
             
-            _logger.LogInformation($"[Lumen][AsyncTranslation] {userInfo.UserId} {targetLanguage} COMPLETED - Total: {llmStopwatch.ElapsedMilliseconds + parseStopwatch.ElapsedMilliseconds}ms");
+            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} COMPLETED - Total: {llmStopwatch.ElapsedMilliseconds + parseStopwatch.ElapsedMilliseconds}ms");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[Lumen][AsyncTranslation] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
+            _logger.LogError(ex, $"[Lumen][OnDemandTranslation] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
         }
     }
 
     /// <summary>
-    /// Build single-language translation prompt (for concurrent translation)
+    /// Build single-language translation prompt (for on-demand translation)
     /// </summary>
     private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent, string sourceLanguage, string targetLanguage, PredictionType type)
     {
