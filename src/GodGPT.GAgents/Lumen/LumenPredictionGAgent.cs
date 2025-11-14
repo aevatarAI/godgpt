@@ -1267,8 +1267,10 @@ CRITICAL RULES:
 1. TRANSLATE - do NOT regenerate or reinterpret. Keep the exact same meaning and content structure.
 2. NEVER TRANSLATE user names - keep them exactly as they appear (e.g., ""Sean"" stays ""Sean"" in all languages)
    - In possessives: ""Sean's Path"" → ""Sean的道路"" (keep name, only translate structure)
-3. PRESERVE these fields in Chinese+Pinyin regardless of target language:
-   - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
+3. PRESERVE stems-branch in Chinese characters (with pinyin for non-Chinese languages only):
+   - pastCycle_period, currentCycle_period, futureCycle_period
+   - Chinese: '甲子' (no pinyin needed)
+   - English/Spanish: '甲子 (Jiǎzǐ)' (keep pinyin for pronunciation)
 4. TRANSLATE luckyNumber format correctly:
    - English: ""Seven (7)"" - word + space + English parentheses ()
    - Spanish: ""Siete (7)"" - word + space + English parentheses ()
@@ -1628,8 +1630,10 @@ CRITICAL RULES:
 1. TRANSLATE - do NOT regenerate or reinterpret. Keep the exact same meaning and content structure.
 2. NEVER TRANSLATE user names - keep them exactly as they appear (e.g., ""Sean"" stays ""Sean"")
    - In possessives: ""Sean's Path"" → ""Sean的道路"" (keep name, only translate structure)
-3. PRESERVE these fields in Chinese+Pinyin regardless of target language:
-   - pastCycle_period, currentCycle_period, futureCycle_period (e.g., '甲子 (Jiǎzǐ)')
+3. PRESERVE stems-branch in Chinese characters (with pinyin for non-Chinese languages only):
+   - pastCycle_period, currentCycle_period, futureCycle_period
+   - Chinese: '甲子' (no pinyin needed)
+   - English/Spanish: '甲子 (Jiǎzǐ)' (keep pinyin for pronunciation)
 4. TRANSLATE luckyNumber format correctly:
    - English: ""Seven (7)"" - word + space + English parentheses ()
    - Spanish: ""Siete (7)"" - word + space + English parentheses ()
@@ -2645,6 +2649,17 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         
         var stemsBranch = parts[0]; // "甲子 (Jiǎzǐ)"
         var zodiacWithElement = parts[1]; // "Wood Rat"
+        
+        // For Chinese languages, remove pinyin; keep it for other languages
+        if (language == "zh" || language == "zh-tw")
+        {
+            // Remove pinyin from stems-branch: "甲子 (Jiǎzǐ)" -> "甲子"
+            var pinyinStartIndex = stemsBranch.IndexOf(" (");
+            if (pinyinStartIndex > 0)
+            {
+                stemsBranch = stemsBranch.Substring(0, pinyinStartIndex);
+            }
+        }
         
         var translatedZodiac = TranslateChineseZodiacAnimal(zodiacWithElement, language);
         
