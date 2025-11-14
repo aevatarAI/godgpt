@@ -479,13 +479,21 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// </summary>
     public Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null)
     {
+        // Determine the actual prediction type from GenerationLocks (since State.Type defaults to 0)
+        // Each grain only handles one type, so use the first (and only) key if available
+        var actualType = State.Type;
+        if (State.GenerationLocks.Count > 0)
+        {
+            actualType = State.GenerationLocks.Keys.First();
+        }
+        
         // If no prediction has been generated yet, return a status indicating "never generated"
         if (State.PredictionId == Guid.Empty)
         {
             // Check if currently generating for the first time
             var isGenerating = false;
             DateTime? generationStartedAt = null;
-            if (State.GenerationLocks.TryGetValue(State.Type, out var lockInfo))
+            if (State.GenerationLocks.TryGetValue(actualType, out var lockInfo))
             {
                 isGenerating = lockInfo.IsGenerating;
                 generationStartedAt = lockInfo.StartedAt;
@@ -501,7 +509,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             
             return Task.FromResult<PredictionStatusDto?>(new PredictionStatusDto
             {
-                Type = State.Type,
+                Type = actualType,
                 IsGenerated = false,
                 IsGenerating = isGenerating,
                 GeneratedAt = null,
@@ -516,7 +524,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         // Check if currently generating
         var isGenerating2 = false;
         DateTime? generationStartedAt2 = null;
-        if (State.GenerationLocks.TryGetValue(State.Type, out var lockInfo2))
+        if (State.GenerationLocks.TryGetValue(actualType, out var lockInfo2))
         {
             isGenerating2 = lockInfo2.IsGenerating;
             generationStartedAt2 = lockInfo2.StartedAt;
