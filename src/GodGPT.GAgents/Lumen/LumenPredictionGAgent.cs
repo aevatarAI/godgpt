@@ -641,7 +641,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Temperature = "0.7"
             };
 
-            // Use "FORTUNE" region for LLM calls
+            // Use "LUMEN" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid, 
@@ -650,7 +650,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 chatId, 
                 settings, 
                 true, 
-                "FORTUNE");
+                "LUMEN");
             llmStopwatch.Stop();
             _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
@@ -1520,7 +1520,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                 userGuid,
                 chatId,
                 translationPrompt,
-                "FORTUNE");
+                "LUMEN");
             llmStopwatch.Stop();
             _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
             
