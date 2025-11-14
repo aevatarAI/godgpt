@@ -1323,13 +1323,14 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         
         _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering async generation for {type}, Language: {targetLanguage}");
         
-        // Set generation lock
+        // Set generation lock and reset retry count for new generation
         if (!State.GenerationLocks.ContainsKey(type))
         {
             State.GenerationLocks[type] = new GenerationLockInfo();
         }
         State.GenerationLocks[type].IsGenerating = true;
         State.GenerationLocks[type].StartedAt = DateTime.UtcNow;
+        State.GenerationLocks[type].RetryCount = 0; // Reset retry count for new generation
         
         // Fire and forget - Process directly in the grain context instead of using Task.Run
         // This ensures proper Orleans activation context access
@@ -1341,6 +1342,8 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     /// </summary>
     private async Task GeneratePredictionInBackgroundAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
     {
+        const int MAX_RETRY_COUNT = 3;
+        
         try
         {
             // Double-check if already exists (in case of concurrent calls or Grain reactivation)
@@ -1356,11 +1359,45 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             
             if (!predictionResult.Success)
             {
-                _logger.LogWarning($"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
+                // Get current retry count
+                var currentRetryCount = State.GenerationLocks.ContainsKey(type) 
+                    ? State.GenerationLocks[type].RetryCount 
+                    : 0;
+                
+                _logger.LogWarning($"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}, RetryCount: {currentRetryCount}/{MAX_RETRY_COUNT}");
+                
+                // Check if we should retry (parse failure with retry budget remaining)
+                if (currentRetryCount < MAX_RETRY_COUNT && predictionResult.Message?.Contains("parse") == true)
+                {
+                    // Increment retry count
+                    if (!State.GenerationLocks.ContainsKey(type))
+                    {
+                        State.GenerationLocks[type] = new GenerationLockInfo();
+                    }
+                    State.GenerationLocks[type].RetryCount = currentRetryCount + 1;
+                    State.GenerationLocks[type].IsGenerating = true;
+                    State.GenerationLocks[type].StartedAt = DateTime.UtcNow;
+                    
+                    _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {State.GenerationLocks[type].RetryCount}/{MAX_RETRY_COUNT})");
+                    
+                    // Trigger retry (fire-and-forget)
+                    _ = GeneratePredictionInBackgroundAsync(userInfo, predictionDate, type, targetLanguage);
+                    return; // Don't release lock in finally block, as we're retrying
+                }
+                else if (currentRetryCount >= MAX_RETRY_COUNT)
+                {
+                    _logger.LogError($"[Lumen][OnDemand] {userInfo.UserId} MAX_RETRY_EXCEEDED for {type}, giving up after {currentRetryCount} attempts");
+                }
             }
             else
             {
                 _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
+                
+                // Reset retry count on success
+                if (State.GenerationLocks.ContainsKey(type))
+                {
+                    State.GenerationLocks[type].RetryCount = 0;
+                }
             }
         }
         catch (Exception ex)

@@ -51,6 +51,7 @@ public class GenerationLockInfo
 {
     [Id(0)] public bool IsGenerating { get; set; }
     [Id(1)] public DateTime? StartedAt { get; set; }
+    [Id(2)] public int RetryCount { get; set; } // Number of retries attempted (max 3)
 }
 
 /// <summary>
