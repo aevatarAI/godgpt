@@ -196,25 +196,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _logger.LogInformation($"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {CURRENT_PROMPT_VERSION}, Will regenerate prediction");
             }
             
-            // ========== CLEAR CACHED DATA IF REGENERATION IS NEEDED ==========
-            // If profile was updated, prediction expired, or prompt version changed, clear the old data
-            // This ensures frontend doesn't see stale data after profile update or delete+reregister
-            if (hasCachedPrediction && (!notExpired || !profileNotChanged || !promptVersionMatches))
-            {
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Clearing cached {type} prediction - Expired: {!notExpired}, ProfileChanged: {!profileNotChanged}, PromptVersionChanged: {!promptVersionMatches}");
-                
-                // Clear cached data (will be regenerated)
-                State.PredictionId = Guid.Empty;
-                State.Results = new Dictionary<string, string>();
-                State.MultilingualResults = new Dictionary<string, Dictionary<string, string>>();
-                State.GeneratedLanguages = new List<string>();
-                State.CreatedAt = default;
-                State.PredictionDate = default;
-                
-                // Force cache miss
-                hasCachedPrediction = false;
-            }
-            
+            // ========== CACHE HIT: Return cached prediction only if all conditions are met ==========
+            // Skip cache and trigger regeneration if:
+            // - Prediction expired (based on type)
+            // - Profile was updated after prediction was generated
+            // - Prompt version changed
             if (hasCachedPrediction && notExpired && profileNotChanged && promptVersionMatches)
             {
                 // Return cached prediction
