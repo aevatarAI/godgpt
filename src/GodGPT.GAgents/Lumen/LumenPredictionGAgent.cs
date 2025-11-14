@@ -2638,6 +2638,7 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
     /// </summary>
     private string TranslateSunSign(string sunSign, string language) => (sunSign, language) switch
     {
+        // Chinese translations
         ("Aries", "zh" or "zh-tw") => "白羊座",
         ("Taurus", "zh" or "zh-tw") => "金牛座",
         ("Gemini", "zh" or "zh-tw") => "双子座",
@@ -2650,7 +2651,23 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         ("Capricorn", "zh" or "zh-tw") => "摩羯座",
         ("Aquarius", "zh" or "zh-tw") => "水瓶座",
         ("Pisces", "zh" or "zh-tw") => "双鱼座",
-        _ => sunSign  // English and Spanish use same names
+        
+        // Spanish translations
+        ("Aries", "es") => "Aries",
+        ("Taurus", "es") => "Tauro",
+        ("Gemini", "es") => "Géminis",
+        ("Cancer", "es") => "Cáncer",
+        ("Leo", "es") => "Leo",
+        ("Virgo", "es") => "Virgo",
+        ("Libra", "es") => "Libra",
+        ("Scorpio", "es") => "Escorpio",
+        ("Sagittarius", "es") => "Sagitario",
+        ("Capricorn", "es") => "Capricornio",
+        ("Aquarius", "es") => "Acuario",
+        ("Pisces", "es") => "Piscis",
+        
+        // English default
+        _ => sunSign
     };
     
     /// <summary>
