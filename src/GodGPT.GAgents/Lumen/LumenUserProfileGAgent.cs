@@ -996,13 +996,14 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
     
     private string TranslateTrait(string trait, string language)
     {
-        // Common personality traits translation (simplified version)
+        // Common personality traits translation (complete version covering all trait pool)
         var lowerTrait = trait.ToLower();
         
         if (language == "zh-tw" || language == "zh")
         {
             return lowerTrait switch
             {
+                // Original traits
                 "adventurous" => "冒險的",
                 "bold" => "勇敢的",
                 "passionate" => "熱情的",
@@ -1021,6 +1022,50 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 "innovative" => "創新的",
                 "intuitive" => "直覺的",
                 "compassionate" => "富有同情心的",
+                // Additional traits from trait pool
+                "active" => "活躍的",
+                "agile" => "敏捷的",
+                "assertive" => "果斷的",
+                "balanced" => "平衡的",
+                "clever" => "聰明的",
+                "daring" => "大膽的",
+                "deep" => "深刻的",
+                "disciplined" => "自律的",
+                "dreamy" => "夢幻的",
+                "dynamic" => "充滿活力的",
+                "eccentric" => "獨特的",
+                "empathic" => "共情的",
+                "enduring" => "持久的",
+                "expansive" => "開放的",
+                "expressive" => "善於表達的",
+                "fiery" => "熱情似火的",
+                "fluid" => "靈活的",
+                "focused" => "專注的",
+                "free-spirited" => "自由奔放的",
+                "gentle" => "溫和的",
+                "graceful" => "優雅的",
+                "grounded" => "踏實的",
+                "growth-focused" => "注重成長的",
+                "high-energy" => "精力充沛的",
+                "insightful" => "有洞察力的",
+                "introspective" => "內省的",
+                "loyal" => "忠誠的",
+                "magnetic" => "有魅力的",
+                "nurturing" => "關懷的",
+                "playful" => "愛玩的",
+                "powerful" => "強大的",
+                "precise" => "精確的",
+                "radiant" => "光彩照人的",
+                "refined" => "精緻的",
+                "resilient" => "堅韌的",
+                "sensitive" => "敏感的",
+                "sharp" => "敏銳的",
+                "stable" => "穩定的",
+                "steady" => "穩重的",
+                "subtle" => "細膩的",
+                "thoughtful" => "體貼的",
+                "visionary" => "有遠見的",
+                "wise" => "智慧的",
                 _ => trait
             };
         }
@@ -1029,6 +1074,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
         {
             return lowerTrait switch
             {
+                // Original traits
                 "adventurous" => "Aventurero",
                 "bold" => "Audaz",
                 "passionate" => "Apasionado",
@@ -1047,6 +1093,50 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 "innovative" => "Innovador",
                 "intuitive" => "Intuitivo",
                 "compassionate" => "Compasivo",
+                // Additional traits from trait pool
+                "active" => "Activo",
+                "agile" => "Ágil",
+                "assertive" => "Asertivo",
+                "balanced" => "Equilibrado",
+                "clever" => "Astuto",
+                "daring" => "Atrevido",
+                "deep" => "Profundo",
+                "disciplined" => "Disciplinado",
+                "dreamy" => "Soñador",
+                "dynamic" => "Dinámico",
+                "eccentric" => "Excéntrico",
+                "empathic" => "Empático",
+                "enduring" => "Duradero",
+                "expansive" => "Expansivo",
+                "expressive" => "Expresivo",
+                "fiery" => "Ardiente",
+                "fluid" => "Fluido",
+                "focused" => "Concentrado",
+                "free-spirited" => "Espíritu libre",
+                "gentle" => "Gentil",
+                "graceful" => "Elegante",
+                "grounded" => "Arraigado",
+                "growth-focused" => "Enfocado en crecimiento",
+                "high-energy" => "Alta energía",
+                "insightful" => "Perspicaz",
+                "introspective" => "Introspectivo",
+                "loyal" => "Leal",
+                "magnetic" => "Magnético",
+                "nurturing" => "Protector",
+                "playful" => "Juguetón",
+                "powerful" => "Poderoso",
+                "precise" => "Preciso",
+                "radiant" => "Radiante",
+                "refined" => "Refinado",
+                "resilient" => "Resistente",
+                "sensitive" => "Sensible",
+                "sharp" => "Agudo",
+                "stable" => "Estable",
+                "steady" => "Firme",
+                "subtle" => "Sutil",
+                "thoughtful" => "Considerado",
+                "visionary" => "Visionario",
+                "wise" => "Sabio",
                 _ => trait
             };
         }
