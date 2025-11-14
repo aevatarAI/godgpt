@@ -196,6 +196,25 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _logger.LogInformation($"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {CURRENT_PROMPT_VERSION}, Will regenerate prediction");
             }
             
+            // ========== CLEAR CACHED DATA IF REGENERATION IS NEEDED ==========
+            // If profile was updated, prediction expired, or prompt version changed, clear the old data
+            // This ensures frontend doesn't see stale data after profile update or delete+reregister
+            if (hasCachedPrediction && (!notExpired || !profileNotChanged || !promptVersionMatches))
+            {
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Clearing cached {type} prediction - Expired: {!notExpired}, ProfileChanged: {!profileNotChanged}, PromptVersionChanged: {!promptVersionMatches}");
+                
+                // Clear cached data (will be regenerated)
+                State.PredictionId = Guid.Empty;
+                State.Results = new Dictionary<string, string>();
+                State.MultilingualResults = new Dictionary<string, Dictionary<string, string>>();
+                State.GeneratedLanguages = new List<string>();
+                State.CreatedAt = default;
+                State.PredictionDate = default;
+                
+                // Force cache miss
+                hasCachedPrediction = false;
+            }
+            
             if (hasCachedPrediction && notExpired && profileNotChanged && promptVersionMatches)
             {
                 // Return cached prediction
@@ -556,6 +575,26 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             {
                 needsRegeneration = true;
             }
+        }
+        
+        // ========== IF REGENERATION NEEDED, RETURN "NOT GENERATED" STATUS ==========
+        // This prevents frontend from thinking there's valid cached data after profile update or delete+reregister
+        if (needsRegeneration && State.PredictionId != Guid.Empty)
+        {
+            _logger.LogInformation($"[Lumen] Status check - Regeneration needed for {State.Type}, returning isGenerated=false");
+            
+            return Task.FromResult<PredictionStatusDto?>(new PredictionStatusDto
+            {
+                Type = actualType,
+                IsGenerated = false, // Important: Tell frontend there's no valid data
+                IsGenerating = false,
+                GeneratedAt = null,
+                GenerationStartedAt = null,
+                PredictionDate = null,
+                AvailableLanguages = new List<string>(),
+                NeedsRegeneration = true,
+                TranslationStatus = null
+            });
         }
 
         // Build translation status by checking TranslationLocks
