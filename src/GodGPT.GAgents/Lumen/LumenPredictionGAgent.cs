@@ -1033,7 +1033,12 @@ LANGUAGE-SPECIFIC RULES:
 - For Chinese (zh-tw/zh): Adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
 - For English/Spanish: Use natural target language sentence structure.
 
-Wrap response in JSON format.
+⚠️ CRITICAL JSON FORMAT REQUIREMENTS:
+- Wrap response in valid JSON format ONLY.
+- NEVER use special symbols that break JSON: = (equals), unescaped quotes, unescaped backslashes.
+- ALL string values must be properly escaped and quoted.
+- For array fields, return proper JSON arrays: [""item1"", ""item2"", ""item3""].
+- Test: If you see = symbol in your output, you're doing it wrong. Replace with : (colon) for JSON keys.
 
 ";
         
@@ -1656,6 +1661,13 @@ OUTPUT FORMAT REQUIREMENTS - CRITICAL:
 - NEVER change data types: string ↔ array conversion is FORBIDDEN
 - Example: [""Take walk"", ""Meditate""] → [""散步"", ""冥想""] (NOT ""散步, 冥想"")
 - Output a flat JSON object with all translated fields
+
+⚠️ CRITICAL JSON FORMAT REQUIREMENTS:
+- Output ONLY valid JSON format.
+- NEVER use special symbols that break JSON: = (equals), unescaped quotes, unescaped backslashes.
+- ALL string values must be properly escaped and quoted.
+- For array fields, return proper JSON arrays: [""item1"", ""item2"", ""item3""].
+- Test: If you see = symbol in your output, you're doing it wrong. Replace with : (colon) for JSON keys.
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
