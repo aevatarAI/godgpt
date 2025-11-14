@@ -641,9 +641,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Temperature = "0.7"
             };
 
-            // Use dedicated "LUMEN" region for independent LLM configuration
-            // This allows Lumen to use cost-optimized models (e.g., GPT-4o-mini)
-            // separate from the main chat experience
+            // Use "FORTUNE" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid, 
@@ -652,7 +650,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 chatId, 
                 settings, 
                 true, 
-                "LUMEN");
+                "FORTUNE");
             llmStopwatch.Stop();
             _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
@@ -1522,7 +1520,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                 userGuid,
                 chatId,
                 translationPrompt,
-                "LUMEN");
+                "FORTUNE");
             llmStopwatch.Stop();
             _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
             
