@@ -143,12 +143,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // ========== IDEMPOTENCY CHECK: Prevent concurrent generation for this type ==========
             if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
             {
-                // Check if generation timed out (1 minute - handles service restart scenarios)
+                // Check if generation timed out (5 minutes - handles service restart scenarios)
+                // LLM calls can take 70-100+ seconds, so allow sufficient time
                 if (lockInfo.StartedAt.HasValue)
             {
                     var elapsed = DateTime.UtcNow - lockInfo.StartedAt.Value;
                     
-                    if (elapsed.TotalMinutes < 1)
+                    if (elapsed.TotalMinutes < 5)
                     {
                         // Generation is in progress, return waiting status
                         totalStopwatch.Stop();
@@ -498,9 +499,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 isGenerating = lockInfo.IsGenerating;
                 generationStartedAt = lockInfo.StartedAt;
                 
-                // Check for stale lock (>1 minute) and reset
+                // Check for stale lock (>5 minutes) and reset
+                // LLM calls can take 70-100+ seconds, so allow sufficient time
                 if (isGenerating && lockInfo.StartedAt.HasValue && 
-                    (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 1)
+                    (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 5)
                 {
                     isGenerating = false;
                     generationStartedAt = null;
@@ -529,9 +531,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             isGenerating2 = lockInfo2.IsGenerating;
             generationStartedAt2 = lockInfo2.StartedAt;
             
-            // Check for stale lock (>1 minute) and reset
+            // Check for stale lock (>5 minutes) and reset
+            // LLM calls can take 70-100+ seconds, so allow sufficient time
             if (isGenerating2 && lockInfo2.StartedAt.HasValue && 
-                (DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes > 1)
+                (DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes > 5)
             {
                 isGenerating2 = false;
                 generationStartedAt2 = null;
@@ -574,10 +577,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 TargetLanguages = translatingLanguages
             };
             
-            // Check for stale translation locks (>2 minutes) and reset
+            // Check for stale translation locks (>5 minutes) and reset
+            // LLM translation calls can take 70-100+ seconds, so allow sufficient time
             foreach (var kvp in activeTranslations)
             {
-                if ((DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes > 2)
+                if ((DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes > 5)
                 {
                     State.TranslationLocks[kvp.Key].IsTranslating = false;
                     State.TranslationLocks[kvp.Key].StartedAt = null;
@@ -1962,7 +1966,19 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
             }
 
             var predictionsJson = JsonConvert.SerializeObject(fullResponse["predictions"]);
-            var predictions = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, object>>>(predictionsJson);
+            
+            Dictionary<string, Dictionary<string, object>>? predictions = null;
+            try
+            {
+                predictions = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, object>>>(predictionsJson);
+            }
+            catch (JsonException predEx)
+            {
+                _logger.LogError(predEx, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Failed to parse predictions. JSON preview (first 1000 chars): {JsonPreview}", 
+                    predictionsJson.Length > 1000 ? predictionsJson.Substring(0, 1000) : predictionsJson);
+                _logger.LogError("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Full predictions JSON length: {Length}", predictionsJson.Length);
+                return (null, null);
+            }
             
             if (predictions == null || predictions.Count == 0)
             {
