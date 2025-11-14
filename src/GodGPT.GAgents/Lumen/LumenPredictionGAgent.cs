@@ -143,12 +143,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // ========== IDEMPOTENCY CHECK: Prevent concurrent generation for this type ==========
             if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
             {
-                // Check if generation timed out (1 minute - handles service restart scenarios)
+                // Check if generation timed out (5 minutes - handles service restart scenarios)
+                // LLM calls can take 70-100+ seconds, so allow sufficient time
                 if (lockInfo.StartedAt.HasValue)
             {
                     var elapsed = DateTime.UtcNow - lockInfo.StartedAt.Value;
                     
-                    if (elapsed.TotalMinutes < 1)
+                    if (elapsed.TotalMinutes < 5)
                     {
                         // Generation is in progress, return waiting status
                         totalStopwatch.Stop();
@@ -498,9 +499,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 isGenerating = lockInfo.IsGenerating;
                 generationStartedAt = lockInfo.StartedAt;
                 
-                // Check for stale lock (>1 minute) and reset
+                // Check for stale lock (>5 minutes) and reset
+                // LLM calls can take 70-100+ seconds, so allow sufficient time
                 if (isGenerating && lockInfo.StartedAt.HasValue && 
-                    (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 1)
+                    (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 5)
                 {
                     isGenerating = false;
                     generationStartedAt = null;
@@ -529,9 +531,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             isGenerating2 = lockInfo2.IsGenerating;
             generationStartedAt2 = lockInfo2.StartedAt;
             
-            // Check for stale lock (>1 minute) and reset
+            // Check for stale lock (>5 minutes) and reset
+            // LLM calls can take 70-100+ seconds, so allow sufficient time
             if (isGenerating2 && lockInfo2.StartedAt.HasValue && 
-                (DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes > 1)
+                (DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes > 5)
             {
                 isGenerating2 = false;
                 generationStartedAt2 = null;
@@ -574,10 +577,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 TargetLanguages = translatingLanguages
             };
             
-            // Check for stale translation locks (>2 minutes) and reset
+            // Check for stale translation locks (>5 minutes) and reset
+            // LLM translation calls can take 70-100+ seconds, so allow sufficient time
             foreach (var kvp in activeTranslations)
             {
-                if ((DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes > 2)
+                if ((DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes > 5)
                 {
                     State.TranslationLocks[kvp.Key].IsTranslating = false;
                     State.TranslationLocks[kvp.Key].StartedAt = null;
@@ -637,9 +641,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Temperature = "0.7"
             };
 
-            // Use dedicated "LUMEN" region for independent LLM configuration
-            // This allows Lumen to use cost-optimized models (e.g., GPT-4o-mini)
-            // separate from the main chat experience
+            // Use "FORTUNE" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid, 
@@ -648,7 +650,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 chatId, 
                 settings, 
                 true, 
-                "LUMEN");
+                "FORTUNE");
             llmStopwatch.Stop();
             _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
@@ -1029,7 +1031,12 @@ LANGUAGE-SPECIFIC RULES:
 - For Chinese (zh-tw/zh): Adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
 - For English/Spanish: Use natural target language sentence structure.
 
-Wrap response in JSON format.
+⚠️ CRITICAL JSON FORMAT REQUIREMENTS:
+- Wrap response in valid JSON format ONLY.
+- NEVER use special symbols that break JSON: = (equals), unescaped quotes, unescaped backslashes.
+- ALL string values must be properly escaped and quoted.
+- For array fields, return proper JSON arrays: [""item1"", ""item2"", ""item3""].
+- Test: If you see = symbol in your output, you're doing it wrong. Replace with : (colon) for JSON keys.
 
 ";
         
@@ -1314,13 +1321,14 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         
         _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering async generation for {type}, Language: {targetLanguage}");
         
-        // Set generation lock
+        // Set generation lock and reset retry count for new generation
         if (!State.GenerationLocks.ContainsKey(type))
         {
             State.GenerationLocks[type] = new GenerationLockInfo();
         }
         State.GenerationLocks[type].IsGenerating = true;
         State.GenerationLocks[type].StartedAt = DateTime.UtcNow;
+        State.GenerationLocks[type].RetryCount = 0; // Reset retry count for new generation
         
         // Fire and forget - Process directly in the grain context instead of using Task.Run
         // This ensures proper Orleans activation context access
@@ -1332,6 +1340,8 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     /// </summary>
     private async Task GeneratePredictionInBackgroundAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
     {
+        const int MAX_RETRY_COUNT = 3;
+        
         try
         {
             // Double-check if already exists (in case of concurrent calls or Grain reactivation)
@@ -1347,11 +1357,45 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             
             if (!predictionResult.Success)
             {
-                _logger.LogWarning($"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
+                // Get current retry count
+                var currentRetryCount = State.GenerationLocks.ContainsKey(type) 
+                    ? State.GenerationLocks[type].RetryCount 
+                    : 0;
+                
+                _logger.LogWarning($"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}, RetryCount: {currentRetryCount}/{MAX_RETRY_COUNT}");
+                
+                // Check if we should retry (parse failure with retry budget remaining)
+                if (currentRetryCount < MAX_RETRY_COUNT && predictionResult.Message?.Contains("parse") == true)
+                {
+                    // Increment retry count
+                    if (!State.GenerationLocks.ContainsKey(type))
+                    {
+                        State.GenerationLocks[type] = new GenerationLockInfo();
+                    }
+                    State.GenerationLocks[type].RetryCount = currentRetryCount + 1;
+                    State.GenerationLocks[type].IsGenerating = true;
+                    State.GenerationLocks[type].StartedAt = DateTime.UtcNow;
+                    
+                    _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {State.GenerationLocks[type].RetryCount}/{MAX_RETRY_COUNT})");
+                    
+                    // Trigger retry (fire-and-forget)
+                    _ = GeneratePredictionInBackgroundAsync(userInfo, predictionDate, type, targetLanguage);
+                    return; // Don't release lock in finally block, as we're retrying
+                }
+                else if (currentRetryCount >= MAX_RETRY_COUNT)
+                {
+                    _logger.LogError($"[Lumen][OnDemand] {userInfo.UserId} MAX_RETRY_EXCEEDED for {type}, giving up after {currentRetryCount} attempts");
+                }
             }
             else
             {
                 _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
+                
+                // Reset retry count on success
+                if (State.GenerationLocks.ContainsKey(type))
+                {
+                    State.GenerationLocks[type].RetryCount = 0;
+                }
             }
         }
         catch (Exception ex)
@@ -1476,7 +1520,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                 userGuid,
                 chatId,
                 translationPrompt,
-                "LUMEN");
+                "FORTUNE");
             llmStopwatch.Stop();
             _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
             
@@ -1652,6 +1696,13 @@ OUTPUT FORMAT REQUIREMENTS - CRITICAL:
 - NEVER change data types: string ↔ array conversion is FORBIDDEN
 - Example: [""Take walk"", ""Meditate""] → [""散步"", ""冥想""] (NOT ""散步, 冥想"")
 - Output a flat JSON object with all translated fields
+
+⚠️ CRITICAL JSON FORMAT REQUIREMENTS:
+- Output ONLY valid JSON format.
+- NEVER use special symbols that break JSON: = (equals), unescaped quotes, unescaped backslashes.
+- ALL string values must be properly escaped and quoted.
+- For array fields, return proper JSON arrays: [""item1"", ""item2"", ""item3""].
+- Test: If you see = symbol in your output, you're doing it wrong. Replace with : (colon) for JSON keys.
 
 SOURCE CONTENT ({sourceLangName}):
 {sourceJson}
@@ -1962,7 +2013,19 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
             }
 
             var predictionsJson = JsonConvert.SerializeObject(fullResponse["predictions"]);
-            var predictions = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, object>>>(predictionsJson);
+            
+            Dictionary<string, Dictionary<string, object>>? predictions = null;
+            try
+            {
+                predictions = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, object>>>(predictionsJson);
+            }
+            catch (JsonException predEx)
+            {
+                _logger.LogError(predEx, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Failed to parse predictions. JSON preview (first 1000 chars): {JsonPreview}", 
+                    predictionsJson.Length > 1000 ? predictionsJson.Substring(0, 1000) : predictionsJson);
+                _logger.LogError("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Full predictions JSON length: {Length}", predictionsJson.Length);
+                return (null, null);
+            }
             
             if (predictions == null || predictions.Count == 0)
             {
@@ -2573,6 +2636,7 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
     /// </summary>
     private string TranslateSunSign(string sunSign, string language) => (sunSign, language) switch
     {
+        // Chinese translations
         ("Aries", "zh" or "zh-tw") => "白羊座",
         ("Taurus", "zh" or "zh-tw") => "金牛座",
         ("Gemini", "zh" or "zh-tw") => "双子座",
@@ -2585,7 +2649,23 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         ("Capricorn", "zh" or "zh-tw") => "摩羯座",
         ("Aquarius", "zh" or "zh-tw") => "水瓶座",
         ("Pisces", "zh" or "zh-tw") => "双鱼座",
-        _ => sunSign  // English and Spanish use same names
+        
+        // Spanish translations
+        ("Aries", "es") => "Aries",
+        ("Taurus", "es") => "Tauro",
+        ("Gemini", "es") => "Géminis",
+        ("Cancer", "es") => "Cáncer",
+        ("Leo", "es") => "Leo",
+        ("Virgo", "es") => "Virgo",
+        ("Libra", "es") => "Libra",
+        ("Scorpio", "es") => "Escorpio",
+        ("Sagittarius", "es") => "Sagitario",
+        ("Capricorn", "es") => "Capricornio",
+        ("Aquarius", "es") => "Acuario",
+        ("Pisces", "es") => "Piscis",
+        
+        // English default
+        _ => sunSign
     };
     
     /// <summary>
