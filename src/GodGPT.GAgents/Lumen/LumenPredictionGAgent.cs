@@ -195,7 +195,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             }
                 
                 // Check if profile has been updated since prediction was generated
-                var profileNotChanged = !State.ProfileUpdatedAt.HasValue || userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
+                // If State.ProfileUpdatedAt is null (first generation or after delete), profile is considered "changed" (need to generate)
+                // If State.ProfileUpdatedAt has value, check if profile update time is later than prediction time
+                var profileNotChanged = State.ProfileUpdatedAt.HasValue && userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
                 
             // Check if prediction already exists (from cache/state)
             var hasCachedPrediction = State.PredictionId != Guid.Empty && 
@@ -570,10 +572,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         }
 
         // Check if needs regeneration (profile was updated after prediction was generated)
+        // If State.ProfileUpdatedAt is null (first generation or after delete), treat as needs regeneration
+        // If State.ProfileUpdatedAt has value, check if profile was updated after prediction
         var needsRegeneration = false;
-        if (profileUpdatedAt.HasValue && State.ProfileUpdatedAt.HasValue)
+        if (profileUpdatedAt.HasValue)
         {
-            needsRegeneration = profileUpdatedAt.Value > State.ProfileUpdatedAt.Value;
+            needsRegeneration = !State.ProfileUpdatedAt.HasValue || profileUpdatedAt.Value > State.ProfileUpdatedAt.Value;
         }
 
         // For Daily predictions, also check if prediction is for today
@@ -1465,8 +1469,10 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             };
             
             // Check profile update
-            bool profileChanged = State.ProfileUpdatedAt.HasValue 
-                                 && userInfo.UpdatedAt > State.ProfileUpdatedAt.Value;
+            // If State.ProfileUpdatedAt is null (first generation or after delete), treat as changed
+            // If State.ProfileUpdatedAt has value, check if profile was updated after prediction
+            bool profileChanged = !State.ProfileUpdatedAt.HasValue 
+                                 || userInfo.UpdatedAt > State.ProfileUpdatedAt.Value;
             
             // Check prompt version
             bool promptVersionChanged = State.PromptVersion != CURRENT_PROMPT_VERSION;
