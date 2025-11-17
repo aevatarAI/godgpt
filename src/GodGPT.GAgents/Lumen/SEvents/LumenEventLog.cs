@@ -111,6 +111,26 @@ public class LanguagesTranslatedEvent : LumenPredictionEventLog
     [Id(4)] public DateOnly? LastGeneratedDate { get; set; } // Track translation date for daily limit
 }
 
+/// <summary>
+/// Generation lock set event - marks that generation has started
+/// </summary>
+[GenerateSerializer]
+public class GenerationLockSetEvent : LumenPredictionEventLog
+{
+    [Id(0)] public PredictionType Type { get; set; }
+    [Id(1)] public DateTime StartedAt { get; set; }
+    [Id(2)] public int RetryCount { get; set; }
+}
+
+/// <summary>
+/// Generation lock cleared event - marks that generation has completed or failed
+/// </summary>
+[GenerateSerializer]
+public class GenerationLockClearedEvent : LumenPredictionEventLog
+{
+    [Id(0)] public PredictionType Type { get; set; }
+}
+
 #endregion
 
 #region Feedback Events
