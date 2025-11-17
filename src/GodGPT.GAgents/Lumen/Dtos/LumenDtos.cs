@@ -259,6 +259,17 @@ public enum CrystalStoneEnum
     [Id(999)] Unknown = 999
 }
 
+/// <summary>
+/// Tarot card orientation enumeration
+/// </summary>
+[GenerateSerializer]
+public enum TarotOrientationEnum
+{
+    [Id(0)] Upright = 0,
+    [Id(1)] Reversed = 1,
+    [Id(999)] Unknown = 999
+}
+
 #endregion
 
 #region User Management DTOs

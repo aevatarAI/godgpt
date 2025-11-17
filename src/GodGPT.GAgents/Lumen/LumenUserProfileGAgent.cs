@@ -29,6 +29,12 @@ public interface ILumenUserProfileGAgent : IGAgent
     /// Clear user profile data (for testing purposes)
     /// </summary>
     Task<ClearUserResult> ClearUserAsync();
+    
+    /// <summary>
+    /// Get remaining profile update count for the current week
+    /// </summary>
+    [ReadOnly]
+    Task<GetRemainingUpdatesResult> GetRemainingUpdatesAsync();
 }
 
 [GAgent(nameof(LumenUserProfileGAgent))]
@@ -85,6 +91,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.UpdatedAt = updateEvent.UpdatedAt;
                 state.CurrentResidence = updateEvent.CurrentResidence;
                 state.Email = updateEvent.Email;
+                state.Occupation = updateEvent.Occupation;
                 // Record update timestamp for rate limiting
                 state.UpdateHistory.Add(updateEvent.UpdatedAt);
                 if (state.CreatedAt == default)
@@ -193,7 +200,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 CalendarType = request.CalendarType,
                 UpdatedAt = now,
                 CurrentResidence = request.CurrentResidence,
-                Email = request.Email
+                Email = request.Email,
+                Occupation = request.Occupation
             });
 
             // Confirm events to persist state changes
@@ -406,7 +414,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     CalendarType = null,
                     UpdatedAt = now,
                     CurrentResidence = null,
-                    Email = null
+                    Email = null,
+                    Occupation = null
                 });
 
                 await ConfirmEvents();
@@ -569,6 +578,56 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 Success = false,
                 Message = "Internal error occurred"
             };
+        }
+    }
+    
+    public Task<GetRemainingUpdatesResult> GetRemainingUpdatesAsync()
+    {
+        try
+        {
+            var now = DateTime.UtcNow;
+            var oneWeekAgo = now.AddDays(-7);
+            
+            // Clean up old update history (older than 1 week) - read-only, just for calculation
+            var recentUpdates = State.UpdateHistory
+                .Where(timestamp => timestamp > oneWeekAgo)
+                .ToList();
+            
+            var usedCount = recentUpdates.Count;
+            var remainingCount = Math.Max(0, MaxProfileUpdatesPerWeek - usedCount);
+            
+            // Calculate when next update will be available if limit is reached
+            DateTime? nextAvailableAt = null;
+            if (remainingCount == 0 && recentUpdates.Count > 0)
+            {
+                var oldestUpdateInWeek = recentUpdates.Min();
+                nextAvailableAt = oldestUpdateInWeek.AddDays(7);
+            }
+            
+            _logger.LogDebug(
+                "[LumenUserProfileGAgent][GetRemainingUpdatesAsync] UserId: {UserId}, Used: {Used}/{Max}, Remaining: {Remaining}",
+                State.UserId, usedCount, MaxProfileUpdatesPerWeek, remainingCount);
+            
+            return Task.FromResult(new GetRemainingUpdatesResult
+            {
+                Success = true,
+                UsedCount = usedCount,
+                MaxCount = MaxProfileUpdatesPerWeek,
+                RemainingCount = remainingCount,
+                NextAvailableAt = nextAvailableAt
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserProfileGAgent][GetRemainingUpdatesAsync] Error getting remaining updates");
+            return Task.FromResult(new GetRemainingUpdatesResult
+            {
+                Success = false,
+                UsedCount = 0,
+                MaxCount = MaxProfileUpdatesPerWeek,
+                RemainingCount = 0,
+                NextAvailableAt = null
+            });
         }
     }
 

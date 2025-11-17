@@ -53,12 +53,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// This will allow all users to regenerate predictions on the same day
     /// 
     /// ⚠️ TODO: REMOVE THIS FEATURE BEFORE PRODUCTION LAUNCH
-    /// Currently set to 1 for testing purposes (all existing users will regenerate).
+    /// Currently set to 2 for testing purposes (all existing users will regenerate).
     /// Before launch, either:
     /// 1. Remove prompt version checking entirely, OR
     /// 2. Set CURRENT_PROMPT_VERSION = 0 to avoid mass regeneration
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 1; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 2; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -196,25 +196,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _logger.LogInformation($"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {CURRENT_PROMPT_VERSION}, Will regenerate prediction");
             }
             
-            // ========== CLEAR CACHED DATA IF REGENERATION IS NEEDED ==========
-            // If profile was updated, prediction expired, or prompt version changed, clear the old data
-            // This ensures frontend doesn't see stale data after profile update or delete+reregister
-            if (hasCachedPrediction && (!notExpired || !profileNotChanged || !promptVersionMatches))
-            {
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Clearing cached {type} prediction - Expired: {!notExpired}, ProfileChanged: {!profileNotChanged}, PromptVersionChanged: {!promptVersionMatches}");
-                
-                // Clear cached data (will be regenerated)
-                State.PredictionId = Guid.Empty;
-                State.Results = new Dictionary<string, string>();
-                State.MultilingualResults = new Dictionary<string, Dictionary<string, string>>();
-                State.GeneratedLanguages = new List<string>();
-                State.CreatedAt = default;
-                State.PredictionDate = default;
-                
-                // Force cache miss
-                hasCachedPrediction = false;
-            }
-            
+            // ========== CACHE HIT: Return cached prediction only if all conditions are met ==========
+            // Skip cache and trigger regeneration if:
+            // - Prediction expired (based on type)
+            // - Profile was updated after prediction was generated
+            // - Prompt version changed
             if (hasCachedPrediction && notExpired && profileNotChanged && promptVersionMatches)
             {
                 // Return cached prediction
@@ -874,7 +860,61 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 
                 _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
             }
-            // Daily type: Enum fields are already extracted by parser during flattening
+            else if (type == PredictionType.Daily)
+            {
+                // Inject enum values for tarot card, lucky stone, and orientation
+                // These are parsed from LLM text output into enum integers
+                
+                // Parse and inject tarot card enum
+                if (parsedResults.TryGetValue("todaysReading_tarotCard_name", out var tarotCardName))
+                {
+                    var tarotCardEnum = ParseTarotCard(tarotCardName);
+                    parsedResults["todaysReading_tarotCard_enum"] = ((int)tarotCardEnum).ToString();
+                    
+                    // Inject into all multilingual versions
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            multilingualResults[lang]["todaysReading_tarotCard_enum"] = ((int)tarotCardEnum).ToString();
+                        }
+                    }
+                }
+                
+                // Parse and inject tarot orientation enum
+                if (parsedResults.TryGetValue("todaysReading_tarotCard_orientation", out var orientation))
+                {
+                    var orientationEnum = ParseTarotOrientation(orientation);
+                    parsedResults["todaysReading_tarotCard_orientation_enum"] = ((int)orientationEnum).ToString();
+                    
+                    // Inject into all multilingual versions
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            multilingualResults[lang]["todaysReading_tarotCard_orientation_enum"] = ((int)orientationEnum).ToString();
+                        }
+                    }
+                }
+                
+                // Parse and inject lucky stone enum
+                if (parsedResults.TryGetValue("luckyAlignments_luckyStone", out var luckyStone))
+                {
+                    var stoneEnum = ParseCrystalStone(luckyStone);
+                    parsedResults["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
+                    
+                    // Inject into all multilingual versions
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            multilingualResults[lang]["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
+                        }
+                    }
+                }
+                
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected enum fields into Daily prediction");
+            }
 
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
@@ -2288,6 +2328,23 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         
         _logger.LogWarning($"[LumenPredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}");
         return TarotCardEnum.Unknown;
+    }
+    
+    /// <summary>
+    /// Parse tarot card orientation to enum
+    /// </summary>
+    private TarotOrientationEnum ParseTarotOrientation(string orientation)
+    {
+        if (string.IsNullOrWhiteSpace(orientation)) return TarotOrientationEnum.Unknown;
+        
+        var normalized = orientation.Trim().ToLowerInvariant();
+        
+        return normalized switch
+        {
+            "upright" => TarotOrientationEnum.Upright,
+            "reversed" => TarotOrientationEnum.Reversed,
+            _ => TarotOrientationEnum.Unknown
+        };
     }
     
     /// <summary>

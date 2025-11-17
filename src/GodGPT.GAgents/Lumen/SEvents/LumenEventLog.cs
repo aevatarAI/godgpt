@@ -206,6 +206,7 @@ public class UserProfileUpdatedEvent : LumenUserProfileEventLog
     [Id(11)] public DateTime UpdatedAt { get; set; }
     [Id(12)] public string? CurrentResidence { get; set; }
     [Id(13)] public string? Email { get; set; }
+    [Id(14)] public string? Occupation { get; set; } // Optional
 }
 
 /// <summary>
