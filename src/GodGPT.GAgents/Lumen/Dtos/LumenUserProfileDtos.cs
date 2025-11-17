@@ -34,6 +34,7 @@ public class UpdateUserProfileResult
     [Id(1)] public string Message { get; set; } = string.Empty;
     [Id(2)] public string? UserId { get; set; }
     [Id(3)] public DateTime? CreatedAt { get; set; }
+    [Id(4)] public int? RemainingUpdates { get; set; } // Remaining profile updates this week
 }
 
 /// <summary>
@@ -80,3 +81,15 @@ public class GetUserProfileResult
 
 #endregion
 
+/// <summary>
+/// Get remaining profile updates result
+/// </summary>
+[GenerateSerializer]
+public class GetRemainingUpdatesResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public int UsedCount { get; set; }
+    [Id(2)] public int MaxCount { get; set; }
+    [Id(3)] public int RemainingCount { get; set; }
+    [Id(4)] public DateTime? NextAvailableAt { get; set; } // When next update will be available if limit is reached
+}
