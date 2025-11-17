@@ -92,6 +92,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.CurrentResidence = updateEvent.CurrentResidence;
                 state.Email = updateEvent.Email;
                 state.Occupation = updateEvent.Occupation;
+                state.Icon = updateEvent.Icon;
                 // Record update timestamp for rate limiting
                 state.UpdateHistory.Add(updateEvent.UpdatedAt);
                 if (state.CreatedAt == default)
@@ -201,7 +202,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 UpdatedAt = now,
                 CurrentResidence = request.CurrentResidence,
                 Email = request.Email,
-                Occupation = request.Occupation
+                Occupation = request.Occupation,
+                Icon = request.Icon
             });
 
             // Confirm events to persist state changes
@@ -296,7 +298,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     MbtiType = State.MbtiType,
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
-                    Email = State.Email
+                    Email = State.Email,
+                    Icon = State.Icon
                 }
             };
         }
@@ -416,7 +419,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     UpdatedAt = now,
                     CurrentResidence = null,
                     Email = null,
-                    Occupation = null
+                    Occupation = null,
+                    Icon = null
                 });
 
                 await ConfirmEvents();
@@ -467,7 +471,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 MbtiType = State.MbtiType,
                 RelationshipStatus = State.RelationshipStatus,
                 Interests = State.Interests,
-                Email = State.Email
+                Email = State.Email,
+                Icon = State.Icon
             };
 
             return Task.FromResult<LumenUserProfileDto?>(profileDto);
