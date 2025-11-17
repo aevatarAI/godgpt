@@ -58,7 +58,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// 1. Remove prompt version checking entirely, OR
     /// 2. Set CURRENT_PROMPT_VERSION = 0 to avoid mass regeneration
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 2; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 3; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
