@@ -85,6 +85,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.UpdatedAt = updateEvent.UpdatedAt;
                 state.CurrentResidence = updateEvent.CurrentResidence;
                 state.Email = updateEvent.Email;
+                state.Occupation = updateEvent.Occupation;
                 // Record update timestamp for rate limiting
                 state.UpdateHistory.Add(updateEvent.UpdatedAt);
                 if (state.CreatedAt == default)
@@ -193,7 +194,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 CalendarType = request.CalendarType,
                 UpdatedAt = now,
                 CurrentResidence = request.CurrentResidence,
-                Email = request.Email
+                Email = request.Email,
+                Occupation = request.Occupation
             });
 
             // Confirm events to persist state changes
@@ -406,7 +408,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     CalendarType = null,
                     UpdatedAt = now,
                     CurrentResidence = null,
-                    Email = null
+                    Email = null,
+                    Occupation = null
                 });
 
                 await ConfirmEvents();
