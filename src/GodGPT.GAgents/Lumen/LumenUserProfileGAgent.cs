@@ -215,7 +215,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 Success = true,
                 Message = string.Empty,
                 UserId = request.UserId,
-                CreatedAt = State.CreatedAt
+                CreatedAt = State.CreatedAt,
+                UpdatedAt = State.UpdatedAt // Return actual UpdatedAt for prediction regeneration check
             };
         }
         catch (Exception ex)
