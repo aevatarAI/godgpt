@@ -1450,10 +1450,42 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         
         try
         {
-            // Double-check if already exists (in case of concurrent calls or Grain reactivation)
-            if (State.MultilingualResults != null && State.MultilingualResults.ContainsKey(targetLanguage))
+            // Check if data needs regeneration (date expired, profile updated, or prompt version changed)
+            var needsRegeneration = false;
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var currentYear = DateTime.UtcNow.Year;
+            
+            // Check expiration based on type
+            bool dataExpired = type switch
             {
-                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists (double-check), skipping generation");
+                PredictionType.Lifetime => false, // Lifetime never expires by date
+                PredictionType.Yearly => State.PredictionDate.Year != currentYear, // Yearly expires after 1 year
+                PredictionType.Daily => State.PredictionDate != today, // Daily expires every day
+                _ => false
+            };
+            
+            // Check profile update
+            bool profileChanged = State.ProfileUpdatedAt.HasValue 
+                                 && userInfo.UpdatedAt > State.ProfileUpdatedAt.Value;
+            
+            // Check prompt version
+            bool promptVersionChanged = State.PromptVersion != CURRENT_PROMPT_VERSION;
+            
+            needsRegeneration = dataExpired || profileChanged || promptVersionChanged;
+            
+            // If data is expired/outdated, clear old data before generating new
+            if (needsRegeneration && State.PredictionId != Guid.Empty)
+            {
+                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Clearing outdated {type} data - Date: {State.PredictionDate}, Profile: {profileChanged}, Prompt: {promptVersionChanged}");
+                
+                // Clear the state but keep the grain active for new generation
+                // Note: We don't use ClearPredictionAsync here to avoid interfering with the ongoing generation process
+            }
+            
+            // Double-check if already exists AND is not expired (in case of concurrent calls or Grain reactivation)
+            if (!needsRegeneration && State.MultilingualResults != null && State.MultilingualResults.ContainsKey(targetLanguage))
+            {
+                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists and not expired, skipping generation");
                 return;
             }
             
