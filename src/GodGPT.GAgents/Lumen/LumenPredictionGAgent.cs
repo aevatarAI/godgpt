@@ -124,6 +124,26 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 state.GeneratedLanguages = translatedEvent.AllGeneratedLanguages;
                 state.LastGeneratedDate = translatedEvent.LastGeneratedDate;
                 break;
+                
+            case GenerationLockSetEvent lockSetEvent:
+                // Set generation lock (persisted to survive Grain deactivation)
+                if (!state.GenerationLocks.ContainsKey(lockSetEvent.Type))
+                {
+                    state.GenerationLocks[lockSetEvent.Type] = new GenerationLockInfo();
+                }
+                state.GenerationLocks[lockSetEvent.Type].IsGenerating = true;
+                state.GenerationLocks[lockSetEvent.Type].StartedAt = lockSetEvent.StartedAt;
+                state.GenerationLocks[lockSetEvent.Type].RetryCount = lockSetEvent.RetryCount;
+                break;
+                
+            case GenerationLockClearedEvent lockClearedEvent:
+                // Clear generation lock (mark generation as completed or failed)
+                if (state.GenerationLocks.ContainsKey(lockClearedEvent.Type))
+                {
+                    state.GenerationLocks[lockClearedEvent.Type].IsGenerating = false;
+                    state.GenerationLocks[lockClearedEvent.Type].StartedAt = null;
+                }
+                break;
         }
     }
 
@@ -163,10 +183,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     }
                     else
                     {
-                        // Generation timed out (service restart or actual timeout), reset lock and retry
+                        // Generation timed out (service restart or actual timeout), reset lock and retry using Event Sourcing
                         _logger.LogWarning($"[Lumen] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalMinutes:F2} minutes, Resetting lock and retrying");
-                        lockInfo.IsGenerating = false;
-                        lockInfo.StartedAt = null;
+                        RaiseEvent(new GenerationLockClearedEvent
+                        {
+                            Type = type
+                        });
+                        await ConfirmEvents();
                     }
                 }
             }
@@ -1389,7 +1412,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     /// <summary>
     /// Trigger on-demand generation for a prediction (Fire-and-forget)
     /// </summary>
-    private void TriggerOnDemandGenerationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
+    private async void TriggerOnDemandGenerationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
     {
         // Check if generation is already in progress (memory-based check, may not survive deactivation)
         if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
@@ -1400,14 +1423,16 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         
         _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering async generation for {type}, Language: {targetLanguage}");
         
-        // Set generation lock and reset retry count for new generation
-        if (!State.GenerationLocks.ContainsKey(type))
+        // Set generation lock using Event Sourcing (persisted to survive Grain deactivation)
+        RaiseEvent(new GenerationLockSetEvent
         {
-            State.GenerationLocks[type] = new GenerationLockInfo();
-        }
-        State.GenerationLocks[type].IsGenerating = true;
-        State.GenerationLocks[type].StartedAt = DateTime.UtcNow;
-        State.GenerationLocks[type].RetryCount = 0; // Reset retry count for new generation
+            Type = type,
+            StartedAt = DateTime.UtcNow,
+            RetryCount = 0 // Reset retry count for new generation
+        });
+        await ConfirmEvents();
+        
+        _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} GENERATION_LOCK_SET (Persisted) - Type: {type}");
         
         // Fire and forget - Process directly in the grain context instead of using Task.Run
         // This ensures proper Orleans activation context access
@@ -1446,16 +1471,17 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
                 // Check if we should retry (parse failure with retry budget remaining)
                 if (currentRetryCount < MAX_RETRY_COUNT && predictionResult.Message?.Contains("parse") == true)
                 {
-                    // Increment retry count
-                    if (!State.GenerationLocks.ContainsKey(type))
+                    // Increment retry count using Event Sourcing
+                    var newRetryCount = currentRetryCount + 1;
+                    RaiseEvent(new GenerationLockSetEvent
                     {
-                        State.GenerationLocks[type] = new GenerationLockInfo();
-                    }
-                    State.GenerationLocks[type].RetryCount = currentRetryCount + 1;
-                    State.GenerationLocks[type].IsGenerating = true;
-                    State.GenerationLocks[type].StartedAt = DateTime.UtcNow;
+                        Type = type,
+                        StartedAt = DateTime.UtcNow,
+                        RetryCount = newRetryCount
+                    });
+                    await ConfirmEvents();
                     
-                    _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {State.GenerationLocks[type].RetryCount}/{MAX_RETRY_COUNT})");
+                    _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{MAX_RETRY_COUNT})");
                     
                     // Trigger retry (fire-and-forget)
                     _ = GeneratePredictionInBackgroundAsync(userInfo, predictionDate, type, targetLanguage);
@@ -1470,10 +1496,16 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             {
                 _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
                 
-                // Reset retry count on success
-                if (State.GenerationLocks.ContainsKey(type))
+                // Reset retry count on success (using Event Sourcing)
+                if (State.GenerationLocks.ContainsKey(type) && State.GenerationLocks[type].RetryCount > 0)
                 {
-                    State.GenerationLocks[type].RetryCount = 0;
+                    RaiseEvent(new GenerationLockSetEvent
+                    {
+                        Type = type,
+                        StartedAt = State.GenerationLocks[type].StartedAt ?? DateTime.UtcNow,
+                        RetryCount = 0 // Reset to 0 on success
+                    });
+                    await ConfirmEvents();
                 }
             }
         }
@@ -1483,12 +1515,15 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         }
         finally
         {
-            // Clear generation lock
+            // Clear generation lock using Event Sourcing
             if (State.GenerationLocks.ContainsKey(type))
             {
-                State.GenerationLocks[type].IsGenerating = false;
-                State.GenerationLocks[type].StartedAt = null;
-                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} GENERATION_LOCK_RELEASED - Type: {type}");
+                RaiseEvent(new GenerationLockClearedEvent
+                {
+                    Type = type
+                });
+                await ConfirmEvents();
+                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} GENERATION_LOCK_RELEASED (Persisted) - Type: {type}");
             }
         }
     }

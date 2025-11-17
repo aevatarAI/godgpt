@@ -35,6 +35,7 @@ public class UpdateUserProfileResult
     [Id(2)] public string? UserId { get; set; }
     [Id(3)] public DateTime? CreatedAt { get; set; }
     [Id(4)] public int? RemainingUpdates { get; set; } // Remaining profile updates this week
+    [Id(5)] public DateTime? UpdatedAt { get; set; } // Actual update time from ProfileGAgent (critical for prediction regeneration)
 }
 
 /// <summary>
