@@ -23,6 +23,8 @@ public interface ILumenPredictionHistoryGAgent : IGAgent
     
     [ReadOnly]
     Task<List<PredictionResultDto>> GetMonthlyPredictionsAsync(int year, int month);
+    
+    Task ClearHistoryAsync();
 }
 
 [GAgent(nameof(LumenPredictionHistoryGAgent))]
@@ -85,6 +87,13 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                 }
                 
                 state.LastUpdatedAt = DateTime.UtcNow;
+                break;
+                
+            case PredictionHistoryClearedEvent clearEvent:
+                // Clear all history data
+                state.UserId = string.Empty;
+                state.RecentPredictions.Clear();
+                state.LastUpdatedAt = clearEvent.ClearedAt;
                 break;
         }
     }
@@ -258,6 +267,30 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
         {
             _logger.LogError(ex, "[LumenPredictionHistoryGAgent][GetMonthlyPredictionsAsync] Error getting monthly predictions");
             return Task.FromResult(new List<PredictionResultDto>());
+        }
+    }
+    
+    public async Task ClearHistoryAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[LumenPredictionHistoryGAgent][ClearHistoryAsync] Clearing prediction history");
+
+            // Raise event to clear history
+            RaiseEvent(new PredictionHistoryClearedEvent
+            {
+                ClearedAt = DateTime.UtcNow
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenPredictionHistoryGAgent][ClearHistoryAsync] Prediction history cleared successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionHistoryGAgent][ClearHistoryAsync] Error clearing prediction history");
+            throw;
         }
     }
 }

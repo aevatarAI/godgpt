@@ -262,6 +262,15 @@ public class PredictionAddedToHistoryEvent : LumenPredictionHistoryEventLog
     [Id(11)] public bool IsFallback { get; set; }
 }
 
+/// <summary>
+/// Prediction history cleared event
+/// </summary>
+[GenerateSerializer]
+public class PredictionHistoryClearedEvent : LumenPredictionHistoryEventLog
+{
+    [Id(0)] public DateTime ClearedAt { get; set; }
+}
+
 #endregion
 
 #region Favourite Events
