@@ -860,7 +860,61 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 
                 _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
             }
-            // Daily type: Enum fields are already extracted by parser during flattening
+            else if (type == PredictionType.Daily)
+            {
+                // Inject enum values for tarot card, lucky stone, and orientation
+                // These are parsed from LLM text output into enum integers
+                
+                // Parse and inject tarot card enum
+                if (parsedResults.TryGetValue("todaysReading_tarotCard_name", out var tarotCardName))
+                {
+                    var tarotCardEnum = ParseTarotCard(tarotCardName);
+                    parsedResults["todaysReading_tarotCard_enum"] = ((int)tarotCardEnum).ToString();
+                    
+                    // Inject into all multilingual versions
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            multilingualResults[lang]["todaysReading_tarotCard_enum"] = ((int)tarotCardEnum).ToString();
+                        }
+                    }
+                }
+                
+                // Parse and inject tarot orientation enum
+                if (parsedResults.TryGetValue("todaysReading_tarotCard_orientation", out var orientation))
+                {
+                    var orientationEnum = ParseTarotOrientation(orientation);
+                    parsedResults["todaysReading_tarotCard_orientation_enum"] = ((int)orientationEnum).ToString();
+                    
+                    // Inject into all multilingual versions
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            multilingualResults[lang]["todaysReading_tarotCard_orientation_enum"] = ((int)orientationEnum).ToString();
+                        }
+                    }
+                }
+                
+                // Parse and inject lucky stone enum
+                if (parsedResults.TryGetValue("luckyAlignments_luckyStone", out var luckyStone))
+                {
+                    var stoneEnum = ParseCrystalStone(luckyStone);
+                    parsedResults["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
+                    
+                    // Inject into all multilingual versions
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            multilingualResults[lang]["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
+                        }
+                    }
+                }
+                
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected enum fields into Daily prediction");
+            }
 
             var predictionId = Guid.NewGuid();
             var now = DateTime.UtcNow;
@@ -2274,6 +2328,23 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         
         _logger.LogWarning($"[LumenPredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}");
         return TarotCardEnum.Unknown;
+    }
+    
+    /// <summary>
+    /// Parse tarot card orientation to enum
+    /// </summary>
+    private TarotOrientationEnum ParseTarotOrientation(string orientation)
+    {
+        if (string.IsNullOrWhiteSpace(orientation)) return TarotOrientationEnum.Unknown;
+        
+        var normalized = orientation.Trim().ToLowerInvariant();
+        
+        return normalized switch
+        {
+            "upright" => TarotOrientationEnum.Upright,
+            "reversed" => TarotOrientationEnum.Reversed,
+            _ => TarotOrientationEnum.Unknown
+        };
     }
     
     /// <summary>
