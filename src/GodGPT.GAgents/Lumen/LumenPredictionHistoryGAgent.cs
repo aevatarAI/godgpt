@@ -138,7 +138,8 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
         {
             _logger.LogDebug("[LumenPredictionHistoryGAgent][GetPredictionByDateAsync] Getting prediction for date: {Date}", date);
 
-            var prediction = State.RecentPredictions.FirstOrDefault(p => p.PredictionDate == date);
+            // Only return Daily predictions (history is for daily predictions only)
+            var prediction = State.RecentPredictions.FirstOrDefault(p => p.PredictionDate == date && p.Type == PredictionType.Daily);
             
             if (prediction == null)
             {
@@ -182,8 +183,9 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
 
             var cutoffDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-days + 1);
             
+            // Only return Daily predictions (history is for daily predictions only)
             var recentPredictions = State.RecentPredictions
-                .Where(p => p.PredictionDate >= cutoffDate)
+                .Where(p => p.PredictionDate >= cutoffDate && p.Type == PredictionType.Daily)
                 .OrderByDescending(p => p.PredictionDate)
                 .Take(days)
                 .Select(p => new PredictionResultDto
@@ -226,8 +228,9 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
             var firstDayOfMonth = new DateOnly(year, month, 1);
             var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
 
+            // Only return Daily predictions (history is for daily predictions only)
             var monthlyPredictions = State.RecentPredictions
-                .Where(p => p.PredictionDate >= firstDayOfMonth && p.PredictionDate <= lastDayOfMonth)
+                .Where(p => p.PredictionDate >= firstDayOfMonth && p.PredictionDate <= lastDayOfMonth && p.Type == PredictionType.Daily)
                 .OrderByDescending(p => p.PredictionDate)
                 .Select(p => new PredictionResultDto
                 {
