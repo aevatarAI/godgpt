@@ -252,6 +252,14 @@ public class PredictionAddedToHistoryEvent : LumenPredictionHistoryEventLog
     [Id(2)] public DateTime CreatedAt { get; set; }
     [Id(3)] public Dictionary<string, string> Results { get; set; } = new();
     [Id(4)] public PredictionType Type { get; set; }
+    // Additional fields for complete prediction data
+    [Id(5)] public string UserId { get; set; } = string.Empty;
+    [Id(6)] public List<string> AvailableLanguages { get; set; } = new();
+    [Id(7)] public string RequestedLanguage { get; set; } = "en";
+    [Id(8)] public string ReturnedLanguage { get; set; } = "en";
+    [Id(9)] public bool FromCache { get; set; }
+    [Id(10)] public bool AllLanguagesGenerated { get; set; }
+    [Id(11)] public bool IsFallback { get; set; }
 }
 
 #endregion

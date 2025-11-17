@@ -13,8 +13,7 @@ namespace Aevatar.Application.Grains.Lumen;
 /// </summary>
 public interface ILumenPredictionHistoryGAgent : IGAgent
 {
-    Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, 
-        Dictionary<string, string> results, PredictionType type);
+    Task AddPredictionAsync(PredictionResultDto prediction);
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionByDateAsync(DateOnly date);
@@ -56,14 +55,20 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                 // Remove old prediction for the same date (if exists)
                 state.RecentPredictions.RemoveAll(p => p.PredictionDate == addedEvent.PredictionDate);
                 
-                // Add new prediction
+                // Add new prediction with complete data
                 state.RecentPredictions.Add(new PredictionHistoryRecord
                 {
                     PredictionId = addedEvent.PredictionId,
                     PredictionDate = addedEvent.PredictionDate,
                     CreatedAt = addedEvent.CreatedAt,
                     Results = addedEvent.Results,
-                    Type = addedEvent.Type
+                    Type = addedEvent.Type,
+                    AvailableLanguages = addedEvent.AvailableLanguages,
+                    RequestedLanguage = addedEvent.RequestedLanguage,
+                    ReturnedLanguage = addedEvent.ReturnedLanguage,
+                    FromCache = addedEvent.FromCache,
+                    AllLanguagesGenerated = addedEvent.AllLanguagesGenerated,
+                    IsFallback = addedEvent.IsFallback
                 });
                 
                 // Sort by date descending (newest first)
@@ -84,31 +89,41 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
         }
     }
 
-    public async Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, 
-        Dictionary<string, string> results, PredictionType type)
+    public async Task AddPredictionAsync(PredictionResultDto prediction)
     {
         try
         {
             _logger.LogDebug("[LumenPredictionHistoryGAgent][AddPredictionAsync] Adding prediction: {PredictionId}, Date: {Date}, Type: {Type}",
-                predictionId, predictionDate, type);
+                prediction.PredictionId, prediction.PredictionDate, prediction.Type);
 
-            var now = DateTime.UtcNow;
+            // Set UserId if State is empty (first time)
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                State.UserId = prediction.UserId;
+            }
 
-            // Raise event to add prediction to history
+            // Raise event to add prediction to history with complete data
             RaiseEvent(new PredictionAddedToHistoryEvent
             {
-                PredictionId = predictionId,
-                PredictionDate = predictionDate,
-                CreatedAt = now,
-                Results = results,
-                Type = type
+                PredictionId = prediction.PredictionId,
+                PredictionDate = prediction.PredictionDate,
+                CreatedAt = prediction.CreatedAt,
+                Results = prediction.Results,
+                Type = prediction.Type,
+                UserId = prediction.UserId,
+                AvailableLanguages = prediction.AvailableLanguages ?? new List<string>(),
+                RequestedLanguage = prediction.RequestedLanguage,
+                ReturnedLanguage = prediction.ReturnedLanguage,
+                FromCache = prediction.FromCache,
+                AllLanguagesGenerated = prediction.AllLanguagesGenerated,
+                IsFallback = prediction.IsFallback
             });
 
             // Confirm events to persist state changes
             await ConfirmEvents();
 
             _logger.LogInformation("[LumenPredictionHistoryGAgent][AddPredictionAsync] Prediction added to history: {PredictionId}",
-                predictionId);
+                prediction.PredictionId);
         }
         catch (Exception ex)
         {
@@ -138,7 +153,13 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                 PredictionDate = prediction.PredictionDate,
                 Results = prediction.Results,
                 CreatedAt = prediction.CreatedAt,
-                FromCache = true
+                Type = prediction.Type,
+                FromCache = prediction.FromCache,
+                AvailableLanguages = prediction.AvailableLanguages,
+                AllLanguagesGenerated = prediction.AllLanguagesGenerated,
+                RequestedLanguage = prediction.RequestedLanguage,
+                ReturnedLanguage = prediction.ReturnedLanguage,
+                IsFallback = prediction.IsFallback
             });
         }
         catch (Exception ex)
@@ -172,7 +193,13 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                     PredictionDate = p.PredictionDate,
                     Results = p.Results,
                     CreatedAt = p.CreatedAt,
-                    FromCache = true
+                    Type = p.Type,
+                    FromCache = p.FromCache,
+                    AvailableLanguages = p.AvailableLanguages,
+                    AllLanguagesGenerated = p.AllLanguagesGenerated,
+                    RequestedLanguage = p.RequestedLanguage,
+                    ReturnedLanguage = p.ReturnedLanguage,
+                    IsFallback = p.IsFallback
                 })
                 .ToList();
 
@@ -209,8 +236,13 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                     PredictionDate = p.PredictionDate,
                     Results = p.Results,
                     CreatedAt = p.CreatedAt,
-                    FromCache = true,
-                    Type = p.Type
+                    Type = p.Type,
+                    FromCache = p.FromCache,
+                    AvailableLanguages = p.AvailableLanguages,
+                    AllLanguagesGenerated = p.AllLanguagesGenerated,
+                    RequestedLanguage = p.RequestedLanguage,
+                    ReturnedLanguage = p.ReturnedLanguage,
+                    IsFallback = p.IsFallback
                 })
                 .ToList();
 
