@@ -22,6 +22,7 @@ public class UpdateUserProfileRequest
     [Id(11)] public string? CurrentResidence { get; set; } // Optional
     [Id(12)] public string? Email { get; set; } // Optional
     [Id(13)] public string? Occupation { get; set; } // Optional
+    [Id(14)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
 }
 
 /// <summary>
@@ -67,6 +68,7 @@ public class LumenUserProfileDto
     [Id(18)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
     [Id(19)] public string? Interests { get; set; }
     [Id(20)] public string? Email { get; set; }
+    [Id(21)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
 }
 
 /// <summary>

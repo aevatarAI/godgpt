@@ -333,6 +333,7 @@ public class LumenUserDto
     [Id(15)] public string? Email { get; set; } // Optional
     [Id(16)] public DateTime UpdatedAt { get; set; } // Track profile updates for prediction regeneration
     [Id(17)] public string? Occupation { get; set; } // Optional
+    [Id(18)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
 }
 
 /// <summary>

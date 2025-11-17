@@ -252,7 +252,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     // Today already processed - return any available language instead of triggering translation
                     var availableLanguage = State.MultilingualResults.Keys.FirstOrDefault();
                     if (availableLanguage != null)
-                    {
+                {
                         localizedResults = State.MultilingualResults[availableLanguage];
                         returnedLanguage = availableLanguage;
                         isFallback = true;
@@ -412,7 +412,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         else if (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
         {
             if (todayAlreadyProcessed)
-            {
+        {
                 // Today already processed - return any available language instead of triggering translation
                 var availableLanguage = State.MultilingualResults.Keys.FirstOrDefault();
                 localizedResults = State.MultilingualResults[availableLanguage];
@@ -2082,7 +2082,7 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
             {
                 _logger.LogWarning($"[Lumen][ParsePlainText] Only parsed {result.Count} fields, which seems low. First 500 chars of response: {(aiResponse.Length > 500 ? aiResponse.Substring(0, 500) : aiResponse)}...");
             }
-            
+
             return result;
         }
         catch (Exception ex)
@@ -2113,7 +2113,7 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
                 {
                     return results;
                 }
-                
+
                 // Try to parse as wrapped structure with "results" key
                 var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
                 if (fullResponse != null && fullResponse.ContainsKey("results") && fullResponse["results"] != null)

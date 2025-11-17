@@ -227,6 +227,7 @@ public class UserProfileUpdatedEvent : LumenUserProfileEventLog
     [Id(12)] public string? CurrentResidence { get; set; }
     [Id(13)] public string? Email { get; set; }
     [Id(14)] public string? Occupation { get; set; } // Optional
+    [Id(15)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
 }
 
 /// <summary>
