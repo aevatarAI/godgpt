@@ -38,8 +38,6 @@ public interface IUserQuotaGAgent : IGAgent
     Task ClearAllAsync();
 
     // New method to support App Store subscriptions
-    Task UpdateQuotaAsync(string productId, DateTime expiresDate);
-    Task ResetQuotaAsync();
     Task<GrainResultDto<int>> UpdateCreditsAsync(string operatorUserId, int creditsChange);
     Task<GrainResultDto<List<SubscriptionInfoDto>>> UpdateSubscriptionAsync(string operatorUserId, PlanType planType,
         bool ultimate = false);
@@ -50,6 +48,9 @@ public interface IUserQuotaGAgent : IGAgent
     // New methods for free trial support
     Task<bool> ActivateFreeTrialAsync(int trialDays, PlanType planType, bool isUltimate);
     Task<FreeTrialInfoDto> GetFreeTrialInfoAsync();
+    
+    // Method for purchased credits with transaction tracking
+    Task<GrainResultDto<int>> AddPurchasedCreditsAsync(int creditsAmount, string transactionId);
 }
 
 [GAgent(nameof(UserQuotaGAgent))]
@@ -567,85 +568,6 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
         return Task.CompletedTask;
     }
 
-    public async Task UpdateQuotaAsync(string productId, DateTime expiresDate)
-    {
-        _logger.LogInformation(
-            "[UserQuotaGrain][UpdateQuotaAsync] Updating quota for user {UserId} with product {ProductId}, expires on {ExpiresDate}",
-            this.GetPrimaryKeyString(), productId, expiresDate);
-
-        // Determine subscription type based on product ID
-        PlanType planType = DeterminePlanTypeFromProductId(productId);
-
-        var subscriptionDto = new SubscriptionInfoDto
-        {
-            PlanType = planType,
-            IsActive = true,
-            StartDate = DateTime.UtcNow,
-            EndDate = expiresDate,
-            Status = PaymentStatus.Completed,
-            SubscriptionIds = State.Subscription.SubscriptionIds,
-            InvoiceIds = State.Subscription.InvoiceIds
-        };
-
-        RaiseEvent(new UpdateSubscriptionLogEvent
-        {
-            SubscriptionInfo = subscriptionDto,
-            IsUltimate = false
-        });
-        await ConfirmEvents();
-
-        // Reset rate limits
-        await ResetRateLimitsAsync();
-    }
-
-    public async Task ResetQuotaAsync()
-    {
-        _logger.LogInformation("[UserQuotaGrain][ResetQuotaAsync] Resetting quota for user {UserId}",
-            this.GetPrimaryKeyString());
-
-        var subscriptionDto = new SubscriptionInfoDto
-        {
-            IsActive = false,
-            PlanType = State.Subscription.PlanType,
-            Status = PaymentStatus.None,
-            StartDate = State.Subscription.StartDate,
-            EndDate = State.Subscription.EndDate,
-            SubscriptionIds = State.Subscription.SubscriptionIds,
-            InvoiceIds = State.Subscription.InvoiceIds
-        };
-
-        RaiseEvent(new UpdateSubscriptionLogEvent
-        {
-            SubscriptionInfo = subscriptionDto,
-            IsUltimate = false
-        });
-        await ConfirmEvents();
-
-        // Reset rate limits
-        await ResetRateLimitsAsync();
-    }
-
-    private PlanType DeterminePlanTypeFromProductId(string productId)
-    {
-        // Determine subscription type based on product ID prefix or naming conventions
-        // Assume product ID contains information about monthly/yearly plan
-        if (productId.Contains("monthly") || productId.Contains("month"))
-        {
-            return PlanType.Month;
-        }
-        else if (productId.Contains("yearly") || productId.Contains("year"))
-        {
-            return PlanType.Year;
-        }
-        else if (productId.Contains("daily") || productId.Contains("day"))
-        {
-            return PlanType.Day;
-        }
-
-        // Default to monthly plan
-        return PlanType.Month;
-    }
-
     public async Task<GrainResultDto<int>> UpdateCreditsAsync(string operatorUserId, int creditsChange)
     {
         if (!IsUserAuthorizedToUpdateCredits(operatorUserId))
@@ -876,6 +798,88 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
 
         return Task.FromResult(freeTrialInfo);
     }
+
+    /// <summary>
+    /// Adds purchased credits to user account and records the transaction ID to prevent duplicate processing
+    /// </summary>
+    /// <param name="creditsAmount">Number of credits to add (must be positive)</param>
+    /// <param name="transactionId">Unique transaction identifier</param>
+    /// <returns>Result containing updated credits amount</returns>
+    public async Task<GrainResultDto<int>> AddPurchasedCreditsAsync(int creditsAmount, string transactionId)
+    {
+        try
+        {
+            // Validate input parameters
+            if (creditsAmount <= 0)
+            {
+                _logger.LogWarning(
+                    "[UserQuotaGAgent][AddPurchasedCreditsAsync] Invalid credits amount: {CreditsAmount} for user {UserId}",
+                    creditsAmount, this.GetPrimaryKey().ToString());
+
+                return new GrainResultDto<int>
+                {
+                    Success = false,
+                    Message = "Credits amount must be positive",
+                    Data = State.Credits
+                };
+            }
+
+            // Check if transaction has already been processed
+            if (State.OneTimeTransactionIds.Contains(transactionId))
+            {
+                _logger.LogInformation(
+                    "[UserQuotaGAgent][AddPurchasedCreditsAsync] Transaction {TransactionId} already processed for user {UserId}",
+                    transactionId, this.GetPrimaryKey().ToString());
+
+                return new GrainResultDto<int>
+                {
+                    Success = false,
+                    Message = "Transaction already processed",
+                    Data = State.Credits
+                };
+            }
+
+            // Initialize credits if needed
+            await InitializeCreditsAsync();
+
+            var oldCredits = State.Credits;
+
+            // Raise event to add purchased credits and record transaction
+            RaiseEvent(new AddPurchasedCreditsLogEvent
+            {
+                CreditsAmount = oldCredits + creditsAmount,
+                TransactionId = transactionId,
+                PurchaseDate = DateTime.UtcNow
+            });
+
+            await ConfirmEvents();
+
+            _logger.LogInformation(
+                "[UserQuotaGAgent][AddPurchasedCreditsAsync] Successfully added {CreditsAmount} purchased credits for user {UserId}. " +
+                "Credits updated: {OldCredits} -> {NewCredits}, Transaction ID: {TransactionId}",
+                creditsAmount, this.GetPrimaryKey().ToString(), oldCredits, State.Credits, transactionId);
+
+            return new GrainResultDto<int>
+            {
+                Success = true,
+                Message = $"Successfully added {creditsAmount} purchased credits",
+                Data = State.Credits
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[UserQuotaGAgent][AddPurchasedCreditsAsync] Failed to add purchased credits for user {UserId}: {ErrorMessage}",
+                this.GetPrimaryKey().ToString(), ex.Message);
+
+            return new GrainResultDto<int>
+            {
+                Success = false,
+                Message = $"Failed to add purchased credits: {ex.Message}",
+                Data = State.Credits
+            };
+        }
+    }
     
     protected sealed override void GAgentTransitionState(UserQuotaGAgentState state,
         StateLogEventBase<UserQuotaLogEvent> @event)
@@ -979,6 +983,17 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 state.FreeTrialInfo.TrialDays = activateFreeTrialEvent.TrialDays;
                 state.FreeTrialInfo.PlanType = activateFreeTrialEvent.PlanType;
                 state.FreeTrialInfo.IsUltimate = activateFreeTrialEvent.IsUltimate;
+                break;
+
+            case AddPurchasedCreditsLogEvent addPurchasedCredits:
+                // Add credits to current balance
+                state.Credits = addPurchasedCredits.CreditsAmount;
+                
+                // Record transaction ID to prevent duplicate processing
+                if (!state.OneTimeTransactionIds.Contains(addPurchasedCredits.TransactionId))
+                {
+                    state.OneTimeTransactionIds.Add(addPurchasedCredits.TransactionId);
+                }
                 break;
                 
             case ClearAllLogEvent clearAll:
