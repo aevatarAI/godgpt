@@ -360,8 +360,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // Prediction not found - trigger async generation and return error
             _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Prediction not found for {type}, triggering async generation");
             
-            // Trigger async generation (fire-and-forget)
-            TriggerOnDemandGenerationAsync(userInfo, today, type, userLanguage);
+            // Trigger async generation (wait for lock to be set, then fire-and-forget the actual generation)
+            await TriggerOnDemandGenerationAsync(userInfo, today, type, userLanguage);
             
                 totalStopwatch.Stop();
             return new GetTodayPredictionResult
@@ -1410,9 +1410,10 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
     }
 
     /// <summary>
-    /// Trigger on-demand generation for a prediction (Fire-and-forget)
+    /// Trigger on-demand generation for a prediction
+    /// Waits for lock to be persisted, then starts generation in background
     /// </summary>
-    private async void TriggerOnDemandGenerationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
+    private async Task TriggerOnDemandGenerationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
     {
         // Check if generation is already in progress (memory-based check, may not survive deactivation)
         if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
@@ -1424,6 +1425,7 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering async generation for {type}, Language: {targetLanguage}");
         
         // Set generation lock using Event Sourcing (persisted to survive Grain deactivation)
+        // IMPORTANT: Wait for ConfirmEvents to complete before returning, so status interface can see the lock
         RaiseEvent(new GenerationLockSetEvent
         {
             Type = type,
