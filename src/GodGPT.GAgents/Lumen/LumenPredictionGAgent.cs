@@ -807,6 +807,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                 parsedResults["westernOverview_sunSign"] = TranslateSunSign(sunSign, targetLanguage);
+                parsedResults["westernOverview_moonSign"] = TranslateSunSign(moonSign, targetLanguage);
+                parsedResults["westernOverview_risingSign"] = TranslateSunSign(risingSign, targetLanguage);
                 parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
                 parsedResults["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                 parsedResults["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, targetLanguage);
@@ -832,6 +834,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
                         multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                         multilingualResults[lang]["westernOverview_sunSign"] = TranslateSunSign(sunSign, lang);
+                        multilingualResults[lang]["westernOverview_moonSign"] = TranslateSunSign(moonSign, lang);
+                        multilingualResults[lang]["westernOverview_risingSign"] = TranslateSunSign(risingSign, lang);
                         multilingualResults[lang]["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, lang);
                         multilingualResults[lang]["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                         multilingualResults[lang]["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, lang);
@@ -1086,8 +1090,35 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         var currentYear = DateTime.UtcNow.Year;
         var birthYear = userInfo.BirthDate.Year;
         
-        // Western Zodiac
-        var sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+        // Western Zodiac - Use Swiss Ephemeris for accurate Moon/Rising calculation
+        string sunSign, moonSign, risingSign;
+        try
+        {
+            // Create temporary GodChat instance for coordinate lookup
+            var coordinateGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_coordinates");
+            var coordinateGodChat = _clusterClient.GetGrain<IGodChat>(coordinateGrainKey);
+            
+            // Initialize astrology calculator
+            var astrologyCalculator = new WesternAstrologyCalculator(
+                _logger as ILogger<WesternAstrologyCalculator>, 
+                coordinateGodChat);
+            
+            // Calculate all three signs using Swiss Ephemeris
+            (sunSign, moonSign, risingSign) = await astrologyCalculator.CalculateSignsAsync(
+                userInfo.BirthDate, 
+                userInfo.BirthTime, 
+                userInfo.BirthCity);
+            
+            _logger.LogInformation($"[Lumen][Lifetime] Calculated Western signs for {userInfo.UserId} - Sun: {sunSign}, Moon: {moonSign}, Rising: {risingSign}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, $"[Lumen][Lifetime] Failed to calculate Western signs, using fallback");
+            // Fallback to simple Sun sign calculation
+            sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            moonSign = sunSign;
+            risingSign = sunSign;
+        }
         
         // Chinese Zodiac & Element
         var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
@@ -1154,6 +1185,8 @@ Current Year: {currentYear}
 
 ========== PRE-CALCULATED VALUES (Use these EXACT values, do NOT recalculate) ==========
 Sun Sign: {sunSign}
+Moon Sign: {moonSign} (Calculated using Swiss Ephemeris based on birth time and location)
+Rising Sign: {risingSign} (Calculated using Swiss Ephemeris based on birth time and location)
 Birth Year Zodiac (USER'S ZODIAC): {birthYearZodiac}
 Birth Year Animal (USER'S ANIMAL): {birthYearAnimal}
 Birth Year Element: {birthYearElement}
@@ -1176,8 +1209,8 @@ FORMAT (flattened - Backend will inject: chineseZodiac_title, chineseZodiac_anim
       ""zodiacWhisper"": ""[VARIED: 40-50 words perspective on how {birthYearAnimal} enhances Western chart. Start '{birthYearAnimal} adds...' Use 'You are not only X, but Y']"",
       ""sunSign_tagline"": ""[VARIED: You [2-5 words poetic metaphor]]"",
       ""westernOverview_sunArchetype"": ""[Sun in {sunSign} - The [3-5 words archetype title]]"", ""westernOverview_sunDescription"": ""[18-25 words: Core traits using 'You']"",
-      ""westernOverview_moonSign"": ""[Infer from context or use {sunSign}]"", ""westernOverview_moonArchetype"": ""[Moon in [sign] - The [3-5 words archetype title]]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
-      ""westernOverview_risingSign"": ""[Use {sunSign} if no birth time]"", ""westernOverview_risingArchetype"": ""[Rising in [sign] - The [3-5 words archetype title]]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
+      ""westernOverview_moonSign"": ""{moonSign}"", ""westernOverview_moonArchetype"": ""[Moon in {moonSign} - The [3-5 words archetype title]]"", ""westernOverview_moonDescription"": ""[15-20 words: Emotional nature]"",
+      ""westernOverview_risingSign"": ""{risingSign}"", ""westernOverview_risingArchetype"": ""[Rising in {risingSign} - The [3-5 words archetype title]]"", ""westernOverview_risingDescription"": ""[20-28 words: How they meet world]"",
       ""combinedEssence"": ""[15-20 words: 'You think like [Sun], feel like [Moon], move through world like [Rising]']"",
       ""strengths_overview"": ""[VARIED: 10-15 words on growth path]"",
       ""strengths_item1_title"": ""[VARIED: 2-5 words]"", ""strengths_item1_description"": ""[VARIED: 15-25 words, attribute to specific sign combinations]"",
