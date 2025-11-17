@@ -13,8 +13,7 @@ namespace Aevatar.Application.Grains.Lumen;
 /// </summary>
 public interface ILumenPredictionHistoryGAgent : IGAgent
 {
-    Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, 
-        Dictionary<string, string> results, PredictionType type);
+    Task AddPredictionAsync(PredictionResultDto prediction);
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionByDateAsync(DateOnly date);
@@ -24,6 +23,8 @@ public interface ILumenPredictionHistoryGAgent : IGAgent
     
     [ReadOnly]
     Task<List<PredictionResultDto>> GetMonthlyPredictionsAsync(int year, int month);
+    
+    Task ClearHistoryAsync();
 }
 
 [GAgent(nameof(LumenPredictionHistoryGAgent))]
@@ -56,14 +57,20 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                 // Remove old prediction for the same date (if exists)
                 state.RecentPredictions.RemoveAll(p => p.PredictionDate == addedEvent.PredictionDate);
                 
-                // Add new prediction
+                // Add new prediction with complete data
                 state.RecentPredictions.Add(new PredictionHistoryRecord
                 {
                     PredictionId = addedEvent.PredictionId,
                     PredictionDate = addedEvent.PredictionDate,
                     CreatedAt = addedEvent.CreatedAt,
                     Results = addedEvent.Results,
-                    Type = addedEvent.Type
+                    Type = addedEvent.Type,
+                    AvailableLanguages = addedEvent.AvailableLanguages,
+                    RequestedLanguage = addedEvent.RequestedLanguage,
+                    ReturnedLanguage = addedEvent.ReturnedLanguage,
+                    FromCache = addedEvent.FromCache,
+                    AllLanguagesGenerated = addedEvent.AllLanguagesGenerated,
+                    IsFallback = addedEvent.IsFallback
                 });
                 
                 // Sort by date descending (newest first)
@@ -81,34 +88,51 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                 
                 state.LastUpdatedAt = DateTime.UtcNow;
                 break;
+                
+            case PredictionHistoryClearedEvent clearEvent:
+                // Clear all history data
+                state.UserId = string.Empty;
+                state.RecentPredictions.Clear();
+                state.LastUpdatedAt = clearEvent.ClearedAt;
+                break;
         }
     }
 
-    public async Task AddPredictionAsync(Guid predictionId, DateOnly predictionDate, 
-        Dictionary<string, string> results, PredictionType type)
+    public async Task AddPredictionAsync(PredictionResultDto prediction)
     {
         try
         {
             _logger.LogDebug("[LumenPredictionHistoryGAgent][AddPredictionAsync] Adding prediction: {PredictionId}, Date: {Date}, Type: {Type}",
-                predictionId, predictionDate, type);
+                prediction.PredictionId, prediction.PredictionDate, prediction.Type);
 
-            var now = DateTime.UtcNow;
+            // Set UserId if State is empty (first time)
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                State.UserId = prediction.UserId;
+            }
 
-            // Raise event to add prediction to history
+            // Raise event to add prediction to history with complete data
             RaiseEvent(new PredictionAddedToHistoryEvent
             {
-                PredictionId = predictionId,
-                PredictionDate = predictionDate,
-                CreatedAt = now,
-                Results = results,
-                Type = type
+                PredictionId = prediction.PredictionId,
+                PredictionDate = prediction.PredictionDate,
+                CreatedAt = prediction.CreatedAt,
+                Results = prediction.Results,
+                Type = prediction.Type,
+                UserId = prediction.UserId,
+                AvailableLanguages = prediction.AvailableLanguages ?? new List<string>(),
+                RequestedLanguage = prediction.RequestedLanguage,
+                ReturnedLanguage = prediction.ReturnedLanguage,
+                FromCache = prediction.FromCache,
+                AllLanguagesGenerated = prediction.AllLanguagesGenerated,
+                IsFallback = prediction.IsFallback
             });
 
             // Confirm events to persist state changes
             await ConfirmEvents();
 
             _logger.LogInformation("[LumenPredictionHistoryGAgent][AddPredictionAsync] Prediction added to history: {PredictionId}",
-                predictionId);
+                prediction.PredictionId);
         }
         catch (Exception ex)
         {
@@ -123,7 +147,8 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
         {
             _logger.LogDebug("[LumenPredictionHistoryGAgent][GetPredictionByDateAsync] Getting prediction for date: {Date}", date);
 
-            var prediction = State.RecentPredictions.FirstOrDefault(p => p.PredictionDate == date);
+            // Only return Daily predictions (history is for daily predictions only)
+            var prediction = State.RecentPredictions.FirstOrDefault(p => p.PredictionDate == date && p.Type == PredictionType.Daily);
             
             if (prediction == null)
             {
@@ -138,7 +163,13 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                 PredictionDate = prediction.PredictionDate,
                 Results = prediction.Results,
                 CreatedAt = prediction.CreatedAt,
-                FromCache = true
+                Type = prediction.Type,
+                FromCache = prediction.FromCache,
+                AvailableLanguages = prediction.AvailableLanguages,
+                AllLanguagesGenerated = prediction.AllLanguagesGenerated,
+                RequestedLanguage = prediction.RequestedLanguage,
+                ReturnedLanguage = prediction.ReturnedLanguage,
+                IsFallback = prediction.IsFallback
             });
         }
         catch (Exception ex)
@@ -161,8 +192,9 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
 
             var cutoffDate = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-days + 1);
             
+            // Only return Daily predictions (history is for daily predictions only)
             var recentPredictions = State.RecentPredictions
-                .Where(p => p.PredictionDate >= cutoffDate)
+                .Where(p => p.PredictionDate >= cutoffDate && p.Type == PredictionType.Daily)
                 .OrderByDescending(p => p.PredictionDate)
                 .Take(days)
                 .Select(p => new PredictionResultDto
@@ -172,7 +204,13 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                     PredictionDate = p.PredictionDate,
                     Results = p.Results,
                     CreatedAt = p.CreatedAt,
-                    FromCache = true
+                    Type = p.Type,
+                    FromCache = p.FromCache,
+                    AvailableLanguages = p.AvailableLanguages,
+                    AllLanguagesGenerated = p.AllLanguagesGenerated,
+                    RequestedLanguage = p.RequestedLanguage,
+                    ReturnedLanguage = p.ReturnedLanguage,
+                    IsFallback = p.IsFallback
                 })
                 .ToList();
 
@@ -199,8 +237,9 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
             var firstDayOfMonth = new DateOnly(year, month, 1);
             var lastDayOfMonth = firstDayOfMonth.AddMonths(1).AddDays(-1);
 
+            // Only return Daily predictions (history is for daily predictions only)
             var monthlyPredictions = State.RecentPredictions
-                .Where(p => p.PredictionDate >= firstDayOfMonth && p.PredictionDate <= lastDayOfMonth)
+                .Where(p => p.PredictionDate >= firstDayOfMonth && p.PredictionDate <= lastDayOfMonth && p.Type == PredictionType.Daily)
                 .OrderByDescending(p => p.PredictionDate)
                 .Select(p => new PredictionResultDto
                 {
@@ -209,8 +248,13 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
                     PredictionDate = p.PredictionDate,
                     Results = p.Results,
                     CreatedAt = p.CreatedAt,
-                    FromCache = true,
-                    Type = p.Type
+                    Type = p.Type,
+                    FromCache = p.FromCache,
+                    AvailableLanguages = p.AvailableLanguages,
+                    AllLanguagesGenerated = p.AllLanguagesGenerated,
+                    RequestedLanguage = p.RequestedLanguage,
+                    ReturnedLanguage = p.ReturnedLanguage,
+                    IsFallback = p.IsFallback
                 })
                 .ToList();
 
@@ -223,6 +267,30 @@ public class LumenPredictionHistoryGAgent : GAgentBase<LumenPredictionHistorySta
         {
             _logger.LogError(ex, "[LumenPredictionHistoryGAgent][GetMonthlyPredictionsAsync] Error getting monthly predictions");
             return Task.FromResult(new List<PredictionResultDto>());
+        }
+    }
+    
+    public async Task ClearHistoryAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[LumenPredictionHistoryGAgent][ClearHistoryAsync] Clearing prediction history");
+
+            // Raise event to clear history
+            RaiseEvent(new PredictionHistoryClearedEvent
+            {
+                ClearedAt = DateTime.UtcNow
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenPredictionHistoryGAgent][ClearHistoryAsync] Prediction history cleared successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionHistoryGAgent][ClearHistoryAsync] Error clearing prediction history");
+            throw;
         }
     }
 }
