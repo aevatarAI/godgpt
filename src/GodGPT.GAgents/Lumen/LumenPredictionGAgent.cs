@@ -671,9 +671,34 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         try
         {
+            // Pre-calculate Moon and Rising signs if birth time and city are available
+            string? moonSign = null;
+            string? risingSign = null;
+            
+            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.BirthCity))
+            {
+                try
+                {
+                    var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
+                    var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
+                        userInfo.BirthDate,
+                        userInfo.BirthTime,
+                        userInfo.BirthCity);
+                    
+                    moonSign = calculatedMoonSign;
+                    risingSign = calculatedRisingSign;
+                    
+                    _logger.LogInformation($"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, $"[LumenPredictionGAgent] Failed to calculate Moon/Rising signs for user {userInfo.UserId}, will use Sun sign as fallback");
+                }
+            }
+            
             // Build prompt
             var promptStopwatch = Stopwatch.StartNew();
-            var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage);
+            var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage, moonSign, risingSign);
             promptStopwatch.Stop();
             var promptTokens = TokenHelper.EstimateTokenCount(prompt);
             _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}");
@@ -1029,7 +1054,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// <summary>
     /// Build prediction prompt for AI (single language generation for first stage)
     /// </summary>
-    private string BuildPredictionPrompt(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
+    private string BuildPredictionPrompt(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en", string? moonSign = null, string? risingSign = null)
     {
         // Build user info line dynamically based on available fields
         var userInfoParts = new List<string>();
@@ -1039,9 +1064,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         
         // Birth date and time (only include time if provided)
         var birthDateStr = $"Birth: {userInfo.BirthDate:yyyy-MM-dd}";
-        if (userInfo.BirthTime.HasValue)
+        if (userInfo.BirthTime != default)
         {
-            birthDateStr += $" {userInfo.BirthTime.Value:HH:mm}";
+            birthDateStr += $" {userInfo.BirthTime:HH:mm}";
         }
         
         // Calendar type (only include if provided)
@@ -1090,35 +1115,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         var currentYear = DateTime.UtcNow.Year;
         var birthYear = userInfo.BirthDate.Year;
         
-        // Western Zodiac - Use Swiss Ephemeris for accurate Moon/Rising calculation
-        string sunSign, moonSign, risingSign;
-        try
-        {
-            // Create temporary GodChat instance for coordinate lookup
-            var coordinateGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_coordinates");
-            var coordinateGodChat = _clusterClient.GetGrain<IGodChat>(coordinateGrainKey);
-            
-            // Initialize astrology calculator
-            var astrologyCalculator = new WesternAstrologyCalculator(
-                _logger as ILogger<WesternAstrologyCalculator>, 
-                coordinateGodChat);
-            
-            // Calculate all three signs using Swiss Ephemeris
-            (sunSign, moonSign, risingSign) = await astrologyCalculator.CalculateSignsAsync(
-                userInfo.BirthDate, 
-                userInfo.BirthTime, 
-                userInfo.BirthCity);
-            
-            _logger.LogInformation($"[Lumen][Lifetime] Calculated Western signs for {userInfo.UserId} - Sun: {sunSign}, Moon: {moonSign}, Rising: {risingSign}");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, $"[Lumen][Lifetime] Failed to calculate Western signs, using fallback");
-            // Fallback to simple Sun sign calculation
-            sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
-            moonSign = sunSign;
-            risingSign = sunSign;
-        }
+        // Western Zodiac
+        string sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+        // Use provided moonSign and risingSign if available, otherwise fall back to sunSign
+        moonSign = moonSign ?? sunSign;
+        risingSign = risingSign ?? sunSign;
         
         // Chinese Zodiac & Element
         var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
@@ -3299,7 +3300,7 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
                 LastName = profileResult.UserProfile.FullName.Contains(' ') ? string.Join(" ", profileResult.UserProfile.FullName.Split(' ').Skip(1)) : "",
                 Gender = profileResult.UserProfile.Gender,
                 BirthDate = profileResult.UserProfile.BirthDate,
-                BirthTime = profileResult.UserProfile.BirthTime,
+                BirthTime = profileResult.UserProfile.BirthTime ?? default,
                 BirthCountry = profileResult.UserProfile.BirthCountry,
                 BirthCity = profileResult.UserProfile.BirthCity,
                 CalendarType = profileResult.UserProfile.CalendarType,
