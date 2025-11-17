@@ -11,17 +11,17 @@ public class UpdateUserProfileRequest
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public string FullName { get; set; } = string.Empty;
     [Id(2)] public GenderEnum Gender { get; set; }
-    [Id(3)] public DateOnly BirthDate { get; set; }
-    [Id(4)] public TimeOnly? BirthTime { get; set; } // Optional
-    [Id(5)] public string? BirthCountry { get; set; }
-    [Id(6)] public string? BirthCity { get; set; }
-    [Id(7)] public MbtiTypeEnum? MbtiType { get; set; }
-    [Id(8)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
-    [Id(9)] public string? Interests { get; set; }
+    [Id(3)] public DateOnly BirthDate { get; set; } // Required
+    [Id(4)] public TimeOnly BirthTime { get; set; } // Required for accurate Moon/Rising calculation
+    [Id(5)] public string? BirthCountry { get; set; } // Optional
+    [Id(6)] public string BirthCity { get; set; } = string.Empty; // Required for location-based calculations
+    [Id(7)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
+    [Id(8)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
+    [Id(9)] public string? Interests { get; set; } // Optional
     [Id(10)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
-    [Id(11)] public string? CurrentResidence { get; set; }
-    [Id(12)] public string? Email { get; set; }
-    [Id(13)] public string? Occupation { get; set; }
+    [Id(11)] public string? CurrentResidence { get; set; } // Optional
+    [Id(12)] public string? Email { get; set; } // Optional
+    [Id(13)] public string? Occupation { get; set; } // Optional
 }
 
 /// <summary>
