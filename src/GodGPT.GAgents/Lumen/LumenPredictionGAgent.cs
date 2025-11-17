@@ -2355,9 +2355,51 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
     {
         if (string.IsNullOrWhiteSpace(cardName)) return TarotCardEnum.Unknown;
         
-        // Remove "The " prefix and spaces for matching
-        var normalized = cardName.Replace("The ", "").Replace(" ", "").Replace("of", "Of").Trim();
+        // Try Chinese mapping first
+        var chineseMapping = new Dictionary<string, TarotCardEnum>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Major Arcana
+            {"愚者", TarotCardEnum.TheFool}, {"魔术师", TarotCardEnum.TheMagician}, {"女祭司", TarotCardEnum.TheHighPriestess},
+            {"皇后", TarotCardEnum.TheEmpress}, {"皇帝", TarotCardEnum.TheEmperor}, {"教皇", TarotCardEnum.TheHierophant},
+            {"恋人", TarotCardEnum.TheLovers}, {"战车", TarotCardEnum.TheChariot}, {"力量", TarotCardEnum.Strength},
+            {"隐士", TarotCardEnum.TheHermit}, {"命运之轮", TarotCardEnum.WheelOfFortune}, {"正义", TarotCardEnum.Justice},
+            {"倒吊人", TarotCardEnum.TheHangedMan}, {"死神", TarotCardEnum.Death}, {"节制", TarotCardEnum.Temperance},
+            {"恶魔", TarotCardEnum.TheDevil}, {"高塔", TarotCardEnum.TheTower}, {"星星", TarotCardEnum.TheStar},
+            {"月亮", TarotCardEnum.TheMoon}, {"太阳", TarotCardEnum.TheSun}, {"审判", TarotCardEnum.Judgement},
+            {"世界", TarotCardEnum.TheWorld},
+            // Wands (only showing some common ones, expand as needed)
+            {"权杖王牌", TarotCardEnum.AceOfWands}, {"权杖二", TarotCardEnum.TwoOfWands}, {"权杖三", TarotCardEnum.ThreeOfWands},
+            {"权杖四", TarotCardEnum.FourOfWands}, {"权杖五", TarotCardEnum.FiveOfWands}, {"权杖六", TarotCardEnum.SixOfWands},
+            {"权杖七", TarotCardEnum.SevenOfWands}, {"权杖八", TarotCardEnum.EightOfWands}, {"权杖九", TarotCardEnum.NineOfWands},
+            {"权杖十", TarotCardEnum.TenOfWands}, {"权杖侍从", TarotCardEnum.PageOfWands}, {"权杖骑士", TarotCardEnum.KnightOfWands},
+            {"权杖王后", TarotCardEnum.QueenOfWands}, {"权杖国王", TarotCardEnum.KingOfWands},
+            // Cups
+            {"圣杯王牌", TarotCardEnum.AceOfCups}, {"圣杯二", TarotCardEnum.TwoOfCups}, {"圣杯三", TarotCardEnum.ThreeOfCups},
+            {"圣杯四", TarotCardEnum.FourOfCups}, {"圣杯五", TarotCardEnum.FiveOfCups}, {"圣杯六", TarotCardEnum.SixOfCups},
+            {"圣杯七", TarotCardEnum.SevenOfCups}, {"圣杯八", TarotCardEnum.EightOfCups}, {"圣杯九", TarotCardEnum.NineOfCups},
+            {"圣杯十", TarotCardEnum.TenOfCups}, {"圣杯侍从", TarotCardEnum.PageOfCups}, {"圣杯骑士", TarotCardEnum.KnightOfCups},
+            {"圣杯王后", TarotCardEnum.QueenOfCups}, {"圣杯国王", TarotCardEnum.KingOfCups},
+            // Swords
+            {"宝剑王牌", TarotCardEnum.AceOfSwords}, {"宝剑二", TarotCardEnum.TwoOfSwords}, {"宝剑三", TarotCardEnum.ThreeOfSwords},
+            {"宝剑四", TarotCardEnum.FourOfSwords}, {"宝剑五", TarotCardEnum.FiveOfSwords}, {"宝剑六", TarotCardEnum.SixOfSwords},
+            {"宝剑七", TarotCardEnum.SevenOfSwords}, {"宝剑八", TarotCardEnum.EightOfSwords}, {"宝剑九", TarotCardEnum.NineOfSwords},
+            {"宝剑十", TarotCardEnum.TenOfSwords}, {"宝剑侍从", TarotCardEnum.PageOfSwords}, {"宝剑骑士", TarotCardEnum.KnightOfSwords},
+            {"宝剑王后", TarotCardEnum.QueenOfSwords}, {"宝剑国王", TarotCardEnum.KingOfSwords},
+            // Pentacles
+            {"星币王牌", TarotCardEnum.AceOfPentacles}, {"星币二", TarotCardEnum.TwoOfPentacles}, {"星币三", TarotCardEnum.ThreeOfPentacles},
+            {"星币四", TarotCardEnum.FourOfPentacles}, {"星币五", TarotCardEnum.FiveOfPentacles}, {"星币六", TarotCardEnum.SixOfPentacles},
+            {"星币七", TarotCardEnum.SevenOfPentacles}, {"星币八", TarotCardEnum.EightOfPentacles}, {"星币九", TarotCardEnum.NineOfPentacles},
+            {"星币十", TarotCardEnum.TenOfPentacles}, {"星币侍从", TarotCardEnum.PageOfPentacles}, {"星币骑士", TarotCardEnum.KnightOfPentacles},
+            {"星币王后", TarotCardEnum.QueenOfPentacles}, {"星币国王", TarotCardEnum.KingOfPentacles}
+        };
         
+        if (chineseMapping.TryGetValue(cardName.Trim(), out var chineseResult))
+        {
+            return chineseResult;
+        }
+        
+        // Try English parsing
+        var normalized = cardName.Replace("The ", "").Replace(" ", "").Replace("of", "Of").Trim();
         if (Enum.TryParse<TarotCardEnum>(normalized, true, out var result))
         {
             return result;
@@ -2378,8 +2420,15 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         
         return normalized switch
         {
+            // English
             "upright" => TarotOrientationEnum.Upright,
             "reversed" => TarotOrientationEnum.Reversed,
+            // Chinese
+            "正位" => TarotOrientationEnum.Upright,
+            "逆位" => TarotOrientationEnum.Reversed,
+            // Spanish
+            "derecha" => TarotOrientationEnum.Upright,
+            "invertida" => TarotOrientationEnum.Reversed,
             _ => TarotOrientationEnum.Unknown
         };
     }
@@ -2431,9 +2480,10 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
         // Remove spaces and special chars for matching
         var normalized = stoneName.Replace(" ", "").Replace("'", "").Replace("-", "").Trim();
         
-        // Handle special cases
+        // Handle special cases including multilingual support
         var specialCases = new Dictionary<string, CrystalStoneEnum>(StringComparer.OrdinalIgnoreCase)
         {
+            // English special cases
             { "RoseQuartz", CrystalStoneEnum.RoseQuartz },
             { "ClearQuartz", CrystalStoneEnum.ClearQuartz },
             { "BlackTourmaline", CrystalStoneEnum.BlackTourmaline },
@@ -2441,7 +2491,19 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
             { "Tiger'sEye", CrystalStoneEnum.TigersEye },
             { "TigerEye", CrystalStoneEnum.TigersEye },
             { "LapisLazuli", CrystalStoneEnum.Lapis },
-            { "Lapis", CrystalStoneEnum.Lapis }
+            { "Lapis", CrystalStoneEnum.Lapis },
+            // Chinese mappings
+            { "紫水晶", CrystalStoneEnum.Amethyst }, { "粉晶", CrystalStoneEnum.RoseQuartz }, { "芙蓉石", CrystalStoneEnum.RoseQuartz },
+            { "白水晶", CrystalStoneEnum.ClearQuartz }, { "黄水晶", CrystalStoneEnum.Citrine }, { "黑碧玺", CrystalStoneEnum.BlackTourmaline },
+            { "透石膏", CrystalStoneEnum.Selenite }, { "拉长石", CrystalStoneEnum.Labradorite }, { "月光石", CrystalStoneEnum.Moonstone },
+            { "红玛瑙", CrystalStoneEnum.Carnelian }, { "虎眼石", CrystalStoneEnum.TigersEye }, { "玉", CrystalStoneEnum.Jade },
+            { "绿松石", CrystalStoneEnum.Turquoise }, { "青金石", CrystalStoneEnum.Lapis }, { "海蓝宝", CrystalStoneEnum.Aquamarine },
+            { "祖母绿", CrystalStoneEnum.Emerald }, { "红宝石", CrystalStoneEnum.Ruby }, { "蓝宝石", CrystalStoneEnum.Sapphire },
+            { "石榴石", CrystalStoneEnum.Garnet }, { "蛋白石", CrystalStoneEnum.Opal }, { "黄玉", CrystalStoneEnum.Topaz },
+            { "橄榄石", CrystalStoneEnum.Peridot }, { "黑曜石", CrystalStoneEnum.Obsidian }, { "孔雀石", CrystalStoneEnum.Malachite },
+            { "赤铁矿", CrystalStoneEnum.Hematite }, { "黄铁矿", CrystalStoneEnum.Pyrite }, { "萤石", CrystalStoneEnum.Fluorite },
+            { "东陵玉", CrystalStoneEnum.Aventurine }, { "碧玉", CrystalStoneEnum.Jasper }, { "玛瑙", CrystalStoneEnum.Agate },
+            { "血石", CrystalStoneEnum.Bloodstone }, { "黑玛瑙", CrystalStoneEnum.Onyx }
         };
         
         if (specialCases.TryGetValue(normalized, out var specialResult))
