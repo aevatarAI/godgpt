@@ -819,6 +819,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
             var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
             
+            // Ensure moonSign and risingSign have fallback values (use sunSign if not calculated)
+            moonSign = moonSign ?? sunSign;
+            risingSign = risingSign ?? sunSign;
+            
             if (type == PredictionType.Lifetime)
             {
                 // Calculate Four Pillars (Ba Zi)
