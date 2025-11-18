@@ -48,8 +48,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             Gender = GenderEnum.Male,
             BirthDate = new DateOnly(1990, 6, 15),
             BirthTime = new TimeOnly(14, 30),
-            BirthCountry = "United States",
-            BirthCity = "New York"
+            BirthCity = "New York, USA",
+            LatLong = "40.7128, -74.0060"
         };
 
         var updateResult = await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
@@ -104,8 +104,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             FullName = "Jane Smith",
             Gender = GenderEnum.Female,
             BirthDate = new DateOnly(1995, 3, 20),
-            BirthCountry = "Canada",
-            BirthCity = "Toronto"
+            BirthCity = "Toronto, Canada",
+            LatLong = "43.6532, -79.3832"
         };
 
         await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
@@ -139,8 +139,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             FullName = "Madonna",
             Gender = GenderEnum.Female,
             BirthDate = new DateOnly(1958, 8, 16),
-            BirthCountry = "United States",
-            BirthCity = "Bay City"
+            BirthCity = "Bay City, USA",
+            LatLong = "43.5945, -83.8889"
         };
 
         await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
@@ -237,12 +237,11 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         profileResult.UserProfile.BirthDate.Year.ShouldBe(1985);
         
         // Verify birth time migration
-        profileResult.UserProfile.BirthTime.ShouldNotBeNull();
-        profileResult.UserProfile.BirthTime.Value.Hour.ShouldBe(10);
-        profileResult.UserProfile.BirthTime.Value.Minute.ShouldBe(45);
+        profileResult.UserProfile.BirthTime.ShouldNotBe(default(TimeOnly));
+        profileResult.UserProfile.BirthTime.Hour.ShouldBe(10);
+        profileResult.UserProfile.BirthTime.Minute.ShouldBe(45);
         
-        // Verify location migration
-        profileResult.UserProfile.BirthCountry.ShouldBe("United Kingdom");
+        // Verify location migration (BirthCountry is no longer used)
         profileResult.UserProfile.BirthCity.ShouldBe("London");
 
         _testOutputHelper.WriteLine("Migration from UserInfoCollection to LumenUserProfile completed successfully");
@@ -365,8 +364,8 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
             FullName = "Test User",
             Gender = GenderEnum.Male,
             BirthDate = new DateOnly(1990, 1, 1),
-            BirthCountry = "Test Country",
-            BirthCity = "Test City"
+            BirthCity = "Test City",
+            LatLong = "0, 0"
         };
 
         await lumenUserProfileGAgent.UpdateUserProfileAsync(updateProfileRequest);
@@ -493,8 +492,7 @@ public class DataMigrationTest : AevatarOrleansTestBase<AevatarGodGPTTestsMoudle
         profileResult.ShouldNotBeNull();
         profileResult.Success.ShouldBeTrue();
         profileResult.UserProfile.FullName.ShouldBe("Minimal Data");
-        profileResult.UserProfile.BirthTime.ShouldBeNull(); // Should be null
-        profileResult.UserProfile.BirthCountry.ShouldBeNull(); // Should be null
+        profileResult.UserProfile.BirthTime.ShouldBe(default(TimeOnly)); // Should be default
         profileResult.UserProfile.BirthCity.ShouldBeNull(); // Should be null
 
         _testOutputHelper.WriteLine("Partial data migration completed successfully");

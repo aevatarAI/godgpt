@@ -343,14 +343,14 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             // Prepare birth time components (optional)
             int? hour = null;
             int? minute = null;
-            if (profile.BirthTime.HasValue)
+            if (profile.BirthTime != default)
             {
-                hour = profile.BirthTime.Value.Hour;
-                minute = profile.BirthTime.Value.Minute;
+                hour = profile.BirthTime.Hour;
+                minute = profile.BirthTime.Minute;
             }
 
-            // Prepare location - allow partial data (country without city or vice versa)
-            string country = !string.IsNullOrWhiteSpace(profile.BirthCountry) ? profile.BirthCountry : null;
+            // Prepare location - allow partial data (city only)
+            string country = null; // BirthCountry is no longer used
             string city = !string.IsNullOrWhiteSpace(profile.BirthCity) ? profile.BirthCity : null;
 
             // Check if we have any data to migrate
@@ -602,8 +602,8 @@ User Language: {languageText}";
             fullName = "Unknown";
         }
 
-        // Generate location
-        var location = $"{userProfile.BirthCity}, {userProfile.BirthCountry}".Trim(' ', ',');
+        // Generate location (BirthCity only, BirthCountry is no longer used)
+        var location = userProfile.BirthCity ?? "";
         if (string.IsNullOrWhiteSpace(location))
         {
             location = "Unknown";
@@ -623,7 +623,7 @@ User Language: {languageText}";
         {
             try
             {
-                var birthDate = userProfile.BirthDate.ToDateTime(userProfile.BirthTime ?? default);;
+                var birthDate = userProfile.BirthDate.ToDateTime(userProfile.BirthTime);
                 var calculatedAge = currentTime.Year - userProfile.BirthDate.Year;
                 if (currentTime < birthDate.AddYears(calculatedAge))
                 {

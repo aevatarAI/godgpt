@@ -286,8 +286,8 @@ public class UpdateUserInfoRequest
     [Id(3)] public GenderEnum Gender { get; set; }
     [Id(4)] public DateOnly BirthDate { get; set; } // Required
     [Id(5)] public TimeOnly BirthTime { get; set; } // Required
-    [Id(6)] public string? BirthCountry { get; set; } // Optional
-    [Id(7)] public string BirthCity { get; set; } = string.Empty; // Required
+    [Id(6)] public string BirthCity { get; set; } = string.Empty; // Required
+    [Id(7)] public string LatLong { get; set; } = string.Empty; // Latitude,Longitude for astrology calculations
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
     [Id(10)] public string? Interests { get; set; } // Optional
