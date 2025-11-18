@@ -65,8 +65,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 6: Moved format and language purity constraints to system prompt for stronger LLM compliance
     /// Version 7: Fixed conflicting format requirements in singleLanguagePrefix (removed JSON requirements)
     /// Version 8: Simplified system prompt, clarified language purity for ALL languages (not just Chinese)
+    /// Version 9: Renamed sensitive fields to reduce LLM refusal (health→wellness, wealth→prosperity, destiny→path, fate→fortune)
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 8; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 9; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -795,7 +796,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             };
 
             // Simple system prompt - only role definition
-            var systemPrompt = @"You are a professional astrology and divination expert. Provide personalized, insightful predictions.";
+            var systemPrompt = @"You are a professional astrology and divination expert. Provide personalized, insightful predictions.
+
+IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection purposes only. Wellness suggestions are general wellbeing tips, not medical advice. Prosperity insights are educational guidance, not financial advice.";
 
             // Use "LUMEN" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
@@ -1306,13 +1309,13 @@ chal2_title[TAB][2-5 words]
 chal2_desc[TAB][10-18 words]
 chal3_title[TAB][2-5 words]
 chal3_desc[TAB][10-18 words]
-dest_intro[TAB][20-30 words starting 'You are here to...', end with dual identity]
-dest1_title[TAB][3-5 roles separated by /]
-dest1_desc[TAB][3-6 words]
-dest2_title[TAB][3-5 roles separated by /]
-dest2_desc[TAB][5-10 words]
-dest3_title[TAB][1-3 roles]
-dest3_desc[TAB][8-15 words]
+path_intro[TAB][20-30 words starting 'You are here to...', end with dual identity]
+path1_title[TAB][3-5 roles separated by /]
+path1_desc[TAB][3-6 words]
+path2_title[TAB][3-5 roles separated by /]
+path2_desc[TAB][5-10 words]
+path3_title[TAB][1-3 roles]
+path3_desc[TAB][8-15 words]
 cn_essence[TAB]Essence like {birthYearElement}
 cycle_title[TAB]Zodiac Cycle Influence (YYYY-YYYY) [calculate 20-year period from birth year]
 cycle_name_en[TAB][English name]
@@ -1393,16 +1396,16 @@ love_tag[TAB][10-15 words philosophical]
 love_do[TAB]item1|item2
 love_avoid[TAB]item1|item2
 love_detail[TAB][50-70 words in 3 parts: formula, emotional state, relationship needs]
-wealth_score[TAB][1-5]
-wealth_tag[TAB][10-15 words]
-wealth_do[TAB]item1|item2
-wealth_avoid[TAB]item1|item2
-wealth_detail[TAB][50-70 words in 3 parts: formula, climate, prosperity needs]
-health_score[TAB][1-5]
-health_tag[TAB][10-15 words]
-health_do[TAB]item1|item2
-health_avoid[TAB]item1|item2
-health_detail[TAB][50-70 words in 3 parts: formula, state, wellness needs]
+prosperity_score[TAB][1-5]
+prosperity_tag[TAB][10-15 words]
+prosperity_do[TAB]item1|item2
+prosperity_avoid[TAB]item1|item2
+prosperity_detail[TAB][50-70 words in 3 parts: formula, climate, abundance needs]
+wellness_score[TAB][1-5]
+wellness_tag[TAB][10-15 words]
+wellness_do[TAB]item1|item2
+wellness_avoid[TAB]item1|item2
+wellness_detail[TAB][50-70 words in 3 parts: formula, state, wellbeing needs]
 mantra[TAB][18-25 words using first-person 'My' declarations, 2-3 powerful statements]
 
 CRITICAL FORMAT REQUIREMENTS:
@@ -1465,8 +1468,8 @@ path_detail[TAB]30-40 words of wisdom
 # Life Areas (4 fields)
 career[TAB]10-20 words advice
 love[TAB]10-20 words advice
-wealth[TAB]10-20 words advice
-health[TAB]10-15 words advice
+prosperity[TAB]10-20 words advice
+wellness[TAB]10-15 words advice
 
 # Takeaway (1 field)
 takeaway[TAB]15-25 words '{displayName}, your...'
@@ -1488,11 +1491,11 @@ spell[TAB]2 words poetic
 spell_words[TAB]20-30 words affirmation in quotes
 spell_intent[TAB]10-12 words 'To [verb]...'
 
-=== 4. TWIST OF FATE ===
-fate_title[TAB]4-8 words poetic metaphor
-fate_do[TAB]activity1|activity2|activity3|activity4|activity5
-fate_avoid[TAB]activity1|activity2|activity3|activity4|activity5
-fate_tip[TAB]10-15 words 'Today's turning point...'
+=== 4. TWIST OF FORTUNE ===
+fortune_title[TAB]4-8 words poetic metaphor
+fortune_do[TAB]activity1|activity2|activity3|activity4|activity5
+fortune_avoid[TAB]activity1|activity2|activity3|activity4|activity5
+fortune_tip[TAB]10-15 words 'Today's turning point...'
 
 CONTENT REQUIREMENTS:
 - Array values: EXACTLY 5 items for each array, each item 2-3 words
@@ -2195,15 +2198,15 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             "twistOfFate_favorable",
             "twistOfFate_avoid",
             
-            // Yearly prediction array fields
+            // Yearly prediction array fields  
             "divineInfluence_career_bestMoves",
             "divineInfluence_career_avoid",
             "divineInfluence_love_bestMoves",
             "divineInfluence_love_avoid",
-            "divineInfluence_wealth_bestMoves",
-            "divineInfluence_wealth_avoid",
-            "divineInfluence_health_bestMoves",
-            "divineInfluence_health_avoid"
+            "divineInfluence_wealth_bestMoves",  // prosperity_* maps to this
+            "divineInfluence_wealth_avoid",      // prosperity_* maps to this
+            "divineInfluence_health_bestMoves",  // wellness_* maps to this
+            "divineInfluence_health_avoid"       // wellness_* maps to this
             
             // Lifetime prediction has no array fields
         };
@@ -2245,11 +2248,11 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["path_intro"] = "todaysReading_pathDescription",
             ["path_detail"] = "todaysReading_pathDescriptionExpanded",
             
-            // Life Areas (no prefix - contextually clear)
+            // Life Areas (renamed to reduce LLM refusal risk)
             ["career"] = "todaysReading_careerAndWork",
             ["love"] = "todaysReading_loveAndRelationships",
-            ["wealth"] = "todaysReading_wealthAndFinance",
-            ["health"] = "todaysReading_healthAndWellness",
+            ["prosperity"] = "todaysReading_wealthAndFinance",
+            ["wellness"] = "todaysReading_healthAndWellness",
             
             // Takeaway
             ["takeaway"] = "todaysTakeaway",
@@ -2270,11 +2273,11 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["spell_words"] = "luckyAlignments_luckySpell_description",
             ["spell_intent"] = "luckyAlignments_luckySpell_intent",
             
-            // Twist of Fate (fate_*)
-            ["fate_title"] = "twistOfFate_title",
-            ["fate_do"] = "twistOfFate_favorable",
-            ["fate_avoid"] = "twistOfFate_avoid",
-            ["fate_tip"] = "twistOfFate_todaysRecommendation",
+            // Twist of Fortune (fortune_* - renamed from fate_*)
+            ["fortune_title"] = "twistOfFate_title",
+            ["fortune_do"] = "twistOfFate_favorable",
+            ["fortune_avoid"] = "twistOfFate_avoid",
+            ["fortune_tip"] = "twistOfFate_todaysRecommendation",
             
             // ===== YEARLY PREDICTION MAPPINGS =====
             ["astro_overlay"] = "westernAstroOverlay",
@@ -2291,16 +2294,16 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["love_do"] = "divineInfluence_love_bestMoves",
             ["love_avoid"] = "divineInfluence_love_avoid",
             ["love_detail"] = "divineInfluence_love_inANutshell",
-            ["wealth_score"] = "divineInfluence_wealth_score",
-            ["wealth_tag"] = "divineInfluence_wealth_tagline",
-            ["wealth_do"] = "divineInfluence_wealth_bestMoves",
-            ["wealth_avoid"] = "divineInfluence_wealth_avoid",
-            ["wealth_detail"] = "divineInfluence_wealth_inANutshell",
-            ["health_score"] = "divineInfluence_health_score",
-            ["health_tag"] = "divineInfluence_health_tagline",
-            ["health_do"] = "divineInfluence_health_bestMoves",
-            ["health_avoid"] = "divineInfluence_health_avoid",
-            ["health_detail"] = "divineInfluence_health_inANutshell",
+            ["prosperity_score"] = "divineInfluence_wealth_score",
+            ["prosperity_tag"] = "divineInfluence_wealth_tagline",
+            ["prosperity_do"] = "divineInfluence_wealth_bestMoves",
+            ["prosperity_avoid"] = "divineInfluence_wealth_avoid",
+            ["prosperity_detail"] = "divineInfluence_wealth_inANutshell",
+            ["wellness_score"] = "divineInfluence_health_score",
+            ["wellness_tag"] = "divineInfluence_health_tagline",
+            ["wellness_do"] = "divineInfluence_health_bestMoves",
+            ["wellness_avoid"] = "divineInfluence_health_avoid",
+            ["wellness_detail"] = "divineInfluence_health_inANutshell",
             ["mantra"] = "embodimentMantra",
             
             // ===== LIFETIME PREDICTION MAPPINGS =====
@@ -2336,13 +2339,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["chal2_desc"] = "challenges_item2_description",
             ["chal3_title"] = "challenges_item3_title",
             ["chal3_desc"] = "challenges_item3_description",
-            ["dest_intro"] = "destiny_overview",
-            ["dest1_title"] = "destiny_path1_title",
-            ["dest1_desc"] = "destiny_path1_description",
-            ["dest2_title"] = "destiny_path2_title",
-            ["dest2_desc"] = "destiny_path2_description",
-            ["dest3_title"] = "destiny_path3_title",
-            ["dest3_desc"] = "destiny_path3_description",
+            ["path_intro"] = "destiny_overview",
+            ["path1_title"] = "destiny_path1_title",
+            ["path1_desc"] = "destiny_path1_description",
+            ["path2_title"] = "destiny_path2_title",
+            ["path2_desc"] = "destiny_path2_description",
+            ["path3_title"] = "destiny_path3_title",
+            ["path3_desc"] = "destiny_path3_description",
             ["cn_essence"] = "chineseZodiac_essence",
             ["cycle_title"] = "zodiacCycle_title",
             ["cycle_name_en"] = "zodiacCycle_cycleName",
