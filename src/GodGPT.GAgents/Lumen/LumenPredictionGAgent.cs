@@ -53,12 +53,14 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// This will allow all users to regenerate predictions on the same day
     /// 
     /// ⚠️ TODO: REMOVE THIS FEATURE BEFORE PRODUCTION LAUNCH
-    /// Currently set to 2 for testing purposes (all existing users will regenerate).
+    /// Currently set to 4 for testing purposes (all existing users will regenerate).
     /// Before launch, either:
     /// 1. Remove prompt version checking entirely, OR
     /// 2. Set CURRENT_PROMPT_VERSION = 0 to avoid mass regeneration
+    /// 
+    /// Version 4: Migrated from JSON to TSV format for improved reliability and performance
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 3; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 4; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -2379,36 +2381,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                     // TSV is already flat, return directly
                     return (tsvResult, null);
                 }
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] TSV parse failed, falling back to plain text");
-                
-                // Fallback to plain text (legacy format)
-                var plainResult = ParsePlainTextResponse(aiResponse);
-                if (plainResult != null && plainResult.Count > 0)
-                {
-                    return (plainResult, null);
-                }
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Plain text parse failed, falling back to JSON");
-            }
-            else if (!hasJsonStart)
-            {
-                // Try plain text first, then TSV
-                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Detected plain text format (no tabs)");
-                var plainResult = ParsePlainTextResponse(aiResponse);
-                if (plainResult != null && plainResult.Count > 0)
-                {
-                    return (plainResult, null);
-                }
-                
-                // Fallback to TSV in case tabs are escaped
-                var tsvResult = ParseTsvResponse(aiResponse);
-                if (tsvResult != null && tsvResult.Count > 0)
-                {
-                    return (tsvResult, null);
-                }
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Plain text and TSV parse failed, falling back to JSON");
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] TSV parse failed, falling back to JSON");
             }
             
-            // Fallback to JSON parsing (for backwards compatibility)
+            // Fallback to JSON parsing (backwards compatibility for historical data with flattened JSON format)
             string jsonContent = aiResponse;
             
             // Strategy 1: Extract from markdown code blocks
@@ -2541,36 +2517,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                     // TSV is already flat, return directly
                     return (tsvResult, null);
                 }
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] TSV parse failed, falling back to plain text");
-                
-                // Fallback to plain text (legacy format)
-                var plainResult = ParsePlainTextResponse(aiResponse);
-                if (plainResult != null && plainResult.Count > 0)
-                {
-                    return (plainResult, null);
-                }
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Plain text parse failed, falling back to JSON");
-            }
-            else if (!hasJsonStart)
-            {
-                // Try plain text first, then TSV
-                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Detected plain text format (no tabs)");
-                var plainResult = ParsePlainTextResponse(aiResponse);
-                if (plainResult != null && plainResult.Count > 0)
-                {
-                    return (plainResult, null);
-                }
-                
-                // Fallback to TSV in case tabs are escaped
-                var tsvResult = ParseTsvResponse(aiResponse);
-                if (tsvResult != null && tsvResult.Count > 0)
-                {
-                    return (tsvResult, null);
-                }
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Plain text and TSV parse failed, falling back to JSON");
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] TSV parse failed, falling back to JSON");
             }
             
-            // Fallback to JSON parsing (for backwards compatibility)
+            // Fallback to JSON parsing (backwards compatibility for historical data with flattened JSON format)
             string jsonContent = aiResponse;
             
             // Strategy 1: Extract from markdown code blocks
