@@ -64,8 +64,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 5: Simplified TSV keys to ultra-short format (e.g. career, stone, fate_do) with mapping layer
     /// Version 6: Moved format and language purity constraints to system prompt for stronger LLM compliance
     /// Version 7: Fixed conflicting format requirements in singleLanguagePrefix (removed JSON requirements)
+    /// Version 8: Simplified system prompt, clarified language purity for ALL languages (not just Chinese)
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 7; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 8; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1238,9 +1239,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         
         var singleLanguagePrefix = $@"IMPORTANT INSTRUCTIONS:
 
-1. LANGUAGE: Write ALL content in {languageName}
-   - Keep user names as-is (don't translate names)
-   - For Chinese: Use Chinese only, no English words
+1. LANGUAGE: Write ALL content in {languageName} ONLY
+   - Do NOT mix other languages
+   - Exception: Keep user names unchanged (don't translate)
+   - Exception: Chinese stems/branches (天干地支) like ""甲子 (Jiǎzǐ)"" can include both Chinese and pinyin
    
 2. FORMAT: Return raw TSV (Tab-Separated Values)
    - Format: fieldName[TAB]value (one per line)
@@ -1272,79 +1274,79 @@ Each field on ONE line: fieldName[TAB]value
 Use TAB character (\\t) as separator.
 
 Output format:
-fourPillars_coreIdentity[TAB][12-18 words addressing by name]
-fourPillars_coreIdentity_expanded[TAB][45-60 words using {sunSign}, 'both...yet' patterns]
-chineseAstrology_currentYear[TAB][CRITICAL: match target language - en='Year of the Snake', zh='蛇年', es='Año de la Serpiente']
-chineseAstrology_trait1[TAB][8-12 words]
-chineseAstrology_trait2[TAB][8-12 words]
-chineseAstrology_trait3[TAB][8-12 words]
-chineseAstrology_trait4[TAB][8-12 words]
-zodiacWhisper[TAB][40-50 words starting '{birthYearAnimal} adds...', 'You are not only X, but Y']
-sunSign_tagline[TAB]You [2-5 words poetic metaphor]
-westernOverview_sunArchetype[TAB]Sun in {sunSign} - The [3-5 words archetype]
-westernOverview_sunDescription[TAB][18-25 words core traits using 'You']
-westernOverview_moonSign[TAB]{moonSign}
-westernOverview_moonArchetype[TAB]Moon in {moonSign} - The [3-5 words archetype]
-westernOverview_moonDescription[TAB][15-20 words emotional nature]
-westernOverview_risingSign[TAB]{risingSign}
-westernOverview_risingArchetype[TAB]Rising in {risingSign} - The [3-5 words archetype]
-westernOverview_risingDescription[TAB][20-28 words how they meet world]
-combinedEssence[TAB][15-20 words 'You think like [Sun], feel like [Moon], move like [Rising]']
-strengths_overview[TAB][10-15 words on growth path]
-strengths_item1_title[TAB][2-5 words]
-strengths_item1_description[TAB][15-25 words, attribute to sign combinations]
-strengths_item2_title[TAB][2-5 words]
-strengths_item2_description[TAB][12-18 words]
-strengths_item3_title[TAB][2-5 words]
-strengths_item3_description[TAB][12-18 words]
-challenges_overview[TAB][12-18 words starting 'Your power grows when...']
-challenges_item1_title[TAB][2-5 words]
-challenges_item1_description[TAB][8-15 words using sign combinations]
-challenges_item2_title[TAB][2-5 words]
-challenges_item2_description[TAB][10-18 words]
-challenges_item3_title[TAB][2-5 words]
-challenges_item3_description[TAB][10-18 words]
-destiny_overview[TAB][20-30 words starting 'You are here to...', end with dual identity]
-destiny_path1_title[TAB][3-5 roles separated by /]
-destiny_path1_description[TAB][3-6 words]
-destiny_path2_title[TAB][3-5 roles separated by /]
-destiny_path2_description[TAB][5-10 words]
-destiny_path3_title[TAB][1-3 roles]
-destiny_path3_description[TAB][8-15 words]
-chineseZodiac_essence[TAB]Essence like {birthYearElement}
-zodiacCycle_title[TAB]Zodiac Cycle Influence (YYYY-YYYY) [calculate 20-year period from birth year]
-zodiacCycle_cycleName[TAB][English name]
-zodiacCycle_cycleNameChinese[TAB][Chinese name]
-zodiacCycle_overview[TAB][50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Explain 20-year cycle]
-zodiacCycle_dayMasterPoint1[TAB][8-12 words]
-zodiacCycle_dayMasterPoint2[TAB][6-10 words]
-zodiacCycle_dayMasterPoint3[TAB][8-12 words]
-zodiacCycle_dayMasterPoint4[TAB][10-15 words]
-tenYearCycles_description[TAB][40-60 words on Fate Palace sector, element, alignment]
-pastCycle_influenceSummary[TAB][8-12 words]
-pastCycle_meaning[TAB][60-80 words past tense, element/energy, Ten Gods]
-currentCycle_influenceSummary[TAB][8-12 words]
-currentCycle_meaning[TAB][60-80 words present tense, what it empowers, Ten Gods]
-futureCycle_influenceSummary[TAB][8-12 words]
-futureCycle_meaning[TAB][60-80 words future tense, opportunities/challenges]
-lifePlot_title[TAB]You are a [10-20 words poetic archetype]
-lifePlot_chapter[TAB][30-50 words addressing by name, describe destiny]
-lifePlot_point1[TAB][5-15 words]
-lifePlot_point2[TAB][5-15 words]
-lifePlot_point3[TAB][5-15 words]
-lifePlot_point4[TAB][5-15 words powerful identity statement]
-activationSteps_step1_title[TAB][2-5 words]
-activationSteps_step1_description[TAB][10-20 words actionable advice]
-activationSteps_step2_title[TAB][2-5 words]
-activationSteps_step2_description[TAB][10-20 words]
-activationSteps_step3_title[TAB][2-5 words]
-activationSteps_step3_description[TAB][10-20 words]
-activationSteps_step4_title[TAB][2-5 words]
-activationSteps_step4_description[TAB][10-20 words most powerful]
+pillars_id[TAB][12-18 words addressing by name]
+pillars_detail[TAB][45-60 words using {sunSign}, 'both...yet' patterns]
+cn_year[TAB][CRITICAL: match target language - en='Year of the Snake', zh='蛇年', es='Año de la Serpiente']
+cn_trait1[TAB][8-12 words]
+cn_trait2[TAB][8-12 words]
+cn_trait3[TAB][8-12 words]
+cn_trait4[TAB][8-12 words]
+whisper[TAB][40-50 words starting '{birthYearAnimal} adds...', 'You are not only X, but Y']
+sun_tag[TAB]You [2-5 words poetic metaphor]
+sun_arch[TAB]Sun in {sunSign} - The [3-5 words archetype]
+sun_desc[TAB][18-25 words core traits using 'You']
+moon_sign[TAB]{moonSign}
+moon_arch[TAB]Moon in {moonSign} - The [3-5 words archetype]
+moon_desc[TAB][15-20 words emotional nature]
+rising_sign[TAB]{risingSign}
+rising_arch[TAB]Rising in {risingSign} - The [3-5 words archetype]
+rising_desc[TAB][20-28 words how they meet world]
+essence[TAB][15-20 words 'You think like [Sun], feel like [Moon], move like [Rising]']
+str_intro[TAB][10-15 words on growth path]
+str1_title[TAB][2-5 words]
+str1_desc[TAB][15-25 words, attribute to sign combinations]
+str2_title[TAB][2-5 words]
+str2_desc[TAB][12-18 words]
+str3_title[TAB][2-5 words]
+str3_desc[TAB][12-18 words]
+chal_intro[TAB][12-18 words starting 'Your power grows when...']
+chal1_title[TAB][2-5 words]
+chal1_desc[TAB][8-15 words using sign combinations]
+chal2_title[TAB][2-5 words]
+chal2_desc[TAB][10-18 words]
+chal3_title[TAB][2-5 words]
+chal3_desc[TAB][10-18 words]
+dest_intro[TAB][20-30 words starting 'You are here to...', end with dual identity]
+dest1_title[TAB][3-5 roles separated by /]
+dest1_desc[TAB][3-6 words]
+dest2_title[TAB][3-5 roles separated by /]
+dest2_desc[TAB][5-10 words]
+dest3_title[TAB][1-3 roles]
+dest3_desc[TAB][8-15 words]
+cn_essence[TAB]Essence like {birthYearElement}
+cycle_title[TAB]Zodiac Cycle Influence (YYYY-YYYY) [calculate 20-year period from birth year]
+cycle_name_en[TAB][English name]
+cycle_name_zh[TAB][Chinese name]
+cycle_intro[TAB][50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Explain 20-year cycle]
+cycle_pt1[TAB][8-12 words]
+cycle_pt2[TAB][6-10 words]
+cycle_pt3[TAB][8-12 words]
+cycle_pt4[TAB][10-15 words]
+ten_intro[TAB][40-60 words on Fate Palace sector, element, alignment]
+past_summary[TAB][8-12 words]
+past_detail[TAB][60-80 words past tense, element/energy, Ten Gods]
+curr_summary[TAB][8-12 words]
+curr_detail[TAB][60-80 words present tense, what it empowers, Ten Gods]
+future_summary[TAB][8-12 words]
+future_detail[TAB][60-80 words future tense, opportunities/challenges]
+plot_title[TAB]You are a [10-20 words poetic archetype]
+plot_chapter[TAB][30-50 words addressing by name, describe destiny]
+plot_pt1[TAB][5-15 words]
+plot_pt2[TAB][5-15 words]
+plot_pt3[TAB][5-15 words]
+plot_pt4[TAB][5-15 words powerful identity statement]
+act1_title[TAB][2-5 words]
+act1_desc[TAB][10-20 words actionable advice]
+act2_title[TAB][2-5 words]
+act2_desc[TAB][10-20 words]
+act3_title[TAB][2-5 words]
+act3_desc[TAB][10-20 words]
+act4_title[TAB][2-5 words]
+act4_desc[TAB][10-20 words most powerful]
 mantra_title[TAB][2-4 words]
-mantra_point1[TAB][5-15 words using 'X as if...' pattern]
-mantra_point2[TAB][5-15 words]
-mantra_point3[TAB][5-15 words most powerful]
+mantra_pt1[TAB][5-15 words using 'X as if...' pattern]
+mantra_pt2[TAB][5-15 words]
+mantra_pt3[TAB][5-15 words most powerful]
 
 CRITICAL FORMAT REQUIREMENTS:
 - Each line: exactly ONE tab character between field name and value
@@ -1377,31 +1379,31 @@ Each field on ONE line: fieldName[TAB]value
 Use TAB character (\\t) as separator. For array fields: Use pipe | to separate items.
 
 Output format:
-westernAstroOverlay[TAB]{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits]
-yearlyTheme_overallTheme[TAB][VARIED: 4-7 words using 'of' structure]
-yearlyTheme_atAGlance[TAB][VARIED: 15-20 words on what both systems agree]
-yearlyTheme_expanded[TAB][VARIED: 60-80 words in 3 parts (double space): P1 combination/clash, P2 what it creates, P3 define year 'not X but Y']
-divineInfluence_career_score[TAB][1-5 based on analysis]
-divineInfluence_career_tagline[TAB][10-15 words starting 'Your superpower this year:']
-divineInfluence_career_bestMoves[TAB]item1|item2
-divineInfluence_career_avoid[TAB]item1|item2
-divineInfluence_career_inANutshell[TAB][50-70 words in 3 parts: formula, feeling, meaning]
-divineInfluence_love_score[TAB][1-5]
-divineInfluence_love_tagline[TAB][10-15 words philosophical]
-divineInfluence_love_bestMoves[TAB]item1|item2
-divineInfluence_love_avoid[TAB]item1|item2
-divineInfluence_love_inANutshell[TAB][50-70 words in 3 parts: formula, emotional state, relationship needs]
-divineInfluence_wealth_score[TAB][1-5]
-divineInfluence_wealth_tagline[TAB][10-15 words]
-divineInfluence_wealth_bestMoves[TAB]item1|item2
-divineInfluence_wealth_avoid[TAB]item1|item2
-divineInfluence_wealth_inANutshell[TAB][50-70 words in 3 parts: formula, climate, prosperity needs]
-divineInfluence_health_score[TAB][1-5]
-divineInfluence_health_tagline[TAB][10-15 words]
-divineInfluence_health_bestMoves[TAB]item1|item2
-divineInfluence_health_avoid[TAB]item1|item2
-divineInfluence_health_inANutshell[TAB][50-70 words in 3 parts: formula, state, wellness needs]
-embodimentMantra[TAB][18-25 words using first-person 'My' declarations, 2-3 powerful statements]
+astro_overlay[TAB]{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits]
+theme_title[TAB][VARIED: 4-7 words using 'of' structure]
+theme_glance[TAB][VARIED: 15-20 words on what both systems agree]
+theme_detail[TAB][VARIED: 60-80 words in 3 parts (double space): P1 combination/clash, P2 what it creates, P3 define year 'not X but Y']
+career_score[TAB][1-5 based on analysis]
+career_tag[TAB][10-15 words starting 'Your superpower this year:']
+career_do[TAB]item1|item2
+career_avoid[TAB]item1|item2
+career_detail[TAB][50-70 words in 3 parts: formula, feeling, meaning]
+love_score[TAB][1-5]
+love_tag[TAB][10-15 words philosophical]
+love_do[TAB]item1|item2
+love_avoid[TAB]item1|item2
+love_detail[TAB][50-70 words in 3 parts: formula, emotional state, relationship needs]
+wealth_score[TAB][1-5]
+wealth_tag[TAB][10-15 words]
+wealth_do[TAB]item1|item2
+wealth_avoid[TAB]item1|item2
+wealth_detail[TAB][50-70 words in 3 parts: formula, climate, prosperity needs]
+health_score[TAB][1-5]
+health_tag[TAB][10-15 words]
+health_do[TAB]item1|item2
+health_avoid[TAB]item1|item2
+health_detail[TAB][50-70 words in 3 parts: formula, state, wellness needs]
+mantra[TAB][18-25 words using first-person 'My' declarations, 2-3 powerful statements]
 
 CRITICAL FORMAT REQUIREMENTS:
 - Each line: exactly ONE tab character between field name and value
@@ -1413,7 +1415,7 @@ CRITICAL FORMAT REQUIREMENTS:
 RULES:
 - All [VARIED] content must be FRESH for each user
 - Scores: 1=challenging, 2=mixed, 3=favorable, 4=excellent, 5=outstanding
-- inANutshell: Use formula pattern ('X + Y = Z.'), then state, then meaning
+- detail fields: Use formula pattern ('X + Y = Z.'), then state, then meaning
 - Career tagline starts 'Your superpower this year:', others philosophical
 - Avoid fields: 3-6 specific nouns (Job Hopping, Jealousy, Gambling, Late Nights)
 - Use double space not line breaks, warm tone, no special chars/emoji";
@@ -2189,9 +2191,21 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         // Define all array field names (using full frontend keys)
         var arrayFieldNames = new HashSet<string>
         {
+            // Daily prediction array fields
             "twistOfFate_favorable",
-            "twistOfFate_avoid"
-            // Add more array fields here as needed
+            "twistOfFate_avoid",
+            
+            // Yearly prediction array fields
+            "divineInfluence_career_bestMoves",
+            "divineInfluence_career_avoid",
+            "divineInfluence_love_bestMoves",
+            "divineInfluence_love_avoid",
+            "divineInfluence_wealth_bestMoves",
+            "divineInfluence_wealth_avoid",
+            "divineInfluence_health_bestMoves",
+            "divineInfluence_health_avoid"
+            
+            // Lifetime prediction has no array fields
         };
         
         var result = new Dictionary<string, string>(data);
@@ -2218,7 +2232,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         var keyMapping = new Dictionary<string, string>
         {
-            // Daily prediction mappings - ultra-short keys to full frontend keys
+            // ===== DAILY PREDICTION MAPPINGS =====
             ["dayTitle"] = "dayTitle",
             
             // Tarot Card (card_*)
@@ -2261,6 +2275,108 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["fate_do"] = "twistOfFate_favorable",
             ["fate_avoid"] = "twistOfFate_avoid",
             ["fate_tip"] = "twistOfFate_todaysRecommendation",
+            
+            // ===== YEARLY PREDICTION MAPPINGS =====
+            ["astro_overlay"] = "westernAstroOverlay",
+            ["theme_title"] = "yearlyTheme_overallTheme",
+            ["theme_glance"] = "yearlyTheme_atAGlance",
+            ["theme_detail"] = "yearlyTheme_expanded",
+            ["career_score"] = "divineInfluence_career_score",
+            ["career_tag"] = "divineInfluence_career_tagline",
+            ["career_do"] = "divineInfluence_career_bestMoves",
+            ["career_avoid"] = "divineInfluence_career_avoid",
+            ["career_detail"] = "divineInfluence_career_inANutshell",
+            ["love_score"] = "divineInfluence_love_score",
+            ["love_tag"] = "divineInfluence_love_tagline",
+            ["love_do"] = "divineInfluence_love_bestMoves",
+            ["love_avoid"] = "divineInfluence_love_avoid",
+            ["love_detail"] = "divineInfluence_love_inANutshell",
+            ["wealth_score"] = "divineInfluence_wealth_score",
+            ["wealth_tag"] = "divineInfluence_wealth_tagline",
+            ["wealth_do"] = "divineInfluence_wealth_bestMoves",
+            ["wealth_avoid"] = "divineInfluence_wealth_avoid",
+            ["wealth_detail"] = "divineInfluence_wealth_inANutshell",
+            ["health_score"] = "divineInfluence_health_score",
+            ["health_tag"] = "divineInfluence_health_tagline",
+            ["health_do"] = "divineInfluence_health_bestMoves",
+            ["health_avoid"] = "divineInfluence_health_avoid",
+            ["health_detail"] = "divineInfluence_health_inANutshell",
+            ["mantra"] = "embodimentMantra",
+            
+            // ===== LIFETIME PREDICTION MAPPINGS =====
+            ["pillars_id"] = "fourPillars_coreIdentity",
+            ["pillars_detail"] = "fourPillars_coreIdentity_expanded",
+            ["cn_year"] = "chineseAstrology_currentYear",
+            ["cn_trait1"] = "chineseAstrology_trait1",
+            ["cn_trait2"] = "chineseAstrology_trait2",
+            ["cn_trait3"] = "chineseAstrology_trait3",
+            ["cn_trait4"] = "chineseAstrology_trait4",
+            ["whisper"] = "zodiacWhisper",
+            ["sun_tag"] = "sunSign_tagline",
+            ["sun_arch"] = "westernOverview_sunArchetype",
+            ["sun_desc"] = "westernOverview_sunDescription",
+            ["moon_sign"] = "westernOverview_moonSign",
+            ["moon_arch"] = "westernOverview_moonArchetype",
+            ["moon_desc"] = "westernOverview_moonDescription",
+            ["rising_sign"] = "westernOverview_risingSign",
+            ["rising_arch"] = "westernOverview_risingArchetype",
+            ["rising_desc"] = "westernOverview_risingDescription",
+            ["essence"] = "combinedEssence",
+            ["str_intro"] = "strengths_overview",
+            ["str1_title"] = "strengths_item1_title",
+            ["str1_desc"] = "strengths_item1_description",
+            ["str2_title"] = "strengths_item2_title",
+            ["str2_desc"] = "strengths_item2_description",
+            ["str3_title"] = "strengths_item3_title",
+            ["str3_desc"] = "strengths_item3_description",
+            ["chal_intro"] = "challenges_overview",
+            ["chal1_title"] = "challenges_item1_title",
+            ["chal1_desc"] = "challenges_item1_description",
+            ["chal2_title"] = "challenges_item2_title",
+            ["chal2_desc"] = "challenges_item2_description",
+            ["chal3_title"] = "challenges_item3_title",
+            ["chal3_desc"] = "challenges_item3_description",
+            ["dest_intro"] = "destiny_overview",
+            ["dest1_title"] = "destiny_path1_title",
+            ["dest1_desc"] = "destiny_path1_description",
+            ["dest2_title"] = "destiny_path2_title",
+            ["dest2_desc"] = "destiny_path2_description",
+            ["dest3_title"] = "destiny_path3_title",
+            ["dest3_desc"] = "destiny_path3_description",
+            ["cn_essence"] = "chineseZodiac_essence",
+            ["cycle_title"] = "zodiacCycle_title",
+            ["cycle_name_en"] = "zodiacCycle_cycleName",
+            ["cycle_name_zh"] = "zodiacCycle_cycleNameChinese",
+            ["cycle_intro"] = "zodiacCycle_overview",
+            ["cycle_pt1"] = "zodiacCycle_dayMasterPoint1",
+            ["cycle_pt2"] = "zodiacCycle_dayMasterPoint2",
+            ["cycle_pt3"] = "zodiacCycle_dayMasterPoint3",
+            ["cycle_pt4"] = "zodiacCycle_dayMasterPoint4",
+            ["ten_intro"] = "tenYearCycles_description",
+            ["past_summary"] = "pastCycle_influenceSummary",
+            ["past_detail"] = "pastCycle_meaning",
+            ["curr_summary"] = "currentCycle_influenceSummary",
+            ["curr_detail"] = "currentCycle_meaning",
+            ["future_summary"] = "futureCycle_influenceSummary",
+            ["future_detail"] = "futureCycle_meaning",
+            ["plot_title"] = "lifePlot_title",
+            ["plot_chapter"] = "lifePlot_chapter",
+            ["plot_pt1"] = "lifePlot_point1",
+            ["plot_pt2"] = "lifePlot_point2",
+            ["plot_pt3"] = "lifePlot_point3",
+            ["plot_pt4"] = "lifePlot_point4",
+            ["act1_title"] = "activationSteps_step1_title",
+            ["act1_desc"] = "activationSteps_step1_description",
+            ["act2_title"] = "activationSteps_step2_title",
+            ["act2_desc"] = "activationSteps_step2_description",
+            ["act3_title"] = "activationSteps_step3_title",
+            ["act3_desc"] = "activationSteps_step3_description",
+            ["act4_title"] = "activationSteps_step4_title",
+            ["act4_desc"] = "activationSteps_step4_description",
+            ["mantra_title"] = "mantra_title",
+            ["mantra_pt1"] = "mantra_point1",
+            ["mantra_pt2"] = "mantra_point2",
+            ["mantra_pt3"] = "mantra_point3",
         };
 
         var mappedData = new Dictionary<string, string>();
