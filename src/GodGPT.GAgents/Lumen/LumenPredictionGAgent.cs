@@ -1198,14 +1198,10 @@ IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection 
         
         userInfoParts.Add(birthDateStr);
         
-        // Birth location (optional)
-        if (!string.IsNullOrWhiteSpace(userInfo.BirthCity) && !string.IsNullOrWhiteSpace(userInfo.BirthCountry))
+        // Birth location (optional, BirthCountry is no longer used)
+        if (!string.IsNullOrWhiteSpace(userInfo.BirthCity))
         {
-            userInfoParts.Add($"at {userInfo.BirthCity}, {userInfo.BirthCountry}");
-        }
-        else if (!string.IsNullOrWhiteSpace(userInfo.BirthCountry))
-        {
-            userInfoParts.Add($"in {userInfo.BirthCountry}");
+            userInfoParts.Add($"at {userInfo.BirthCity}");
         }
         
         // Gender
@@ -3626,9 +3622,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 LastName = profileResult.UserProfile.FullName.Contains(' ') ? string.Join(" ", profileResult.UserProfile.FullName.Split(' ').Skip(1)) : "",
                 Gender = profileResult.UserProfile.Gender,
                 BirthDate = profileResult.UserProfile.BirthDate,
-                BirthTime = profileResult.UserProfile.BirthTime ?? default,
-                BirthCountry = profileResult.UserProfile.BirthCountry,
+                BirthTime = profileResult.UserProfile.BirthTime,
                 BirthCity = profileResult.UserProfile.BirthCity,
+                LatLong = profileResult.UserProfile.LatLong,
                 CalendarType = profileResult.UserProfile.CalendarType,
                 CreatedAt = profileResult.UserProfile.CreatedAt,
                 CurrentResidence = profileResult.UserProfile.CurrentResidence,

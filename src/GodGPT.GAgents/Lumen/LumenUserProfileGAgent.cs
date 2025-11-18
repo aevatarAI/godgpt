@@ -404,8 +404,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     userInfoResult.BirthTimeInfo.Minute.Value);
             }
 
-            // Map location
-            string birthCountry = userInfoResult.LocationInfo?.Country;
+            // Map location (BirthCountry is no longer used)
             string birthCity = userInfoResult.LocationInfo?.City;
 
             // Check if we have minimum required data for migration
@@ -415,8 +414,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
             {
                 _logger.LogInformation(
                     "[LumenUserProfileGAgent][GetUserProfileAsync] Saving migrated data for userId {UserId}, " +
-                    "fullName: {FullName}, gender: {Gender}, birthDate: {BirthDate}, country: {Country}, city: {City}",
-                    userId.ToString(), fullName, gender, birthDate, birthCountry, birthCity);
+                    "fullName: {FullName}, gender: {Gender}, birthDate: {BirthDate}, city: {City}",
+                    userId.ToString(), fullName, gender, birthDate, birthCity);
 
                 // Directly raise event to bypass validation - migration is internal data sync
                 RaiseEvent(new UserProfileUpdatedEvent
@@ -426,8 +425,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     Gender = gender,
                     BirthDate = birthDate.Value,
                     BirthTime = birthTime,
-                    BirthCountry = birthCountry,
                     BirthCity = birthCity,
+                    LatLong = string.Empty, // No latlong in old data
                     MbtiType = null,
                     RelationshipStatus = null,
                     Interests = null,

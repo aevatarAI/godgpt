@@ -66,8 +66,8 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
                 state.Gender = registerEvent.Gender;
                 state.BirthDate = registerEvent.BirthDate;
                 state.BirthTime = registerEvent.BirthTime;
-                state.BirthCountry = registerEvent.BirthCountry;
                 state.BirthCity = registerEvent.BirthCity;
+                state.LatLong = registerEvent.LatLong;
                 state.MbtiType = registerEvent.MbtiType;
                 state.RelationshipStatus = registerEvent.RelationshipStatus;
                 state.Interests = registerEvent.Interests;
@@ -85,8 +85,8 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
                 state.Gender = default;
                 state.BirthDate = default;
                 state.BirthTime = default;
-                state.BirthCountry = null;
                 state.BirthCity = null;
+                state.LatLong = string.Empty;
                 state.MbtiType = null;
                 state.RelationshipStatus = null;
                 state.Interests = null;
@@ -144,8 +144,8 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
                 Gender = request.Gender,
                 BirthDate = request.BirthDate,
                 BirthTime = request.BirthTime,
-                BirthCountry = request.BirthCountry,
                 BirthCity = request.BirthCity,
+                LatLong = request.LatLong,
                 MbtiType = request.MbtiType,
                 RelationshipStatus = request.RelationshipStatus,
                 Interests = request.Interests,
@@ -209,8 +209,8 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
                     Gender = State.Gender,
                     BirthDate = State.BirthDate,
                     BirthTime = State.BirthTime,
-                    BirthCountry = State.BirthCountry,
                     BirthCity = State.BirthCity,
+                    LatLong = State.LatLong,
                     MbtiType = State.MbtiType,
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
