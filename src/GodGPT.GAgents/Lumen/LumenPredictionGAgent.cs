@@ -326,6 +326,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                                          ? State.MultilingualResults.Keys.ToList()
                                          : (State.GeneratedLanguages ?? new List<string>());
                 
+                // Convert array fields to JSON array strings before returning to frontend
+                localizedResults = ConvertArrayFieldsToJson(localizedResults);
+                
                 var cachedDto = new PredictionResultDto
                 {
                     PredictionId = State.PredictionId,
@@ -2220,6 +2223,39 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     }
     
     /// <summary>
+    /// Convert array fields from pipe-separated strings to JSON array strings for frontend
+    /// </summary>
+    private Dictionary<string, string> ConvertArrayFieldsToJson(Dictionary<string, string> data)
+    {
+        if (data == null || data.Count == 0)
+            return data;
+        
+        // Define all array field names (using full frontend keys)
+        var arrayFieldNames = new HashSet<string>
+        {
+            "twistOfFate_favorable",
+            "twistOfFate_avoid"
+            // Add more array fields here as needed
+        };
+        
+        var result = new Dictionary<string, string>(data);
+        
+        foreach (var fieldName in arrayFieldNames)
+        {
+            if (result.ContainsKey(fieldName) && !string.IsNullOrEmpty(result[fieldName]) && result[fieldName].Contains('|'))
+            {
+                // Split pipe-separated string and convert to JSON array
+                var items = result[fieldName].Split('|', StringSplitOptions.RemoveEmptyEntries)
+                                             .Select(item => item.Trim())
+                                             .ToList();
+                result[fieldName] = JsonConvert.SerializeObject(items);
+            }
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
     /// Map shortened TSV keys to full field names expected by frontend
     /// </summary>
     private Dictionary<string, string> MapShortKeysToFullKeys(Dictionary<string, string> shortKeyData)
@@ -2367,6 +2403,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var mappedResult = MapShortKeysToFullKeys(result);
             _logger.LogDebug($"[LumenPredictionGAgent][ParseTsvResponse] Mapped {result.Count} short keys to {mappedResult.Count} full keys");
             
+            // Convert pipe-separated array fields to JSON array strings
+            mappedResult = ConvertArrayFieldsToJson(mappedResult);
+            
             return mappedResult;
         }
         catch (Exception ex)
@@ -2467,42 +2506,6 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
     }
 
-    private Dictionary<string, Dictionary<string, string>>? ParseDailyResponse(string aiResponse)
-    {
-        try
-        {
-            var jsonStart = aiResponse.IndexOf('{');
-            var jsonEnd = aiResponse.LastIndexOf('}');
-
-            if (jsonStart >= 0 && jsonEnd > jsonStart)
-            {
-                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                
-                // Try to parse as direct results structure
-                var results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(jsonString);
-                if (results != null && results.Count > 0)
-                {
-                    return results;
-                }
-
-                // Try to parse as wrapped structure with "results" key
-                var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
-                if (fullResponse != null && fullResponse.ContainsKey("results") && fullResponse["results"] != null)
-                {
-                    var resultsJson = JsonConvert.SerializeObject(fullResponse["results"]);
-                    results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(resultsJson);
-                    return results;
-                }
-            }
-
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Failed to parse");
-            return null;
-        }
-    }
     /// <summary>
     /// Parse daily response from AI (single language only)
     /// Returns (parsed results, null) - second parameter kept for signature compatibility
