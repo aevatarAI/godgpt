@@ -68,8 +68,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 9: Renamed sensitive fields to reduce LLM refusal (health→wellness, wealth→prosperity, destiny→path, fate→fortune)
     /// Version 10: Fixed [TAB] literal text issue - clarified LLM should use actual tab character, not the text '[TAB]'
     /// Version 11: Strengthened language enforcement - added language requirement to system prompt and used native language names (简体中文 instead of Simplified Chinese)
+    /// Version 12: Ultra-strong language enforcement - write language instructions IN the target language itself (e.g., "必须用简体中文" for Chinese)
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 11; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 12; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -807,12 +808,16 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Temperature = "0.7"
             };
 
-            // System prompt with language requirement
-            var systemPrompt = $@"You are a professional astrology and divination expert. Provide personalized, insightful predictions.
+            // System prompt with strong language requirement
+            var systemPrompt = $@"You are a professional astrology and divination expert.
 
-CRITICAL: You MUST write ALL content in {languageName}. Do NOT use any other language.
+===== CRITICAL LANGUAGE REQUIREMENT =====
+WRITE EVERYTHING IN {languageName} ONLY.
+DO NOT USE ENGLISH OR ANY OTHER LANGUAGE.
+EVERY SINGLE WORD MUST BE IN {languageName}.
+============================================
 
-IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection purposes only. Wellness suggestions are general wellbeing tips, not medical advice. Prosperity insights are educational guidance, not financial advice.";
+IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection purposes only.";
 
             // Use "LUMEN" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
@@ -1254,19 +1259,28 @@ IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection 
         
         var languageName = languageMap.GetValueOrDefault(targetLanguage, "English");
         
-        var singleLanguagePrefix = $@"IMPORTANT INSTRUCTIONS:
+        // Build language instruction in target language for stronger compliance
+        var languageInstruction = targetLanguage switch
+        {
+            "zh" => "===== 语言要求 =====\n必须用简体中文书写所有内容。\n不要使用英文或其他语言。\n每一个字都必须是简体中文。\n===================",
+            "zh-tw" => "===== 語言要求 =====\n必須用繁體中文書寫所有內容。\n不要使用英文或其他語言。\n每一個字都必須是繁體中文。\n===================",
+            "es" => "===== REQUISITO DE IDIOMA =====\nESCRIBE TODO EN ESPAÑOL.\nNO USES INGLÉS.\nTODA LA SALIDA DEBE SER EN ESPAÑOL.\n================================",
+            _ => $"===== LANGUAGE REQUIREMENT =====\nWRITE EVERYTHING IN {languageName}.\nDO NOT USE OTHER LANGUAGES.\nALL OUTPUT MUST BE {languageName}.\n================================"
+        };
+        
+        var singleLanguagePrefix = $@"{languageInstruction}
 
-1. LANGUAGE: Write ALL content in {languageName} ONLY
-   - Do NOT mix other languages
-   - Exception: Keep user names unchanged (don't translate)
-   - Exception: Chinese stems/branches (天干地支) like ""甲子 (Jiǎzǐ)"" can include both Chinese and pinyin
-   
-2. FORMAT: Return raw TSV (Tab-Separated Values)
-   - Format: fieldName[TAB CHARACTER]value (one per line)
-   - Use ACTUAL TAB CHARACTER (\\t), NOT the text '[TAB]'
-   - Arrays: item1|item2|item3 (pipe separator)
-   - NO JSON, NO markdown, NO extra text
-   - Start immediately with the data
+EXCEPTIONS:
+- User names: Keep unchanged (don't translate)
+- Chinese stems/branches (天干地支): Can include Chinese and pinyin like ""甲子 (Jiǎzǐ)""
+
+FORMAT REQUIREMENT:
+- Return raw TSV (Tab-Separated Values)
+- Format: fieldName[TAB CHARACTER]value (one per line)
+- Use ACTUAL TAB CHARACTER (\\t), NOT the text '[TAB]'
+- Arrays: item1|item2|item3 (pipe separator)
+- NO JSON, NO markdown, NO extra text
+- Start immediately with the data
 
 ";
         
