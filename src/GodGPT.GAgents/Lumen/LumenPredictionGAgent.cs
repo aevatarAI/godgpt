@@ -35,6 +35,8 @@ public interface ILumenPredictionGAgent : IGAgent
     
     [ReadOnly]
     Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null);
+    
+    Task ClearCurrentPredictionAsync();
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -147,6 +149,24 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     state.GenerationLocks[lockClearedEvent.Type].IsGenerating = false;
                     state.GenerationLocks[lockClearedEvent.Type].StartedAt = null;
                 }
+                break;
+                
+            case PredictionClearedEvent clearedEvent:
+                // Clear current prediction data (for user deletion or profile update)
+                state.PredictionId = Guid.Empty;
+                state.UserId = string.Empty;
+                state.PredictionDate = default;
+                state.CreatedAt = default;
+                state.ProfileUpdatedAt = null;
+                state.Type = default;
+                state.LastGeneratedDate = null;
+                state.Results.Clear();
+                state.MultilingualResults.Clear();
+                state.GeneratedLanguages.Clear();
+                state.GenerationLocks.Clear();
+                state.TranslationLocks.Clear();
+                // Note: Do NOT clear LastActiveDate, DailyReminderTargetId, IsDailyReminderEnabled
+                // These are user activity tracking fields, not prediction data
                 break;
         }
     }
@@ -3528,6 +3548,35 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         if (wasInactive || !State.IsDailyReminderEnabled)
         {
             await RegisterDailyReminderAsync();
+        }
+    }
+    
+    /// <summary>
+    /// Clear current prediction data (for user deletion or profile update)
+    /// This will trigger regeneration on next access
+    /// </summary>
+    public async Task ClearCurrentPredictionAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[LumenPredictionGAgent][ClearCurrentPredictionAsync] Clearing prediction data for: {GrainId}", 
+                this.GetPrimaryKey());
+
+            // Raise event to clear prediction state
+            RaiseEvent(new PredictionClearedEvent
+            {
+                ClearedAt = DateTime.UtcNow
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenPredictionGAgent][ClearCurrentPredictionAsync] Prediction data cleared successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionGAgent][ClearCurrentPredictionAsync] Error clearing prediction data");
+            throw;
         }
     }
     
