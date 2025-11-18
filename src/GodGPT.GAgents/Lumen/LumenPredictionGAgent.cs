@@ -71,8 +71,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 12: Ultra-strong language enforcement - write language instructions IN the target language itself (e.g., "必须用简体中文" for Chinese)
     /// Version 13: Clarified field name vs field value distinction - field names in English, field values in target language, with concrete examples
     /// Version 14: Fixed prompt contradictions - aligned system/user prompts on language requirements, replaced all [TAB] placeholders with actual tab characters in examples
+    /// Version 15: Added explicit template translation reminder - LLM must translate English template text (like "James's Path Today") to target language with concrete examples
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 14; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 15; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1283,6 +1284,14 @@ IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection 
   dayTitle	反思与和谐之日     ← 值用简体中文
   card_name	月亮                ← 值用简体中文
   career	专注于团队协作      ← 值用简体中文
+
+CRITICAL: Translate ALL template text below into 简体中文
+- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
+- You MUST translate these into 简体中文
+Examples:
+  ✓ path_title: ""James 今日之路 - 勇敢之路""        (NOT ""James's Path Today - A Courageous Path"")
+  ✓ spell_intent: ""点燃内心的激情""                  (NOT ""To ignite inner passion"")
+  ✓ fortune_tip: ""今日转折点在于勇敢面对挑战""      (NOT ""Today's turning point is to face challenges"")
 ===================",
             "zh-tw" => @"===== 語言要求 =====
 必須用繁體中文書寫所有字段的值（value）。
@@ -1291,6 +1300,14 @@ IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection 
   dayTitle	反思與和諧之日     ← 值用繁體中文
   card_name	月亮                ← 值用繁體中文
   career	專注於團隊協作      ← 值用繁體中文
+
+CRITICAL: Translate ALL template text below into 繁體中文
+- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
+- You MUST translate these into 繁體中文
+Examples:
+  ✓ path_title: ""James 今日之路 - 勇敢之路""        (NOT ""James's Path Today - A Courageous Path"")
+  ✓ spell_intent: ""點燃內心的激情""                  (NOT ""To ignite inner passion"")
+  ✓ fortune_tip: ""今日轉折點在於勇敢面對挑戰""      (NOT ""Today's turning point is to face challenges"")
 ===================",
             "es" => @"===== REQUISITO DE IDIOMA =====
 Escribe todos los valores de campo en ESPAÑOL.
@@ -1299,6 +1316,14 @@ Ejemplo:
   dayTitle	El Día de Reflexión  ← valor en español
   card_name	La Luna              ← valor en español
   career	Enfócate en el trabajo en equipo  ← valor en español
+
+CRITICAL: Translate ALL template text below into ESPAÑOL
+- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
+- You MUST translate these into ESPAÑOL
+Examples:
+  ✓ path_title: ""El Camino de James Hoy - Un Camino Valiente""    (NOT ""James's Path Today - A Courageous Path"")
+  ✓ spell_intent: ""Encender la pasión interior""                  (NOT ""To ignite inner passion"")
+  ✓ fortune_tip: ""El punto de inflexión de hoy es enfrentar desafíos""  (NOT ""Today's turning point is to face challenges"")
 ================================",
             _ => $@"===== LANGUAGE REQUIREMENT =====
 Write all field VALUES in {languageName}.
@@ -1306,6 +1331,14 @@ Field names remain in English.
 Example:
   dayTitle	The Day of Reflection  ← value in {languageName}
   card_name	The Moon               ← value in {languageName}
+
+CRITICAL: Translate ALL template text below into {languageName}
+- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
+- You MUST translate these into {languageName}
+Examples (if {languageName} is not English):
+  ✓ Translate ""James's Path Today"" to {languageName}
+  ✓ Translate ""To ignite inner passion"" to {languageName}
+  ✓ Translate ""Today's turning point is to face challenges"" to {languageName}
 ================================"
         };
         
