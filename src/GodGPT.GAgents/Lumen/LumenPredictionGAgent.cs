@@ -1223,85 +1223,90 @@ Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
 
 IMPORTANT: All Chinese Zodiac content must reference USER'S Birth Year Zodiac ({birthYearZodiac}), NOT current year ({currentYearZodiac}).
 
-FORMAT (plain text, one field per line):
-fourPillars_coreIdentity: [12-18 words addressing by name]
-fourPillars_coreIdentity_expanded: [45-60 words using {sunSign}, 'both...yet' patterns]
-chineseAstrology_currentYear: [CRITICAL: match target language - en='Year of the Snake', zh='蛇年', es='Año de la Serpiente']
-chineseAstrology_trait1: [8-12 words]
-chineseAstrology_trait2: [8-12 words]
-chineseAstrology_trait3: [8-12 words]
-chineseAstrology_trait4: [8-12 words]
-zodiacWhisper: [40-50 words starting '{birthYearAnimal} adds...', 'You are not only X, but Y']
-sunSign_tagline: You [2-5 words poetic metaphor]
-westernOverview_sunArchetype: Sun in {sunSign} - The [3-5 words archetype]
-westernOverview_sunDescription: [18-25 words core traits using 'You']
-westernOverview_moonSign: {moonSign}
-westernOverview_moonArchetype: Moon in {moonSign} - The [3-5 words archetype]
-westernOverview_moonDescription: [15-20 words emotional nature]
-westernOverview_risingSign: {risingSign}
-westernOverview_risingArchetype: Rising in {risingSign} - The [3-5 words archetype]
-westernOverview_risingDescription: [20-28 words how they meet world]
-combinedEssence: [15-20 words 'You think like [Sun], feel like [Moon], move like [Rising]']
-strengths_overview: [10-15 words on growth path]
-strengths_item1_title: [2-5 words]
-strengths_item1_description: [15-25 words, attribute to sign combinations]
-strengths_item2_title: [2-5 words]
-strengths_item2_description: [12-18 words]
-strengths_item3_title: [2-5 words]
-strengths_item3_description: [12-18 words]
-challenges_overview: [12-18 words starting 'Your power grows when...']
-challenges_item1_title: [2-5 words]
-challenges_item1_description: [8-15 words using sign combinations]
-challenges_item2_title: [2-5 words]
-challenges_item2_description: [10-18 words]
-challenges_item3_title: [2-5 words]
-challenges_item3_description: [10-18 words]
-destiny_overview: [20-30 words starting 'You are here to...', end with dual identity]
-destiny_path1_title: [3-5 roles separated by /]
-destiny_path1_description: [3-6 words]
-destiny_path2_title: [3-5 roles separated by /]
-destiny_path2_description: [5-10 words]
-destiny_path3_title: [1-3 roles]
-destiny_path3_description: [8-15 words]
-chineseZodiac_essence: Essence like {birthYearElement}
-zodiacCycle_title: Zodiac Cycle Influence (YYYY-YYYY) [calculate 20-year period from birth year]
-zodiacCycle_cycleName: [English name]
-zodiacCycle_cycleNameChinese: [Chinese name]
-zodiacCycle_overview: [50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Explain 20-year cycle]
-zodiacCycle_dayMasterPoint1: [8-12 words]
-zodiacCycle_dayMasterPoint2: [6-10 words]
-zodiacCycle_dayMasterPoint3: [8-12 words]
-zodiacCycle_dayMasterPoint4: [10-15 words]
-tenYearCycles_description: [40-60 words on Fate Palace sector, element, alignment]
-pastCycle_influenceSummary: [8-12 words]
-pastCycle_meaning: [60-80 words past tense, element/energy, Ten Gods]
-currentCycle_influenceSummary: [8-12 words]
-currentCycle_meaning: [60-80 words present tense, what it empowers, Ten Gods]
-futureCycle_influenceSummary: [8-12 words]
-futureCycle_meaning: [60-80 words future tense, opportunities/challenges]
-lifePlot_title: You are a [10-20 words poetic archetype]
-lifePlot_chapter: [30-50 words addressing by name, describe destiny]
-lifePlot_point1: [5-15 words]
-lifePlot_point2: [5-15 words]
-lifePlot_point3: [5-15 words]
-lifePlot_point4: [5-15 words powerful identity statement]
-activationSteps_step1_title: [2-5 words]
-activationSteps_step1_description: [10-20 words actionable advice]
-activationSteps_step2_title: [2-5 words]
-activationSteps_step2_description: [10-20 words]
-activationSteps_step3_title: [2-5 words]
-activationSteps_step3_description: [10-20 words]
-activationSteps_step4_title: [2-5 words]
-activationSteps_step4_description: [10-20 words most powerful]
-mantra_title: [2-4 words]
-mantra_point1: [5-15 words using 'X as if...' pattern]
-mantra_point2: [5-15 words]
-mantra_point3: [5-15 words most powerful]
+FORMAT (TSV - Tab-Separated Values):
+Each field on ONE line: fieldName[TAB]value
+
+Use TAB character (\\t) as separator.
+
+Output format:
+fourPillars_coreIdentity[TAB][12-18 words addressing by name]
+fourPillars_coreIdentity_expanded[TAB][45-60 words using {sunSign}, 'both...yet' patterns]
+chineseAstrology_currentYear[TAB][CRITICAL: match target language - en='Year of the Snake', zh='蛇年', es='Año de la Serpiente']
+chineseAstrology_trait1[TAB][8-12 words]
+chineseAstrology_trait2[TAB][8-12 words]
+chineseAstrology_trait3[TAB][8-12 words]
+chineseAstrology_trait4[TAB][8-12 words]
+zodiacWhisper[TAB][40-50 words starting '{birthYearAnimal} adds...', 'You are not only X, but Y']
+sunSign_tagline[TAB]You [2-5 words poetic metaphor]
+westernOverview_sunArchetype[TAB]Sun in {sunSign} - The [3-5 words archetype]
+westernOverview_sunDescription[TAB][18-25 words core traits using 'You']
+westernOverview_moonSign[TAB]{moonSign}
+westernOverview_moonArchetype[TAB]Moon in {moonSign} - The [3-5 words archetype]
+westernOverview_moonDescription[TAB][15-20 words emotional nature]
+westernOverview_risingSign[TAB]{risingSign}
+westernOverview_risingArchetype[TAB]Rising in {risingSign} - The [3-5 words archetype]
+westernOverview_risingDescription[TAB][20-28 words how they meet world]
+combinedEssence[TAB][15-20 words 'You think like [Sun], feel like [Moon], move like [Rising]']
+strengths_overview[TAB][10-15 words on growth path]
+strengths_item1_title[TAB][2-5 words]
+strengths_item1_description[TAB][15-25 words, attribute to sign combinations]
+strengths_item2_title[TAB][2-5 words]
+strengths_item2_description[TAB][12-18 words]
+strengths_item3_title[TAB][2-5 words]
+strengths_item3_description[TAB][12-18 words]
+challenges_overview[TAB][12-18 words starting 'Your power grows when...']
+challenges_item1_title[TAB][2-5 words]
+challenges_item1_description[TAB][8-15 words using sign combinations]
+challenges_item2_title[TAB][2-5 words]
+challenges_item2_description[TAB][10-18 words]
+challenges_item3_title[TAB][2-5 words]
+challenges_item3_description[TAB][10-18 words]
+destiny_overview[TAB][20-30 words starting 'You are here to...', end with dual identity]
+destiny_path1_title[TAB][3-5 roles separated by /]
+destiny_path1_description[TAB][3-6 words]
+destiny_path2_title[TAB][3-5 roles separated by /]
+destiny_path2_description[TAB][5-10 words]
+destiny_path3_title[TAB][1-3 roles]
+destiny_path3_description[TAB][8-15 words]
+chineseZodiac_essence[TAB]Essence like {birthYearElement}
+zodiacCycle_title[TAB]Zodiac Cycle Influence (YYYY-YYYY) [calculate 20-year period from birth year]
+zodiacCycle_cycleName[TAB][English name]
+zodiacCycle_cycleNameChinese[TAB][Chinese name]
+zodiacCycle_overview[TAB][50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Explain 20-year cycle]
+zodiacCycle_dayMasterPoint1[TAB][8-12 words]
+zodiacCycle_dayMasterPoint2[TAB][6-10 words]
+zodiacCycle_dayMasterPoint3[TAB][8-12 words]
+zodiacCycle_dayMasterPoint4[TAB][10-15 words]
+tenYearCycles_description[TAB][40-60 words on Fate Palace sector, element, alignment]
+pastCycle_influenceSummary[TAB][8-12 words]
+pastCycle_meaning[TAB][60-80 words past tense, element/energy, Ten Gods]
+currentCycle_influenceSummary[TAB][8-12 words]
+currentCycle_meaning[TAB][60-80 words present tense, what it empowers, Ten Gods]
+futureCycle_influenceSummary[TAB][8-12 words]
+futureCycle_meaning[TAB][60-80 words future tense, opportunities/challenges]
+lifePlot_title[TAB]You are a [10-20 words poetic archetype]
+lifePlot_chapter[TAB][30-50 words addressing by name, describe destiny]
+lifePlot_point1[TAB][5-15 words]
+lifePlot_point2[TAB][5-15 words]
+lifePlot_point3[TAB][5-15 words]
+lifePlot_point4[TAB][5-15 words powerful identity statement]
+activationSteps_step1_title[TAB][2-5 words]
+activationSteps_step1_description[TAB][10-20 words actionable advice]
+activationSteps_step2_title[TAB][2-5 words]
+activationSteps_step2_description[TAB][10-20 words]
+activationSteps_step3_title[TAB][2-5 words]
+activationSteps_step3_description[TAB][10-20 words]
+activationSteps_step4_title[TAB][2-5 words]
+activationSteps_step4_description[TAB][10-20 words most powerful]
+mantra_title[TAB][2-4 words]
+mantra_point1[TAB][5-15 words using 'X as if...' pattern]
+mantra_point2[TAB][5-15 words]
+mantra_point3[TAB][5-15 words most powerful]
 
 CRITICAL FORMAT REQUIREMENTS:
-- Each field on ONE line ONLY (no line breaks within field values)
-- Format: fieldName: value
-- Return ONLY plain text, no markdown, no extra formatting
+- Each line: exactly ONE tab character between field name and value
+- No line breaks within field values
+- Return ONLY TSV format, no markdown, no extra text
 
 RULES:
 - All [VARIED] content must be FRESH for each user
@@ -1323,39 +1328,44 @@ Birth Year Zodiac: {birthYearZodiac}
 Yearly Year ({yearlyYear}): {yearlyYearZodiac}
 Taishui Relationship: {yearlyTaishui}
 
-FORMAT (plain text, one field per line):
-westernAstroOverlay: {sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits]
-yearlyTheme_overallTheme: [VARIED: 4-7 words using 'of' structure]
-yearlyTheme_atAGlance: [VARIED: 15-20 words on what both systems agree]
-yearlyTheme_expanded: [VARIED: 60-80 words in 3 parts (double space): P1 combination/clash, P2 what it creates, P3 define year 'not X but Y']
-divineInfluence_career_score: [1-5 based on analysis]
-divineInfluence_career_tagline: [10-15 words starting 'Your superpower this year:']
-divineInfluence_career_bestMoves: item1|item2
-divineInfluence_career_avoid: item1|item2
-divineInfluence_career_inANutshell: [50-70 words in 3 parts: formula, feeling, meaning]
-divineInfluence_love_score: [1-5]
-divineInfluence_love_tagline: [10-15 words philosophical]
-divineInfluence_love_bestMoves: item1|item2
-divineInfluence_love_avoid: item1|item2
-divineInfluence_love_inANutshell: [50-70 words in 3 parts: formula, emotional state, relationship needs]
-divineInfluence_wealth_score: [1-5]
-divineInfluence_wealth_tagline: [10-15 words]
-divineInfluence_wealth_bestMoves: item1|item2
-divineInfluence_wealth_avoid: item1|item2
-divineInfluence_wealth_inANutshell: [50-70 words in 3 parts: formula, climate, prosperity needs]
-divineInfluence_health_score: [1-5]
-divineInfluence_health_tagline: [10-15 words]
-divineInfluence_health_bestMoves: item1|item2
-divineInfluence_health_avoid: item1|item2
-divineInfluence_health_inANutshell: [50-70 words in 3 parts: formula, state, wellness needs]
-embodimentMantra: [18-25 words using first-person 'My' declarations, 2-3 powerful statements]
+FORMAT (TSV - Tab-Separated Values):
+Each field on ONE line: fieldName[TAB]value
+
+Use TAB character (\\t) as separator. For array fields: Use pipe | to separate items.
+
+Output format:
+westernAstroOverlay[TAB]{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits]
+yearlyTheme_overallTheme[TAB][VARIED: 4-7 words using 'of' structure]
+yearlyTheme_atAGlance[TAB][VARIED: 15-20 words on what both systems agree]
+yearlyTheme_expanded[TAB][VARIED: 60-80 words in 3 parts (double space): P1 combination/clash, P2 what it creates, P3 define year 'not X but Y']
+divineInfluence_career_score[TAB][1-5 based on analysis]
+divineInfluence_career_tagline[TAB][10-15 words starting 'Your superpower this year:']
+divineInfluence_career_bestMoves[TAB]item1|item2
+divineInfluence_career_avoid[TAB]item1|item2
+divineInfluence_career_inANutshell[TAB][50-70 words in 3 parts: formula, feeling, meaning]
+divineInfluence_love_score[TAB][1-5]
+divineInfluence_love_tagline[TAB][10-15 words philosophical]
+divineInfluence_love_bestMoves[TAB]item1|item2
+divineInfluence_love_avoid[TAB]item1|item2
+divineInfluence_love_inANutshell[TAB][50-70 words in 3 parts: formula, emotional state, relationship needs]
+divineInfluence_wealth_score[TAB][1-5]
+divineInfluence_wealth_tagline[TAB][10-15 words]
+divineInfluence_wealth_bestMoves[TAB]item1|item2
+divineInfluence_wealth_avoid[TAB]item1|item2
+divineInfluence_wealth_inANutshell[TAB][50-70 words in 3 parts: formula, climate, prosperity needs]
+divineInfluence_health_score[TAB][1-5]
+divineInfluence_health_tagline[TAB][10-15 words]
+divineInfluence_health_bestMoves[TAB]item1|item2
+divineInfluence_health_avoid[TAB]item1|item2
+divineInfluence_health_inANutshell[TAB][50-70 words in 3 parts: formula, state, wellness needs]
+embodimentMantra[TAB][18-25 words using first-person 'My' declarations, 2-3 powerful statements]
 
 CRITICAL FORMAT REQUIREMENTS:
-- Each field on ONE line ONLY (no line breaks within field values)
-- Format: fieldName: value
-- For arrays (bestMoves/avoid): Use pipe | to separate items
+- Each line: exactly ONE tab character between field name and value
+- Array values: use | separator, NO tabs within arrays
 - Scores: integer 1-5 only
-- Return ONLY plain text, no markdown, no extra formatting
+- No line breaks within field values
+- Return ONLY TSV format, no markdown, no extra text
 
 RULES:
 - All [VARIED] content must be FRESH for each user
@@ -1387,40 +1397,49 @@ Zodiac Element: {zodiacElement}
 Birth Year Zodiac: {birthYearZodiac}
 Chinese Element: {birthYearElement}
 
-FORMAT (plain text, one field per line):
-dayTitle: [VARIED: The Day of [word1] and [word2]]
-todaysReading_tarotCard_name: [VARIED: Select DIFFERENT card for THIS user based on {sunSign}/{zodiacElement}]
-todaysReading_tarotCard_represents: [1-2 words essence]
-todaysReading_tarotCard_orientation: [Upright/Reversed for THIS user]
-todaysReading_pathTitle: {displayName}'s Path Today - A [VARIED Adjective] Path
-todaysReading_pathDescription: [15-25 words starting 'Hi {displayName}']
-todaysReading_pathDescriptionExpanded: [30-40 words offering wisdom and guidance]
-todaysReading_careerAndWork: [10-20 words career advice]
-todaysReading_loveAndRelationships: [10-20 words love advice]
-todaysReading_wealthAndFinance: [10-20 words finance advice]
-todaysReading_healthAndWellness: [10-15 words health advice]
-todaysTakeaway: [15-25 words starting '{displayName}, your...' with contrast pattern]
-luckyAlignments_luckyNumber_number: [Word (digit) format, e.g., 八 (8)]
-luckyAlignments_luckyNumber_digit: [1-9]
-luckyAlignments_luckyNumber_description: [15-20 words meaning for THIS user]
-luckyAlignments_luckyNumber_calculation: [12-18 words formula combining date with birth numerology]
-luckyAlignments_luckyStone: [VARIED stone for {zodiacElement} element]
-luckyAlignments_luckyStone_description: [15-20 words how THIS stone helps today]
-luckyAlignments_luckyStone_guidance: [15-20 words starting 'Meditate:' or 'Practice:']
-luckyAlignments_luckySpell: [2 words poetic name]
-luckyAlignments_luckySpell_description: [20-30 words in quote format, first-person affirmation]
-luckyAlignments_luckySpell_intent: [10-12 words starting 'To [verb]...']
-twistOfFate_title: [4-8 words poetic title with metaphorical language]
-twistOfFate_favorable: activity1|activity2|activity3|activity4|activity5
-twistOfFate_avoid: activity1|activity2|activity3|activity4|activity5
-twistOfFate_todaysRecommendation: [10-15 words starting 'Today's turning point lies in...']
+FORMAT (TSV - Tab-Separated Values):
+Each field on ONE line: fieldName[TAB]value
+
+Use TAB character (\\t) as separator between field name and value.
+NO colons, NO equals signs, ONLY tab separator.
+
+For array fields: Use pipe | to separate items (no tabs within array values).
+
+Output format:
+dayTitle[TAB][VARIED: The Day of [word1] and [word2]]
+todaysReading_tarotCard_name[TAB][VARIED: Select DIFFERENT card for THIS user based on {sunSign}/{zodiacElement}]
+todaysReading_tarotCard_represents[TAB][1-2 words essence]
+todaysReading_tarotCard_orientation[TAB][Upright/Reversed for THIS user]
+todaysReading_pathTitle[TAB]{displayName}'s Path Today - A [VARIED Adjective] Path
+todaysReading_pathDescription[TAB][15-25 words starting 'Hi {displayName}']
+todaysReading_pathDescriptionExpanded[TAB][30-40 words offering wisdom and guidance]
+todaysReading_careerAndWork[TAB][10-20 words career advice]
+todaysReading_loveAndRelationships[TAB][10-20 words love advice]
+todaysReading_wealthAndFinance[TAB][10-20 words finance advice]
+todaysReading_healthAndWellness[TAB][10-15 words health advice]
+todaysTakeaway[TAB][15-25 words starting '{displayName}, your...' with contrast pattern]
+luckyAlignments_luckyNumber_number[TAB][Word (digit) format, e.g., 八 (8)]
+luckyAlignments_luckyNumber_digit[TAB][1-9]
+luckyAlignments_luckyNumber_description[TAB][15-20 words meaning for THIS user]
+luckyAlignments_luckyNumber_calculation[TAB][12-18 words formula combining date with birth numerology]
+luckyAlignments_luckyStone[TAB][VARIED stone for {zodiacElement} element]
+luckyAlignments_luckyStone_description[TAB][15-20 words how THIS stone helps today]
+luckyAlignments_luckyStone_guidance[TAB][15-20 words starting 'Meditate:' or 'Practice:']
+luckyAlignments_luckySpell[TAB][2 words poetic name]
+luckyAlignments_luckySpell_description[TAB][20-30 words in quote format, first-person affirmation]
+luckyAlignments_luckySpell_intent[TAB][10-12 words starting 'To [verb]...']
+twistOfFate_title[TAB][4-8 words poetic title with metaphorical language]
+twistOfFate_favorable[TAB]activity1|activity2|activity3|activity4|activity5
+twistOfFate_avoid[TAB]activity1|activity2|activity3|activity4|activity5
+twistOfFate_todaysRecommendation[TAB][10-15 words starting 'Today's turning point lies in...']
 
 CRITICAL FORMAT REQUIREMENTS:
-- Each field on ONE line ONLY (no line breaks within field values)
-- Format: fieldName: value
-- For arrays (favorable/avoid): Use pipe | to separate items, NO spaces after |
+- Each line: exactly ONE tab character between field name and value
+- Field names: no spaces, use underscore _
+- Array values: use | separator, NO tabs within arrays
 - EXACTLY 5 items for each array, each item 2-3 words
-- Return ONLY plain text, no markdown, no extra formatting
+- No line breaks within field values
+- Return ONLY TSV format, no markdown, no extra text
 
 KEY RULES - PERSONALIZATION:
 - Tarot Card: Select DIFFERENT card for each user based on {sunSign}/{zodiacElement}/today's energy
@@ -1449,8 +1468,12 @@ KEY RULES - PERSONALIZATION:
         var sourceLangName = languageMap.GetValueOrDefault(sourceLanguage, "English");
         var targetLangNames = string.Join(", ", targetLanguages.Select(lang => languageMap.GetValueOrDefault(lang, lang)));
         
-        // Serialize source content to JSON
-        var sourceJson = JsonConvert.SerializeObject(sourceContent, Formatting.Indented);
+        // Convert source content to TSV format
+        var sourceTsv = new System.Text.StringBuilder();
+        foreach (var kvp in sourceContent)
+        {
+            sourceTsv.AppendLine($"{kvp.Key}\t{kvp.Value}");
+        }
         
         var translationPrompt = $@"You are a professional translator specializing in astrology and divination content.
 
@@ -1474,20 +1497,39 @@ CRITICAL RULES:
 8. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
    - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
    - Sentence structure: Adjust to natural Chinese word order
+9. For array values (separated by |): Translate each item individually, keep the | separator
 
-OUTPUT FORMAT REQUIREMENTS - CRITICAL:
-⚠️ PRESERVE EXACT DATA TYPE OF EACH FIELD:
-- If source field is a STRING → translate as STRING
-- If source field is an ARRAY → translate as ARRAY (translate each element, keep array structure)
-- NEVER change data types: string ↔ array conversion is FORBIDDEN
-- Example: [""Take walk"", ""Meditate""] → [""散步"", ""冥想""] (NOT ""散步, 冥想"")
-- Structure: {{""predictions"": {{""zh-tw"": {{...}}, ""zh"": {{...}}, ""es"": {{...}}}}}}
+OUTPUT FORMAT (TSV - Tab-Separated Values):
+For EACH target language, output a separate block with language code as header, followed by TSV lines.
 
-SOURCE CONTENT ({sourceLangName}):
-{sourceJson}
+Format:
+[LANGUAGE_CODE]
+fieldName[TAB]translatedValue
+fieldName[TAB]translatedValue
+...
+
+Example for 2 languages:
+[zh-tw]
+dayTitle[TAB]祥龍之日
+todaysReading_pathTitle[TAB]Sean今日的道路 - 寧靜之路
+
+[zh]
+dayTitle[TAB]祥龙之日
+todaysReading_pathTitle[TAB]Sean今日的道路 - 宁静之路
+
+CRITICAL FORMAT REQUIREMENTS:
+- Each language block starts with [LANGUAGE_CODE] on its own line
+- Each data line: fieldName[TAB]translatedValue
+- Use TAB character (\\t) as separator
+- For array fields with | separator: translate each item but keep | structure
+- Example: ""Walk|Meditate|Read"" → ""散步|冥想|阅读""
+- NO line breaks within field values
+- Return ONLY the formatted blocks, no extra text
+
+SOURCE CONTENT ({sourceLangName} - TSV Format):
+{sourceTsv}
 
 Generate translations for: {targetLangNames}
-Output ONLY valid JSON with all values as strings. No arrays, no nested objects in field values.
 ";
 
         return translationPrompt;
@@ -1770,60 +1812,90 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
             // Parse response
             var parseStopwatch = Stopwatch.StartNew();
             
-            // Extract JSON from response
-            string jsonContent = aiResponse;
-            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
-            if (codeBlockMatch.Success)
+            // Check for LLM refusal
+            if (IsLLMRefusal(aiResponse))
             {
-                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
-                _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Extracted JSON from code block");
-            }
-            var firstBrace = jsonContent.IndexOf('{');
-            var lastBrace = jsonContent.LastIndexOf('}');
-            if (firstBrace >= 0 && lastBrace > firstBrace)
-            {
-                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
-            }
-            jsonContent = jsonContent.Trim();
-            
-            // Validate jsonContent
-            if (string.IsNullOrWhiteSpace(jsonContent))
-            {
-                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content after extraction. Original response preview: {(aiResponse.Length > 200 ? aiResponse.Substring(0, 200) : aiResponse)}...");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Response preview: {(aiResponse.Length > 200 ? aiResponse.Substring(0, 200) : aiResponse)}");
                 return;
             }
             
-            if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
-            {
-                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Invalid JSON format");
-                return;
-            }
-            
-            // Parse with fault tolerance for array values
+            // Try TSV format first (new format)
             var contentDict = new Dictionary<string, string>();
-            var contentFields = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+            var hasTabs = aiResponse.Contains("\t");
+            var hasJsonStart = aiResponse.Trim().StartsWith("{") || aiResponse.Contains("```json");
             
-            if (contentFields != null)
+            if (hasTabs && !hasJsonStart)
             {
-                foreach (var fieldKvp in contentFields)
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Detected TSV format");
+                var tsvResult = ParseTsvResponse(aiResponse);
+                if (tsvResult != null && tsvResult.Count > 0)
                 {
-                    var fieldName = fieldKvp.Key;
-                    var fieldValue = fieldKvp.Value;
-                    
-                    // Handle different value types
-                    if (fieldValue is Newtonsoft.Json.Linq.JArray arrayValue)
+                    contentDict = tsvResult;
+                }
+                else
+                {
+                    _logger.LogWarning($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} TSV parse failed, falling back to JSON");
+                }
+            }
+            
+            // Fallback to JSON format (legacy)
+            if (contentDict.Count == 0)
+            {
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Trying JSON format");
+                
+                string jsonContent = aiResponse;
+                var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
+                if (codeBlockMatch.Success)
+                {
+                    jsonContent = codeBlockMatch.Groups[1].Value.Trim();
+                    _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Extracted JSON from code block");
+                }
+                var firstBrace = jsonContent.IndexOf('{');
+                var lastBrace = jsonContent.LastIndexOf('}');
+                if (firstBrace >= 0 && lastBrace > firstBrace)
+                {
+                    jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
+                }
+                jsonContent = jsonContent.Trim();
+                
+                // Validate jsonContent
+                if (string.IsNullOrWhiteSpace(jsonContent))
+                {
+                    _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content after extraction. Original response preview: {(aiResponse.Length > 200 ? aiResponse.Substring(0, 200) : aiResponse)}...");
+                    return;
+                }
+                
+                if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
+                {
+                    _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Invalid JSON format");
+                    return;
+                }
+                
+                // Parse with fault tolerance for array values
+                var contentFields = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
+                
+                if (contentFields != null)
+                {
+                    foreach (var fieldKvp in contentFields)
                     {
-                        // Serialize array as JSON string (to match initial generation format)
-                        contentDict[fieldName] = arrayValue.ToString(Newtonsoft.Json.Formatting.None);
-                        _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, serialized as JSON string");
-                    }
-                    else if (fieldValue != null)
-                    {
-                        contentDict[fieldName] = fieldValue.ToString();
-                    }
-                    else
-                    {
-                        contentDict[fieldName] = string.Empty;
+                        var fieldName = fieldKvp.Key;
+                        var fieldValue = fieldKvp.Value;
+                        
+                        // Handle different value types
+                        if (fieldValue is Newtonsoft.Json.Linq.JArray arrayValue)
+                        {
+                            // Serialize array as JSON string (to match initial generation format)
+                            contentDict[fieldName] = arrayValue.ToString(Newtonsoft.Json.Formatting.None);
+                            _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, serialized as JSON string");
+                        }
+                        else if (fieldValue != null)
+                        {
+                            contentDict[fieldName] = fieldValue.ToString();
+                        }
+                        else
+                        {
+                            contentDict[fieldName] = string.Empty;
+                        }
                     }
                 }
             }
@@ -1889,8 +1961,12 @@ Output ONLY valid JSON with all values as strings. No arrays, no nested objects 
         var sourceLangName = languageMap.GetValueOrDefault(sourceLanguage, "English");
         var targetLangName = languageMap.GetValueOrDefault(targetLanguage, targetLanguage);
         
-        // Serialize source content to JSON
-        var sourceJson = JsonConvert.SerializeObject(sourceContent, Formatting.Indented);
+        // Convert source content to TSV format
+        var sourceTsv = new System.Text.StringBuilder();
+        foreach (var kvp in sourceContent)
+        {
+            sourceTsv.AppendLine($"{kvp.Key}\t{kvp.Value}");
+        }
         
         var translationPrompt = $@"You are a professional translator specializing in astrology and divination content.
 
@@ -1922,26 +1998,23 @@ CRITICAL RULES:
 8. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
    - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
    - Sentence structure: Adjust to natural Chinese word order
+9. For array values (separated by |): Translate each item individually, keep the | separator
 
-OUTPUT FORMAT REQUIREMENTS - CRITICAL:
-⚠️ PRESERVE EXACT DATA TYPE OF EACH FIELD:
-- If source field is a STRING → translate as STRING
-- If source field is an ARRAY → translate as ARRAY (translate each element, keep array structure)
-- NEVER change data types: string ↔ array conversion is FORBIDDEN
-- Example: [""Take walk"", ""Meditate""] → [""散步"", ""冥想""] (NOT ""散步, 冥想"")
-- Output a flat JSON object with all translated fields
+OUTPUT FORMAT (TSV - Tab-Separated Values):
+Each line: fieldName[TAB]translatedValue
 
-⚠️ CRITICAL JSON FORMAT REQUIREMENTS:
-- Output ONLY valid JSON format.
-- NEVER use special symbols that break JSON: = (equals), unescaped quotes, unescaped backslashes.
-- ALL string values must be properly escaped and quoted.
-- For array fields, return proper JSON arrays: [""item1"", ""item2"", ""item3""].
-- Test: If you see = symbol in your output, you're doing it wrong. Replace with : (colon) for JSON keys.
+CRITICAL FORMAT REQUIREMENTS:
+- Each field on ONE line: fieldName[TAB]translatedValue
+- Use TAB character (\\t) as separator
+- For array fields with | separator: translate each item but keep | structure
+- Example: ""Walk|Meditate|Read"" → ""散步|冥想|阅读""
+- NO line breaks within field values
+- Return ONLY TSV format, no markdown, no extra text
 
-SOURCE CONTENT ({sourceLangName}):
-{sourceJson}
+SOURCE CONTENT ({sourceLangName} - TSV Format):
+{sourceTsv}
 
-Output ONLY valid JSON. Preserve the exact data type of each field from the source.
+Output ONLY TSV format with translated values. Keep field names unchanged.
 ";
 
         return translationPrompt;
@@ -2030,6 +2103,132 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
     /// <summary>
     /// Parse Daily AI response (6 dimensions)
     /// </summary>
+    
+    /// <summary>
+    /// Check if the LLM response is a refusal or error message
+    /// </summary>
+    private bool IsLLMRefusal(string aiResponse)
+    {
+        if (string.IsNullOrWhiteSpace(aiResponse))
+        {
+            return true;
+        }
+
+        var lowerResponse = aiResponse.ToLower();
+        
+        // Common refusal patterns
+        var refusalPatterns = new[]
+        {
+            "i'm sorry",
+            "i cannot",
+            "i can't",
+            "i am unable",
+            "unable to fulfill",
+            "cannot fulfill",
+            "i apologize",
+            "as an ai",
+            "against my",
+            "not appropriate",
+            "cannot comply"
+        };
+
+        foreach (var pattern in refusalPatterns)
+        {
+            if (lowerResponse.Contains(pattern))
+            {
+                _logger.LogWarning($"[LumenPredictionGAgent][IsLLMRefusal] Detected refusal pattern: '{pattern}'. Response preview: {aiResponse.Substring(0, Math.Min(200, aiResponse.Length))}");
+                return true;
+            }
+        }
+
+        return false;
+    }
+    
+    /// <summary>
+    /// Parse TSV (Tab-Separated Values) response from LLM
+    /// Format: fieldName[TAB]value (one per line)
+    /// Arrays: fieldName[TAB]item1|item2|item3
+    /// </summary>
+    private Dictionary<string, string>? ParseTsvResponse(string aiResponse)
+    {
+        try
+        {
+            // Check for LLM refusal
+            if (IsLLMRefusal(aiResponse))
+            {
+                _logger.LogError($"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Response: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+                return null;
+            }
+
+            var result = new Dictionary<string, string>();
+            
+            // Remove markdown code blocks if present
+            var cleanResponse = aiResponse.Trim();
+            if (cleanResponse.StartsWith("```"))
+            {
+                var lines = cleanResponse.Split('\n');
+                var contentLines = new List<string>();
+                bool inCodeBlock = false;
+                
+                foreach (var line in lines)
+                {
+                    if (line.Trim().StartsWith("```"))
+                    {
+                        inCodeBlock = !inCodeBlock;
+                        continue;
+                    }
+                    if (inCodeBlock)
+                    {
+                        contentLines.Add(line);
+                    }
+                }
+                
+                cleanResponse = string.Join("\n", contentLines);
+            }
+            
+            // Parse TSV line by line
+            var responseLines = cleanResponse.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            
+            foreach (var line in responseLines)
+            {
+                var trimmedLine = line.Trim();
+                if (string.IsNullOrWhiteSpace(trimmedLine))
+                {
+                    continue;
+                }
+                
+                // Split by tab character
+                var parts = trimmedLine.Split('\t');
+                
+                if (parts.Length >= 2)
+                {
+                    var fieldName = parts[0].Trim();
+                    // Join remaining parts in case value contains tabs
+                    var value = string.Join("\t", parts.Skip(1)).Trim();
+                    
+                    if (!string.IsNullOrEmpty(fieldName) && !string.IsNullOrEmpty(value))
+                    {
+                        result[fieldName] = value;
+                    }
+                }
+            }
+            
+            if (result.Count == 0)
+            {
+                _logger.LogWarning($"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+                return null;
+            }
+            
+            _logger.LogInformation($"[LumenPredictionGAgent][ParseTsvResponse] Successfully parsed {result.Count} fields from TSV response");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[LumenPredictionGAgent][ParseTsvResponse] TSV parse error. First 500 chars: \"{aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}\"");
+            return null;
+        }
+    }
+    
     /// <summary>
     /// Parse plain text response from LLM
     /// Format: fieldName: value (one per line)
@@ -2165,21 +2364,48 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
     {
         try
         {
-            // NEW: Try plain text format first (simpler and faster)
-            // Check if response looks like plain text (no JSON braces at start)
+            // NEW: Try TSV format first (fastest and most reliable)
+            // Check if response looks like TSV (contains tab characters, no JSON braces at start)
             var trimmed = aiResponse.Trim();
             var hasJsonStart = trimmed.StartsWith("{") || trimmed.Contains("```json") || trimmed.Contains("\"predictions\"");
+            var hasTabs = trimmed.Contains("\t");
             
-            if (!hasJsonStart)
+            if (!hasJsonStart && hasTabs)
             {
-                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Detected plain text format");
+                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Detected TSV format");
+                var tsvResult = ParseTsvResponse(aiResponse);
+                if (tsvResult != null && tsvResult.Count > 0)
+                {
+                    // TSV is already flat, return directly
+                    return (tsvResult, null);
+                }
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] TSV parse failed, falling back to plain text");
+                
+                // Fallback to plain text (legacy format)
                 var plainResult = ParsePlainTextResponse(aiResponse);
                 if (plainResult != null && plainResult.Count > 0)
                 {
-                    // Plain text is already flat, return directly
                     return (plainResult, null);
                 }
                 _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Plain text parse failed, falling back to JSON");
+            }
+            else if (!hasJsonStart)
+            {
+                // Try plain text first, then TSV
+                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Detected plain text format (no tabs)");
+                var plainResult = ParsePlainTextResponse(aiResponse);
+                if (plainResult != null && plainResult.Count > 0)
+                {
+                    return (plainResult, null);
+                }
+                
+                // Fallback to TSV in case tabs are escaped
+                var tsvResult = ParseTsvResponse(aiResponse);
+                if (tsvResult != null && tsvResult.Count > 0)
+                {
+                    return (tsvResult, null);
+                }
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Plain text and TSV parse failed, falling back to JSON");
             }
             
             // Fallback to JSON parsing (for backwards compatibility)
@@ -2301,20 +2527,47 @@ Output ONLY valid JSON. Preserve the exact data type of each field from the sour
     {
         try
         {
-            // NEW: Try plain text format first (simpler and faster)
+            // NEW: Try TSV format first (fastest and most reliable)
             var trimmed = aiResponse.Trim();
             var hasJsonStart = trimmed.StartsWith("{") || trimmed.Contains("```json") || trimmed.Contains("\"predictions\"");
+            var hasTabs = trimmed.Contains("\t");
             
-            if (!hasJsonStart)
+            if (!hasJsonStart && hasTabs)
             {
-                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Detected plain text format");
+                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Detected TSV format");
+                var tsvResult = ParseTsvResponse(aiResponse);
+                if (tsvResult != null && tsvResult.Count > 0)
+                {
+                    // TSV is already flat, return directly
+                    return (tsvResult, null);
+                }
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] TSV parse failed, falling back to plain text");
+                
+                // Fallback to plain text (legacy format)
                 var plainResult = ParsePlainTextResponse(aiResponse);
                 if (plainResult != null && plainResult.Count > 0)
                 {
-                    // Plain text is already flat, return directly
                     return (plainResult, null);
                 }
                 _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Plain text parse failed, falling back to JSON");
+            }
+            else if (!hasJsonStart)
+            {
+                // Try plain text first, then TSV
+                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Detected plain text format (no tabs)");
+                var plainResult = ParsePlainTextResponse(aiResponse);
+                if (plainResult != null && plainResult.Count > 0)
+                {
+                    return (plainResult, null);
+                }
+                
+                // Fallback to TSV in case tabs are escaped
+                var tsvResult = ParseTsvResponse(aiResponse);
+                if (tsvResult != null && tsvResult.Count > 0)
+                {
+                    return (tsvResult, null);
+                }
+                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Plain text and TSV parse failed, falling back to JSON");
             }
             
             // Fallback to JSON parsing (for backwards compatibility)
