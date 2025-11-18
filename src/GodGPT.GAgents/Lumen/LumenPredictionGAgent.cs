@@ -69,8 +69,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 10: Fixed [TAB] literal text issue - clarified LLM should use actual tab character, not the text '[TAB]'
     /// Version 11: Strengthened language enforcement - added language requirement to system prompt and used native language names (简体中文 instead of Simplified Chinese)
     /// Version 12: Ultra-strong language enforcement - write language instructions IN the target language itself (e.g., "必须用简体中文" for Chinese)
+    /// Version 13: Clarified field name vs field value distinction - field names in English, field values in target language, with concrete examples
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 12; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 13; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1262,10 +1263,37 @@ IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection 
         // Build language instruction in target language for stronger compliance
         var languageInstruction = targetLanguage switch
         {
-            "zh" => "===== 语言要求 =====\n必须用简体中文书写所有内容。\n不要使用英文或其他语言。\n每一个字都必须是简体中文。\n===================",
-            "zh-tw" => "===== 語言要求 =====\n必須用繁體中文書寫所有內容。\n不要使用英文或其他語言。\n每一個字都必須是繁體中文。\n===================",
-            "es" => "===== REQUISITO DE IDIOMA =====\nESCRIBE TODO EN ESPAÑOL.\nNO USES INGLÉS.\nTODA LA SALIDA DEBE SER EN ESPAÑOL.\n================================",
-            _ => $"===== LANGUAGE REQUIREMENT =====\nWRITE EVERYTHING IN {languageName}.\nDO NOT USE OTHER LANGUAGES.\nALL OUTPUT MUST BE {languageName}.\n================================"
+            "zh" => @"===== 语言要求 =====
+必须用简体中文书写所有字段的值（value）。
+字段名（field name）保持英文不变。
+示例：
+  dayTitle	反思与和谐之日     ← 值用简体中文
+  card_name	月亮                ← 值用简体中文
+  career	专注于团队协作      ← 值用简体中文
+===================",
+            "zh-tw" => @"===== 語言要求 =====
+必須用繁體中文書寫所有字段的值（value）。
+字段名（field name）保持英文不變。
+示例：
+  dayTitle	反思與和諧之日     ← 值用繁體中文
+  card_name	月亮                ← 值用繁體中文
+  career	專注於團隊協作      ← 值用繁體中文
+===================",
+            "es" => @"===== REQUISITO DE IDIOMA =====
+Escribe todos los valores de campo en ESPAÑOL.
+Los nombres de campo permanecen en inglés.
+Ejemplo:
+  dayTitle	El Día de Reflexión  ← valor en español
+  card_name	La Luna              ← valor en español
+  career	Enfócate en el trabajo en equipo  ← valor en español
+================================",
+            _ => $@"===== LANGUAGE REQUIREMENT =====
+Write all field VALUES in {languageName}.
+Field names remain in English.
+Example:
+  dayTitle	The Day of Reflection  ← value in {languageName}
+  card_name	The Moon               ← value in {languageName}
+================================"
         };
         
         var singleLanguagePrefix = $@"{languageInstruction}
@@ -1276,8 +1304,7 @@ EXCEPTIONS:
 
 FORMAT REQUIREMENT:
 - Return raw TSV (Tab-Separated Values)
-- Format: fieldName[TAB CHARACTER]value (one per line)
-- Use ACTUAL TAB CHARACTER (\\t), NOT the text '[TAB]'
+- Use ACTUAL TAB CHARACTER (\\t) between field name and value
 - Arrays: item1|item2|item3 (pipe separator)
 - NO JSON, NO markdown, NO extra text
 - Start immediately with the data
