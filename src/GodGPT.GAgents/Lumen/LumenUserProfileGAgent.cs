@@ -93,6 +93,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Email = updateEvent.Email;
                 state.Occupation = updateEvent.Occupation;
                 state.Icon = updateEvent.Icon;
+                state.IsDeleted = false; // Clear deleted flag on profile update/registration
                 // Record update timestamp for rate limiting
                 state.UpdateHistory.Add(updateEvent.UpdatedAt);
                 if (state.CreatedAt == default)
@@ -119,10 +120,13 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.CalendarType = null;
                 state.CurrentResidence = null;
                 state.Email = null;
+                state.Occupation = null;
+                state.Icon = null;
                 state.Actions = new List<string>();
                 state.CreatedAt = default;
                 state.UpdatedAt = clearEvent.ClearedAt;
                 state.UpdateHistory.Clear();
+                state.IsDeleted = true; // Mark as deleted to prevent auto-migration
                 break;
         }
     }
@@ -240,9 +244,21 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
             _logger.LogDebug("[LumenUserProfileGAgent][GetUserProfileAsync] Getting user profile for: {UserId}, Language: {Language}", 
                 this.GetPrimaryKey().ToString(), userLanguage);
 
+            // Check if user was deleted
+            if (State.IsDeleted)
+            {
+                _logger.LogWarning("[LumenUserProfileGAgent][GetUserProfileAsync] User profile was deleted {GrainId}", this.GetPrimaryKey().ToString());
+                return new GetUserProfileResult
+                {
+                    Success = false,
+                    Message = "User profile not found"
+                };
+            }
+
             if (string.IsNullOrEmpty(State.UserId))
             {
                 // Try to migrate data from UserInfoCollectionGAgent
+                // Only attempt migration if user was not explicitly deleted
                 await TryToMigrateDataFromUserInfoCollectionAsync(userId);
             }
 
