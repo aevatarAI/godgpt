@@ -1400,40 +1400,51 @@ Birth Year Zodiac: {birthYearZodiac}
 Chinese Element: {birthYearElement}
 
 FORMAT (TSV - Tab-Separated Values):
-Each field on ONE line: fieldName[TAB]value
+Return data in simple key-value pairs, ONE per line: key[TAB]value
+Use TAB (\\t) to separate key from value. Arrays use pipe | separator.
 
-Use TAB character (\\t) as separator between field name and value.
-NO colons, NO equals signs, ONLY tab separator.
+OUTPUT STRUCTURE (27 fields organized in 4 sections):
 
-For array fields: Use pipe | to separate items (no tabs within array values).
+=== 1. DAY THEME (1 field) ===
+dayTitle[TAB]The Day of [word1] and [word2]
 
-Output format:
-dayTitle[TAB][VARIED: The Day of [word1] and [word2]]
-todaysReading_tarotCard_name[TAB][VARIED: Select DIFFERENT card for THIS user based on {sunSign}/{zodiacElement}]
-todaysReading_tarotCard_represents[TAB][1-2 words essence]
-todaysReading_tarotCard_orientation[TAB][Upright/Reversed for THIS user]
-todaysReading_pathTitle[TAB]{displayName}'s Path Today - A [VARIED Adjective] Path
-todaysReading_pathDescription[TAB][15-25 words starting 'Hi {displayName}']
-todaysReading_pathDescriptionExpanded[TAB][30-40 words offering wisdom and guidance]
-todaysReading_careerAndWork[TAB][10-20 words career advice]
-todaysReading_loveAndRelationships[TAB][10-20 words love advice]
-todaysReading_wealthAndFinance[TAB][10-20 words finance advice]
-todaysReading_healthAndWellness[TAB][10-15 words health advice]
-todaysTakeaway[TAB][15-25 words starting '{displayName}, your...' with contrast pattern]
-luckyAlignments_luckyNumber_number[TAB][Word (digit) format, e.g., 八 (8)]
-luckyAlignments_luckyNumber_digit[TAB][1-9]
-luckyAlignments_luckyNumber_description[TAB][15-20 words meaning for THIS user]
-luckyAlignments_luckyNumber_calculation[TAB][12-18 words formula combining date with birth numerology]
-luckyAlignments_luckyStone[TAB][VARIED stone for {zodiacElement} element]
-luckyAlignments_luckyStone_description[TAB][15-20 words how THIS stone helps today]
-luckyAlignments_luckyStone_guidance[TAB][15-20 words starting 'Meditate:' or 'Practice:']
-luckyAlignments_luckySpell[TAB][2 words poetic name]
-luckyAlignments_luckySpell_description[TAB][20-30 words in quote format, first-person affirmation]
-luckyAlignments_luckySpell_intent[TAB][10-12 words starting 'To [verb]...']
-twistOfFate_title[TAB][4-8 words poetic title with metaphorical language]
-twistOfFate_favorable[TAB]activity1|activity2|activity3|activity4|activity5
-twistOfFate_avoid[TAB]activity1|activity2|activity3|activity4|activity5
-twistOfFate_todaysRecommendation[TAB][10-15 words starting 'Today's turning point lies in...']
+=== 2. TODAY'S READING (11 fields) ===
+Tarot Card:
+  tarot_name[TAB]Card name (VARIED for {sunSign}/{zodiacElement})
+  tarot_essence[TAB]1-2 words
+  tarot_orient[TAB]Upright or Reversed
+Path:
+  path_title[TAB]{displayName}'s Path Today - A [adjective] Path
+  path_intro[TAB]15-25 words starting 'Hi {displayName}'
+  path_detail[TAB]30-40 words of wisdom
+Life Areas:
+  area_career[TAB]10-20 words advice
+  area_love[TAB]10-20 words advice
+  area_wealth[TAB]10-20 words advice
+  area_health[TAB]10-15 words advice
+Takeaway:
+  takeaway[TAB]15-25 words '{displayName}, your...'
+
+=== 3. LUCKY ALIGNMENTS (10 fields) ===
+Lucky Number:
+  num_display[TAB]Word (digit) e.g. 八 (8)
+  num_digit[TAB]1-9
+  num_meaning[TAB]15-20 words for THIS user
+  num_formula[TAB]12-18 words calculation
+Lucky Stone:
+  stone_name[TAB]Stone for {zodiacElement} element
+  stone_power[TAB]15-20 words how it helps
+  stone_use[TAB]15-20 words 'Meditate:' or 'Practice:'
+Lucky Spell:
+  spell_name[TAB]2 words poetic
+  spell_words[TAB]20-30 words affirmation in quotes
+  spell_intent[TAB]10-12 words 'To [verb]...'
+
+=== 4. TWIST OF FATE (3 fields + 2 arrays) ===
+  twist_title[TAB]4-8 words poetic metaphor
+  twist_do[TAB]activity1|activity2|activity3|activity4|activity5
+  twist_avoid[TAB]activity1|activity2|activity3|activity4|activity5
+  twist_tip[TAB]10-15 words 'Today's turning point...'
 
 CRITICAL FORMAT REQUIREMENTS:
 - Each line: exactly ONE tab character between field name and value
@@ -2147,6 +2158,57 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     }
     
     /// <summary>
+    /// Map shortened TSV keys to full field names expected by frontend
+    /// </summary>
+    private Dictionary<string, string> MapShortKeysToFullKeys(Dictionary<string, string> shortKeyData)
+    {
+        var keyMapping = new Dictionary<string, string>
+        {
+            // Daily prediction mappings
+            ["dayTitle"] = "dayTitle", // Keep as is
+            ["tarot_name"] = "todaysReading_tarotCard_name",
+            ["tarot_essence"] = "todaysReading_tarotCard_represents",
+            ["tarot_orient"] = "todaysReading_tarotCard_orientation",
+            ["path_title"] = "todaysReading_pathTitle",
+            ["path_intro"] = "todaysReading_pathDescription",
+            ["path_detail"] = "todaysReading_pathDescriptionExpanded",
+            ["area_career"] = "todaysReading_careerAndWork",
+            ["area_love"] = "todaysReading_loveAndRelationships",
+            ["area_wealth"] = "todaysReading_wealthAndFinance",
+            ["area_health"] = "todaysReading_healthAndWellness",
+            ["takeaway"] = "todaysTakeaway",
+            ["num_display"] = "luckyAlignments_luckyNumber_number",
+            ["num_digit"] = "luckyAlignments_luckyNumber_digit",
+            ["num_meaning"] = "luckyAlignments_luckyNumber_description",
+            ["num_formula"] = "luckyAlignments_luckyNumber_calculation",
+            ["stone_name"] = "luckyAlignments_luckyStone",
+            ["stone_power"] = "luckyAlignments_luckyStone_description",
+            ["stone_use"] = "luckyAlignments_luckyStone_guidance",
+            ["spell_name"] = "luckyAlignments_luckySpell",
+            ["spell_words"] = "luckyAlignments_luckySpell_description",
+            ["spell_intent"] = "luckyAlignments_luckySpell_intent",
+            ["twist_title"] = "twistOfFate_title",
+            ["twist_do"] = "twistOfFate_favorable",
+            ["twist_avoid"] = "twistOfFate_avoid",
+            ["twist_tip"] = "twistOfFate_todaysRecommendation",
+        };
+
+        var mappedData = new Dictionary<string, string>();
+        
+        foreach (var kvp in shortKeyData)
+        {
+            var key = kvp.Key;
+            var value = kvp.Value;
+            
+            // Map short key to full key if mapping exists, otherwise keep original key
+            var fullKey = keyMapping.ContainsKey(key) ? keyMapping[key] : key;
+            mappedData[fullKey] = value;
+        }
+        
+        return mappedData;
+    }
+    
+    /// <summary>
     /// Parse TSV (Tab-Separated Values) response from LLM
     /// Format: fieldName[TAB]value (one per line)
     /// Arrays: fieldName[TAB]item1|item2|item3
@@ -2218,11 +2280,16 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             if (result.Count == 0)
             {
                 _logger.LogWarning($"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
-            return null;
+                return null;
             }
             
             _logger.LogInformation($"[LumenPredictionGAgent][ParseTsvResponse] Successfully parsed {result.Count} fields from TSV response");
-            return result;
+            
+            // Map shortened keys to full field names expected by frontend
+            var mappedResult = MapShortKeysToFullKeys(result);
+            _logger.LogDebug($"[LumenPredictionGAgent][ParseTsvResponse] Mapped {result.Count} short keys to {mappedResult.Count} full keys");
+            
+            return mappedResult;
         }
         catch (Exception ex)
         {
