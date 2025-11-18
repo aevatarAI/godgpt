@@ -131,6 +131,15 @@ public class GenerationLockClearedEvent : LumenPredictionEventLog
     [Id(0)] public PredictionType Type { get; set; }
 }
 
+/// <summary>
+/// Prediction cleared event - clears all prediction data (called when user deletes account)
+/// </summary>
+[GenerateSerializer]
+public class PredictionClearedEvent : LumenPredictionEventLog
+{
+    [Id(0)] public DateTime ClearedAt { get; set; }
+}
+
 #endregion
 
 #region Feedback Events

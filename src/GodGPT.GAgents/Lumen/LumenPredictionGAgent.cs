@@ -611,19 +611,41 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             }
         }
         
-        // ========== IF REGENERATION NEEDED, RETURN "NOT GENERATED" STATUS ==========
-        // This prevents frontend from thinking there's valid cached data after profile update or delete+reregister
+        // ========== IF REGENERATION NEEDED, CHECK IF GENERATION IS IN PROGRESS ==========
+        // This handles delete+reregister scenario: old data exists but regeneration triggered
         if (needsRegeneration && State.PredictionId != Guid.Empty)
         {
-            _logger.LogInformation($"[Lumen] Status check - Regeneration needed for {State.Type}, returning isGenerated=false");
+            // Check if generation is currently in progress (even though old data exists)
+            var isRegenerating = false;
+            DateTime? regenerationStartedAt = null;
+            if (State.GenerationLocks.TryGetValue(actualType, out var regenLockInfo))
+            {
+                isRegenerating = regenLockInfo.IsGenerating;
+                regenerationStartedAt = regenLockInfo.StartedAt;
+                
+                // Check for stale lock (>5 minutes) and clear it
+                if (isRegenerating && regenLockInfo.StartedAt.HasValue && 
+                    (DateTime.UtcNow - regenLockInfo.StartedAt.Value).TotalMinutes > 5)
+                {
+                    _logger.LogWarning($"[Lumen][Status] Detected stale generation lock during regeneration for {actualType}, clearing it");
+                    
+                    RaiseEvent(new GenerationLockClearedEvent { Type = actualType });
+                    await ConfirmEvents();
+                    
+                    isRegenerating = false;
+                    regenerationStartedAt = null;
+                }
+            }
+            
+            _logger.LogInformation($"[Lumen] Status check - Regeneration needed for {State.Type}, isGenerating: {isRegenerating}");
             
             return new PredictionStatusDto
             {
                 Type = actualType,
-                IsGenerated = false, // Important: Tell frontend there's no valid data
-                IsGenerating = false,
+                IsGenerated = false, // Old data is stale, tell frontend no valid data
+                IsGenerating = isRegenerating, // But show if regeneration is in progress
                 GeneratedAt = null,
-                GenerationStartedAt = null,
+                GenerationStartedAt = regenerationStartedAt,
                 PredictionDate = null,
                 AvailableLanguages = new List<string>(),
                 NeedsRegeneration = true,
@@ -690,6 +712,24 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         };
 
         return statusDto;
+    }
+
+    /// <summary>
+    /// Clear all prediction data for this grain (called when user deletes account)
+    /// </summary>
+    public async Task ClearPredictionAsync()
+    {
+        _logger.LogInformation($"[LumenPredictionGAgent][ClearPredictionAsync] Clearing prediction data for UserId: {State.UserId}, Type: {State.Type}");
+        
+        // Raise event to clear all prediction data
+        RaiseEvent(new PredictionClearedEvent
+        {
+            ClearedAt = DateTime.UtcNow
+        });
+        
+        await ConfirmEvents();
+        
+        _logger.LogInformation($"[LumenPredictionGAgent][ClearPredictionAsync] Prediction data cleared successfully");
     }
 
     /// <summary>
