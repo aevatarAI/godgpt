@@ -1845,34 +1845,34 @@ Generate translations for: {targetLangNames}
             {
                 _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Trying JSON format");
                 
-                string jsonContent = aiResponse;
-                var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
-                if (codeBlockMatch.Success)
-                {
-                    jsonContent = codeBlockMatch.Groups[1].Value.Trim();
+            string jsonContent = aiResponse;
+            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
+            if (codeBlockMatch.Success)
+            {
+                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
                     _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Extracted JSON from code block");
-                }
-                var firstBrace = jsonContent.IndexOf('{');
-                var lastBrace = jsonContent.LastIndexOf('}');
-                if (firstBrace >= 0 && lastBrace > firstBrace)
-                {
-                    jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
-                }
-                jsonContent = jsonContent.Trim();
-                
+            }
+            var firstBrace = jsonContent.IndexOf('{');
+            var lastBrace = jsonContent.LastIndexOf('}');
+            if (firstBrace >= 0 && lastBrace > firstBrace)
+            {
+                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
+            }
+            jsonContent = jsonContent.Trim();
+            
                 // Validate jsonContent
-                if (string.IsNullOrWhiteSpace(jsonContent))
-                {
+            if (string.IsNullOrWhiteSpace(jsonContent))
+            {
                     _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content after extraction. Original response preview: {(aiResponse.Length > 200 ? aiResponse.Substring(0, 200) : aiResponse)}...");
-                    return;
-                }
-                
-                if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
-                {
+                return;
+            }
+            
+            if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
+            {
                     _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Invalid JSON format");
-                    return;
-                }
-                
+                return;
+            }
+            
                 // Parse with fault tolerance for array values
                 var contentFields = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
                 
@@ -2218,7 +2218,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             if (result.Count == 0)
             {
                 _logger.LogWarning($"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
-                return null;
+            return null;
             }
             
             _logger.LogInformation($"[LumenPredictionGAgent][ParseTsvResponse] Successfully parsed {result.Count} fields from TSV response");
@@ -2230,7 +2230,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return null;
         }
     }
-    
+
     /// <summary>
     /// Parse plain text response from LLM
     /// Format: fieldName: value (one per line)
@@ -2366,131 +2366,24 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         try
         {
-            // NEW: Try TSV format first (fastest and most reliable)
-            // Check if response looks like TSV (contains tab characters, no JSON braces at start)
-            var trimmed = aiResponse.Trim();
-            var hasJsonStart = trimmed.StartsWith("{") || trimmed.Contains("```json") || trimmed.Contains("\"predictions\"");
-            var hasTabs = trimmed.Contains("\t");
-            
-            if (!hasJsonStart && hasTabs)
+            // NEW DATA: Prompt requires TSV format, so parse as TSV only (no fallback)
+            // HISTORICAL DATA: Already stored as Dictionary<string, string> in State, no parsing needed
+            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Parsing TSV format (required by prompt)");
+            var tsvResult = ParseTsvResponse(aiResponse);
+            if (tsvResult != null && tsvResult.Count > 0)
             {
-                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Detected TSV format");
-                var tsvResult = ParseTsvResponse(aiResponse);
-                if (tsvResult != null && tsvResult.Count > 0)
-                {
-                    // TSV is already flat, return directly
-                    return (tsvResult, null);
-                }
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] TSV parse failed, falling back to JSON");
+                _logger.LogInformation($"[LumenPredictionGAgent][ParseMultilingualDailyResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                return (tsvResult, null);
             }
             
-            // Fallback to JSON parsing (backwards compatibility for historical data with flattened JSON format)
-            string jsonContent = aiResponse;
-            
-            // Strategy 1: Extract from markdown code blocks
-            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
-            if (codeBlockMatch.Success)
-            {
-                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
-            }
-            
-            // Strategy 2: Find complete JSON object (from first { to last })
-            var firstBrace = jsonContent.IndexOf('{');
-            var lastBrace = jsonContent.LastIndexOf('}');
-            
-            if (firstBrace >= 0 && lastBrace > firstBrace)
-            {
-                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
-            }
-            
-            // Clean up any trailing characters
-            jsonContent = jsonContent.Trim();
-            
-            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Extracted JSON length: {Length}", jsonContent.Length);
-
-            Dictionary<string, object>? fullResponse = null;
-            try
-            {
-                fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
-            }
-            catch (JsonException jsonEx)
-            {
-                _logger.LogError(jsonEx, "[LumenPredictionGAgent][ParseMultilingualDailyResponse] JSON parse error. First 500 chars: {JsonPreview}", 
-                    jsonContent.Length > 500 ? jsonContent.Substring(0, 500) : jsonContent);
-                _logger.LogError("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Last 200 chars: {JsonEnd}", 
-                    jsonContent.Length > 200 ? jsonContent.Substring(jsonContent.Length - 200) : jsonContent);
-                return (null, null);
-            }
-            
-            if (fullResponse == null)
-            {
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Failed to deserialize response");
-                return (null, null);
-            }
-
-            // Check if response has predictions wrapper
-            if (!fullResponse.ContainsKey("predictions"))
-            {
-                // Fallback to old format (single language)
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] No predictions wrapper found, using old format");
-                var singleLangResults = ParseDailyResponse(aiResponse);
-                if (singleLangResults != null && singleLangResults.Count > 0)
-                {
-                    // Flatten nested structure
-                    var firstResult = singleLangResults.Values.FirstOrDefault();
-                    return (firstResult, null);
-                }
-                return (null, null);
-            }
-
-            var predictionsJson = JsonConvert.SerializeObject(fullResponse["predictions"]);
-            var predictions = JsonConvert.DeserializeObject<Dictionary<string, object>>(predictionsJson);
-            
-            if (predictions == null || predictions.Count == 0)
-            {
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualDailyResponse] No predictions found");
-                return (null, null);
-            }
-
-            // Convert each language's nested structure to flattened Dictionary<string, string>
-            var multilingualResults = new Dictionary<string, Dictionary<string, string>>();
-            
-            foreach (var langKvp in predictions)
-            {
-                var lang = langKvp.Key;
-                var langDataJson = JsonConvert.SerializeObject(langKvp.Value);
-                var langDataFlat = FlattenNestedJsonToFlat(langDataJson);
-                
-                if (langDataFlat != null && langDataFlat.Count > 0)
-                {
-                    multilingualResults[lang] = langDataFlat;
-                }
-            }
-
-            // Extract English version as default (flat structure)
-            Dictionary<string, string>? defaultResults = null;
-            if (multilingualResults.ContainsKey("en"))
-            {
-                defaultResults = multilingualResults["en"];
-            }
-            else if (multilingualResults.Count > 0)
-            {
-                // Use first available language as fallback
-                defaultResults = multilingualResults.Values.FirstOrDefault();
-            }
-            
-            return (defaultResults, multilingualResults);
+            // TSV parsing failed - this indicates LLM did not follow prompt instructions
+            _logger.LogError($"[LumenPredictionGAgent][ParseMultilingualDailyResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualDailyResponse] Failed to parse multilingual response");
-            // Fallback to old format
-            var fallbackResults = ParseDailyResponse(aiResponse);
-            if (fallbackResults != null && fallbackResults.Count > 0)
-            {
-                var firstResult = fallbackResults.Values.FirstOrDefault();
-                return (firstResult, null);
-            }
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualDailyResponse] Exception during TSV parsing. Response preview: {Preview}", 
+                aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
             return (null, null);
         }
     }
@@ -2503,157 +2396,25 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         try
         {
-            // NEW: Try TSV format first (fastest and most reliable)
-            var trimmed = aiResponse.Trim();
-            var hasJsonStart = trimmed.StartsWith("{") || trimmed.Contains("```json") || trimmed.Contains("\"predictions\"");
-            var hasTabs = trimmed.Contains("\t");
-            
-            if (!hasJsonStart && hasTabs)
+            // NEW DATA: Prompt requires TSV format, so parse as TSV only (no fallback)
+            // HISTORICAL DATA: Already stored as Dictionary<string, string> in State, no parsing needed
+            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Parsing TSV format (required by prompt)");
+            var tsvResult = ParseTsvResponse(aiResponse);
+            if (tsvResult != null && tsvResult.Count > 0)
             {
-                _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Detected TSV format");
-                var tsvResult = ParseTsvResponse(aiResponse);
-                if (tsvResult != null && tsvResult.Count > 0)
-                {
-                    // TSV is already flat, return directly
-                    return (tsvResult, null);
-                }
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] TSV parse failed, falling back to JSON");
+                _logger.LogInformation($"[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                return (tsvResult, null);
             }
             
-            // Fallback to JSON parsing (backwards compatibility for historical data with flattened JSON format)
-            string jsonContent = aiResponse;
-            
-            // Strategy 1: Extract from markdown code blocks
-            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
-            if (codeBlockMatch.Success)
-            {
-                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
-            }
-            
-            // Strategy 2: Find complete JSON object (from first { to last })
-            var firstBrace = jsonContent.IndexOf('{');
-            var lastBrace = jsonContent.LastIndexOf('}');
-            
-            if (firstBrace >= 0 && lastBrace > firstBrace)
-            {
-                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
-            }
-            
-            // Clean up any trailing characters
-            jsonContent = jsonContent.Trim();
-            
-            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Extracted JSON length: {Length}", jsonContent.Length);
-
-            Dictionary<string, object>? fullResponse = null;
-            try
-            {
-                fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
-            }
-            catch (JsonException jsonEx)
-            {
-                _logger.LogError(jsonEx, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] JSON parse error. First 500 chars: {JsonPreview}", 
-                    jsonContent.Length > 500 ? jsonContent.Substring(0, 500) : jsonContent);
-                _logger.LogError("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Last 200 chars: {JsonEnd}", 
-                    jsonContent.Length > 200 ? jsonContent.Substring(jsonContent.Length - 200) : jsonContent);
-                return (null, null);
-            }
-            
-            if (fullResponse == null)
-            {
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Failed to deserialize response");
-                return (null, null);
-            }
-
-            // Check if response has predictions wrapper
-            if (!fullResponse.ContainsKey("predictions"))
-            {
-                // Fallback to old format (single language)
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] No predictions wrapper found, using old format");
-                var (lifetime, _) = ParseLifetimeWeeklyResponse(aiResponse);
-                return (lifetime, null);
-            }
-
-            var predictionsJson = JsonConvert.SerializeObject(fullResponse["predictions"]);
-            
-            Dictionary<string, Dictionary<string, object>>? predictions = null;
-            try
-            {
-                predictions = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, object>>>(predictionsJson);
-            }
-            catch (JsonException predEx)
-            {
-                _logger.LogError(predEx, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Failed to parse predictions. JSON preview (first 1000 chars): {JsonPreview}", 
-                    predictionsJson.Length > 1000 ? predictionsJson.Substring(0, 1000) : predictionsJson);
-                _logger.LogError("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Full predictions JSON length: {Length}", predictionsJson.Length);
-                return (null, null);
-            }
-            
-            if (predictions == null || predictions.Count == 0)
-            {
-                _logger.LogWarning("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] No predictions found");
-                return (null, null);
-            }
-
-            // Extract multilingual lifetime (for lifetime predictions) or yearly (for yearly predictions)
-            var multilingualLifetime = new Dictionary<string, Dictionary<string, string>>();
-            
-            foreach (var langKvp in predictions)
-            {
-                var lang = langKvp.Key;
-                var langData = langKvp.Value;
-                
-                // Check for lifetime or yearly data (yearly uses the whole structure, lifetime uses nested "lifetime" key)
-                object targetData = null;
-                if (langData.ContainsKey("lifetime"))
-                {
-                    targetData = langData["lifetime"];
-                }
-                else
-                {
-                    // For yearly, the whole langData is the prediction structure
-                    targetData = langData;
-                }
-                
-                if (targetData != null)
-                {
-                    var dataJson = JsonConvert.SerializeObject(targetData);
-                    
-                    // Use the same flattening logic as daily predictions
-                    var flattened = new Dictionary<string, string>();
-                    var parsedData = JsonConvert.DeserializeObject<Dictionary<string, object>>(dataJson);
-                    
-                    if (parsedData != null)
-                    {
-                        foreach (var kvp in parsedData)
-                        {
-                            FlattenObject(kvp.Value, kvp.Key, flattened);
-                        }
-                        
-                        multilingualLifetime[lang] = flattened;
-                    }
-                }
-            }
-
-            // Extract English version as default
-            Dictionary<string, string>? defaultLifetime = null;
-            
-            if (multilingualLifetime.ContainsKey("en"))
-            {
-                defaultLifetime = multilingualLifetime["en"];
-            }
-            else if (multilingualLifetime.Count > 0)
-            {
-                defaultLifetime = multilingualLifetime.Values.FirstOrDefault();
-            }
-
-            return (defaultLifetime, multilingualLifetime);
+            // TSV parsing failed - this indicates LLM did not follow prompt instructions
+            _logger.LogError($"[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Failed to parse multilingual response");
-            // Fallback to old format
-            var (lifetime, _) = ParseLifetimeWeeklyResponse(aiResponse);
-            return (lifetime, null);
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Exception during TSV parsing. Response preview: {Preview}", 
+                aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
+            return (null, null);
         }
     }
     
