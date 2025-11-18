@@ -793,34 +793,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Temperature = "0.7"
             };
 
-            // System prompt with strict format constraints
-            var systemPrompt = @"You are a professional astrology and divination expert specializing in personalized predictions.
-
-OUTPUT FORMAT REQUIREMENTS:
-- MUST return data in TSV (Tab-Separated Values) format ONLY
-- Each line: fieldName[TAB]value (exactly ONE tab character as separator)
-- For array fields: use pipe | separator between items (e.g., item1|item2|item3)
-- Field names: lowercase with underscores, no spaces
-
-LANGUAGE PURITY REQUIREMENTS:
-- Generate ALL content in the target language specified in the user prompt
-- DO NOT mix other languages into the content (except for explicitly required cases below)
-- Allowed exceptions:
-  * User names: Keep as provided (e.g., 'James' stays 'James' in all languages)
-  * Numbers in lucky number fields (e.g., '七（7）' in Chinese, 'Seven (7)' in English)
-  * Chinese stems-branches with pinyin when required (e.g., '甲子 (Jiǎzǐ)' in English)
-- For English: Write entirely in English
-- For Chinese (zh/zh-tw): Write entirely in Chinese characters, NO English words mixed in
-- For Spanish: Write entirely in Spanish
-
-ABSOLUTELY FORBIDDEN:
-❌ DO NOT return JSON format (no {}, no quotes around field names)
-❌ DO NOT wrap output in markdown code blocks (no ```json, no ```tsv, no ```)
-❌ DO NOT add any prefix/suffix text before/after the data
-❌ DO NOT mix languages (English words in Chinese output, Chinese characters in English output, etc.)
-✅ ONLY return raw TSV lines: fieldName[TAB]value
-
-If you return any format other than raw TSV, the system will fail to parse your response.";
+            // Simple system prompt - only role definition
+            var systemPrompt = @"You are a professional astrology and divination expert. Provide personalized, insightful predictions.";
 
             // Use "LUMEN" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
@@ -1262,29 +1236,17 @@ If you return any format other than raw TSV, the system will fail to parse your 
         
         var languageName = languageMap.GetValueOrDefault(targetLanguage, "English");
         
-        var singleLanguagePrefix = $@"You are a mystical diviner and life guide combining Eastern astrology (Bazi/Chinese Zodiac) and Western astrology (Sun/Moon/Rising). Provide insightful, warm, empowering guidance.
+        var singleLanguagePrefix = $@"IMPORTANT INSTRUCTIONS:
 
-⚠️ LANGUAGE REQUIREMENT - STRICTLY ENFORCE:
-- Generate ALL content in {languageName} ({targetLanguage}) ONLY.
-- DO NOT mix other languages in the output.
-- For Chinese (zh-tw/zh): Use FULL Chinese text. NO English words except proper names.
-- For English/Spanish: Use target language for all content. Chinese characters are ONLY allowed for:
-  * Heavenly Stems/Earthly Branches (天干地支): e.g., ""甲子 (Jiǎzǐ)""
-  * Chinese Zodiac names if needed: e.g., ""Rat 鼠""
-- NEVER translate user names (e.g., ""Sean"" stays ""Sean"" in all languages).
-
-LANGUAGE-SPECIFIC RULES:
-- For Chinese (zh-tw/zh): Adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
-- For English/Spanish: Use natural target language sentence structure.
-
-⚠️ CRITICAL TSV FORMAT REQUIREMENTS:
-- Return ONLY raw TSV (Tab-Separated Values) format
-- Each line: fieldName[TAB]value (ONE tab character between field name and value)
-- For arrays: use pipe | separator (e.g., item1|item2|item3)
-- NO JSON (no {{}}, no quotes around field names)
-- NO markdown code blocks (no ```tsv, no ```json, no ```)
-- NO extra text before or after the data
-- Start immediately with the first field: fieldName[TAB]value
+1. LANGUAGE: Write ALL content in {languageName}
+   - Keep user names as-is (don't translate names)
+   - For Chinese: Use Chinese only, no English words
+   
+2. FORMAT: Return raw TSV (Tab-Separated Values)
+   - Format: fieldName[TAB]value (one per line)
+   - Arrays: item1|item2|item3 (pipe separator)
+   - NO JSON, NO markdown, NO extra text
+   - Start immediately with the data
 
 ";
         
@@ -1858,37 +1820,8 @@ Generate translations for: {targetLangNames}
             var godChat = _clusterClient.GetGrain<IGodChat>(translationGrainKey);
             var chatId = Guid.NewGuid().ToString();
             
-            // System prompt for translation with strict format constraints
-            var translationSystemPrompt = @"You are a professional translator specializing in astrology and divination content.
-
-OUTPUT FORMAT REQUIREMENTS:
-- MUST return data in TSV (Tab-Separated Values) format ONLY
-- Format: [LANGUAGE_CODE] header followed by fieldName[TAB]translatedValue lines
-- Each line: fieldName[TAB]value (exactly ONE tab character as separator)
-- For array fields: translate each item but keep | separator (e.g., Walk|Meditate → 散步|冥想)
-
-TRANSLATION LANGUAGE PURITY:
-- Each target language MUST use ONLY that language in ALL content
-- DO NOT mix languages in the translated output (except for explicitly required cases below)
-- Allowed exceptions:
-  * User names: Keep as provided in source (e.g., 'James' stays 'James', never translate names)
-  * Numbers in lucky number fields: Translate word but keep digit (e.g., 'Seven (7)' → '七（7）')
-  * Chinese stems-branches: Keep original characters, add pinyin only for non-Chinese languages
-    - Chinese output: '甲子' (no pinyin)
-    - English/Spanish output: '甲子 (Jiǎzǐ)' (with pinyin)
-- For English: Translate entirely into English, no Chinese/Spanish words
-- For Chinese (zh/zh-tw): Translate entirely into Chinese characters, NO English words mixed in
-- For Spanish: Translate entirely into Spanish, no English/Chinese words
-
-ABSOLUTELY FORBIDDEN:
-❌ DO NOT return JSON format
-❌ DO NOT wrap output in markdown code blocks (no ```tsv, no ```)
-❌ DO NOT add any extra text before/after the translation blocks
-❌ DO NOT mix languages in translated content (English in Chinese, Chinese in English, etc.)
-❌ DO NOT translate user names
-✅ ONLY return: [LANGUAGE_CODE] headers + TSV lines
-
-If you return any format other than raw TSV, the system will fail to parse your response.";
+            // Simple system prompt for translation
+            var translationSystemPrompt = @"You are a professional translator for astrology content.";
             
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid,
@@ -2244,7 +2177,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
 
         return false;
     }
-    
+
     /// <summary>
     /// Convert array fields from pipe-separated strings to JSON array strings for frontend
     /// </summary>
@@ -2437,7 +2370,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return null;
         }
     }
-
+    
     /// <summary>
     /// Parse plain text response from LLM
     /// Format: fieldName: value (one per line)
