@@ -1887,7 +1887,7 @@ Generate translations for: {targetLangNames}
             // Check for LLM refusal
             if (IsLLMRefusal(aiResponse))
             {
-                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Response preview: {(aiResponse.Length > 200 ? aiResponse.Substring(0, 200) : aiResponse)}");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Full response:\n{aiResponse}");
                 return;
             }
             
@@ -2442,7 +2442,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Check for LLM refusal
             if (IsLLMRefusal(aiResponse))
             {
-                _logger.LogError($"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Response: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+                _logger.LogError($"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Full response:\n{aiResponse}");
                 return null;
             }
 
@@ -2501,7 +2501,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             if (result.Count == 0)
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+                _logger.LogWarning($"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Full response:\n{aiResponse}");
                 return null;
             }
             
@@ -2518,7 +2518,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[LumenPredictionGAgent][ParseTsvResponse] TSV parse error. First 500 chars: \"{aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}\"");
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseTsvResponse] TSV parse error. Full response:\n{Response}", aiResponse);
             return null;
         }
     }
@@ -2633,13 +2633,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            _logger.LogError($"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Response preview: {Preview}", 
-                aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Full response:\n{Response}", 
+                aiResponse);
             return (null, null);
         }
     }
@@ -2663,13 +2663,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            _logger.LogError($"[LumenPredictionGAgent][ParseLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeResponse] Exception during TSV parsing. Response preview: {Preview}", 
-                aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeResponse] Exception during TSV parsing. Full response:\n{Response}", 
+                aiResponse);
             return (null, null);
         }
     }
