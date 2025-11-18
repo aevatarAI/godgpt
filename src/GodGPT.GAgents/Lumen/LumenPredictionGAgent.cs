@@ -776,7 +776,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage, moonSign, risingSign);
             promptStopwatch.Stop();
             var promptTokens = TokenHelper.EstimateTokenCount(prompt);
-            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}");
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}, Type: {type}, TargetLanguage: {targetLanguage}");
             
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             
