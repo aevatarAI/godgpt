@@ -53,15 +53,16 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// This will allow all users to regenerate predictions on the same day
     /// 
     /// ⚠️ TODO: REMOVE THIS FEATURE BEFORE PRODUCTION LAUNCH
-    /// Currently set to 5 for testing purposes (all existing users will regenerate).
+    /// Currently set to 6 for testing purposes (all existing users will regenerate).
     /// Before launch, either:
     /// 1. Remove prompt version checking entirely, OR
     /// 2. Set CURRENT_PROMPT_VERSION = 0 to avoid mass regeneration
     /// 
     /// Version 4: Migrated from JSON to TSV format for improved reliability and performance
     /// Version 5: Simplified TSV keys to ultra-short format (e.g. career, stone, fate_do) with mapping layer
+    /// Version 6: Moved format and language purity constraints to system prompt for stronger LLM compliance
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 5; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 6; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -786,11 +787,40 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Temperature = "0.7"
             };
 
+            // System prompt with strict format constraints
+            var systemPrompt = @"You are a professional astrology and divination expert specializing in personalized predictions.
+
+OUTPUT FORMAT REQUIREMENTS:
+- MUST return data in TSV (Tab-Separated Values) format ONLY
+- Each line: fieldName[TAB]value (exactly ONE tab character as separator)
+- For array fields: use pipe | separator between items (e.g., item1|item2|item3)
+- Field names: lowercase with underscores, no spaces
+
+LANGUAGE PURITY REQUIREMENTS:
+- Generate ALL content in the target language specified in the user prompt
+- DO NOT mix other languages into the content (except for explicitly required cases below)
+- Allowed exceptions:
+  * User names: Keep as provided (e.g., 'James' stays 'James' in all languages)
+  * Numbers in lucky number fields (e.g., '七（7）' in Chinese, 'Seven (7)' in English)
+  * Chinese stems-branches with pinyin when required (e.g., '甲子 (Jiǎzǐ)' in English)
+- For English: Write entirely in English
+- For Chinese (zh/zh-tw): Write entirely in Chinese characters, NO English words mixed in
+- For Spanish: Write entirely in Spanish
+
+ABSOLUTELY FORBIDDEN:
+❌ DO NOT return JSON format (no {}, no quotes around field names)
+❌ DO NOT wrap output in markdown code blocks (no ```json, no ```tsv, no ```)
+❌ DO NOT add any prefix/suffix text before/after the data
+❌ DO NOT mix languages (English words in Chinese output, Chinese characters in English output, etc.)
+✅ ONLY return raw TSV lines: fieldName[TAB]value
+
+If you return any format other than raw TSV, the system will fail to parse your response.";
+
             // Use "LUMEN" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid, 
-                string.Empty, 
+                systemPrompt, 
                 prompt, 
                 chatId, 
                 settings, 
@@ -1492,15 +1522,11 @@ fate_do[TAB]activity1|activity2|activity3|activity4|activity5
 fate_avoid[TAB]activity1|activity2|activity3|activity4|activity5
 fate_tip[TAB]10-15 words 'Today's turning point...'
 
-CRITICAL FORMAT REQUIREMENTS:
-- Each line: exactly ONE tab character between field name and value
-- Field names: no spaces, use underscore _
-- Array values: use | separator, NO tabs within arrays
-- EXACTLY 5 items for each array, each item 2-3 words
+CONTENT REQUIREMENTS:
+- Array values: EXACTLY 5 items for each array, each item 2-3 words
 - No line breaks within field values
-- Return ONLY TSV format, no markdown, no extra text
 
-KEY RULES - PERSONALIZATION:
+PERSONALIZATION RULES:
 - Tarot Card: Select DIFFERENT card for each user based on {sunSign}/{zodiacElement}/today's energy
 - Lucky Stone by element: Fire→Carnelian/Ruby/Garnet, Earth→Jade/Emerald/Moss Agate, Air→Citrine/Aquamarine, Water→Moonstone/Pearl/Lapis Lazuli
 - Lucky Number: Generate VARIED numbers (1-9), ensure variety across users
@@ -1534,56 +1560,29 @@ KEY RULES - PERSONALIZATION:
             sourceTsv.AppendLine($"{kvp.Key}\t{kvp.Value}");
         }
         
-        var translationPrompt = $@"You are a professional translator specializing in astrology and divination content.
+        var translationPrompt = $@"TASK: Translate the following {type} prediction from {sourceLangName} into {targetLangNames}.
 
-TASK: Translate the following {type} prediction from {sourceLangName} into {targetLangNames}.
+TRANSLATION RULES:
+- TRANSLATE content, do NOT regenerate or reinterpret
+- Keep exact same meaning and structure
+- Maintain natural, fluent expression in each target language
+- For Chinese (zh-tw, zh): Adapt English grammar naturally
+  * Remove/adapt articles: ""The Star"" → ""星星""
+  * Adjust to natural Chinese word order
 
-CRITICAL RULES:
-1. TRANSLATE - do NOT regenerate or reinterpret. Keep the exact same meaning and content structure.
-2. NEVER TRANSLATE user names - keep them exactly as they appear (e.g., ""Sean"" stays ""Sean"" in all languages)
-   - In possessives: ""Sean's Path"" → ""Sean的道路"" (keep name, only translate structure)
-3. PRESERVE stems-branch in Chinese characters (with pinyin for non-Chinese languages only):
-   - pastCycle_period, currentCycle_period, futureCycle_period
-   - Chinese: '甲子' (no pinyin needed)
-   - English/Spanish: '甲子 (Jiǎzǐ)' (keep pinyin for pronunciation)
-4. TRANSLATE luckyNumber format correctly:
-   - English: ""Seven (7)"" - word + space + English parentheses ()
-   - Spanish: ""Siete (7)"" - word + space + English parentheses ()
-   - Chinese: ""七（7）"" - word + NO space + Chinese full-width parentheses （）
-5. Maintain natural, fluent expression in each target language (not word-for-word).
-6. Keep all field names unchanged.
-7. Preserve all numbers, dates, and proper nouns.
-8. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
-   - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
-   - Sentence structure: Adjust to natural Chinese word order
-9. For array values (separated by |): Translate each item individually, keep the | separator
-
-OUTPUT FORMAT (TSV - Tab-Separated Values):
-For EACH target language, output a separate block with language code as header, followed by TSV lines.
-
-Format:
+OUTPUT FORMAT:
 [LANGUAGE_CODE]
-fieldName[TAB]translatedValue
 fieldName[TAB]translatedValue
 ...
 
-Example for 2 languages:
+Example:
 [zh-tw]
 dayTitle[TAB]祥龍之日
-todaysReading_pathTitle[TAB]Sean今日的道路 - 寧靜之路
+path_title[TAB]Sean今日的道路 - 寧靜之路
 
 [zh]
 dayTitle[TAB]祥龙之日
-todaysReading_pathTitle[TAB]Sean今日的道路 - 宁静之路
-
-CRITICAL FORMAT REQUIREMENTS:
-- Each language block starts with [LANGUAGE_CODE] on its own line
-- Each data line: fieldName[TAB]translatedValue
-- Use TAB character (\\t) as separator
-- For array fields with | separator: translate each item but keep | structure
-- Example: ""Walk|Meditate|Read"" → ""散步|冥想|阅读""
-- NO line breaks within field values
-- Return ONLY the formatted blocks, no extra text
+path_title[TAB]Sean今日的道路 - 宁静之路
 
 SOURCE CONTENT ({sourceLangName} - TSV Format):
 {sourceTsv}
@@ -1851,10 +1850,45 @@ Generate translations for: {targetLangNames}
             var godChat = _clusterClient.GetGrain<IGodChat>(translationGrainKey);
             var chatId = Guid.NewGuid().ToString();
             
+            // System prompt for translation with strict format constraints
+            var translationSystemPrompt = @"You are a professional translator specializing in astrology and divination content.
+
+OUTPUT FORMAT REQUIREMENTS:
+- MUST return data in TSV (Tab-Separated Values) format ONLY
+- Format: [LANGUAGE_CODE] header followed by fieldName[TAB]translatedValue lines
+- Each line: fieldName[TAB]value (exactly ONE tab character as separator)
+- For array fields: translate each item but keep | separator (e.g., Walk|Meditate → 散步|冥想)
+
+TRANSLATION LANGUAGE PURITY:
+- Each target language MUST use ONLY that language in ALL content
+- DO NOT mix languages in the translated output (except for explicitly required cases below)
+- Allowed exceptions:
+  * User names: Keep as provided in source (e.g., 'James' stays 'James', never translate names)
+  * Numbers in lucky number fields: Translate word but keep digit (e.g., 'Seven (7)' → '七（7）')
+  * Chinese stems-branches: Keep original characters, add pinyin only for non-Chinese languages
+    - Chinese output: '甲子' (no pinyin)
+    - English/Spanish output: '甲子 (Jiǎzǐ)' (with pinyin)
+- For English: Translate entirely into English, no Chinese/Spanish words
+- For Chinese (zh/zh-tw): Translate entirely into Chinese characters, NO English words mixed in
+- For Spanish: Translate entirely into Spanish, no English/Chinese words
+
+ABSOLUTELY FORBIDDEN:
+❌ DO NOT return JSON format
+❌ DO NOT wrap output in markdown code blocks (no ```tsv, no ```)
+❌ DO NOT add any extra text before/after the translation blocks
+❌ DO NOT mix languages in translated content (English in Chinese, Chinese in English, etc.)
+❌ DO NOT translate user names
+✅ ONLY return: [LANGUAGE_CODE] headers + TSV lines
+
+If you return any format other than raw TSV, the system will fail to parse your response.";
+            
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid,
-                chatId,
+                translationSystemPrompt,
                 translationPrompt,
+                chatId,
+                null,
+                true,
                 "LUMEN");
             llmStopwatch.Stop();
             _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
