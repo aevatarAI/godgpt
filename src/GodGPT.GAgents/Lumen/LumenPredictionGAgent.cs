@@ -53,14 +53,15 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// This will allow all users to regenerate predictions on the same day
     /// 
     /// ⚠️ TODO: REMOVE THIS FEATURE BEFORE PRODUCTION LAUNCH
-    /// Currently set to 4 for testing purposes (all existing users will regenerate).
+    /// Currently set to 5 for testing purposes (all existing users will regenerate).
     /// Before launch, either:
     /// 1. Remove prompt version checking entirely, OR
     /// 2. Set CURRENT_PROMPT_VERSION = 0 to avoid mass regeneration
     /// 
     /// Version 4: Migrated from JSON to TSV format for improved reliability and performance
+    /// Version 5: Simplified TSV keys to ultra-short format (e.g. career, stone, fate_do) with mapping layer
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 4; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 5; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
