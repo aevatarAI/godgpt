@@ -833,9 +833,9 @@ If you return any format other than raw TSV, the system will fail to parse your 
             var parseStopwatch = Stopwatch.StartNew();
             (parsedResults, multilingualResults) = type switch
             {
-                PredictionType.Lifetime => ParseMultilingualLifetimeResponse(aiResponse),
-                PredictionType.Yearly => ParseMultilingualLifetimeResponse(aiResponse), // Yearly uses same parser
-                PredictionType.Daily => ParseMultilingualDailyResponse(aiResponse),
+                PredictionType.Lifetime => ParseLifetimeResponse(aiResponse),
+                PredictionType.Yearly => ParseLifetimeResponse(aiResponse), // Yearly uses same parser
+                PredictionType.Daily => ParseDailyResponse(aiResponse),
                 _ => throw new ArgumentException($"Unsupported prediction type: {type}")
             };
             
@@ -2504,60 +2504,60 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
     }
     /// <summary>
-    /// Parse multilingual daily response from AI
-    /// Returns (default English results, multilingual dictionary)
+    /// Parse daily response from AI (single language only)
+    /// Returns (parsed results, null) - second parameter kept for signature compatibility
     /// </summary>
-    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseMultilingualDailyResponse(string aiResponse)
+    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseDailyResponse(string aiResponse)
     {
         try
         {
             // NEW DATA: Prompt requires TSV format, so parse as TSV only (no fallback)
             // HISTORICAL DATA: Already stored as Dictionary<string, string> in State, no parsing needed
-            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Parsing TSV format (required by prompt)");
+            _logger.LogDebug("[LumenPredictionGAgent][ParseDailyResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
             {
-                _logger.LogInformation($"[LumenPredictionGAgent][ParseMultilingualDailyResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                _logger.LogInformation($"[LumenPredictionGAgent][ParseDailyResponse] Successfully parsed {tsvResult.Count} fields from TSV");
                 return (tsvResult, null);
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseMultilingualDailyResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            _logger.LogError($"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualDailyResponse] Exception during TSV parsing. Response preview: {Preview}", 
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Response preview: {Preview}", 
                 aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
             return (null, null);
         }
     }
     
     /// <summary>
-    /// Parse multilingual lifetime response from AI
-    /// Returns (default lifetime, multilingual lifetime)
+    /// Parse lifetime/yearly response from AI (single language only)
+    /// Returns (parsed results, null) - second parameter kept for signature compatibility
     /// </summary>
-    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseMultilingualLifetimeResponse(string aiResponse)
+    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseLifetimeResponse(string aiResponse)
     {
         try
         {
             // NEW DATA: Prompt requires TSV format, so parse as TSV only (no fallback)
             // HISTORICAL DATA: Already stored as Dictionary<string, string> in State, no parsing needed
-            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Parsing TSV format (required by prompt)");
+            _logger.LogDebug("[LumenPredictionGAgent][ParseLifetimeResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
             {
-                _logger.LogInformation($"[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                _logger.LogInformation($"[LumenPredictionGAgent][ParseLifetimeResponse] Successfully parsed {tsvResult.Count} fields from TSV");
                 return (tsvResult, null);
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            _logger.LogError($"[LumenPredictionGAgent][ParseLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Exception during TSV parsing. Response preview: {Preview}", 
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeResponse] Exception during TSV parsing. Response preview: {Preview}", 
                 aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
             return (null, null);
         }
