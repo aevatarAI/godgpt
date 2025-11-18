@@ -752,24 +752,36 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         try
         {
-            // Pre-calculate Moon and Rising signs if birth time and city are available
+            // Pre-calculate Moon and Rising signs if birth time and latlong are available
             string? moonSign = null;
             string? risingSign = null;
             
-            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.BirthCity))
+            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
-                    var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
-                    var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
-                        userInfo.BirthDate,
-                        userInfo.BirthTime,
-                        userInfo.BirthCity);
-                    
-                    moonSign = calculatedMoonSign;
-                    risingSign = calculatedRisingSign;
-                    
-                    _logger.LogInformation($"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId}");
+                    // Parse latitude and longitude from "lat, long" format
+                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double latitude) && 
+                        double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
+                    {
+                        var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
+                        var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
+                            userInfo.BirthDate,
+                            userInfo.BirthTime,
+                            latitude,
+                            longitude);
+                        
+                        moonSign = calculatedMoonSign;
+                        risingSign = calculatedRisingSign;
+                        
+                        _logger.LogInformation($"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude})");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"[LumenPredictionGAgent] Invalid latlong format: {userInfo.LatLong}");
+                    }
                 }
                 catch (Exception ex)
                 {

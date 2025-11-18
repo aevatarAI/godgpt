@@ -82,8 +82,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Gender = updateEvent.Gender;
                 state.BirthDate = updateEvent.BirthDate;
                 state.BirthTime = updateEvent.BirthTime;
-                state.BirthCountry = updateEvent.BirthCountry;
                 state.BirthCity = updateEvent.BirthCity;
+                state.LatLong = updateEvent.LatLong;
                 state.MbtiType = updateEvent.MbtiType;
                 state.RelationshipStatus = updateEvent.RelationshipStatus;
                 state.Interests = updateEvent.Interests;
@@ -112,8 +112,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Gender = default;
                 state.BirthDate = default;
                 state.BirthTime = null;
-                state.BirthCountry = null;
                 state.BirthCity = null;
+                state.LatLong = null;
                 state.MbtiType = null;
                 state.RelationshipStatus = null;
                 state.Interests = null;
@@ -197,8 +197,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 Gender = request.Gender,
                 BirthDate = request.BirthDate,
                 BirthTime = request.BirthTime,
-                BirthCountry = request.BirthCountry,
                 BirthCity = request.BirthCity,
+                LatLong = request.LatLong,
                 MbtiType = request.MbtiType,
                 RelationshipStatus = request.RelationshipStatus,
                 Interests = request.Interests,
@@ -299,8 +299,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     Gender = State.Gender,
                     BirthDate = State.BirthDate,
                     BirthTime = State.BirthTime,
-                    BirthCountry = State.BirthCountry,
                     BirthCity = State.BirthCity,
+                    LatLong = State.LatLong,
                     CalendarType = State.CalendarType,
                     CreatedAt = State.CreatedAt,
                     CurrentResidence = State.CurrentResidence,
@@ -476,8 +476,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 Gender = State.Gender,
                 BirthDate = State.BirthDate,
                 BirthTime = State.BirthTime,
-                BirthCountry = State.BirthCountry,
                 BirthCity = State.BirthCity,
+                LatLong = State.LatLong,
                 CalendarType = State.CalendarType,
                 CreatedAt = State.CreatedAt,
                 CurrentResidence = State.CurrentResidence,
