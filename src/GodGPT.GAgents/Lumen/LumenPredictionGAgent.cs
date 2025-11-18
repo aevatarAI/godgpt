@@ -1403,48 +1403,53 @@ FORMAT (TSV - Tab-Separated Values):
 Return data in simple key-value pairs, ONE per line: key[TAB]value
 Use TAB (\\t) to separate key from value. Arrays use pipe | separator.
 
-OUTPUT STRUCTURE (27 fields organized in 4 sections):
+OUTPUT STRUCTURE (26 fields organized in 4 sections):
 
-=== 1. DAY THEME (1 field) ===
+=== 1. DAY THEME ===
 dayTitle[TAB]The Day of [word1] and [word2]
 
-=== 2. TODAY'S READING (11 fields) ===
-Tarot Card:
-  tarot_name[TAB]Card name (VARIED for {sunSign}/{zodiacElement})
-  tarot_essence[TAB]1-2 words
-  tarot_orient[TAB]Upright or Reversed
-Path:
-  path_title[TAB]{displayName}'s Path Today - A [adjective] Path
-  path_intro[TAB]15-25 words starting 'Hi {displayName}'
-  path_detail[TAB]30-40 words of wisdom
-Life Areas:
-  area_career[TAB]10-20 words advice
-  area_love[TAB]10-20 words advice
-  area_wealth[TAB]10-20 words advice
-  area_health[TAB]10-15 words advice
-Takeaway:
-  takeaway[TAB]15-25 words '{displayName}, your...'
+=== 2. TODAY'S READING ===
+# Tarot Card (3 fields)
+card_name[TAB]Card name (VARIED for {sunSign}/{zodiacElement})
+card_essence[TAB]1-2 words
+card_orient[TAB]Upright or Reversed
 
-=== 3. LUCKY ALIGNMENTS (10 fields) ===
-Lucky Number:
-  num_display[TAB]Word (digit) e.g. 八 (8)
-  num_digit[TAB]1-9
-  num_meaning[TAB]15-20 words for THIS user
-  num_formula[TAB]12-18 words calculation
-Lucky Stone:
-  stone_name[TAB]Stone for {zodiacElement} element
-  stone_power[TAB]15-20 words how it helps
-  stone_use[TAB]15-20 words 'Meditate:' or 'Practice:'
-Lucky Spell:
-  spell_name[TAB]2 words poetic
-  spell_words[TAB]20-30 words affirmation in quotes
-  spell_intent[TAB]10-12 words 'To [verb]...'
+# Your Path (3 fields)
+path_title[TAB]{displayName}'s Path Today - A [adjective] Path
+path_intro[TAB]15-25 words starting 'Hi {displayName}'
+path_detail[TAB]30-40 words of wisdom
 
-=== 4. TWIST OF FATE (3 fields + 2 arrays) ===
-  twist_title[TAB]4-8 words poetic metaphor
-  twist_do[TAB]activity1|activity2|activity3|activity4|activity5
-  twist_avoid[TAB]activity1|activity2|activity3|activity4|activity5
-  twist_tip[TAB]10-15 words 'Today's turning point...'
+# Life Areas (4 fields)
+career[TAB]10-20 words advice
+love[TAB]10-20 words advice
+wealth[TAB]10-20 words advice
+health[TAB]10-15 words advice
+
+# Takeaway (1 field)
+takeaway[TAB]15-25 words '{displayName}, your...'
+
+=== 3. LUCKY ALIGNMENTS ===
+# Number (4 fields)
+lucky_num[TAB]Word (digit) e.g. 八 (8)
+lucky_digit[TAB]1-9
+num_meaning[TAB]15-20 words for THIS user
+num_calc[TAB]12-18 words calculation
+
+# Stone (3 fields)
+stone[TAB]Stone for {zodiacElement} element
+stone_power[TAB]15-20 words how it helps
+stone_use[TAB]15-20 words 'Meditate:' or 'Practice:'
+
+# Spell (3 fields)
+spell[TAB]2 words poetic
+spell_words[TAB]20-30 words affirmation in quotes
+spell_intent[TAB]10-12 words 'To [verb]...'
+
+=== 4. TWIST OF FATE ===
+fate_title[TAB]4-8 words poetic metaphor
+fate_do[TAB]activity1|activity2|activity3|activity4|activity5
+fate_avoid[TAB]activity1|activity2|activity3|activity4|activity5
+fate_tip[TAB]10-15 words 'Today's turning point...'
 
 CRITICAL FORMAT REQUIREMENTS:
 - Each line: exactly ONE tab character between field name and value
@@ -2164,33 +2169,49 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         var keyMapping = new Dictionary<string, string>
         {
-            // Daily prediction mappings
-            ["dayTitle"] = "dayTitle", // Keep as is
-            ["tarot_name"] = "todaysReading_tarotCard_name",
-            ["tarot_essence"] = "todaysReading_tarotCard_represents",
-            ["tarot_orient"] = "todaysReading_tarotCard_orientation",
+            // Daily prediction mappings - ultra-short keys to full frontend keys
+            ["dayTitle"] = "dayTitle",
+            
+            // Tarot Card (card_*)
+            ["card_name"] = "todaysReading_tarotCard_name",
+            ["card_essence"] = "todaysReading_tarotCard_represents",
+            ["card_orient"] = "todaysReading_tarotCard_orientation",
+            
+            // Path (path_*)
             ["path_title"] = "todaysReading_pathTitle",
             ["path_intro"] = "todaysReading_pathDescription",
             ["path_detail"] = "todaysReading_pathDescriptionExpanded",
-            ["area_career"] = "todaysReading_careerAndWork",
-            ["area_love"] = "todaysReading_loveAndRelationships",
-            ["area_wealth"] = "todaysReading_wealthAndFinance",
-            ["area_health"] = "todaysReading_healthAndWellness",
+            
+            // Life Areas (no prefix - contextually clear)
+            ["career"] = "todaysReading_careerAndWork",
+            ["love"] = "todaysReading_loveAndRelationships",
+            ["wealth"] = "todaysReading_wealthAndFinance",
+            ["health"] = "todaysReading_healthAndWellness",
+            
+            // Takeaway
             ["takeaway"] = "todaysTakeaway",
-            ["num_display"] = "luckyAlignments_luckyNumber_number",
-            ["num_digit"] = "luckyAlignments_luckyNumber_digit",
+            
+            // Lucky Number (lucky_*, num_*)
+            ["lucky_num"] = "luckyAlignments_luckyNumber_number",
+            ["lucky_digit"] = "luckyAlignments_luckyNumber_digit",
             ["num_meaning"] = "luckyAlignments_luckyNumber_description",
-            ["num_formula"] = "luckyAlignments_luckyNumber_calculation",
-            ["stone_name"] = "luckyAlignments_luckyStone",
+            ["num_calc"] = "luckyAlignments_luckyNumber_calculation",
+            
+            // Lucky Stone (stone_*)
+            ["stone"] = "luckyAlignments_luckyStone",
             ["stone_power"] = "luckyAlignments_luckyStone_description",
             ["stone_use"] = "luckyAlignments_luckyStone_guidance",
-            ["spell_name"] = "luckyAlignments_luckySpell",
+            
+            // Lucky Spell (spell_*)
+            ["spell"] = "luckyAlignments_luckySpell",
             ["spell_words"] = "luckyAlignments_luckySpell_description",
             ["spell_intent"] = "luckyAlignments_luckySpell_intent",
-            ["twist_title"] = "twistOfFate_title",
-            ["twist_do"] = "twistOfFate_favorable",
-            ["twist_avoid"] = "twistOfFate_avoid",
-            ["twist_tip"] = "twistOfFate_todaysRecommendation",
+            
+            // Twist of Fate (fate_*)
+            ["fate_title"] = "twistOfFate_title",
+            ["fate_do"] = "twistOfFate_favorable",
+            ["fate_avoid"] = "twistOfFate_avoid",
+            ["fate_tip"] = "twistOfFate_todaysRecommendation",
         };
 
         var mappedData = new Dictionary<string, string>();
