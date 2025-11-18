@@ -67,8 +67,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 8: Simplified system prompt, clarified language purity for ALL languages (not just Chinese)
     /// Version 9: Renamed sensitive fields to reduce LLM refusal (health→wellness, wealth→prosperity, destiny→path, fate→fortune)
     /// Version 10: Fixed [TAB] literal text issue - clarified LLM should use actual tab character, not the text '[TAB]'
+    /// Version 11: Strengthened language enforcement - added language requirement to system prompt and used native language names (简体中文 instead of Simplified Chinese)
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 10; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 11; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -774,6 +775,16 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 }
             }
             
+            // Get language name for system prompt (use native language names)
+            var languageMap = new Dictionary<string, string>
+            {
+                { "en", "English" },
+                { "zh-tw", "繁體中文" },
+                { "zh", "简体中文" },
+                { "es", "Español" }
+            };
+            var languageName = languageMap.GetValueOrDefault(targetLanguage, "English");
+            
             // Build prompt
             var promptStopwatch = Stopwatch.StartNew();
             var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage, moonSign, risingSign);
@@ -796,8 +807,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Temperature = "0.7"
             };
 
-            // Simple system prompt - only role definition
-            var systemPrompt = @"You are a professional astrology and divination expert. Provide personalized, insightful predictions.
+            // System prompt with language requirement
+            var systemPrompt = $@"You are a professional astrology and divination expert. Provide personalized, insightful predictions.
+
+CRITICAL: You MUST write ALL content in {languageName}. Do NOT use any other language.
 
 IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection purposes only. Wellness suggestions are general wellbeing tips, not medical advice. Prosperity insights are educational guidance, not financial advice.";
 
@@ -1230,13 +1243,13 @@ IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection 
         var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
         var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
         
-        // Language-specific instruction prefix (single language generation for first stage)
+        // Language-specific instruction prefix (use native language names)
         var languageMap = new Dictionary<string, string>
         {
             { "en", "English" },
-            { "zh-tw", "Traditional Chinese" },
-            { "zh", "Simplified Chinese" },
-            { "es", "Spanish" }
+            { "zh-tw", "繁體中文" },
+            { "zh", "简体中文" },
+            { "es", "Español" }
         };
         
         var languageName = languageMap.GetValueOrDefault(targetLanguage, "English");
@@ -1526,9 +1539,9 @@ PERSONALIZATION RULES:
         var languageMap = new Dictionary<string, string>
         {
             { "en", "English" },
-            { "zh-tw", "Traditional Chinese" },
-            { "zh", "Simplified Chinese" },
-            { "es", "Spanish" }
+            { "zh-tw", "繁體中文" },
+            { "zh", "简体中文" },
+            { "es", "Español" }
         };
         
         var sourceLangName = languageMap.GetValueOrDefault(sourceLanguage, "English");
@@ -1998,9 +2011,9 @@ Generate translations for: {targetLangNames}
         var languageMap = new Dictionary<string, string>
         {
             { "en", "English" },
-            { "zh-tw", "Traditional Chinese" },
-            { "zh", "Simplified Chinese" },
-            { "es", "Spanish" }
+            { "zh-tw", "繁體中文" },
+            { "zh", "简体中文" },
+            { "es", "Español" }
         };
         
         var sourceLangName = languageMap.GetValueOrDefault(sourceLanguage, "English");
@@ -2833,14 +2846,18 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return chineseResult;
         }
         
-        // Try English parsing
-        var normalized = cardName.Replace("The ", "").Replace(" ", "").Replace("of", "Of").Trim();
+        // Try English parsing with normalization
+        // Handle both "The Fool" and "TheFool", "Ace of Wands" and "AceOfWands"
+        var normalized = cardName.Trim()
+            .Replace(" of ", "Of")  // "Ace of Wands" → "AceOfWands"
+            .Replace(" ", "");      // Remove all spaces: "The Fool" → "TheFool"
+        
         if (Enum.TryParse<TarotCardEnum>(normalized, true, out var result))
         {
             return result;
         }
         
-        _logger.LogWarning($"[LumenPredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}");
+        _logger.LogWarning($"[LumenPredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}, normalized: {normalized}");
         return TarotCardEnum.Unknown;
     }
     
