@@ -508,7 +508,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// <summary>
     /// Get prediction generation status
     /// </summary>
-    public Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null)
+    public async Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null)
     {
         // Determine the actual prediction type from GenerationLocks (since State.Type defaults to 0)
         // Each grain only handles one type, so use the first (and only) key if available
@@ -529,17 +529,26 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 isGenerating = lockInfo.IsGenerating;
                 generationStartedAt = lockInfo.StartedAt;
                 
-                // Check for stale lock (>5 minutes) and reset
+                // Check for stale lock (>5 minutes) and clear it using Event Sourcing
                 // LLM calls can take 70-100+ seconds, so allow sufficient time
                 if (isGenerating && lockInfo.StartedAt.HasValue && 
                     (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 5)
                 {
+                    _logger.LogWarning($"[Lumen][Status] Detected stale generation lock for {actualType}, clearing it (elapsed: {(DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes:F2} minutes)");
+                    
+                    // Persist lock clearing using Event Sourcing
+                    RaiseEvent(new GenerationLockClearedEvent
+                    {
+                        Type = actualType
+                    });
+                    await ConfirmEvents();
+                    
                     isGenerating = false;
                     generationStartedAt = null;
                 }
             }
             
-            return Task.FromResult<PredictionStatusDto?>(new PredictionStatusDto
+            return new PredictionStatusDto
             {
                 Type = actualType,
                 IsGenerated = false,
@@ -550,7 +559,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 AvailableLanguages = new List<string>(),
                 NeedsRegeneration = true, // Always needs generation if never generated
                 TranslationStatus = null
-            });
+            };
         }
 
         // Check if currently generating
@@ -561,11 +570,20 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             isGenerating2 = lockInfo2.IsGenerating;
             generationStartedAt2 = lockInfo2.StartedAt;
             
-            // Check for stale lock (>5 minutes) and reset
+            // Check for stale lock (>5 minutes) and clear it using Event Sourcing
             // LLM calls can take 70-100+ seconds, so allow sufficient time
             if (isGenerating2 && lockInfo2.StartedAt.HasValue && 
                 (DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes > 5)
             {
+                _logger.LogWarning($"[Lumen][Status] Detected stale generation lock for {actualType}, clearing it (elapsed: {(DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes:F2} minutes)");
+                
+                // Persist lock clearing using Event Sourcing
+                RaiseEvent(new GenerationLockClearedEvent
+                {
+                    Type = actualType
+                });
+                await ConfirmEvents();
+                
                 isGenerating2 = false;
                 generationStartedAt2 = null;
             }
@@ -596,7 +614,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         {
             _logger.LogInformation($"[Lumen] Status check - Regeneration needed for {State.Type}, returning isGenerated=false");
             
-            return Task.FromResult<PredictionStatusDto?>(new PredictionStatusDto
+            return new PredictionStatusDto
             {
                 Type = actualType,
                 IsGenerated = false, // Important: Tell frontend there's no valid data
@@ -607,7 +625,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 AvailableLanguages = new List<string>(),
                 NeedsRegeneration = true,
                 TranslationStatus = null
-            });
+            };
         }
 
         // Build translation status by checking TranslationLocks
@@ -618,27 +636,34 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         
         if (activeTranslations.Any())
         {
-            // Find the earliest translation start time
-            var earliestStart = activeTranslations.Min(kvp => kvp.Value.StartedAt!.Value);
-            var translatingLanguages = activeTranslations.Select(kvp => kvp.Key).ToList();
-            
-            translationStatus = new TranslationStatusInfo
-            {
-                IsTranslating = true,
-                StartedAt = earliestStart,
-                TargetLanguages = translatingLanguages
-            };
-            
-            // Check for stale translation locks (>5 minutes) and reset
+            // Filter out stale translation locks (>5 minutes) before returning status
             // LLM translation calls can take 70-100+ seconds, so allow sufficient time
-            foreach (var kvp in activeTranslations)
+            var validTranslations = activeTranslations
+                .Where(kvp => (DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes <= 5)
+                .ToList();
+            
+            // Log any stale locks detected
+            var staleTranslations = activeTranslations.Except(validTranslations).ToList();
+            if (staleTranslations.Any())
             {
-                if ((DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes > 5)
+                foreach (var kvp in staleTranslations)
                 {
-                    State.TranslationLocks[kvp.Key].IsTranslating = false;
-                    State.TranslationLocks[kvp.Key].StartedAt = null;
-                    _logger.LogWarning($"[Lumen] Reset stale translation lock for language: {kvp.Key}");
+                    _logger.LogWarning($"[Lumen][Status] Detected stale translation lock for language: {kvp.Key}, elapsed: {(DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes:F2} minutes (not clearing in status call, will be cleared on next translation attempt)");
                 }
+            }
+            
+            if (validTranslations.Any())
+            {
+                // Find the earliest translation start time from valid translations
+                var earliestStart = validTranslations.Min(kvp => kvp.Value.StartedAt!.Value);
+                var translatingLanguages = validTranslations.Select(kvp => kvp.Key).ToList();
+                
+                translationStatus = new TranslationStatusInfo
+                {
+                    IsTranslating = true,
+                    StartedAt = earliestStart,
+                    TargetLanguages = translatingLanguages
+                };
             }
         }
 
@@ -661,7 +686,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             TranslationStatus = translationStatus
         };
 
-        return Task.FromResult<PredictionStatusDto?>(statusDto);
+        return statusDto;
     }
 
     /// <summary>
