@@ -55,7 +55,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// This will allow all users to regenerate predictions on the same day
     /// 
     /// ⚠️ TODO: REMOVE THIS FEATURE BEFORE PRODUCTION LAUNCH
-    /// Currently set to 6 for testing purposes (all existing users will regenerate).
+    /// Currently set to 7 for testing purposes (all existing users will regenerate).
     /// Before launch, either:
     /// 1. Remove prompt version checking entirely, OR
     /// 2. Set CURRENT_PROMPT_VERSION = 0 to avoid mass regeneration
@@ -63,8 +63,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 4: Migrated from JSON to TSV format for improved reliability and performance
     /// Version 5: Simplified TSV keys to ultra-short format (e.g. career, stone, fate_do) with mapping layer
     /// Version 6: Moved format and language purity constraints to system prompt for stronger LLM compliance
+    /// Version 7: Fixed conflicting format requirements in singleLanguagePrefix (removed JSON requirements)
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 6; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 7; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1276,12 +1277,14 @@ LANGUAGE-SPECIFIC RULES:
 - For Chinese (zh-tw/zh): Adapt English grammar structures - convert possessives (""Sean's"" → ""Sean的""), remove/adapt articles (""The Star"" → ""星星""), use natural Chinese sentence order.
 - For English/Spanish: Use natural target language sentence structure.
 
-⚠️ CRITICAL JSON FORMAT REQUIREMENTS:
-- Wrap response in valid JSON format ONLY.
-- NEVER use special symbols that break JSON: = (equals), unescaped quotes, unescaped backslashes.
-- ALL string values must be properly escaped and quoted.
-- For array fields, return proper JSON arrays: [""item1"", ""item2"", ""item3""].
-- Test: If you see = symbol in your output, you're doing it wrong. Replace with : (colon) for JSON keys.
+⚠️ CRITICAL TSV FORMAT REQUIREMENTS:
+- Return ONLY raw TSV (Tab-Separated Values) format
+- Each line: fieldName[TAB]value (ONE tab character between field name and value)
+- For arrays: use pipe | separator (e.g., item1|item2|item3)
+- NO JSON (no {{}}, no quotes around field names)
+- NO markdown code blocks (no ```tsv, no ```json, no ```)
+- NO extra text before or after the data
+- Start immediately with the first field: fieldName[TAB]value
 
 ";
         
