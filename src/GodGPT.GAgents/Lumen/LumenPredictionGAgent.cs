@@ -66,8 +66,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 7: Fixed conflicting format requirements in singleLanguagePrefix (removed JSON requirements)
     /// Version 8: Simplified system prompt, clarified language purity for ALL languages (not just Chinese)
     /// Version 9: Renamed sensitive fields to reduce LLM refusal (health→wellness, wealth→prosperity, destiny→path, fate→fortune)
+    /// Version 10: Fixed [TAB] literal text issue - clarified LLM should use actual tab character, not the text '[TAB]'
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 9; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 10; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1248,7 +1249,8 @@ IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection 
    - Exception: Chinese stems/branches (天干地支) like ""甲子 (Jiǎzǐ)"" can include both Chinese and pinyin
    
 2. FORMAT: Return raw TSV (Tab-Separated Values)
-   - Format: fieldName[TAB]value (one per line)
+   - Format: fieldName[TAB CHARACTER]value (one per line)
+   - Use ACTUAL TAB CHARACTER (\\t), NOT the text '[TAB]'
    - Arrays: item1|item2|item3 (pipe separator)
    - NO JSON, NO markdown, NO extra text
    - Start immediately with the data
@@ -1352,7 +1354,8 @@ mantra_pt2[TAB][5-15 words]
 mantra_pt3[TAB][5-15 words most powerful]
 
 CRITICAL FORMAT REQUIREMENTS:
-- Each line: exactly ONE tab character between field name and value
+- Each line: exactly ONE TAB CHARACTER (\\t, not the text '[TAB]') between field name and value
+- DO NOT write '[TAB]' as text - use the actual tab character
 - No line breaks within field values
 - Return ONLY TSV format, no markdown, no extra text
 
@@ -1377,39 +1380,40 @@ Yearly Year ({yearlyYear}): {yearlyYearZodiac}
 Taishui Relationship: {yearlyTaishui}
 
 FORMAT (TSV - Tab-Separated Values):
-Each field on ONE line: fieldName[TAB]value
+Each field on ONE line: fieldName	value
 
-Use TAB character (\\t) as separator. For array fields: Use pipe | to separate items.
+Use actual TAB character (not spaces) as separator. For arrays: Use pipe | to separate items.
 
-Output format:
-astro_overlay[TAB]{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits]
-theme_title[TAB][VARIED: 4-7 words using 'of' structure]
-theme_glance[TAB][VARIED: 15-20 words on what both systems agree]
-theme_detail[TAB][VARIED: 60-80 words in 3 parts (double space): P1 combination/clash, P2 what it creates, P3 define year 'not X but Y']
-career_score[TAB][1-5 based on analysis]
-career_tag[TAB][10-15 words starting 'Your superpower this year:']
-career_do[TAB]item1|item2
-career_avoid[TAB]item1|item2
-career_detail[TAB][50-70 words in 3 parts: formula, feeling, meaning]
-love_score[TAB][1-5]
-love_tag[TAB][10-15 words philosophical]
-love_do[TAB]item1|item2
-love_avoid[TAB]item1|item2
-love_detail[TAB][50-70 words in 3 parts: formula, emotional state, relationship needs]
-prosperity_score[TAB][1-5]
-prosperity_tag[TAB][10-15 words]
-prosperity_do[TAB]item1|item2
-prosperity_avoid[TAB]item1|item2
-prosperity_detail[TAB][50-70 words in 3 parts: formula, climate, abundance needs]
-wellness_score[TAB][1-5]
-wellness_tag[TAB][10-15 words]
-wellness_do[TAB]item1|item2
-wellness_avoid[TAB]item1|item2
-wellness_detail[TAB][50-70 words in 3 parts: formula, state, wellbeing needs]
-mantra[TAB][18-25 words using first-person 'My' declarations, 2-3 powerful statements]
+Output format (use TAB between field and value, shown as whitespace below):
+astro_overlay	{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits]
+theme_title	[VARIED: 4-7 words using 'of' structure]
+theme_glance	[VARIED: 15-20 words on what both systems agree]
+theme_detail	[VARIED: 60-80 words in 3 parts (double space): P1 combination/clash, P2 what it creates, P3 define year 'not X but Y']
+career_score	[1-5 based on analysis]
+career_tag	[10-15 words starting 'Your superpower this year:']
+career_do	item1|item2
+career_avoid	item1|item2
+career_detail	[50-70 words in 3 parts: formula, feeling, meaning]
+love_score	[1-5]
+love_tag	[10-15 words philosophical]
+love_do	item1|item2
+love_avoid	item1|item2
+love_detail	[50-70 words in 3 parts: formula, emotional state, relationship needs]
+prosperity_score	[1-5]
+prosperity_tag	[10-15 words]
+prosperity_do	item1|item2
+prosperity_avoid	item1|item2
+prosperity_detail	[50-70 words in 3 parts: formula, climate, abundance needs]
+wellness_score	[1-5]
+wellness_tag	[10-15 words]
+wellness_do	item1|item2
+wellness_avoid	item1|item2
+wellness_detail	[50-70 words in 3 parts: formula, state, wellbeing needs]
+mantra	[18-25 words using first-person 'My' declarations, 2-3 powerful statements]
 
 CRITICAL FORMAT REQUIREMENTS:
-- Each line: exactly ONE tab character between field name and value
+- Each line: exactly ONE TAB CHARACTER (\\t, not the text '[TAB]') between field name and value
+- DO NOT write '[TAB]' as text - use the actual tab character
 - Array values: use | separator, NO tabs within arrays
 - Scores: integer 1-5 only
 - No line breaks within field values
@@ -1498,6 +1502,8 @@ fortune_avoid[TAB]activity1|activity2|activity3|activity4|activity5
 fortune_tip[TAB]10-15 words 'Today's turning point...'
 
 CONTENT REQUIREMENTS:
+- Each line: exactly ONE TAB CHARACTER (\\t, not the text '[TAB]') between field and value
+- DO NOT write '[TAB]' as text - use the actual tab character
 - Array values: EXACTLY 5 items for each array, each item 2-3 words
 - No line breaks within field values
 
