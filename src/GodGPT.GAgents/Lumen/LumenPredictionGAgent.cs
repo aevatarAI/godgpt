@@ -1411,7 +1411,7 @@ dayTitle[TAB]The Day of [word1] and [word2]
 === 2. TODAY'S READING ===
 # Tarot Card (3 fields)
 card_name[TAB]Card name (VARIED for {sunSign}/{zodiacElement})
-card_essence[TAB]1-2 words
+card_essence[TAB]1-2 words, comma-separated if two
 card_orient[TAB]Upright or Reversed
 
 # Your Path (3 fields)
@@ -1433,7 +1433,7 @@ takeaway[TAB]15-25 words '{displayName}, your...'
 lucky_num[TAB]Word (digit) e.g. 八 (8)
 lucky_digit[TAB]1-9
 num_meaning[TAB]15-20 words for THIS user
-num_calc[TAB]12-18 words calculation
+num_calc[TAB]12-18 words showing actual formula (e.g. 'November (11) + 18 + Metal element = 7 vibration')
 
 # Stone (3 fields)
 stone[TAB]Stone for {zodiacElement} element
