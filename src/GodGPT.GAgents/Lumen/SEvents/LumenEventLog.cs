@@ -99,6 +99,15 @@ public class PredictionGeneratedEvent : LumenPredictionEventLog
 }
 
 /// <summary>
+/// Prediction cleared event (for user deletion or profile update)
+/// </summary>
+[GenerateSerializer]
+public class PredictionClearedEvent : LumenPredictionEventLog
+{
+    [Id(0)] public DateTime ClearedAt { get; set; }
+}
+
+/// <summary>
 /// Event raised when remaining languages are generated asynchronously (second stage)
 /// </summary>
 [GenerateSerializer]

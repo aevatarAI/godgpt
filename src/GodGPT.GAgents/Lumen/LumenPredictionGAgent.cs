@@ -35,6 +35,8 @@ public interface ILumenPredictionGAgent : IGAgent
     
     [ReadOnly]
     Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null);
+    
+    Task ClearCurrentPredictionAsync();
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -147,6 +149,24 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     state.GenerationLocks[lockClearedEvent.Type].IsGenerating = false;
                     state.GenerationLocks[lockClearedEvent.Type].StartedAt = null;
                 }
+                break;
+                
+            case PredictionClearedEvent clearedEvent:
+                // Clear current prediction data (for user deletion or profile update)
+                state.PredictionId = Guid.Empty;
+                state.UserId = string.Empty;
+                state.PredictionDate = default;
+                state.CreatedAt = default;
+                state.ProfileUpdatedAt = null;
+                state.Type = default;
+                state.LastGeneratedDate = null;
+                state.Results.Clear();
+                state.MultilingualResults.Clear();
+                state.GeneratedLanguages.Clear();
+                state.GenerationLocks.Clear();
+                state.TranslationLocks.Clear();
+                // Note: Do NOT clear LastActiveDate, DailyReminderTargetId, IsDailyReminderEnabled
+                // These are user activity tracking fields, not prediction data
                 break;
         }
     }
@@ -325,6 +345,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 var availableLanguages = (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
                                          ? State.MultilingualResults.Keys.ToList()
                                          : (State.GeneratedLanguages ?? new List<string>());
+                
+                // Convert array fields to JSON array strings before returning to frontend
+                localizedResults = ConvertArrayFieldsToJson(localizedResults);
                 
                 var cachedDto = new PredictionResultDto
                 {
@@ -716,24 +739,6 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     }
 
     /// <summary>
-    /// Clear all prediction data for this grain (called when user deletes account)
-    /// </summary>
-    public async Task ClearPredictionAsync()
-    {
-        _logger.LogInformation($"[LumenPredictionGAgent][ClearPredictionAsync] Clearing prediction data for UserId: {State.UserId}, Type: {State.Type}");
-        
-        // Raise event to clear all prediction data
-        RaiseEvent(new PredictionClearedEvent
-        {
-            ClearedAt = DateTime.UtcNow
-        });
-        
-        await ConfirmEvents();
-        
-        _logger.LogInformation($"[LumenPredictionGAgent][ClearPredictionAsync] Prediction data cleared successfully");
-    }
-
-    /// <summary>
     /// Generate new prediction using AI
     /// </summary>
     private async Task<GetTodayPredictionResult> GeneratePredictionAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
@@ -851,9 +856,9 @@ If you return any format other than raw TSV, the system will fail to parse your 
             var parseStopwatch = Stopwatch.StartNew();
             (parsedResults, multilingualResults) = type switch
             {
-                PredictionType.Lifetime => ParseMultilingualLifetimeResponse(aiResponse),
-                PredictionType.Yearly => ParseMultilingualLifetimeResponse(aiResponse), // Yearly uses same parser
-                PredictionType.Daily => ParseMultilingualDailyResponse(aiResponse),
+                PredictionType.Lifetime => ParseLifetimeResponse(aiResponse),
+                PredictionType.Yearly => ParseLifetimeResponse(aiResponse), // Yearly uses same parser
+                PredictionType.Daily => ParseDailyResponse(aiResponse),
                 _ => throw new ArgumentException($"Unsupported prediction type: {type}")
             };
             
@@ -2238,6 +2243,39 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     }
     
     /// <summary>
+    /// Convert array fields from pipe-separated strings to JSON array strings for frontend
+    /// </summary>
+    private Dictionary<string, string> ConvertArrayFieldsToJson(Dictionary<string, string> data)
+    {
+        if (data == null || data.Count == 0)
+            return data;
+        
+        // Define all array field names (using full frontend keys)
+        var arrayFieldNames = new HashSet<string>
+        {
+            "twistOfFate_favorable",
+            "twistOfFate_avoid"
+            // Add more array fields here as needed
+        };
+        
+        var result = new Dictionary<string, string>(data);
+        
+        foreach (var fieldName in arrayFieldNames)
+        {
+            if (result.ContainsKey(fieldName) && !string.IsNullOrEmpty(result[fieldName]) && result[fieldName].Contains('|'))
+            {
+                // Split pipe-separated string and convert to JSON array
+                var items = result[fieldName].Split('|', StringSplitOptions.RemoveEmptyEntries)
+                                             .Select(item => item.Trim())
+                                             .ToList();
+                result[fieldName] = JsonConvert.SerializeObject(items);
+            }
+        }
+        
+        return result;
+    }
+    
+    /// <summary>
     /// Map shortened TSV keys to full field names expected by frontend
     /// </summary>
     private Dictionary<string, string> MapShortKeysToFullKeys(Dictionary<string, string> shortKeyData)
@@ -2385,6 +2423,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var mappedResult = MapShortKeysToFullKeys(result);
             _logger.LogDebug($"[LumenPredictionGAgent][ParseTsvResponse] Mapped {result.Count} short keys to {mappedResult.Count} full keys");
             
+            // Convert pipe-separated array fields to JSON array strings
+            mappedResult = ConvertArrayFieldsToJson(mappedResult);
+            
             return mappedResult;
         }
         catch (Exception ex)
@@ -2485,97 +2526,61 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
     }
 
-    private Dictionary<string, Dictionary<string, string>>? ParseDailyResponse(string aiResponse)
-    {
-        try
-        {
-            var jsonStart = aiResponse.IndexOf('{');
-            var jsonEnd = aiResponse.LastIndexOf('}');
-
-            if (jsonStart >= 0 && jsonEnd > jsonStart)
-            {
-                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                
-                // Try to parse as direct results structure
-                var results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(jsonString);
-                if (results != null && results.Count > 0)
-                {
-                    return results;
-                }
-
-                // Try to parse as wrapped structure with "results" key
-                var fullResponse = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
-                if (fullResponse != null && fullResponse.ContainsKey("results") && fullResponse["results"] != null)
-                {
-                    var resultsJson = JsonConvert.SerializeObject(fullResponse["results"]);
-                    results = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(resultsJson);
-                    return results;
-                }
-            }
-
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Failed to parse");
-            return null;
-        }
-    }
     /// <summary>
-    /// Parse multilingual daily response from AI
-    /// Returns (default English results, multilingual dictionary)
+    /// Parse daily response from AI (single language only)
+    /// Returns (parsed results, null) - second parameter kept for signature compatibility
     /// </summary>
-    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseMultilingualDailyResponse(string aiResponse)
+    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseDailyResponse(string aiResponse)
     {
         try
         {
             // NEW DATA: Prompt requires TSV format, so parse as TSV only (no fallback)
             // HISTORICAL DATA: Already stored as Dictionary<string, string> in State, no parsing needed
-            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualDailyResponse] Parsing TSV format (required by prompt)");
+            _logger.LogDebug("[LumenPredictionGAgent][ParseDailyResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
             {
-                _logger.LogInformation($"[LumenPredictionGAgent][ParseMultilingualDailyResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                _logger.LogInformation($"[LumenPredictionGAgent][ParseDailyResponse] Successfully parsed {tsvResult.Count} fields from TSV");
                 return (tsvResult, null);
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseMultilingualDailyResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            _logger.LogError($"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualDailyResponse] Exception during TSV parsing. Response preview: {Preview}", 
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Response preview: {Preview}", 
                 aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
             return (null, null);
         }
     }
     
     /// <summary>
-    /// Parse multilingual lifetime response from AI
-    /// Returns (default lifetime, multilingual lifetime)
+    /// Parse lifetime/yearly response from AI (single language only)
+    /// Returns (parsed results, null) - second parameter kept for signature compatibility
     /// </summary>
-    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseMultilingualLifetimeResponse(string aiResponse)
+    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseLifetimeResponse(string aiResponse)
     {
         try
         {
             // NEW DATA: Prompt requires TSV format, so parse as TSV only (no fallback)
             // HISTORICAL DATA: Already stored as Dictionary<string, string> in State, no parsing needed
-            _logger.LogDebug("[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Parsing TSV format (required by prompt)");
+            _logger.LogDebug("[LumenPredictionGAgent][ParseLifetimeResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
             {
-                _logger.LogInformation($"[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                _logger.LogInformation($"[LumenPredictionGAgent][ParseLifetimeResponse] Successfully parsed {tsvResult.Count} fields from TSV");
                 return (tsvResult, null);
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            _logger.LogError($"[LumenPredictionGAgent][ParseLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseMultilingualLifetimeResponse] Exception during TSV parsing. Response preview: {Preview}", 
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeResponse] Exception during TSV parsing. Response preview: {Preview}", 
                 aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
             return (null, null);
         }
@@ -3543,6 +3548,35 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         if (wasInactive || !State.IsDailyReminderEnabled)
         {
             await RegisterDailyReminderAsync();
+        }
+    }
+    
+    /// <summary>
+    /// Clear current prediction data (for user deletion or profile update)
+    /// This will trigger regeneration on next access
+    /// </summary>
+    public async Task ClearCurrentPredictionAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[LumenPredictionGAgent][ClearCurrentPredictionAsync] Clearing prediction data for: {GrainId}", 
+                this.GetPrimaryKey());
+
+            // Raise event to clear prediction state
+            RaiseEvent(new PredictionClearedEvent
+            {
+                ClearedAt = DateTime.UtcNow
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenPredictionGAgent][ClearCurrentPredictionAsync] Prediction data cleared successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionGAgent][ClearCurrentPredictionAsync] Error clearing prediction data");
+            throw;
         }
     }
     
