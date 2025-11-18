@@ -716,24 +716,6 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     }
 
     /// <summary>
-    /// Clear all prediction data for this grain (called when user deletes account)
-    /// </summary>
-    public async Task ClearPredictionAsync()
-    {
-        _logger.LogInformation($"[LumenPredictionGAgent][ClearPredictionAsync] Clearing prediction data for UserId: {State.UserId}, Type: {State.Type}");
-        
-        // Raise event to clear all prediction data
-        RaiseEvent(new PredictionClearedEvent
-        {
-            ClearedAt = DateTime.UtcNow
-        });
-        
-        await ConfirmEvents();
-        
-        _logger.LogInformation($"[LumenPredictionGAgent][ClearPredictionAsync] Prediction data cleared successfully");
-    }
-
-    /// <summary>
     /// Generate new prediction using AI
     /// </summary>
     private async Task<GetTodayPredictionResult> GeneratePredictionAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
