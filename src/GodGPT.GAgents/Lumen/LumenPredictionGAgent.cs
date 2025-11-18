@@ -66,10 +66,14 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 7: Fixed conflicting format requirements in singleLanguagePrefix (removed JSON requirements)
     /// Version 8: Simplified system prompt, clarified language purity for ALL languages (not just Chinese)
     /// Version 9: Renamed sensitive fields to reduce LLM refusal (health→wellness, wealth→prosperity, destiny→path, fate→fortune)
-    /// Version 10: Fixed [TAB] literal text issue - clarified LLM should use actual tab character, not the text '[TAB]'
+    /// Version 10: Fixed 	 literal text issue - clarified LLM should use actual tab character, not the text '	'
     /// Version 11: Strengthened language enforcement - added language requirement to system prompt and used native language names (简体中文 instead of Simplified Chinese)
+    /// Version 12: Ultra-strong language enforcement - write language instructions IN the target language itself (e.g., "必须用简体中文" for Chinese)
+    /// Version 13: Clarified field name vs field value distinction - field names in English, field values in target language, with concrete examples
+    /// Version 14: Fixed prompt contradictions - aligned system/user prompts on language requirements, replaced all [TAB] placeholders with actual tab characters in examples
+    /// Version 15: Added explicit template translation reminder - LLM must translate English template text (like "James's Path Today") to target language with concrete examples
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 11; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 15; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -750,24 +754,36 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         try
         {
-            // Pre-calculate Moon and Rising signs if birth time and city are available
+            // Pre-calculate Moon and Rising signs if birth time and latlong are available
             string? moonSign = null;
             string? risingSign = null;
             
-            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.BirthCity))
+            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
-                    var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
-                    var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
-                        userInfo.BirthDate,
-                        userInfo.BirthTime,
-                        userInfo.BirthCity);
-                    
-                    moonSign = calculatedMoonSign;
-                    risingSign = calculatedRisingSign;
-                    
-                    _logger.LogInformation($"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId}");
+                    // Parse latitude and longitude from "lat, long" format
+                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double latitude) && 
+                        double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
+                    {
+                        var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
+                        var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
+                            userInfo.BirthDate,
+                            userInfo.BirthTime,
+                            latitude,
+                            longitude);
+                        
+                        moonSign = calculatedMoonSign;
+                        risingSign = calculatedRisingSign;
+                        
+                        _logger.LogInformation($"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude})");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"[LumenPredictionGAgent] Invalid latlong format: {userInfo.LatLong}");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -807,12 +823,16 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 Temperature = "0.7"
             };
 
-            // System prompt with language requirement
-            var systemPrompt = $@"You are a professional astrology and divination expert. Provide personalized, insightful predictions.
+            // System prompt with clear field value language requirement
+            var systemPrompt = $@"You are a professional astrology and divination expert.
 
-CRITICAL: You MUST write ALL content in {languageName}. Do NOT use any other language.
+===== CRITICAL LANGUAGE REQUIREMENT =====
+Write all FIELD VALUES in {languageName} ONLY.
+Field names remain in English.
+DO NOT mix languages in field values.
+============================================
 
-IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection purposes only. Wellness suggestions are general wellbeing tips, not medical advice. Prosperity insights are educational guidance, not financial advice.";
+IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection purposes only.";
 
             // Use "LUMEN" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
@@ -1254,19 +1274,86 @@ IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection 
         
         var languageName = languageMap.GetValueOrDefault(targetLanguage, "English");
         
-        var singleLanguagePrefix = $@"IMPORTANT INSTRUCTIONS:
+        // Build language instruction in target language for stronger compliance
+        var languageInstruction = targetLanguage switch
+        {
+            "zh" => @"===== 语言要求 =====
+必须用简体中文书写所有字段的值（value）。
+字段名（field name）保持英文不变。
+示例：
+  dayTitle	反思与和谐之日     ← 值用简体中文
+  card_name	月亮                ← 值用简体中文
+  career	专注于团队协作      ← 值用简体中文
 
-1. LANGUAGE: Write ALL content in {languageName} ONLY
-   - Do NOT mix other languages
-   - Exception: Keep user names unchanged (don't translate)
-   - Exception: Chinese stems/branches (天干地支) like ""甲子 (Jiǎzǐ)"" can include both Chinese and pinyin
-   
-2. FORMAT: Return raw TSV (Tab-Separated Values)
-   - Format: fieldName[TAB CHARACTER]value (one per line)
-   - Use ACTUAL TAB CHARACTER (\\t), NOT the text '[TAB]'
-   - Arrays: item1|item2|item3 (pipe separator)
-   - NO JSON, NO markdown, NO extra text
-   - Start immediately with the data
+CRITICAL: Translate ALL template text below into 简体中文
+- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
+- You MUST translate these into 简体中文
+Examples:
+  ✓ path_title: ""James 今日之路 - 勇敢之路""        (NOT ""James's Path Today - A Courageous Path"")
+  ✓ spell_intent: ""点燃内心的激情""                  (NOT ""To ignite inner passion"")
+  ✓ fortune_tip: ""今日转折点在于勇敢面对挑战""      (NOT ""Today's turning point is to face challenges"")
+===================",
+            "zh-tw" => @"===== 語言要求 =====
+必須用繁體中文書寫所有字段的值（value）。
+字段名（field name）保持英文不變。
+示例：
+  dayTitle	反思與和諧之日     ← 值用繁體中文
+  card_name	月亮                ← 值用繁體中文
+  career	專注於團隊協作      ← 值用繁體中文
+
+CRITICAL: Translate ALL template text below into 繁體中文
+- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
+- You MUST translate these into 繁體中文
+Examples:
+  ✓ path_title: ""James 今日之路 - 勇敢之路""        (NOT ""James's Path Today - A Courageous Path"")
+  ✓ spell_intent: ""點燃內心的激情""                  (NOT ""To ignite inner passion"")
+  ✓ fortune_tip: ""今日轉折點在於勇敢面對挑戰""      (NOT ""Today's turning point is to face challenges"")
+===================",
+            "es" => @"===== REQUISITO DE IDIOMA =====
+Escribe todos los valores de campo en ESPAÑOL.
+Los nombres de campo permanecen en inglés.
+Ejemplo:
+  dayTitle	El Día de Reflexión  ← valor en español
+  card_name	La Luna              ← valor en español
+  career	Enfócate en el trabajo en equipo  ← valor en español
+
+CRITICAL: Translate ALL template text below into ESPAÑOL
+- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
+- You MUST translate these into ESPAÑOL
+Examples:
+  ✓ path_title: ""El Camino de James Hoy - Un Camino Valiente""    (NOT ""James's Path Today - A Courageous Path"")
+  ✓ spell_intent: ""Encender la pasión interior""                  (NOT ""To ignite inner passion"")
+  ✓ fortune_tip: ""El punto de inflexión de hoy es enfrentar desafíos""  (NOT ""Today's turning point is to face challenges"")
+================================",
+            _ => $@"===== LANGUAGE REQUIREMENT =====
+Write all field VALUES in {languageName}.
+Field names remain in English.
+Example:
+  dayTitle	The Day of Reflection  ← value in {languageName}
+  card_name	The Moon               ← value in {languageName}
+
+CRITICAL: Translate ALL template text below into {languageName}
+- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
+- You MUST translate these into {languageName}
+Examples (if {languageName} is not English):
+  ✓ Translate ""James's Path Today"" to {languageName}
+  ✓ Translate ""To ignite inner passion"" to {languageName}
+  ✓ Translate ""Today's turning point is to face challenges"" to {languageName}
+================================"
+        };
+        
+        var singleLanguagePrefix = $@"{languageInstruction}
+
+EXCEPTIONS:
+- User names: Keep unchanged (don't translate)
+- Chinese stems/branches (天干地支): Can include Chinese and pinyin like ""甲子 (Jiǎzǐ)""
+
+FORMAT REQUIREMENT:
+- Return raw TSV (Tab-Separated Values)
+- Use ACTUAL TAB CHARACTER (\\t) between field name and value
+- Arrays: item1|item2|item3 (pipe separator)
+- NO JSON, NO markdown, NO extra text
+- Start immediately with the data
 
 ";
         
@@ -1287,88 +1374,88 @@ Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
 IMPORTANT: All Chinese Zodiac content must reference USER'S Birth Year Zodiac ({birthYearZodiac}), NOT current year ({currentYearZodiac}).
 
 FORMAT (TSV - Tab-Separated Values):
-Each field on ONE line: fieldName[TAB]value
+Each field on ONE line: fieldName	value
 
-Use TAB character (\\t) as separator.
+CRITICAL: Use actual TAB character (\\t) between field and value.
 
-Output format:
-pillars_id[TAB][12-18 words addressing by name]
-pillars_detail[TAB][45-60 words using {sunSign}, 'both...yet' patterns]
-cn_year[TAB][CRITICAL: match target language - en='Year of the Snake', zh='蛇年', es='Año de la Serpiente']
-cn_trait1[TAB][8-12 words]
-cn_trait2[TAB][8-12 words]
-cn_trait3[TAB][8-12 words]
-cn_trait4[TAB][8-12 words]
-whisper[TAB][40-50 words starting '{birthYearAnimal} adds...', 'You are not only X, but Y']
-sun_tag[TAB]You [2-5 words poetic metaphor]
-sun_arch[TAB]Sun in {sunSign} - The [3-5 words archetype]
-sun_desc[TAB][18-25 words core traits using 'You']
-moon_sign[TAB]{moonSign}
-moon_arch[TAB]Moon in {moonSign} - The [3-5 words archetype]
-moon_desc[TAB][15-20 words emotional nature]
-rising_sign[TAB]{risingSign}
-rising_arch[TAB]Rising in {risingSign} - The [3-5 words archetype]
-rising_desc[TAB][20-28 words how they meet world]
-essence[TAB][15-20 words 'You think like [Sun], feel like [Moon], move like [Rising]']
-str_intro[TAB][10-15 words on growth path]
-str1_title[TAB][2-5 words]
-str1_desc[TAB][15-25 words, attribute to sign combinations]
-str2_title[TAB][2-5 words]
-str2_desc[TAB][12-18 words]
-str3_title[TAB][2-5 words]
-str3_desc[TAB][12-18 words]
-chal_intro[TAB][12-18 words starting 'Your power grows when...']
-chal1_title[TAB][2-5 words]
-chal1_desc[TAB][8-15 words using sign combinations]
-chal2_title[TAB][2-5 words]
-chal2_desc[TAB][10-18 words]
-chal3_title[TAB][2-5 words]
-chal3_desc[TAB][10-18 words]
-path_intro[TAB][20-30 words starting 'You are here to...', end with dual identity]
-path1_title[TAB][3-5 roles separated by /]
-path1_desc[TAB][3-6 words]
-path2_title[TAB][3-5 roles separated by /]
-path2_desc[TAB][5-10 words]
-path3_title[TAB][1-3 roles]
-path3_desc[TAB][8-15 words]
-cn_essence[TAB]Essence like {birthYearElement}
-cycle_title[TAB]Zodiac Cycle Influence (YYYY-YYYY) [calculate 20-year period from birth year]
-cycle_name_en[TAB][English name]
-cycle_name_zh[TAB][Chinese name]
-cycle_intro[TAB][50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Explain 20-year cycle]
-cycle_pt1[TAB][8-12 words]
-cycle_pt2[TAB][6-10 words]
-cycle_pt3[TAB][8-12 words]
-cycle_pt4[TAB][10-15 words]
-ten_intro[TAB][40-60 words on Fate Palace sector, element, alignment]
-past_summary[TAB][8-12 words]
-past_detail[TAB][60-80 words past tense, element/energy, Ten Gods]
-curr_summary[TAB][8-12 words]
-curr_detail[TAB][60-80 words present tense, what it empowers, Ten Gods]
-future_summary[TAB][8-12 words]
-future_detail[TAB][60-80 words future tense, opportunities/challenges]
-plot_title[TAB]You are a [10-20 words poetic archetype]
-plot_chapter[TAB][30-50 words addressing by name, describe destiny]
-plot_pt1[TAB][5-15 words]
-plot_pt2[TAB][5-15 words]
-plot_pt3[TAB][5-15 words]
-plot_pt4[TAB][5-15 words powerful identity statement]
-act1_title[TAB][2-5 words]
-act1_desc[TAB][10-20 words actionable advice]
-act2_title[TAB][2-5 words]
-act2_desc[TAB][10-20 words]
-act3_title[TAB][2-5 words]
-act3_desc[TAB][10-20 words]
-act4_title[TAB][2-5 words]
-act4_desc[TAB][10-20 words most powerful]
-mantra_title[TAB][2-4 words]
-mantra_pt1[TAB][5-15 words using 'X as if...' pattern]
-mantra_pt2[TAB][5-15 words]
-mantra_pt3[TAB][5-15 words most powerful]
+Output format (TAB shown as whitespace):
+pillars_id	[12-18 words addressing by name]
+pillars_detail	[45-60 words using {sunSign}, 'both...yet' patterns]
+cn_year	[CRITICAL: match target language - en='Year of the Snake', zh='蛇年', es='Año de la Serpiente']
+cn_trait1	[8-12 words]
+cn_trait2	[8-12 words]
+cn_trait3	[8-12 words]
+cn_trait4	[8-12 words]
+whisper	[40-50 words starting '{birthYearAnimal} adds...', 'You are not only X, but Y']
+sun_tag	You [2-5 words poetic metaphor]
+sun_arch	Sun in {sunSign} - The [3-5 words archetype]
+sun_desc	[18-25 words core traits using 'You']
+moon_sign	{moonSign}
+moon_arch	Moon in {moonSign} - The [3-5 words archetype]
+moon_desc	[15-20 words emotional nature]
+rising_sign	{risingSign}
+rising_arch	Rising in {risingSign} - The [3-5 words archetype]
+rising_desc	[20-28 words how they meet world]
+essence	[15-20 words 'You think like [Sun], feel like [Moon], move like [Rising]']
+str_intro	[10-15 words on growth path]
+str1_title	[2-5 words]
+str1_desc	[15-25 words, attribute to sign combinations]
+str2_title	[2-5 words]
+str2_desc	[12-18 words]
+str3_title	[2-5 words]
+str3_desc	[12-18 words]
+chal_intro	[12-18 words starting 'Your power grows when...']
+chal1_title	[2-5 words]
+chal1_desc	[8-15 words using sign combinations]
+chal2_title	[2-5 words]
+chal2_desc	[10-18 words]
+chal3_title	[2-5 words]
+chal3_desc	[10-18 words]
+path_intro	[20-30 words starting 'You are here to...', end with dual identity]
+path1_title	[3-5 roles separated by /]
+path1_desc	[3-6 words]
+path2_title	[3-5 roles separated by /]
+path2_desc	[5-10 words]
+path3_title	[1-3 roles]
+path3_desc	[8-15 words]
+cn_essence	Essence like {birthYearElement}
+cycle_title	Zodiac Cycle Influence (YYYY-YYYY) [calculate 20-year period from birth year]
+cycle_name_en	[English name]
+cycle_name_zh	[Chinese name]
+cycle_intro	[50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Explain 20-year cycle]
+cycle_pt1	[8-12 words]
+cycle_pt2	[6-10 words]
+cycle_pt3	[8-12 words]
+cycle_pt4	[10-15 words]
+ten_intro	[40-60 words on Fate Palace sector, element, alignment]
+past_summary	[8-12 words]
+past_detail	[60-80 words past tense, element/energy, Ten Gods]
+curr_summary	[8-12 words]
+curr_detail	[60-80 words present tense, what it empowers, Ten Gods]
+future_summary	[8-12 words]
+future_detail	[60-80 words future tense, opportunities/challenges]
+plot_title	You are a [10-20 words poetic archetype]
+plot_chapter	[30-50 words addressing by name, describe destiny]
+plot_pt1	[5-15 words]
+plot_pt2	[5-15 words]
+plot_pt3	[5-15 words]
+plot_pt4	[5-15 words powerful identity statement]
+act1_title	[2-5 words]
+act1_desc	[10-20 words actionable advice]
+act2_title	[2-5 words]
+act2_desc	[10-20 words]
+act3_title	[2-5 words]
+act3_desc	[10-20 words]
+act4_title	[2-5 words]
+act4_desc	[10-20 words most powerful]
+mantra_title	[2-4 words]
+mantra_pt1	[5-15 words using 'X as if...' pattern]
+mantra_pt2	[5-15 words]
+mantra_pt3	[5-15 words most powerful]
 
 CRITICAL FORMAT REQUIREMENTS:
-- Each line: exactly ONE TAB CHARACTER (\\t, not the text '[TAB]') between field name and value
-- DO NOT write '[TAB]' as text - use the actual tab character
+- Each line: exactly ONE TAB CHARACTER (\\t) between field name and value
+- Use actual tab character (not spaces, not literal word 'TAB')
 - No line breaks within field values
 - Return ONLY TSV format, no markdown, no extra text
 
@@ -1425,8 +1512,8 @@ wellness_detail	[50-70 words in 3 parts: formula, state, wellbeing needs]
 mantra	[18-25 words using first-person 'My' declarations, 2-3 powerful statements]
 
 CRITICAL FORMAT REQUIREMENTS:
-- Each line: exactly ONE TAB CHARACTER (\\t, not the text '[TAB]') between field name and value
-- DO NOT write '[TAB]' as text - use the actual tab character
+- Each line: exactly ONE TAB CHARACTER (\\t) between field name and value
+- Use actual tab character (not spaces, not literal word 'TAB')
 - Array values: use | separator, NO tabs within arrays
 - Scores: integer 1-5 only
 - No line breaks within field values
@@ -1463,60 +1550,60 @@ Birth Year Zodiac: {birthYearZodiac}
 Chinese Element: {birthYearElement}
 
 FORMAT (TSV - Tab-Separated Values):
-Return data in simple key-value pairs, ONE per line: key[TAB]value
+Return data in simple key-value pairs, ONE per line: key	value
 Use TAB (\\t) to separate key from value. Arrays use pipe | separator.
 
 OUTPUT STRUCTURE (26 fields organized in 4 sections):
 
 === 1. DAY THEME ===
-dayTitle[TAB]The Day of [word1] and [word2]
+dayTitle	The Day of [word1] and [word2]
 
 === 2. TODAY'S READING ===
 # Tarot Card (3 fields)
-card_name[TAB]Card name (VARIED for {sunSign}/{zodiacElement})
-card_essence[TAB]1-2 words, comma-separated if two
-card_orient[TAB]Upright or Reversed
+card_name	Card name (VARIED for {sunSign}/{zodiacElement})
+card_essence	1-2 words, comma-separated if two
+card_orient	Upright or Reversed
 
 # Your Path (3 fields)
-path_title[TAB]{displayName}'s Path Today - A [adjective] Path
-path_intro[TAB]15-25 words starting 'Hi {displayName}'
-path_detail[TAB]30-40 words of wisdom
+path_title	{displayName}'s Path Today - A [adjective] Path
+path_intro	15-25 words starting 'Hi {displayName}'
+path_detail	30-40 words of wisdom
 
 # Life Areas (4 fields)
-career[TAB]10-20 words advice
-love[TAB]10-20 words advice
-prosperity[TAB]10-20 words advice
-wellness[TAB]10-15 words advice
+career	10-20 words advice
+love	10-20 words advice
+prosperity	10-20 words advice
+wellness	10-15 words advice
 
 # Takeaway (1 field)
-takeaway[TAB]15-25 words '{displayName}, your...'
+takeaway	15-25 words '{displayName}, your...'
 
 === 3. LUCKY ALIGNMENTS ===
 # Number (4 fields)
-lucky_num[TAB]Word (digit) e.g. 八 (8)
-lucky_digit[TAB]1-9
-num_meaning[TAB]15-20 words for THIS user
-num_calc[TAB]12-18 words showing actual formula (e.g. 'November (11) + 18 + Metal element = 7 vibration')
+lucky_num	Word (digit) e.g. 八 (8)
+lucky_digit	1-9
+num_meaning	15-20 words for THIS user
+num_calc	12-18 words showing actual formula (e.g. 'November (11) + 18 + Metal element = 7 vibration')
 
 # Stone (3 fields)
-stone[TAB]Stone for {zodiacElement} element
-stone_power[TAB]15-20 words how it helps
-stone_use[TAB]15-20 words 'Meditate:' or 'Practice:'
+stone	Stone for {zodiacElement} element
+stone_power	15-20 words how it helps
+stone_use	15-20 words 'Meditate:' or 'Practice:'
 
 # Spell (3 fields)
-spell[TAB]2 words poetic
-spell_words[TAB]20-30 words affirmation in quotes
-spell_intent[TAB]10-12 words 'To [verb]...'
+spell	2 words poetic
+spell_words	20-30 words affirmation in quotes
+spell_intent	10-12 words 'To [verb]...'
 
 === 4. TWIST OF FORTUNE ===
-fortune_title[TAB]4-8 words poetic metaphor
-fortune_do[TAB]activity1|activity2|activity3|activity4|activity5
-fortune_avoid[TAB]activity1|activity2|activity3|activity4|activity5
-fortune_tip[TAB]10-15 words 'Today's turning point...'
+fortune_title	4-8 words poetic metaphor
+fortune_do	activity1|activity2|activity3|activity4|activity5
+fortune_avoid	activity1|activity2|activity3|activity4|activity5
+fortune_tip	10-15 words 'Today's turning point...'
 
 CONTENT REQUIREMENTS:
-- Each line: exactly ONE TAB CHARACTER (\\t, not the text '[TAB]') between field and value
-- DO NOT write '[TAB]' as text - use the actual tab character
+- Each line: exactly ONE TAB CHARACTER (\\t) between field and value
+- Use actual tab character (not spaces, not literal word 'TAB')
 - Array values: EXACTLY 5 items for each array, each item 2-3 words
 - No line breaks within field values
 
@@ -1566,17 +1653,17 @@ TRANSLATION RULES:
 
 OUTPUT FORMAT:
 [LANGUAGE_CODE]
-fieldName[TAB]translatedValue
+fieldName	translatedValue
 ...
 
 Example:
 [zh-tw]
-dayTitle[TAB]祥龍之日
-path_title[TAB]Sean今日的道路 - 寧靜之路
+dayTitle	祥龍之日
+path_title	Sean今日的道路 - 寧靜之路
 
 [zh]
-dayTitle[TAB]祥龙之日
-path_title[TAB]Sean今日的道路 - 宁静之路
+dayTitle	祥龙之日
+path_title	Sean今日的道路 - 宁静之路
 
 SOURCE CONTENT ({sourceLangName} - TSV Format):
 {sourceTsv}
@@ -1873,7 +1960,7 @@ Generate translations for: {targetLangNames}
             // Check for LLM refusal
             if (IsLLMRefusal(aiResponse))
             {
-                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Response preview: {(aiResponse.Length > 200 ? aiResponse.Substring(0, 200) : aiResponse)}");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Full response:\n{aiResponse}");
                 return;
             }
             
@@ -2059,10 +2146,10 @@ CRITICAL RULES:
 9. For array values (separated by |): Translate each item individually, keep the | separator
 
 OUTPUT FORMAT (TSV - Tab-Separated Values):
-Each line: fieldName[TAB]translatedValue
+Each line: fieldName	translatedValue
 
 CRITICAL FORMAT REQUIREMENTS:
-- Each field on ONE line: fieldName[TAB]translatedValue
+- Each field on ONE line: fieldName	translatedValue
 - Use TAB character (\\t) as separator
 - For array fields with | separator: translate each item but keep | structure
 - Example: ""Walk|Meditate|Read"" → ""散步|冥想|阅读""
@@ -2418,8 +2505,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Parse TSV (Tab-Separated Values) response from LLM
-    /// Format: fieldName[TAB]value (one per line)
-    /// Arrays: fieldName[TAB]item1|item2|item3
+    /// Format: fieldName	value (one per line)
+    /// Arrays: fieldName	item1|item2|item3
     /// </summary>
     private Dictionary<string, string>? ParseTsvResponse(string aiResponse)
     {
@@ -2428,7 +2515,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Check for LLM refusal
             if (IsLLMRefusal(aiResponse))
             {
-                _logger.LogError($"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Response: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+                _logger.LogError($"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Full response:\n{aiResponse}");
                 return null;
             }
 
@@ -2487,7 +2574,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             if (result.Count == 0)
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+                _logger.LogWarning($"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Full response:\n{aiResponse}");
                 return null;
             }
             
@@ -2504,7 +2591,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[LumenPredictionGAgent][ParseTsvResponse] TSV parse error. First 500 chars: \"{aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}\"");
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseTsvResponse] TSV parse error. Full response:\n{Response}", aiResponse);
             return null;
         }
     }
@@ -2619,13 +2706,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            _logger.LogError($"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Response preview: {Preview}", 
-                aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Full response:\n{Response}", 
+                aiResponse);
             return (null, null);
         }
     }
@@ -2649,13 +2736,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Response preview: {aiResponse.Substring(0, Math.Min(500, aiResponse.Length))}");
+            _logger.LogError($"[LumenPredictionGAgent][ParseLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeResponse] Exception during TSV parsing. Response preview: {Preview}", 
-                aiResponse.Substring(0, Math.Min(500, aiResponse.Length)));
+            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeResponse] Exception during TSV parsing. Full response:\n{Response}", 
+                aiResponse);
             return (null, null);
         }
     }

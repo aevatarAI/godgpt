@@ -226,8 +226,8 @@ public class UserProfileUpdatedEvent : LumenUserProfileEventLog
     [Id(2)] public GenderEnum Gender { get; set; }
     [Id(3)] public DateOnly BirthDate { get; set; }
     [Id(4)] public TimeOnly? BirthTime { get; set; } // Optional
-    [Id(5)] public string? BirthCountry { get; set; }
-    [Id(6)] public string? BirthCity { get; set; }
+    [Id(5)] public string? BirthCity { get; set; } // Format: "Los Angeles, USA"
+    [Id(6)] public string? LatLong { get; set; } // Format: "34.0522, -118.2437"
     [Id(7)] public MbtiTypeEnum? MbtiType { get; set; }
     [Id(8)] public RelationshipStatusEnum? RelationshipStatus { get; set; }
     [Id(9)] public string? Interests { get; set; }
