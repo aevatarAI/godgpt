@@ -3323,6 +3323,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // English special cases
             { "RoseQuartz", CrystalStoneEnum.RoseQuartz },
             { "ClearQuartz", CrystalStoneEnum.ClearQuartz },
+            { "SmokyQuartz", CrystalStoneEnum.SmokyQuartz },
             { "BlackTourmaline", CrystalStoneEnum.BlackTourmaline },
             { "TigersEye", CrystalStoneEnum.TigersEye },
             { "Tiger'sEye", CrystalStoneEnum.TigersEye },
@@ -3331,16 +3332,17 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             { "Lapis", CrystalStoneEnum.Lapis },
             // Chinese mappings
             { "紫水晶", CrystalStoneEnum.Amethyst }, { "粉晶", CrystalStoneEnum.RoseQuartz }, { "芙蓉石", CrystalStoneEnum.RoseQuartz },
-            { "白水晶", CrystalStoneEnum.ClearQuartz }, { "黄水晶", CrystalStoneEnum.Citrine }, { "黑碧玺", CrystalStoneEnum.BlackTourmaline },
-            { "透石膏", CrystalStoneEnum.Selenite }, { "拉长石", CrystalStoneEnum.Labradorite }, { "月光石", CrystalStoneEnum.Moonstone },
-            { "红玛瑙", CrystalStoneEnum.Carnelian }, { "虎眼石", CrystalStoneEnum.TigersEye }, { "玉", CrystalStoneEnum.Jade },
-            { "绿松石", CrystalStoneEnum.Turquoise }, { "青金石", CrystalStoneEnum.Lapis }, { "海蓝宝", CrystalStoneEnum.Aquamarine },
-            { "祖母绿", CrystalStoneEnum.Emerald }, { "红宝石", CrystalStoneEnum.Ruby }, { "蓝宝石", CrystalStoneEnum.Sapphire },
-            { "石榴石", CrystalStoneEnum.Garnet }, { "蛋白石", CrystalStoneEnum.Opal }, { "黄玉", CrystalStoneEnum.Topaz },
-            { "橄榄石", CrystalStoneEnum.Peridot }, { "黑曜石", CrystalStoneEnum.Obsidian }, { "孔雀石", CrystalStoneEnum.Malachite },
-            { "赤铁矿", CrystalStoneEnum.Hematite }, { "黄铁矿", CrystalStoneEnum.Pyrite }, { "萤石", CrystalStoneEnum.Fluorite },
-            { "东陵玉", CrystalStoneEnum.Aventurine }, { "碧玉", CrystalStoneEnum.Jasper }, { "玛瑙", CrystalStoneEnum.Agate },
-            { "血石", CrystalStoneEnum.Bloodstone }, { "黑玛瑙", CrystalStoneEnum.Onyx }
+            { "白水晶", CrystalStoneEnum.ClearQuartz }, { "黄水晶", CrystalStoneEnum.Citrine }, { "茶晶", CrystalStoneEnum.SmokyQuartz },
+            { "黑碧玺", CrystalStoneEnum.BlackTourmaline }, { "透石膏", CrystalStoneEnum.Selenite }, { "拉长石", CrystalStoneEnum.Labradorite },
+            { "月光石", CrystalStoneEnum.Moonstone }, { "红玛瑙", CrystalStoneEnum.Carnelian }, { "虎眼石", CrystalStoneEnum.TigersEye },
+            { "玉", CrystalStoneEnum.Jade }, { "绿松石", CrystalStoneEnum.Turquoise }, { "青金石", CrystalStoneEnum.Lapis },
+            { "海蓝宝", CrystalStoneEnum.Aquamarine }, { "祖母绿", CrystalStoneEnum.Emerald }, { "红宝石", CrystalStoneEnum.Ruby },
+            { "蓝宝石", CrystalStoneEnum.Sapphire }, { "石榴石", CrystalStoneEnum.Garnet }, { "蛋白石", CrystalStoneEnum.Opal },
+            { "黄玉", CrystalStoneEnum.Topaz }, { "橄榄石", CrystalStoneEnum.Peridot }, { "黑曜石", CrystalStoneEnum.Obsidian },
+            { "孔雀石", CrystalStoneEnum.Malachite }, { "赤铁矿", CrystalStoneEnum.Hematite }, { "黄铁矿", CrystalStoneEnum.Pyrite },
+            { "萤石", CrystalStoneEnum.Fluorite }, { "东陵玉", CrystalStoneEnum.Aventurine }, { "碧玉", CrystalStoneEnum.Jasper },
+            { "玛瑙", CrystalStoneEnum.Agate }, { "血石", CrystalStoneEnum.Bloodstone }, { "黑玛瑙", CrystalStoneEnum.Onyx },
+            { "菱镁矿", CrystalStoneEnum.Howlite }, { "天河石", CrystalStoneEnum.Amazonite }
         };
         
         if (specialCases.TryGetValue(normalized, out var specialResult))
