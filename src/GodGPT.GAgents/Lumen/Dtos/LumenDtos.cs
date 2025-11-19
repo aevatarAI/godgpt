@@ -320,7 +320,7 @@ public class LumenUserDto
     [Id(2)] public string LastName { get; set; } = string.Empty;
     [Id(3)] public GenderEnum Gender { get; set; }
     [Id(4)] public DateOnly BirthDate { get; set; } // Required
-    [Id(5)] public TimeOnly BirthTime { get; set; } // Required
+    [Id(5)] public TimeOnly? BirthTime { get; set; } // Optional - Required for accurate Moon/Rising calculation
     [Id(6)] public string BirthCity { get; set; } = string.Empty; // Required - format: "Los Angeles, USA"
     [Id(7)] public string LatLong { get; set; } = string.Empty; // Required - format: "34.0522, -118.2437"
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional

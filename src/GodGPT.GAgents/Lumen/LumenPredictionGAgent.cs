@@ -736,9 +736,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             string? risingSign = null;
             
             // Diagnostic logging
-            _logger.LogInformation($"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime==default: {userInfo.BirthTime == default}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
+            _logger.LogInformation($"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
             
-            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.LatLong))
+            if (userInfo.BirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
@@ -754,7 +754,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
                         var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
                             userInfo.BirthDate,
-                            userInfo.BirthTime,
+                            userInfo.BirthTime.Value,
                             latitude,
                             longitude);
                         
@@ -3848,9 +3848,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             string? risingSign = null;
             
             // Diagnostic logging
-            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime==default: {userInfo.BirthTime == default}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
+            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
             
-            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.LatLong))
+            if (userInfo.BirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
@@ -3865,7 +3865,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
                         var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
                             userInfo.BirthDate,
-                            userInfo.BirthTime,
+                            userInfo.BirthTime.Value,
                             latitude,
                             longitude);
                         
