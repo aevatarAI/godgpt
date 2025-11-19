@@ -1569,9 +1569,8 @@ Todos los valores de campo deben estar en ESPAÑOL (los nombres de campo permane
 Ejemplo: dayTitle	El Día de Reflexión | career	Enfócate en el trabajo en equipo
 
 ⚠️ Excepciones: Los siguientes campos usan nombres estándar en INGLÉS (para facilitar el análisis del backend):
-- card_name: Use nombres de tarot en inglés (ej. ""The Fool"", ""The Moon"", ""The Star""")
-- card_orient: Use inglés (""Upright"" o ""Reversed""
-)
+- card_name: Use nombres de tarot en inglés (ej. ""The Fool"", ""The Moon"", ""The Star"")
+- card_orient: Use inglés (""Upright"" o ""Reversed"")
 - lucky_stone: Use nombres de gemas en inglés (ej. ""Amethyst"", ""Rose Quartz"")
 
 Nota: Los textos de ejemplo en inglés en OUTPUT STRUCTURE son solo referencia, deben traducirse al español (excepto los campos mencionados arriba).
@@ -1580,8 +1579,8 @@ Nota: Los textos de ejemplo en inglés en OUTPUT STRUCTURE son solo referencia, 
 All field VALUES must be in {languageName} (field names stay in English).
 
 ⚠️ Exception: The following fields use standard ENGLISH names (for backend parsing):
-- card_name: Use English tarot card names (e.g. ""The Fool"", ""The Moon"", ""The Star""")
-- card_orient: Use English (""Upright"" or ""Reversed""")
+- card_name: Use English tarot card names (e.g. ""The Fool"", ""The Moon"", ""The Star"")
+- card_orient: Use English (""Upright"" or ""Reversed"")
 - lucky_stone: Use English gem names (e.g. ""Amethyst"", ""Rose Quartz"")
 
 Note: English example texts in OUTPUT STRUCTURE are for reference only and must be translated to {languageName} if not English (except the fields mentioned above).
