@@ -420,6 +420,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         if (State.PredictionId == Guid.Empty)
         {
+            _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] No prediction data - PredictionId is empty. UserId: {UserId}, Type: {Type}, MultilingualResults count: {Count}",
+                State.UserId, State.Type, State.MultilingualResults?.Count ?? 0);
             return Task.FromResult<PredictionResultDto?>(null);
         }
 
@@ -697,6 +699,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         // If LLM refuses or parsing fails, PredictionId will be Guid.Empty even though generation "completed"
         var isGenerated = State.PredictionId != Guid.Empty && State.MultilingualResults != null && State.MultilingualResults.Count > 0;
 
+        _logger.LogDebug("[LumenPredictionGAgent][GetPredictionStatusAsync] Status check - Type: {Type}, PredictionId: {PredictionId}, isGenerated: {IsGenerated}, MultilingualResults count: {Count}, isGenerating: {IsGenerating}",
+            State.Type, State.PredictionId, isGenerated, State.MultilingualResults?.Count ?? 0, isGenerating2);
+
         var statusDto = new PredictionStatusDto
         {
             Type = State.Type,
@@ -858,7 +863,19 @@ Your task is to create engaging, positive, and thoughtful content that helps use
             }
             
             // Filter multilingualResults to only include targetLanguage (LLM may return multiple languages, but we only requested one)
-            if (multilingualResults != null && multilingualResults.Count > 0)
+            // CRITICAL FIX: If multilingualResults is empty but parsedResults exists, populate it with targetLanguage
+            if (multilingualResults == null || multilingualResults.Count == 0)
+            {
+                if (parsedResults != null && parsedResults.Count > 0)
+                {
+                    _logger.LogDebug("[LumenPredictionGAgent][GeneratePredictionAsync] multilingualResults is empty, populating with targetLanguage: {TargetLanguage}", targetLanguage);
+                    multilingualResults = new Dictionary<string, Dictionary<string, string>>
+                    {
+                        [targetLanguage] = parsedResults
+                    };
+                }
+            }
+            else if (multilingualResults.Count > 0)
             {
                 // Check if LLM returned extra languages (before filtering)
                 var originalLanguages = multilingualResults.Keys.ToList();
@@ -2607,6 +2624,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             if (tsvResult != null && tsvResult.Count > 0)
             {
                 _logger.LogInformation($"[LumenPredictionGAgent][ParseDailyResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                // Return parsed results; multilingualResults will be populated by caller with targetLanguage
                 return (tsvResult, null);
             }
             
