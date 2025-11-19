@@ -23,6 +23,7 @@ public class UpdateUserProfileRequest
     [Id(12)] public string? Email { get; set; } // Optional
     [Id(13)] public string? Occupation { get; set; } // Optional
     [Id(14)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
+    [Id(15)] public string? BirthCityMetadata { get; set; } // Optional - Additional birth city metadata for frontend
 }
 
 /// <summary>
@@ -69,6 +70,7 @@ public class LumenUserProfileDto
     [Id(19)] public string? Interests { get; set; }
     [Id(20)] public string? Email { get; set; }
     [Id(21)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
+    [Id(22)] public string? BirthCityMetadata { get; set; } // Optional - Additional birth city metadata for frontend
 }
 
 /// <summary>

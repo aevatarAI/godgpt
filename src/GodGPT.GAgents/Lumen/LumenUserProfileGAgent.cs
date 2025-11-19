@@ -93,6 +93,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Email = updateEvent.Email;
                 state.Occupation = updateEvent.Occupation;
                 state.Icon = updateEvent.Icon;
+                state.BirthCityMetadata = updateEvent.BirthCityMetadata;
                 state.IsDeleted = false; // Clear deleted flag on profile update/registration
                 // Record update timestamp for rate limiting
                 state.UpdateHistory.Add(updateEvent.UpdatedAt);
@@ -207,7 +208,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 CurrentResidence = request.CurrentResidence,
                 Email = request.Email,
                 Occupation = request.Occupation,
-                Icon = request.Icon
+                Icon = request.Icon,
+                BirthCityMetadata = request.BirthCityMetadata
             });
 
             // Confirm events to persist state changes
@@ -308,7 +310,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
                     Email = State.Email,
-                    Icon = State.Icon
+                    Icon = State.Icon,
+                    BirthCityMetadata = State.BirthCityMetadata
                 }
             };
         }
@@ -359,7 +362,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 RelationshipStatus = State.RelationshipStatus,
                 Interests = State.Interests,
                 Email = State.Email,
-                Icon = State.Icon
+                Icon = State.Icon,
+                BirthCityMetadata = State.BirthCityMetadata
             };
 
             return Task.FromResult<LumenUserProfileDto?>(profileDto);
