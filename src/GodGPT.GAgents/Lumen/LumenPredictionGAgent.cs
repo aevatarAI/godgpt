@@ -82,12 +82,159 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 20: Removed user name examples from prompts; Removed "addressing by name" from pillars_id field; Simplified language instruction blocks
     /// Version 21: Softened command language - replaced MUST/NOT/CRITICAL with please/avoid/guideline; Added clear rules about using Display Name only
     /// Version 22: Strengthened language requirements with explicit examples - added ✓/✗ examples, "check before finishing" reminder, self-correction prompt
+    /// Version 23: Changed card_name/card_orient/stone fields to use English standard names; Added automatic Chinese translation via dictionary lookup
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 22; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 23; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
     private static readonly Guid CURRENT_REMINDER_TARGET_ID = new Guid("00000000-0000-0000-0000-000000000001");
+
+    // Translation dictionaries for English -> Chinese (Simplified/Traditional)
+    private static readonly Dictionary<string, (string zh, string zhTw)> TarotCardTranslations = new()
+    {
+        // Major Arcana
+        ["The Fool"] = ("愚者", "愚者"),
+        ["The Magician"] = ("魔术师", "魔術師"),
+        ["The High Priestess"] = ("女祭司", "女祭司"),
+        ["The Empress"] = ("女皇", "女皇"),
+        ["The Emperor"] = ("皇帝", "皇帝"),
+        ["The Hierophant"] = ("教皇", "教皇"),
+        ["The Lovers"] = ("恋人", "戀人"),
+        ["The Chariot"] = ("战车", "戰車"),
+        ["Strength"] = ("力量", "力量"),
+        ["The Hermit"] = ("隐士", "隱士"),
+        ["Wheel of Fortune"] = ("命运之轮", "命運之輪"),
+        ["Justice"] = ("正义", "正義"),
+        ["The Hanged Man"] = ("倒吊者", "倒吊者"),
+        ["Death"] = ("死亡", "死亡"),
+        ["Temperance"] = ("节制", "節制"),
+        ["The Devil"] = ("恶魔", "惡魔"),
+        ["The Tower"] = ("塔", "塔"),
+        ["The Star"] = ("星星", "星星"),
+        ["The Moon"] = ("月亮", "月亮"),
+        ["The Sun"] = ("太阳", "太陽"),
+        ["Judgement"] = ("审判", "審判"),
+        ["The World"] = ("世界", "世界"),
+        
+        // Minor Arcana - Wands
+        ["Ace of Wands"] = ("权杖王牌", "權杖王牌"),
+        ["Two of Wands"] = ("权杖二", "權杖二"),
+        ["Three of Wands"] = ("权杖三", "權杖三"),
+        ["Four of Wands"] = ("权杖四", "權杖四"),
+        ["Five of Wands"] = ("权杖五", "權杖五"),
+        ["Six of Wands"] = ("权杖六", "權杖六"),
+        ["Seven of Wands"] = ("权杖七", "權杖七"),
+        ["Eight of Wands"] = ("权杖八", "權杖八"),
+        ["Nine of Wands"] = ("权杖九", "權杖九"),
+        ["Ten of Wands"] = ("权杖十", "權杖十"),
+        ["Page of Wands"] = ("权杖侍从", "權杖侍從"),
+        ["Knight of Wands"] = ("权杖骑士", "權杖騎士"),
+        ["Queen of Wands"] = ("权杖王后", "權杖王后"),
+        ["King of Wands"] = ("权杖国王", "權杖國王"),
+        
+        // Minor Arcana - Cups
+        ["Ace of Cups"] = ("圣杯王牌", "聖杯王牌"),
+        ["Two of Cups"] = ("圣杯二", "聖杯二"),
+        ["Three of Cups"] = ("圣杯三", "聖杯三"),
+        ["Four of Cups"] = ("圣杯四", "聖杯四"),
+        ["Five of Cups"] = ("圣杯五", "聖杯五"),
+        ["Six of Cups"] = ("圣杯六", "聖杯六"),
+        ["Seven of Cups"] = ("圣杯七", "聖杯七"),
+        ["Eight of Cups"] = ("圣杯八", "聖杯八"),
+        ["Nine of Cups"] = ("圣杯九", "聖杯九"),
+        ["Ten of Cups"] = ("圣杯十", "聖杯十"),
+        ["Page of Cups"] = ("圣杯侍从", "聖杯侍從"),
+        ["Knight of Cups"] = ("圣杯骑士", "聖杯騎士"),
+        ["Queen of Cups"] = ("圣杯王后", "聖杯王后"),
+        ["King of Cups"] = ("圣杯国王", "聖杯國王"),
+        
+        // Minor Arcana - Swords
+        ["Ace of Swords"] = ("宝剑王牌", "寶劍王牌"),
+        ["Two of Swords"] = ("宝剑二", "寶劍二"),
+        ["Three of Swords"] = ("宝剑三", "寶劍三"),
+        ["Four of Swords"] = ("宝剑四", "寶劍四"),
+        ["Five of Swords"] = ("宝剑五", "寶劍五"),
+        ["Six of Swords"] = ("宝剑六", "寶劍六"),
+        ["Seven of Swords"] = ("宝剑七", "寶劍七"),
+        ["Eight of Swords"] = ("宝剑八", "寶劍八"),
+        ["Nine of Swords"] = ("宝剑九", "寶劍九"),
+        ["Ten of Swords"] = ("宝剑十", "寶劍十"),
+        ["Page of Swords"] = ("宝剑侍从", "寶劍侍從"),
+        ["Knight of Swords"] = ("宝剑骑士", "寶劍騎士"),
+        ["Queen of Swords"] = ("宝剑王后", "寶劍王后"),
+        ["King of Swords"] = ("宝剑国王", "寶劍國王"),
+        
+        // Minor Arcana - Pentacles
+        ["Ace of Pentacles"] = ("金币王牌", "金幣王牌"),
+        ["Two of Pentacles"] = ("金币二", "金幣二"),
+        ["Three of Pentacles"] = ("金币三", "金幣三"),
+        ["Four of Pentacles"] = ("金币四", "金幣四"),
+        ["Five of Pentacles"] = ("金币五", "金幣五"),
+        ["Six of Pentacles"] = ("金币六", "金幣六"),
+        ["Seven of Pentacles"] = ("金币七", "金幣七"),
+        ["Eight of Pentacles"] = ("金币八", "金幣八"),
+        ["Nine of Pentacles"] = ("金币九", "金幣九"),
+        ["Ten of Pentacles"] = ("金币十", "金幣十"),
+        ["Page of Pentacles"] = ("金币侍从", "金幣侍從"),
+        ["Knight of Pentacles"] = ("金币骑士", "金幣騎士"),
+        ["Queen of Pentacles"] = ("金币王后", "金幣王后"),
+        ["King of Pentacles"] = ("金币国王", "金幣國王"),
+    };
+    
+    private static readonly Dictionary<string, (string zh, string zhTw)> StoneTranslations = new()
+    {
+        // Common gemstones
+        ["Amethyst"] = ("紫水晶", "紫水晶"),
+        ["Rose Quartz"] = ("粉水晶", "粉水晶"),
+        ["Citrine"] = ("黄水晶", "黃水晶"),
+        ["Clear Quartz"] = ("白水晶", "白水晶"),
+        ["Smoky Quartz"] = ("茶晶", "茶晶"),
+        ["Black Obsidian"] = ("黑曜石", "黑曜石"),
+        ["Moonstone"] = ("月光石", "月光石"),
+        ["Labradorite"] = ("拉长石", "拉長石"),
+        ["Lapis Lazuli"] = ("青金石", "青金石"),
+        ["Turquoise"] = ("绿松石", "綠松石"),
+        ["Malachite"] = ("孔雀石", "孔雀石"),
+        ["Jade"] = ("玉", "玉"),
+        ["Emerald"] = ("祖母绿", "祖母綠"),
+        ["Aquamarine"] = ("海蓝宝", "海藍寶"),
+        ["Sapphire"] = ("蓝宝石", "藍寶石"),
+        ["Ruby"] = ("红宝石", "紅寶石"),
+        ["Garnet"] = ("石榴石", "石榴石"),
+        ["Carnelian"] = ("红玛瑙", "紅瑪瑙"),
+        ["Agate"] = ("玛瑙", "瑪瑙"),
+        ["Moss Agate"] = ("苔藓玛瑙", "苔蘚瑪瑙"),
+        ["Tiger's Eye"] = ("虎眼石", "虎眼石"),
+        ["Hematite"] = ("赤铁矿", "赤鐵礦"),
+        ["Pyrite"] = ("黄铁矿", "黃鐵礦"),
+        ["Amazonite"] = ("天河石", "天河石"),
+        ["Sodalite"] = ("方钠石", "方鈉石"),
+        ["Aventurine"] = ("东陵石", "東陵石"),
+        ["Fluorite"] = ("萤石", "螢石"),
+        ["Peridot"] = ("橄榄石", "橄欖石"),
+        ["Topaz"] = ("黄玉", "黃玉"),
+        ["Opal"] = ("蛋白石", "蛋白石"),
+        ["Pearl"] = ("珍珠", "珍珠"),
+        ["Coral"] = ("珊瑚", "珊瑚"),
+        ["Amber"] = ("琥珀", "琥珀"),
+        ["Rhodonite"] = ("蔷薇辉石", "薔薇輝石"),
+        ["Rhodochrosite"] = ("菱锰矿", "菱錳礦"),
+        ["Kunzite"] = ("紫锂辉石", "紫鋰輝石"),
+        ["Selenite"] = ("透石膏", "透石膏"),
+        ["Calcite"] = ("方解石", "方解石"),
+        ["Howlite"] = ("菱镁矿", "菱鎂礦"),
+        ["Jasper"] = ("碧玉", "碧玉"),
+        ["Bloodstone"] = ("血石", "血石"),
+        ["Onyx"] = ("缟玛瑙", "縞瑪瑙"),
+        ["Jet"] = ("煤玉", "煤玉"),
+    };
+    
+    private static readonly Dictionary<string, (string zh, string zhTw)> OrientationTranslations = new()
+    {
+        ["Upright"] = ("正位", "正位"),
+        ["Reversed"] = ("逆位", "逆位"),
+    };
 
     public LumenPredictionGAgent(
         ILogger<LumenPredictionGAgent> logger,
@@ -1134,6 +1281,18 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 }
                 
                 _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected enum fields and constructed path_title for Daily prediction");
+                
+                // Add Chinese translations for English-only fields (if user language is Chinese)
+                AddChineseTranslations(parsedResults, targetLanguage);
+                
+                // Also add translations to all multilingual versions
+                if (multilingualResults != null)
+                {
+                    foreach (var lang in multilingualResults.Keys)
+                    {
+                        AddChineseTranslations(multilingualResults[lang], lang);
+                    }
+                }
             }
 
             var predictionId = Guid.NewGuid();
@@ -1377,33 +1536,54 @@ Your task is to create engaging, inspirational, and reflective content that invi
         {
             "zh" => @"===== 语言要求 =====
 ⚠️ 重要：所有字段值必须用简体中文书写（字段名保持英文）。
-✓ 正确示例：dayTitle	反思与和谐之日 | card_name	月亮 | career	专注于团队协作
-✗ 错误示例：dayTitle	Day of Reflection | card_name	Moon | career	Focus on teamwork
+✓ 正确示例：dayTitle	反思与和谐之日 | career	专注于团队协作
+✗ 错误示例：dayTitle	Day of Reflection | career	Focus on teamwork
+
+⚠️ 例外：以下字段使用英文标准名称（便于后端解析）：
+- card_name: 使用英文塔罗牌名称（如 ""The Fool"", ""The Moon"", ""The Star""）
+- card_orient: 使用英文（""Upright"" 或 ""Reversed""）
+- lucky_stone: 使用英文宝石名称（如 ""Amethyst"", ""Rose Quartz""）
 
 注意：
-1. 输出结构中的英文示例仅供参考格式，内容必须翻译为简体中文
+1. 输出结构中的英文示例仅供参考格式，内容必须翻译为简体中文（除了上述例外字段）
 2. 不要保留任何英文描述性文本，包括 ""The"", ""A"", 动词等
 3. 如果发现自己在写英文，立即停下来改用简体中文
 ===================",
             "zh-tw" => @"===== 語言要求 =====
 ⚠️ 重要：所有字段值必須用繁體中文書寫（字段名保持英文）。
-✓ 正確示例：dayTitle	反思與和諧之日 | card_name	月亮 | career	專注於團隊協作
-✗ 錯誤示例：dayTitle	Day of Reflection | card_name	Moon | career	Focus on teamwork
+✓ 正確示例：dayTitle	反思與和諧之日 | career	專注於團隊協作
+✗ 錯誤示例：dayTitle	Day of Reflection | career	Focus on teamwork
+
+⚠️ 例外：以下字段使用英文標準名稱（便於後端解析）：
+- card_name: 使用英文塔羅牌名稱（如 ""The Fool"", ""The Moon"", ""The Star""）
+- card_orient: 使用英文（""Upright"" 或 ""Reversed""）
+- lucky_stone: 使用英文寶石名稱（如 ""Amethyst"", ""Rose Quartz""）
 
 注意：
-1. 輸出結構中的英文示例僅供參考格式，內容必須翻譯為繁體中文
+1. 輸出結構中的英文示例僅供參考格式，內容必須翻譯為繁體中文（除了上述例外字段）
 2. 不要保留任何英文描述性文本，包括 ""The"", ""A"", 動詞等
 3. 如果發現自己在寫英文，立即停下來改用繁體中文
 ===================",
             "es" => @"===== REQUISITO DE IDIOMA =====
 Todos los valores de campo deben estar en ESPAÑOL (los nombres de campo permanecen en inglés).
-Ejemplo: dayTitle	El Día de Reflexión | card_name	La Luna | career	Enfócate en el trabajo en equipo
-Nota: Los textos de ejemplo en inglés en OUTPUT STRUCTURE (como ""To [verb]..."") son solo referencia, deben traducirse al español.
+Ejemplo: dayTitle	El Día de Reflexión | career	Enfócate en el trabajo en equipo
+
+⚠️ Excepciones: Los siguientes campos usan nombres estándar en INGLÉS (para facilitar el análisis del backend):
+- card_name: Use nombres de tarot en inglés (ej. ""The Fool"", ""The Moon"", ""The Star"")
+- card_orient: Use inglés (""Upright"" o ""Reversed"")
+- lucky_stone: Use nombres de gemas en inglés (ej. ""Amethyst"", ""Rose Quartz"")
+
+Nota: Los textos de ejemplo en inglés en OUTPUT STRUCTURE son solo referencia, deben traducirse al español (excepto los campos mencionados arriba).
 ================================",
             _ => $@"===== LANGUAGE REQUIREMENT =====
 All field VALUES must be in {languageName} (field names stay in English).
-Example: dayTitle	The Day of Reflection | card_name	The Moon
-Note: English example texts in OUTPUT STRUCTURE (like ""To [verb]..."") are for reference only and must be translated to {languageName} if not English.
+
+⚠️ Exception: The following fields use standard ENGLISH names (for backend parsing):
+- card_name: Use English tarot card names (e.g. ""The Fool"", ""The Moon"", ""The Star"")
+- card_orient: Use English (""Upright"" or ""Reversed"")
+- lucky_stone: Use English gem names (e.g. ""Amethyst"", ""Rose Quartz"")
+
+Note: English example texts in OUTPUT STRUCTURE are for reference only and must be translated to {languageName} if not English (except the fields mentioned above).
 ================================"
         };
         
@@ -1638,9 +1818,9 @@ dayTitle	The Day of [word1] and [word2]
 
 === 2. TODAY'S EXPLORATION ===
 # Symbolic Card (3 fields)
-card_name	Card name (VARIED for {sunSign}/{zodiacElement})
+card_name	[Use ENGLISH tarot card name, e.g. ""The Fool"", ""The Moon"", ""The Star""] (VARIED for {sunSign}/{zodiacElement})
 card_essence	1-2 words, comma-separated if two
-card_orient	Upright or Reversed
+card_orient	[Use ENGLISH: ""Upright"" or ""Reversed""]
 
 # Your Path (3 fields)
 path_type	[1 adjective describing today's path quality, e.g. 'Courageous', 'Reflective', 'Transformative']
@@ -1664,7 +1844,7 @@ num_meaning	15-20 words symbolic significance for THIS user
 num_calc	12-18 words showing symbolic formula (e.g. 'November (11) + 18 + Metal element = 7 resonance')
 
 # Stone (3 fields)
-stone	Stone for {zodiacElement} element
+stone	[Use ENGLISH stone/gem name, e.g. ""Amethyst"", ""Rose Quartz"", ""Citrine""] for {zodiacElement} element
 stone_power	15-20 words symbolic energy it represents
 stone_use	15-20 words 'Contemplate:' or 'Explore:'
 
@@ -3012,6 +3192,63 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             "invertida" => TarotOrientationEnum.Reversed,
             _ => TarotOrientationEnum.Unknown
         };
+    }
+    
+    /// <summary>
+    /// Add Chinese translations for English-only fields (tarot card, stone, orientation)
+    /// This is called after parsing to enrich the result with localized translations
+    /// </summary>
+    private void AddChineseTranslations(Dictionary<string, string> parsedResults, string targetLanguage)
+    {
+        if (targetLanguage != "zh" && targetLanguage != "zh-tw")
+        {
+            return; // Only add translations for Chinese users
+        }
+        
+        // Translate tarot card name
+        if (parsedResults.TryGetValue("todaysReading_tarotCard_name", out var cardName) && !string.IsNullOrWhiteSpace(cardName))
+        {
+            if (TarotCardTranslations.TryGetValue(cardName.Trim(), out var cardTranslation))
+            {
+                var translatedName = targetLanguage == "zh" ? cardTranslation.zh : cardTranslation.zhTw;
+                parsedResults["todaysReading_tarotCard_name_zh"] = translatedName;
+                _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated tarot card: {cardName} → {translatedName}");
+            }
+            else
+            {
+                _logger.LogWarning($"[LumenPredictionGAgent][AddChineseTranslations] No translation found for tarot card: {cardName}");
+            }
+        }
+        
+        // Translate tarot card orientation
+        if (parsedResults.TryGetValue("todaysReading_tarotCard_orientation", out var orientation) && !string.IsNullOrWhiteSpace(orientation))
+        {
+            if (OrientationTranslations.TryGetValue(orientation.Trim(), out var orientationTranslation))
+            {
+                var translatedOrientation = targetLanguage == "zh" ? orientationTranslation.zh : orientationTranslation.zhTw;
+                parsedResults["todaysReading_tarotCard_orientation_zh"] = translatedOrientation;
+                _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated orientation: {orientation} → {translatedOrientation}");
+            }
+            else
+            {
+                _logger.LogWarning($"[LumenPredictionGAgent][AddChineseTranslations] No translation found for orientation: {orientation}");
+            }
+        }
+        
+        // Translate lucky stone
+        if (parsedResults.TryGetValue("luckyAlignments_stone", out var stone) && !string.IsNullOrWhiteSpace(stone))
+        {
+            if (StoneTranslations.TryGetValue(stone.Trim(), out var stoneTranslation))
+            {
+                var translatedStone = targetLanguage == "zh" ? stoneTranslation.zh : stoneTranslation.zhTw;
+                parsedResults["luckyAlignments_stone_zh"] = translatedStone;
+                _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated stone: {stone} → {translatedStone}");
+            }
+            else
+            {
+                _logger.LogWarning($"[LumenPredictionGAgent][AddChineseTranslations] No translation found for stone: {stone}");
+            }
+        }
     }
     
     /// <summary>
