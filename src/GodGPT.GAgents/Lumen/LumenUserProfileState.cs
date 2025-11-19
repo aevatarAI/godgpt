@@ -28,7 +28,6 @@ public class LumenUserProfileState : StateBase
     [Id(17)] public string? Occupation { get; set; } // Optional
     [Id(19)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
     [Id(20)] public bool IsDeleted { get; set; } // Track if user was deleted (to prevent auto-migration after deletion)
-    [Id(21)] public string? BirthCityMetadata { get; set; } // Optional - Additional birth city metadata for frontend
     
     // Multilingual welcome note (language -> {rhythm, essence, ...})
     [Id(16)] public Dictionary<string, Dictionary<string, string>> MultilingualWelcomeNote { get; set; } = new();
