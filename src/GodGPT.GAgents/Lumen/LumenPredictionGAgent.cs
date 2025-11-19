@@ -74,13 +74,15 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 12: Ultra-strong language enforcement - write language instructions IN the target language itself (e.g., "必须用简体中文" for Chinese)
     /// Version 13: Clarified field name vs field value distinction - field names in English, field values in target language, with concrete examples
     /// Version 14: Fixed prompt contradictions - aligned system/user prompts on language requirements, replaced all [TAB] placeholders with actual tab characters in examples
-    /// Version 15: Added explicit template translation reminder - LLM must translate English template text (like "James's Path Today") to target language with concrete examples
+    /// Version 15: Added explicit template translation reminder - LLM must translate English template text to target language with concrete examples
     /// Version 16: Translated zodiac signs in prompts to ensure language consistency
     /// Version 17: Removed birthTime/birthCity from prompts for privacy; Changed wording from "prediction/fortune" to "reflection/insight" to reduce LLM refusal rate
     /// Version 18: Removed fullname from prompts; Relaxed format requirements; Simplified fixed-format fields (path_title, cn_year, sun_arch, moon_arch, rising_arch) - backend constructs these
     /// Version 19: Fixed multilingual templates for path_title and archetype fields (sunArchetype, moonArchetype, risingArchetype)
+    /// Version 20: Removed user name examples from prompts; Removed "addressing by name" from pillars_id field; Simplified language instruction blocks
+    /// Version 21: Softened command language - replaced MUST/NOT/CRITICAL with please/avoid/guideline; Added clear rules about using Display Name only
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 19; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 21; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -801,13 +803,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // System prompt with clear field value language requirement
             var systemPrompt = $@"You are a creative astrology guide helping users explore self-reflection through symbolic and thematic narratives.
 
-===== CRITICAL LANGUAGE REQUIREMENT =====
-Write all FIELD VALUES in {languageName} ONLY.
-Field names remain in English.
-DO NOT mix languages in field values.
-============================================
+===== LANGUAGE GUIDELINE =====
+Please write all field VALUES in {languageName}.
+Field names stay in English.
+Avoid mixing languages in field values.
+========================================
 
-IMPORTANT CONTEXT:
+CONTEXT:
 - All content is for entertainment, self-reflection, and personal exploration only
 - Not deterministic predictions or professional advice
 - Based on symbolic, archetypal, and philosophical interpretations
@@ -1354,74 +1356,32 @@ Your task is to create engaging, inspirational, and reflective content that invi
         var languageInstruction = targetLanguage switch
         {
             "zh" => @"===== 语言要求 =====
-必须用简体中文书写所有字段的值（value）。
-字段名（field name）保持英文不变。
-示例：
-  dayTitle	反思与和谐之日     ← 值用简体中文
-  card_name	月亮                ← 值用简体中文
-  career	专注于团队协作      ← 值用简体中文
-
-CRITICAL: Translate ALL template text below into 简体中文
-- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
-- You MUST translate these into 简体中文
-Examples:
-  ✓ path_title: ""James 今日之路 - 勇敢之路""        (NOT ""James's Path Today - A Courageous Path"")
-  ✓ spell_intent: ""点燃内心的激情""                  (NOT ""To ignite inner passion"")
-  ✓ fortune_tip: ""今日转折点在于勇敢面对挑战""      (NOT ""Today's turning point is to face challenges"")
+所有字段值必须用简体中文书写（字段名保持英文）。
+示例：dayTitle	反思与和谐之日 | card_name	月亮 | career	专注于团队协作
+注意：输出结构中的英文示例文本（如 ""To [verb]...""）仅供参考，必须翻译为简体中文。
 ===================",
             "zh-tw" => @"===== 語言要求 =====
-必須用繁體中文書寫所有字段的值（value）。
-字段名（field name）保持英文不變。
-示例：
-  dayTitle	反思與和諧之日     ← 值用繁體中文
-  card_name	月亮                ← 值用繁體中文
-  career	專注於團隊協作      ← 值用繁體中文
-
-CRITICAL: Translate ALL template text below into 繁體中文
-- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
-- You MUST translate these into 繁體中文
-Examples:
-  ✓ path_title: ""James 今日之路 - 勇敢之路""        (NOT ""James's Path Today - A Courageous Path"")
-  ✓ spell_intent: ""點燃內心的激情""                  (NOT ""To ignite inner passion"")
-  ✓ fortune_tip: ""今日轉折點在於勇敢面對挑戰""      (NOT ""Today's turning point is to face challenges"")
+所有字段值必須用繁體中文書寫（字段名保持英文）。
+示例：dayTitle	反思與和諧之日 | card_name	月亮 | career	專注於團隊協作
+注意：輸出結構中的英文示例文本（如 ""To [verb]...""）僅供參考，必須翻譯為繁體中文。
 ===================",
             "es" => @"===== REQUISITO DE IDIOMA =====
-Escribe todos los valores de campo en ESPAÑOL.
-Los nombres de campo permanecen en inglés.
-Ejemplo:
-  dayTitle	El Día de Reflexión  ← valor en español
-  card_name	La Luna              ← valor en español
-  career	Enfócate en el trabajo en equipo  ← valor en español
-
-CRITICAL: Translate ALL template text below into ESPAÑOL
-- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
-- You MUST translate these into ESPAÑOL
-Examples:
-  ✓ path_title: ""El Camino de James Hoy - Un Camino Valiente""    (NOT ""James's Path Today - A Courageous Path"")
-  ✓ spell_intent: ""Encender la pasión interior""                  (NOT ""To ignite inner passion"")
-  ✓ fortune_tip: ""El punto de inflexión de hoy es enfrentar desafíos""  (NOT ""Today's turning point is to face challenges"")
+Todos los valores de campo deben estar en ESPAÑOL (los nombres de campo permanecen en inglés).
+Ejemplo: dayTitle	El Día de Reflexión | card_name	La Luna | career	Enfócate en el trabajo en equipo
+Nota: Los textos de ejemplo en inglés en OUTPUT STRUCTURE (como ""To [verb]..."") son solo referencia, deben traducirse al español.
 ================================",
             _ => $@"===== LANGUAGE REQUIREMENT =====
-Write all field VALUES in {languageName}.
-Field names remain in English.
-Example:
-  dayTitle	The Day of Reflection  ← value in {languageName}
-  card_name	The Moon               ← value in {languageName}
-
-CRITICAL: Translate ALL template text below into {languageName}
-- English examples in OUTPUT STRUCTURE (like ""The Day of..."", ""To [verb]..."") are ONLY for structure reference
-- You MUST translate these into {languageName}
-Examples (if {languageName} is not English):
-  ✓ Translate ""James's Path Today"" to {languageName}
-  ✓ Translate ""To ignite inner passion"" to {languageName}
-  ✓ Translate ""Today's turning point is to face challenges"" to {languageName}
+All field VALUES must be in {languageName} (field names stay in English).
+Example: dayTitle	The Day of Reflection | card_name	The Moon
+Note: English example texts in OUTPUT STRUCTURE (like ""To [verb]..."") are for reference only and must be translated to {languageName} if not English.
 ================================"
         };
         
         var singleLanguagePrefix = $@"{languageInstruction}
 
-EXCEPTIONS:
-- User names: Keep unchanged (don't translate)
+Guidelines:
+- When addressing the user, use the provided ""Display Name"" (if given in PRE-CALCULATED VALUES section)
+- Avoid making up names - use only the provided Display Name or second-person pronouns (""你""/""you"")
 - Chinese stems/branches (天干地支): Can include Chinese and pinyin like ""甲子 (Jiǎzǐ)""
 
 FORMAT REQUIREMENT:
@@ -1453,16 +1413,15 @@ Past Cycle: {pastCycle.AgeRange} · {pastCycle.Period}
 Current Cycle: {currentCycle.AgeRange} · {currentCycle.Period}
 Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
 
-IMPORTANT: All Chinese Zodiac content must reference USER'S Birth Year Zodiac ({birthYearZodiac}), NOT current year ({currentYearZodiac}).
-CRITICAL: When referring to zodiac signs in your text, use these exact translated values: {sunSignTranslated}, {moonSignTranslated}, {risingSignTranslated}, {birthYearAnimalTranslated}
+Note: All Chinese Zodiac content should reference USER'S Birth Year Zodiac ({birthYearZodiac}), not current year ({currentYearZodiac}).
+When referring to zodiac signs, please use these translated values: {sunSignTranslated}, {moonSignTranslated}, {risingSignTranslated}, {birthYearAnimalTranslated}
 
 FORMAT (TSV - Tab-Separated Values):
 Each field on ONE line: fieldName	value
-
-CRITICAL: Use actual TAB character (\\t) between field and value.
+Please use actual TAB character (\\t) between field and value.
 
 Output format (TAB shown as whitespace):
-pillars_id	[12-18 words addressing by name in reflective tone]
+pillars_id	[12-18 words addressing user by Display Name in reflective tone about self-discovery]
 pillars_detail	[45-60 words using {sunSign}, 'both...yet' patterns, contemplative]
 cn_trait1	[8-12 words describing symbolic qualities]
 cn_trait2	[8-12 words describing symbolic qualities]
@@ -1517,7 +1476,7 @@ curr_detail	[60-80 words present tense, what invites exploration, symbolic dynam
 future_summary	[8-12 words describing future phase energy]
 future_detail	[60-80 words future tense, emerging themes/invitations for reflection]
 plot_title	You embody [10-20 words poetic archetype]
-plot_chapter	[30-50 words addressing by name, describe unique life narrative]
+plot_chapter	[30-50 words addressing user by Display Name, describing unique life narrative in reflective tone]
 plot_pt1	[5-15 words describing symbolic theme]
 plot_pt2	[5-15 words describing symbolic theme]
 plot_pt3	[5-15 words describing symbolic theme]
@@ -1567,7 +1526,7 @@ Sun Sign: {sunSignTranslated}
 Birth Year Zodiac: {birthYearZodiacTranslated}
 Yearly Year ({yearlyYear}): {yearlyYearZodiac}
 Taishui Relationship: {yearlyTaishuiTranslated}
-CRITICAL: When referring to zodiac signs in your text, use these exact translated values.
+When referring to zodiac signs in your text, please use these translated values.
 
 FORMAT (TSV - Tab-Separated Values):
 Each field on ONE line: fieldName	value
@@ -1632,7 +1591,7 @@ TONE & STYLE:
 User: {userInfoLine}
 
 ========== PRE-CALCULATED VALUES (Use for personalization) ==========
-Display Name: {displayName} (Use this in greetings and personalized messages. NEVER translate this name.)
+Display Name: {displayName} (Use this in greetings and personalized messages. Please keep this name unchanged.)
 Sun Sign: {sunSign}
 Zodiac Element: {zodiacElement}
 Birth Year Zodiac: {birthYearZodiac}
@@ -2146,44 +2105,40 @@ All content is for entertainment, self-exploration, and contemplative purposes o
 
 TASK: Translate the following {type} prediction from {sourceLangName} into {targetLangName}.
 
-⚠️ LANGUAGE REQUIREMENT - STRICTLY ENFORCE:
-- Translate ALL content into {targetLangName} ONLY.
-- DO NOT mix other languages in the output.
-- For Chinese (zh-tw/zh): Use FULL Chinese text. NO English words except proper names.
-- For English/Spanish: Use target language for all content. Chinese characters are ONLY allowed for:
+⚠️ LANGUAGE GUIDELINE:
+- Please translate content into {targetLangName}.
+- Avoid mixing languages in the output.
+- For Chinese (zh-tw/zh): Use Chinese text (proper names can stay as-is).
+- For English/Spanish: Chinese characters are allowed for:
   * Heavenly Stems/Earthly Branches (天干地支): e.g., ""甲子 (Jiǎzǐ)""
   * Chinese Zodiac names if needed: e.g., ""Rat 鼠""
 
-CRITICAL RULES:
-1. TRANSLATE - do NOT regenerate or reinterpret. Keep the exact same meaning and content structure.
-2. NEVER TRANSLATE user names - keep them exactly as they appear (e.g., ""Sean"" stays ""Sean"")
-   - In possessives: ""Sean's Path"" → ""Sean的道路"" (keep name, only translate structure)
-3. PRESERVE stems-branch in Chinese characters (with pinyin for non-Chinese languages only):
+TRANSLATION GUIDELINES:
+1. Translate content while keeping the exact same meaning and structure.
+2. Keep user names unchanged (e.g., ""Sean"" stays ""Sean"")
+   - In possessives: ""Sean's Path"" → ""Sean的道路"" (keep name, translate structure)
+3. Keep stems-branch in Chinese characters (with pinyin for non-Chinese languages):
    - pastCycle_period, currentCycle_period, futureCycle_period
    - Chinese: '甲子' (no pinyin needed)
    - English/Spanish: '甲子 (Jiǎzǐ)' (keep pinyin for pronunciation)
-4. TRANSLATE luckyNumber format correctly:
+4. LuckyNumber format:
    - English: ""Seven (7)"" - word + space + English parentheses ()
    - Spanish: ""Siete (7)"" - word + space + English parentheses ()
    - Chinese: ""七（7）"" - word + NO space + Chinese full-width parentheses （）
-5. Maintain natural, fluent expression in {targetLangName} (not word-for-word).
+5. Maintain natural, fluent expression in {targetLangName}.
 6. Keep all field names unchanged.
-7. Preserve all numbers, dates, and proper nouns.
-8. For Chinese translations (zh-tw, zh): Properly adapt English grammar:
-   - Articles: Remove or adapt ""The/A"" naturally (e.g., ""The Star"" → ""星星"")
-   - Sentence structure: Adjust to natural Chinese word order
-9. For array values (separated by |): Translate each item individually, keep the | separator
+7. Preserve numbers, dates, and proper nouns.
+8. For Chinese translations: Adapt English grammar naturally
+   - Remove or adapt articles (""The/A"") as needed (e.g., ""The Star"" → ""星星"")
+   - Adjust to natural Chinese word order
+9. For array values (separated by |): Translate each item, keep the | separator
 
 OUTPUT FORMAT (TSV - Tab-Separated Values):
-Each line: fieldName	translatedValue
-
-CRITICAL FORMAT REQUIREMENTS:
 - Each field on ONE line: fieldName	translatedValue
 - Use TAB character (\\t) as separator
-- For array fields with | separator: translate each item but keep | structure
-- Example: ""Walk|Meditate|Read"" → ""散步|冥想|阅读""
-- NO line breaks within field values
-- Return ONLY TSV format, no markdown, no extra text
+- For arrays: translate items but keep | structure (e.g., ""Walk|Meditate|Read"" → ""散步|冥想|阅读"")
+- Avoid line breaks within field values
+- Return TSV format only, no markdown or extra text
 
 SOURCE CONTENT ({sourceLangName} - TSV Format):
 {sourceTsv}
@@ -3280,7 +3235,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Build path title for daily predictions with localized template
-    /// Example: "James's Path Today - A Courageous Path" (en) or "王凯文今日之路 - 勇敢之路" (zh)
+    /// Example: "John's Path Today - A Courageous Path" (en) or "王凯文今日之路 - 勇敢之路" (zh)
     /// </summary>
     private string BuildPathTitle(string displayName, string pathType, string language)
     {
