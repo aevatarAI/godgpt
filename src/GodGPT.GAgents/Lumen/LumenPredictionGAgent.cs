@@ -37,6 +37,9 @@ public interface ILumenPredictionGAgent : IGAgent
     Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null);
     
     Task ClearCurrentPredictionAsync();
+    
+    [ReadOnly]
+    Task<Dictionary<string, string>> GetCalculatedValuesAsync(LumenUserDto userInfo, string userLanguage = "en");
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -293,11 +296,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 }
                 else
                 {
-                        // Fallback to legacy Results field
-                    localizedResults = State.Results;
-                        returnedLanguage = "en"; // Default assumption
-                        isFallback = true;
-                        _logger.LogWarning($"[Lumen] {userInfo.UserId} Today already processed but no multilingual results, using legacy Results field");
+                        // No available language - should not happen after database clear
+                        _logger.LogWarning($"[Lumen] {userInfo.UserId} Today already processed but no multilingual results available");
+                        return new GetTodayPredictionResult
+                        {
+                            Success = false,
+                            Message = "No prediction data available"
+                        };
                     }
                 }
                 else
@@ -317,18 +322,6 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                             Message = $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
                         };
                     }
-                    else if (!State.Results.IsNullOrEmpty())
-                    {
-                        TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, "en", State.Results, userLanguage);
-                        
-                        _logger.LogWarning($"[Lumen] {userInfo.UserId} Language {userLanguage} not available for {type}, triggered translation from legacy Results");
-                        
-                        return new GetTodayPredictionResult
-                        {
-                            Success = false,
-                            Message = $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
-                        };
-                }
                 else
                 {
                         _logger.LogWarning($"[Lumen] {userInfo.UserId} No valid source content available for translation to {userLanguage}");
@@ -475,37 +468,6 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Source language content is empty, cannot translate");
                     return Task.FromResult<PredictionResultDto?>(null);
                 }
-            }
-        }
-        else if (!State.Results.IsNullOrEmpty())
-        {
-            // Fallback to legacy Results field (old data format)
-            // Check if user is requesting the original language (from GeneratedLanguages)
-            var originalLanguage = State.GeneratedLanguages?.FirstOrDefault() ?? "en";
-            
-            if (userLanguage == originalLanguage)
-            {
-                // User is requesting the same language as the original - return Results directly
-            localizedResults = State.Results;
-                returnedLanguage = originalLanguage;
-                _logger.LogInformation("[LumenPredictionGAgent][GetPredictionAsync] Using legacy Results field for {Language}", originalLanguage);
-            }
-            else if (todayAlreadyProcessed)
-            {
-                // Today already processed - return original language instead of triggering translation
-                localizedResults = State.Results;
-                returnedLanguage = originalLanguage;
-                isFallback = true;
-                _logger.LogInformation("[LumenPredictionGAgent][GetPredictionAsync] Today already processed ({Today}), returning original language '{OriginalLanguage}' instead of '{RequestedLanguage}' (legacy data)", 
-                    today, originalLanguage, userLanguage);
-            }
-            else
-            {
-                // New day - allow translation
-                var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
-                TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, originalLanguage, State.Results, userLanguage);
-                _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found, triggered translation from legacy Results (new day)", userLanguage);
-                return Task.FromResult<PredictionResultDto?>(null);
             }
         }
         else
@@ -1965,80 +1927,17 @@ Generate translations for: {targetLangNames}
             var hasTabs = aiResponse.Contains("\t");
             var hasJsonStart = aiResponse.Trim().StartsWith("{") || aiResponse.Contains("```json");
             
-            if (hasTabs && !hasJsonStart)
+            // Parse TSV format (required by translation prompt)
+            _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Parsing TSV format");
+            var tsvResult = ParseTsvResponse(aiResponse);
+            if (tsvResult != null && tsvResult.Count > 0)
             {
-                _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Detected TSV format");
-                var tsvResult = ParseTsvResponse(aiResponse);
-                if (tsvResult != null && tsvResult.Count > 0)
-                {
-                    contentDict = tsvResult;
-                }
-                else
-                {
-                    _logger.LogWarning($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} TSV parse failed, falling back to JSON");
-                }
+                contentDict = tsvResult;
             }
-            
-            // Fallback to JSON format (legacy)
-            if (contentDict.Count == 0)
+            else
             {
-                _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Trying JSON format");
-                
-            string jsonContent = aiResponse;
-            var codeBlockMatch = System.Text.RegularExpressions.Regex.Match(aiResponse, @"```(?:json)?\s*([\s\S]*?)\s*```");
-            if (codeBlockMatch.Success)
-            {
-                jsonContent = codeBlockMatch.Groups[1].Value.Trim();
-                    _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Extracted JSON from code block");
-            }
-            var firstBrace = jsonContent.IndexOf('{');
-            var lastBrace = jsonContent.LastIndexOf('}');
-            if (firstBrace >= 0 && lastBrace > firstBrace)
-            {
-                jsonContent = jsonContent.Substring(firstBrace, lastBrace - firstBrace + 1);
-            }
-            jsonContent = jsonContent.Trim();
-            
-                // Validate jsonContent
-            if (string.IsNullOrWhiteSpace(jsonContent))
-            {
-                    _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Empty JSON content after extraction. Original response preview: {(aiResponse.Length > 200 ? aiResponse.Substring(0, 200) : aiResponse)}...");
+                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
                 return;
-            }
-            
-            if (!jsonContent.StartsWith("{") || !jsonContent.EndsWith("}"))
-            {
-                    _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Invalid JSON format");
-                return;
-            }
-            
-                // Parse with fault tolerance for array values
-                var contentFields = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonContent);
-                
-                if (contentFields != null)
-                {
-                    foreach (var fieldKvp in contentFields)
-                    {
-                        var fieldName = fieldKvp.Key;
-                        var fieldValue = fieldKvp.Value;
-                        
-                        // Handle different value types
-                        if (fieldValue is Newtonsoft.Json.Linq.JArray arrayValue)
-                        {
-                            // Serialize array as JSON string (to match initial generation format)
-                            contentDict[fieldName] = arrayValue.ToString(Newtonsoft.Json.Formatting.None);
-                            _logger.LogDebug($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage}.{fieldName} was array, serialized as JSON string");
-                        }
-                        else if (fieldValue != null)
-                        {
-                            contentDict[fieldName] = fieldValue.ToString();
-                        }
-                        else
-                        {
-                            contentDict[fieldName] = string.Empty;
-                        }
-                    }
-                }
             }
             
             parseStopwatch.Stop();
@@ -2691,8 +2590,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         try
         {
-            // NEW DATA: Prompt requires TSV format, so parse as TSV only (no fallback)
-            // HISTORICAL DATA: Already stored as Dictionary<string, string> in State, no parsing needed
+            // Prompt requires TSV format, parse as TSV only (no fallback)
             _logger.LogDebug("[LumenPredictionGAgent][ParseDailyResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
@@ -2721,8 +2619,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         try
         {
-            // NEW DATA: Prompt requires TSV format, so parse as TSV only (no fallback)
-            // HISTORICAL DATA: Already stored as Dictionary<string, string> in State, no parsing needed
+            // Prompt requires TSV format, parse as TSV only (no fallback)
             _logger.LogDebug("[LumenPredictionGAgent][ParseLifetimeResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
@@ -3737,6 +3634,145 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LumenPredictionGAgent][ClearCurrentPredictionAsync] Error clearing prediction data");
+            throw;
+        }
+    }
+    
+    /// <summary>
+    /// Get all backend-calculated values for a user
+    /// Returns a dictionary of calculated astrological and zodiac data
+    /// </summary>
+    public async Task<Dictionary<string, string>> GetCalculatedValuesAsync(LumenUserDto userInfo, string userLanguage = "en")
+    {
+        try
+        {
+            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Calculating values for user {userInfo.UserId}, language: {userLanguage}");
+            
+            var results = new Dictionary<string, string>();
+            
+            // Calculate current date/time values
+            var currentYear = DateTime.UtcNow.Year;
+            var birthYear = userInfo.BirthDate.Year;
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            
+            // ========== WESTERN ASTROLOGY ==========
+            string sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            results["sunSign_name"] = TranslateSunSign(sunSign, userLanguage);
+            results["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+            
+            // Calculate Moon and Rising signs if birth time and location are available
+            string? moonSign = null;
+            string? risingSign = null;
+            
+            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.LatLong))
+            {
+                try
+                {
+                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double latitude) && 
+                        double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
+                    {
+                        var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
+                        var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
+                            userInfo.BirthDate,
+                            userInfo.BirthTime,
+                            latitude,
+                            longitude);
+                        
+                        moonSign = calculatedMoonSign;
+                        risingSign = calculatedRisingSign;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to calculate Moon/Rising signs");
+                }
+            }
+            
+            // Use sunSign as fallback if moon/rising not calculated
+            moonSign = moonSign ?? sunSign;
+            risingSign = risingSign ?? sunSign;
+            
+            results["moonSign_name"] = TranslateSunSign(moonSign, userLanguage);
+            results["risingSign_name"] = TranslateSunSign(risingSign, userLanguage);
+            
+            // ========== CHINESE ASTROLOGY ==========
+            var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
+            var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
+            var birthYearElement = LumenCalculator.CalculateChineseElement(birthYear);
+            
+            results["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, userLanguage);
+            results["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+            results["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, userLanguage);
+            results["birthYear_zodiac"] = birthYearZodiac;
+            results["birthYear_animal"] = birthYearAnimal;
+            results["birthYear_element"] = birthYearElement;
+            
+            // Birth Year Stems
+            var birthYearStems = LumenCalculator.CalculateStemsAndBranches(birthYear);
+            results["birthYear_stems"] = birthYearStems;
+            
+            // Current Year Zodiac
+            var currentYearZodiac = LumenCalculator.GetChineseZodiacWithElement(currentYear);
+            var currentYearAnimal = LumenCalculator.CalculateChineseZodiac(currentYear);
+            var currentYearElement = LumenCalculator.CalculateChineseElement(currentYear);
+            
+            results["currentYear"] = currentYear.ToString();
+            results["currentYear_zodiac"] = currentYearZodiac;
+            results["currentYear_animal"] = currentYearAnimal;
+            results["currentYear_element"] = currentYearElement;
+            
+            // Current Year Stems
+            var currentYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(currentYear);
+            results["currentYear_stems"] = LumenCalculator.CalculateStemsAndBranches(currentYear);
+            results["currentYear_stemChinese"] = currentYearStemsComponents.stemChinese;
+            results["currentYear_stemPinyin"] = currentYearStemsComponents.stemPinyin;
+            results["currentYear_branchChinese"] = currentYearStemsComponents.branchChinese;
+            results["currentYear_branchPinyin"] = currentYearStemsComponents.branchPinyin;
+            
+            // Taishui Relationship
+            var taishuiRelationship = LumenCalculator.CalculateTaishuiRelationship(birthYear, currentYear);
+            results["taishui_relationship"] = taishuiRelationship;
+            results["taishui_translated"] = TranslateTaishuiRelationship(taishuiRelationship, userLanguage);
+            
+            // Zodiac Influence
+            results["zodiacInfluence"] = BuildZodiacInfluence(birthYearZodiac, currentYearZodiac, taishuiRelationship, userLanguage);
+            
+            // ========== LIFE CYCLES ==========
+            var currentAge = LumenCalculator.CalculateAge(userInfo.BirthDate);
+            results["currentAge"] = currentAge.ToString();
+            
+            // 10-year Cycles
+            var pastCycle = LumenCalculator.CalculateTenYearCycle(birthYear, -1);
+            var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
+            var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
+            
+            results["pastCycle_ageRange"] = TranslateCycleAgeRange(pastCycle.AgeRange, userLanguage);
+            results["pastCycle_period"] = TranslateCyclePeriod(pastCycle.Period, userLanguage);
+            results["currentCycle_ageRange"] = TranslateCycleAgeRange(currentCycle.AgeRange, userLanguage);
+            results["currentCycle_period"] = TranslateCyclePeriod(currentCycle.Period, userLanguage);
+            results["futureCycle_ageRange"] = TranslateCycleAgeRange(futureCycle.AgeRange, userLanguage);
+            results["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, userLanguage);
+            
+            // Current Phase (for Lifetime)
+            var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+            results["currentPhase"] = currentPhase.ToString();
+            
+            // ========== FOUR PILLARS (BA ZI) ==========
+            var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+            results["fourPillars_yearPillar"] = fourPillars.YearPillar.GetFormattedString(userLanguage);
+            results["fourPillars_monthPillar"] = fourPillars.MonthPillar.GetFormattedString(userLanguage);
+            results["fourPillars_dayPillar"] = fourPillars.DayPillar.GetFormattedString(userLanguage);
+            results["fourPillars_hourPillar"] = fourPillars.HourPillar.GetFormattedString(userLanguage);
+            
+            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");
+            
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Error calculating values for user {userInfo.UserId}");
             throw;
         }
     }
