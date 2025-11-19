@@ -693,14 +693,18 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                                       ? State.MultilingualResults.Keys.ToList()
                                       : (State.GeneratedLanguages ?? new List<string>());
 
+        // CRITICAL FIX: IsGenerated should be based on whether prediction data actually exists
+        // If LLM refuses or parsing fails, PredictionId will be Guid.Empty even though generation "completed"
+        var isGenerated = State.PredictionId != Guid.Empty && State.MultilingualResults != null && State.MultilingualResults.Count > 0;
+
         var statusDto = new PredictionStatusDto
         {
             Type = State.Type,
-            IsGenerated = true,
+            IsGenerated = isGenerated,
             IsGenerating = isGenerating2,
-            GeneratedAt = State.CreatedAt,
+            GeneratedAt = isGenerated ? State.CreatedAt : (DateTime?)null,
             GenerationStartedAt = generationStartedAt2,
-            PredictionDate = State.PredictionDate,
+            PredictionDate = isGenerated ? State.PredictionDate : (DateOnly?)null,
             AvailableLanguages = statusAvailableLanguages,
             NeedsRegeneration = needsRegeneration,
             TranslationStatus = translationStatus
@@ -786,7 +790,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             };
 
             // System prompt with clear field value language requirement
-            var systemPrompt = $@"You are a professional astrology and divination expert.
+            var systemPrompt = $@"You are a professional astrology consultant providing personalized insights for entertainment purposes.
 
 ===== CRITICAL LANGUAGE REQUIREMENT =====
 Write all FIELD VALUES in {languageName} ONLY.
@@ -794,7 +798,13 @@ Field names remain in English.
 DO NOT mix languages in field values.
 ============================================
 
-IMPORTANT DISCLAIMER: All predictions are for entertainment and self-reflection purposes only.";
+IMPORTANT DISCLAIMER:
+- All insights are for entertainment, self-reflection, and personal growth only
+- Not a substitute for professional advice (medical, financial, legal, or psychological)
+- Based on astrological and symbolic interpretations, not deterministic predictions
+- Users should make their own informed decisions
+
+Your task is to create engaging, positive, and thoughtful content that helps users reflect on their life path and potential.";
 
             // Use "LUMEN" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
@@ -1890,7 +1900,8 @@ Generate translations for: {targetLangNames}
             var chatId = Guid.NewGuid().ToString();
             
             // Simple system prompt for translation
-            var translationSystemPrompt = @"You are a professional translator for astrology content.";
+            var translationSystemPrompt = @"You are a professional translator for astrology and divination content.
+All content is for entertainment and self-reflection purposes only.";
             
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid,
