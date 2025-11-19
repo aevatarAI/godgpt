@@ -9,6 +9,7 @@ using Aevatar.GAgents.AI.Options;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Orleans.Concurrency;
+using SwissEphNet;
 using System.Diagnostics;
 
 namespace Aevatar.Application.Grains.Lumen;
@@ -83,8 +84,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 21: Softened command language - replaced MUST/NOT/CRITICAL with please/avoid/guideline; Added clear rules about using Display Name only
     /// Version 22: Strengthened language requirements with explicit examples - added ✓/✗ examples, "check before finishing" reminder, self-correction prompt
     /// Version 23: Changed card_name/card_orient/stone fields to use English standard names; Added automatic Chinese translation via dictionary lookup
+    /// Version 24: Fixed Daily translation to replace original field values; Localized Lifetime cycle_title and cycle_intro templates
+    /// Version 25: Moved Western Astrology calculation logic from WesternAstrologyCalculator into LumenPredictionGAgent to fix logger null issue
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 23; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 25; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -899,8 +902,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
                     {
                         _logger.LogInformation($"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude})");
-                        var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
-                        var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
+                        var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
                             userInfo.BirthDate,
                             userInfo.BirthTime.Value,
                             latitude,
@@ -1283,6 +1285,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected enum fields and constructed path_title for Daily prediction");
                 
                 // Add Chinese translations for English-only fields (if user language is Chinese)
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Calling AddChineseTranslations for targetLanguage: {targetLanguage}");
                 AddChineseTranslations(parsedResults, targetLanguage);
                 
                 // Also add translations to all multilingual versions
@@ -1290,6 +1293,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     foreach (var lang in multilingualResults.Keys)
                     {
+                        _logger.LogInformation($"[Lumen] {userInfo.UserId} Calling AddChineseTranslations for multilingual language: {lang}");
                         AddChineseTranslations(multilingualResults[lang], lang);
                     }
                 }
@@ -1611,6 +1615,21 @@ FORMAT REQUIREMENT:
             var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
             var birthYearAnimalTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
             
+            // Localize template strings
+            var cycleTitlePrefix = targetLanguage switch
+            {
+                "zh" => "生肖周期共振",
+                "zh-tw" => "生肖週期共振",
+                _ => "Zodiac Cycle Resonance"
+            };
+            
+            var cycleIntroInstruction = targetLanguage switch
+            {
+                "zh" => $"以\"你的生肖是{birthYearAnimalTranslated}…\"开头，描述20年象征周期",
+                "zh-tw" => $"以\"你的生肖是{birthYearAnimalTranslated}…\"開頭，描述20年象徵週期",
+                _ => $"Start with 'Your Chinese Zodiac is {birthYearAnimalTranslated}...' and describe the 20-year symbolic cycle"
+            };
+            
             prompt = singleLanguagePrefix + $@"Create a lifetime astrological narrative for self-reflection.
 User: {userInfoLine}
 Current Year: {currentYear}
@@ -1670,10 +1689,10 @@ path2_desc	[5-10 words describing symbolic expression]
 path3_title	[1-3 archetypal roles]
 path3_desc	[8-15 words describing symbolic expression]
 cn_essence	Essence resonating with {birthYearElement}
-cycle_title	Zodiac Cycle Resonance (YYYY-YYYY) [calculate 20-year period from birth year]
-cycle_name_en	[English name]
-cycle_name_zh	[Chinese name]
-cycle_intro	[50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Describe 20-year symbolic cycle]
+cycle_title	{cycleTitlePrefix} (YYYY-YYYY) [calculate 20-year period from birth year]
+cycle_name_en	[English name for cycle theme]
+cycle_name_zh	[Chinese name for cycle theme]
+cycle_intro	[50-65 words. {cycleIntroInstruction}]
 cycle_pt1	[8-12 words describing symbolic theme]
 cycle_pt2	[6-10 words describing symbolic theme]
 cycle_pt3	[8-12 words describing symbolic theme]
@@ -3196,7 +3215,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Add Chinese translations for English-only fields (tarot card, stone, orientation)
-    /// This is called after parsing to enrich the result with localized translations
+    /// This is called after parsing to replace English values with Chinese translations
     /// </summary>
     private void AddChineseTranslations(Dictionary<string, string> parsedResults, string targetLanguage)
     {
@@ -3205,13 +3224,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return; // Only add translations for Chinese users
         }
         
-        // Translate tarot card name
+        // Translate tarot card name - REPLACE the original field value
         if (parsedResults.TryGetValue("todaysReading_tarotCard_name", out var cardName) && !string.IsNullOrWhiteSpace(cardName))
         {
             if (TarotCardTranslations.TryGetValue(cardName.Trim(), out var cardTranslation))
             {
                 var translatedName = targetLanguage == "zh" ? cardTranslation.zh : cardTranslation.zhTw;
-                parsedResults["todaysReading_tarotCard_name_zh"] = translatedName;
+                parsedResults["todaysReading_tarotCard_name"] = translatedName; // Replace original value
                 _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated tarot card: {cardName} → {translatedName}");
             }
             else
@@ -3220,13 +3239,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
         }
         
-        // Translate tarot card orientation
+        // Translate tarot card orientation - REPLACE the original field value
         if (parsedResults.TryGetValue("todaysReading_tarotCard_orientation", out var orientation) && !string.IsNullOrWhiteSpace(orientation))
         {
             if (OrientationTranslations.TryGetValue(orientation.Trim(), out var orientationTranslation))
             {
                 var translatedOrientation = targetLanguage == "zh" ? orientationTranslation.zh : orientationTranslation.zhTw;
-                parsedResults["todaysReading_tarotCard_orientation_zh"] = translatedOrientation;
+                parsedResults["todaysReading_tarotCard_orientation"] = translatedOrientation; // Replace original value
                 _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated orientation: {orientation} → {translatedOrientation}");
             }
             else
@@ -3235,13 +3254,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
         }
         
-        // Translate lucky stone
+        // Translate lucky stone - REPLACE the original field value
         if (parsedResults.TryGetValue("luckyAlignments_stone", out var stone) && !string.IsNullOrWhiteSpace(stone))
         {
             if (StoneTranslations.TryGetValue(stone.Trim(), out var stoneTranslation))
             {
                 var translatedStone = targetLanguage == "zh" ? stoneTranslation.zh : stoneTranslation.zhTw;
-                parsedResults["luckyAlignments_stone_zh"] = translatedStone;
+                parsedResults["luckyAlignments_stone"] = translatedStone; // Replace original value
                 _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated stone: {stone} → {translatedStone}");
             }
             else
@@ -4119,8 +4138,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
                     {
                         _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Starting Western Astrology calculation at ({latitude}, {longitude})");
-                        var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
-                        var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
+                        var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
                             userInfo.BirthDate,
                             userInfo.BirthTime.Value,
                             latitude,
@@ -4229,6 +4247,209 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             _logger.LogError(ex, $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Error calculating values for user {userInfo.UserId}");
             throw;
         }
+    }
+    
+    #endregion
+    
+    #region Western Astrology Calculation
+    
+    // Zodiac sign names in order
+    private static readonly string[] ZodiacSigns = new[]
+    {
+        "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
+        "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+    };
+    
+    /// <summary>
+    /// Calculate all three signs: Sun, Moon, and Rising using Swiss Ephemeris
+    /// </summary>
+    private (string sunSign, string moonSign, string risingSign) CalculateSigns(
+        DateOnly birthDate,
+        TimeOnly birthTime,
+        double latitude,
+        double longitude)
+    {
+        try
+        {
+            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Calculating signs for coordinates ({latitude}, {longitude})");
+            
+            // Create SwissEph instance for this calculation
+            using var swissEph = new SwissEph();
+            
+            // Step 1: Convert to Julian Day
+            var birthDateTime = birthDate.ToDateTime(birthTime);
+            double julianDay = ToJulianDay(swissEph, birthDateTime);
+            
+            // Step 2: Calculate Sun Sign
+            string sunSign = CalculateSunSign(swissEph, julianDay);
+            
+            // Step 3: Calculate Moon Sign
+            string moonSign = CalculateMoonSign(swissEph, julianDay);
+            
+            // Step 4: Calculate Rising Sign (Ascendant)
+            string risingSign = CalculateRisingSign(swissEph, julianDay, latitude, longitude);
+            
+            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Results - Sun: {sunSign}, Moon: {moonSign}, Rising: {risingSign}");
+            
+            return (sunSign, moonSign, risingSign);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[LumenPredictionGAgent][WesternAstrology] Failed to calculate signs for coordinates ({latitude}, {longitude})");
+            // Fallback: at least return Sun sign based on date
+            string sunSign = CalculateSunSignSimple(birthDate);
+            return (sunSign, sunSign, sunSign); // Use Sun sign as fallback for all
+        }
+    }
+    
+    /// <summary>
+    /// Calculate Sun Sign using Swiss Ephemeris
+    /// </summary>
+    private string CalculateSunSign(SwissEph swissEph, double julianDay)
+    {
+        try
+        {
+            double[] positions = new double[6];
+            string errorMsg = null;
+            
+            int result = swissEph.swe_calc_ut(
+                julianDay,
+                SwissEph.SE_SUN,
+                SwissEph.SEFLG_SWIEPH,
+                positions,
+                ref errorMsg);
+            
+            if (result < 0)
+            {
+                _logger.LogWarning($"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Sun calculation failed: {errorMsg}");
+                return "Aries"; // Fallback
+            }
+            
+            // positions[0] is longitude in degrees (0-360)
+            // Each zodiac sign is 30 degrees
+            int signIndex = (int)(positions[0] / 30.0);
+            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Sun position: {positions[0]}° -> {ZodiacSigns[signIndex % 12]}");
+            return ZodiacSigns[signIndex % 12];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionGAgent][WesternAstrology] Sun sign calculation error");
+            return "Aries";
+        }
+    }
+    
+    /// <summary>
+    /// Calculate Moon Sign using Swiss Ephemeris
+    /// </summary>
+    private string CalculateMoonSign(SwissEph swissEph, double julianDay)
+    {
+        try
+        {
+            double[] positions = new double[6];
+            string errorMsg = null;
+            
+            int result = swissEph.swe_calc_ut(
+                julianDay,
+                SwissEph.SE_MOON,
+                SwissEph.SEFLG_SWIEPH,
+                positions,
+                ref errorMsg);
+            
+            if (result < 0)
+            {
+                _logger.LogWarning($"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Moon calculation failed: {errorMsg}");
+                return "Aries"; // Fallback
+            }
+            
+            int signIndex = (int)(positions[0] / 30.0);
+            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Moon position: {positions[0]}° -> {ZodiacSigns[signIndex % 12]}");
+            return ZodiacSigns[signIndex % 12];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionGAgent][WesternAstrology] Moon sign calculation error");
+            return "Aries";
+        }
+    }
+    
+    /// <summary>
+    /// Calculate Rising Sign (Ascendant) using Swiss Ephemeris
+    /// </summary>
+    private string CalculateRisingSign(SwissEph swissEph, double julianDay, double latitude, double longitude)
+    {
+        try
+        {
+            double[] cusps = new double[13];
+            double[] ascmc = new double[10];
+            
+            int result = swissEph.swe_houses(
+                julianDay,
+                latitude,
+                longitude,
+                'P', // Placidus house system (most common)
+                cusps,
+                ascmc);
+            
+            if (result < 0)
+            {
+                _logger.LogWarning($"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Ascendant calculation failed");
+                return "Aries"; // Fallback
+            }
+            
+            // ascmc[0] is the Ascendant (Rising Sign) longitude
+            int signIndex = (int)(ascmc[0] / 30.0);
+            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Rising position: {ascmc[0]}° -> {ZodiacSigns[signIndex % 12]}");
+            return ZodiacSigns[signIndex % 12];
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionGAgent][WesternAstrology] Rising sign calculation error");
+            return "Aries";
+        }
+    }
+    
+    /// <summary>
+    /// Convert DateTime to Julian Day Number (for Swiss Ephemeris)
+    /// </summary>
+    private double ToJulianDay(SwissEph swissEph, DateTime dateTime)
+    {
+        // Convert to UTC for astronomical calculations
+        dateTime = dateTime.ToUniversalTime();
+        
+        int year = dateTime.Year;
+        int month = dateTime.Month;
+        int day = dateTime.Day;
+        double hour = dateTime.Hour + dateTime.Minute / 60.0 + dateTime.Second / 3600.0;
+        
+        double julianDay = swissEph.swe_julday(year, month, day, hour, SwissEph.SE_GREG_CAL);
+        _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Julian Day: {julianDay} for {dateTime:yyyy-MM-dd HH:mm:ss} UTC");
+        return julianDay;
+    }
+    
+    /// <summary>
+    /// Simple Sun sign calculation based on date only (fallback method)
+    /// </summary>
+    private string CalculateSunSignSimple(DateOnly birthDate)
+    {
+        int month = birthDate.Month;
+        int day = birthDate.Day;
+        
+        return (month, day) switch
+        {
+            (3, >= 21) or (4, <= 19) => "Aries",
+            (4, >= 20) or (5, <= 20) => "Taurus",
+            (5, >= 21) or (6, <= 20) => "Gemini",
+            (6, >= 21) or (7, <= 22) => "Cancer",
+            (7, >= 23) or (8, <= 22) => "Leo",
+            (8, >= 23) or (9, <= 22) => "Virgo",
+            (9, >= 23) or (10, <= 22) => "Libra",
+            (10, >= 23) or (11, <= 21) => "Scorpio",
+            (11, >= 22) or (12, <= 21) => "Sagittarius",
+            (12, >= 22) or (1, <= 19) => "Capricorn",
+            (1, >= 20) or (2, <= 18) => "Aquarius",
+            (2, >= 19) or (3, <= 20) => "Pisces",
+            _ => "Aries"
+        };
     }
     
     #endregion
