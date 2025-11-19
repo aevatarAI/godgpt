@@ -256,6 +256,9 @@ public enum CrystalStoneEnum
     [Id(28)] Agate = 28,
     [Id(29)] Bloodstone = 29,
     [Id(30)] Onyx = 30,
+    [Id(31)] Howlite = 31,
+    [Id(32)] Amazonite = 32,
+    [Id(33)] SmokyQuartz = 33,
     [Id(999)] Unknown = 999
 }
 
