@@ -420,6 +420,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         if (State.PredictionId == Guid.Empty)
         {
+            _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] No prediction data - PredictionId is empty. UserId: {UserId}, Type: {Type}, MultilingualResults count: {Count}",
+                State.UserId, State.Type, State.MultilingualResults?.Count ?? 0);
             return Task.FromResult<PredictionResultDto?>(null);
         }
 
@@ -696,6 +698,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         // CRITICAL FIX: IsGenerated should be based on whether prediction data actually exists
         // If LLM refuses or parsing fails, PredictionId will be Guid.Empty even though generation "completed"
         var isGenerated = State.PredictionId != Guid.Empty && State.MultilingualResults != null && State.MultilingualResults.Count > 0;
+
+        _logger.LogDebug("[LumenPredictionGAgent][GetPredictionStatusAsync] Status check - Type: {Type}, PredictionId: {PredictionId}, isGenerated: {IsGenerated}, MultilingualResults count: {Count}, isGenerating: {IsGenerating}",
+            State.Type, State.PredictionId, isGenerated, State.MultilingualResults?.Count ?? 0, isGenerating2);
 
         var statusDto = new PredictionStatusDto
         {
