@@ -3255,12 +3255,12 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
         
         // Translate lucky stone - REPLACE the original field value
-        if (parsedResults.TryGetValue("luckyAlignments_stone", out var stone) && !string.IsNullOrWhiteSpace(stone))
+        if (parsedResults.TryGetValue("luckyAlignments_luckyStone", out var stone) && !string.IsNullOrWhiteSpace(stone))
         {
             if (StoneTranslations.TryGetValue(stone.Trim(), out var stoneTranslation))
             {
                 var translatedStone = targetLanguage == "zh" ? stoneTranslation.zh : stoneTranslation.zhTw;
-                parsedResults["luckyAlignments_stone"] = translatedStone; // Replace original value
+                parsedResults["luckyAlignments_luckyStone"] = translatedStone; // Replace original value
                 _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated stone: {stone} → {translatedStone}");
             }
             else
