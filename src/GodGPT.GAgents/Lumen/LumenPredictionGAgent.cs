@@ -78,8 +78,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 16: Translated zodiac signs in prompts to ensure language consistency
     /// Version 17: Removed birthTime/birthCity from prompts for privacy; Changed wording from "prediction/fortune" to "reflection/insight" to reduce LLM refusal rate
     /// Version 18: Removed fullname from prompts; Relaxed format requirements; Simplified fixed-format fields (path_title, cn_year, sun_arch, moon_arch, rising_arch) - backend constructs these
+    /// Version 19: Fixed multilingual templates for path_title and archetype fields (sunArchetype, moonArchetype, risingArchetype)
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 18; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 19; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1092,7 +1093,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 if (parsedResults.TryGetValue("todaysReading_pathType", out var pathType))
                 {
                     var displayName = LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", targetLanguage);
-                    var pathTitle = $"{displayName}'s Path Today - A {pathType} Path";
+                    var pathTitle = BuildPathTitle(displayName, pathType, targetLanguage);
                     parsedResults["todaysReading_pathTitle"] = pathTitle;
                     
                     // Inject into all multilingual versions
@@ -1103,7 +1104,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                             if (multilingualResults[lang].TryGetValue("todaysReading_pathType", out var langPathType))
                             {
                                 var langDisplayName = LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", lang);
-                                var langPathTitle = $"{langDisplayName}'s Path Today - A {langPathType} Path";
+                                var langPathTitle = BuildPathTitle(langDisplayName, langPathType, lang);
                                 multilingualResults[lang]["todaysReading_pathTitle"] = langPathTitle;
                             }
                         }
@@ -1147,7 +1148,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 if (parsedResults.TryGetValue("westernOverview_sunArchetypeName", out var sunArchName))
                 {
                     var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
-                    parsedResults["westernOverview_sunArchetype"] = $"Sun in {sunSignTranslated} - The {sunArchName}";
+                    parsedResults["westernOverview_sunArchetype"] = BuildArchetypeString("Sun", sunSignTranslated, sunArchName, targetLanguage);
                     
                     if (multilingualResults != null)
                     {
@@ -1156,7 +1157,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                             if (multilingualResults[lang].TryGetValue("westernOverview_sunArchetypeName", out var langSunArchName))
                             {
                                 var langSunSign = TranslateSunSign(sunSign, lang);
-                                multilingualResults[lang]["westernOverview_sunArchetype"] = $"Sun in {langSunSign} - The {langSunArchName}";
+                                multilingualResults[lang]["westernOverview_sunArchetype"] = BuildArchetypeString("Sun", langSunSign, langSunArchName, lang);
                             }
                         }
                     }
@@ -1165,7 +1166,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 if (parsedResults.TryGetValue("westernOverview_moonArchetypeName", out var moonArchName))
                 {
                     var moonSignTranslated = TranslateSunSign(moonSign ?? sunSign, targetLanguage);
-                    parsedResults["westernOverview_moonArchetype"] = $"Moon in {moonSignTranslated} - The {moonArchName}";
+                    parsedResults["westernOverview_moonArchetype"] = BuildArchetypeString("Moon", moonSignTranslated, moonArchName, targetLanguage);
                     
                     if (multilingualResults != null)
                     {
@@ -1174,7 +1175,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                             if (multilingualResults[lang].TryGetValue("westernOverview_moonArchetypeName", out var langMoonArchName))
                             {
                                 var langMoonSign = TranslateSunSign(moonSign ?? sunSign, lang);
-                                multilingualResults[lang]["westernOverview_moonArchetype"] = $"Moon in {langMoonSign} - The {langMoonArchName}";
+                                multilingualResults[lang]["westernOverview_moonArchetype"] = BuildArchetypeString("Moon", langMoonSign, langMoonArchName, lang);
                             }
                         }
                     }
@@ -1183,7 +1184,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 if (parsedResults.TryGetValue("westernOverview_risingArchetypeName", out var risingArchName))
                 {
                     var risingSignTranslated = TranslateSunSign(risingSign ?? sunSign, targetLanguage);
-                    parsedResults["westernOverview_risingArchetype"] = $"Rising in {risingSignTranslated} - The {risingArchName}";
+                    parsedResults["westernOverview_risingArchetype"] = BuildArchetypeString("Rising", risingSignTranslated, risingArchName, targetLanguage);
                     
                     if (multilingualResults != null)
                     {
@@ -1192,7 +1193,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                             if (multilingualResults[lang].TryGetValue("westernOverview_risingArchetypeName", out var langRisingArchName))
                             {
                                 var langRisingSign = TranslateSunSign(risingSign ?? sunSign, lang);
-                                multilingualResults[lang]["westernOverview_risingArchetype"] = $"Rising in {langRisingSign} - The {langRisingArchName}";
+                                multilingualResults[lang]["westernOverview_risingArchetype"] = BuildArchetypeString("Rising", langRisingSign, langRisingArchName, lang);
                             }
                         }
                     }
@@ -2288,7 +2289,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
 
         var lowerResponse = aiResponse.ToLower();
-        
+                
         // Common refusal patterns
         var refusalPatterns = new[]
         {
@@ -2308,10 +2309,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         foreach (var pattern in refusalPatterns)
         {
             if (lowerResponse.Contains(pattern))
-            {
+                {
                 _logger.LogWarning($"[LumenPredictionGAgent][IsLLMRefusal] Detected refusal pattern: '{pattern}'. Response preview: {aiResponse.Substring(0, Math.Min(200, aiResponse.Length))}");
                 return true;
-            }
+        }
         }
 
         return false;
@@ -2366,7 +2367,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// Map shortened TSV keys to full field names expected by frontend
     /// </summary>
     private Dictionary<string, string> MapShortKeysToFullKeys(Dictionary<string, string> shortKeyData)
-    {
+                {
         var keyMapping = new Dictionary<string, string>
         {
             // ===== DAILY PREDICTION MAPPINGS =====
@@ -2665,7 +2666,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 
                 // Handle array fields (favorable/avoid use | separator)
                 if (key.Contains("favorable") || key.Contains("avoid"))
-                {
+            {
                     // Remove any trailing parenthesis explanations like "(5 items)"
                     if (value.Contains('('))
                     {
@@ -2703,16 +2704,16 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
 
             return result;
-        }
+            }
         catch (Exception ex)
-        {
+            {
             // Enhanced error logging with response preview
             _logger.LogError(ex, "[LumenPredictionGAgent][ParsePlainTextResponse] Failed to parse plain text. First 500 chars: {ResponsePreview}", 
                 aiResponse.Length > 500 ? aiResponse.Substring(0, 500) : aiResponse);
             _logger.LogError("[LumenPredictionGAgent][ParsePlainTextResponse] Last 200 chars: {ResponseEnd}", 
                 aiResponse.Length > 200 ? aiResponse.Substring(aiResponse.Length - 200) : aiResponse);
             return null;
-        }
+            }
     }
 
     /// <summary>
@@ -2722,7 +2723,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseDailyResponse(string aiResponse)
     {
         try
-        {
+            {
             // Prompt requires TSV format, parse as TSV only (no fallback)
             _logger.LogDebug("[LumenPredictionGAgent][ParseDailyResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
@@ -2735,8 +2736,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
             _logger.LogError($"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
-            return (null, null);
-        }
+                return (null, null);
+            }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Full response:\n{Response}", 
@@ -2757,7 +2758,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             _logger.LogDebug("[LumenPredictionGAgent][ParseLifetimeResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
-            {
+                        {
                 _logger.LogInformation($"[LumenPredictionGAgent][ParseLifetimeResponse] Successfully parsed {tsvResult.Count} fields from TSV");
                 return (tsvResult, null);
             }
@@ -3274,6 +3275,60 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         {
             // English: "Wood Snake native in Wood Dragon year → Harm (相害 Xiang Hai)"
             return $"{birthYearZodiac} native in {yearlyYearZodiac} year → {taishuiParts.english} ({taishuiParts.chinese} {taishuiParts.pinyin})";
+        }
+    }
+    
+    /// <summary>
+    /// Build path title for daily predictions with localized template
+    /// Example: "James's Path Today - A Courageous Path" (en) or "王凯文今日之路 - 勇敢之路" (zh)
+    /// </summary>
+    private string BuildPathTitle(string displayName, string pathType, string language)
+    {
+        if (language == "zh" || language == "zh-tw")
+        {
+            return $"{displayName}今日之路 - {pathType}之路";
+        }
+        else if (language == "es")
+        {
+            return $"Camino de {displayName} Hoy - Un Camino {pathType}";
+        }
+        else
+        {
+            return $"{displayName}'s Path Today - A {pathType} Path";
+        }
+    }
+    
+    /// <summary>
+    /// Build archetype string for lifetime predictions with localized template
+    /// Example: "Sun in Cancer - The Nurturing Protector" (en) or "巨蟹座太阳 - 心灵守护者" (zh)
+    /// </summary>
+    private string BuildArchetypeString(string celestialBody, string zodiacSign, string archetypeName, string language)
+    {
+        if (language == "zh" || language == "zh-tw")
+        {
+            var bodyName = celestialBody switch
+            {
+                "Sun" => "太阳",
+                "Moon" => "月亮",
+                "Rising" => "上升",
+                _ => celestialBody
+            };
+            return $"{zodiacSign}{bodyName} - {archetypeName}";
+        }
+        else if (language == "es")
+        {
+            var bodyName = celestialBody switch
+            {
+                "Sun" => "Sol",
+                "Moon" => "Luna",
+                "Rising" => "Ascendente",
+                _ => celestialBody
+            };
+            return $"{bodyName} en {zodiacSign} - El {archetypeName}";
+        }
+        else
+        {
+            return $"{celestialBody} in {zodiacSign} - The {archetypeName}";
         }
     }
     
