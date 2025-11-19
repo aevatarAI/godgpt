@@ -3664,7 +3664,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             string? moonSign = null;
             string? risingSign = null;
             
-            if (userInfo.BirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
+            if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
@@ -3676,7 +3676,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
                         var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
                             userInfo.BirthDate,
-                            userInfo.BirthTime.Value,
+                            userInfo.BirthTime,
                             latitude,
                             longitude);
                         
@@ -3761,10 +3761,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             // ========== FOUR PILLARS (BA ZI) ==========
             var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
-            results["fourPillars_yearPillar"] = fourPillars.YearPillar;
-            results["fourPillars_monthPillar"] = fourPillars.MonthPillar;
-            results["fourPillars_dayPillar"] = fourPillars.DayPillar;
-            results["fourPillars_hourPillar"] = fourPillars.HourPillar;
+            results["fourPillars_yearPillar"] = fourPillars.YearPillar.GetFormattedString(userLanguage);
+            results["fourPillars_monthPillar"] = fourPillars.MonthPillar.GetFormattedString(userLanguage);
+            results["fourPillars_dayPillar"] = fourPillars.DayPillar.GetFormattedString(userLanguage);
+            results["fourPillars_hourPillar"] = fourPillars.HourPillar.GetFormattedString(userLanguage);
             
             _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");
             
