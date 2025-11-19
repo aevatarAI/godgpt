@@ -75,8 +75,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 13: Clarified field name vs field value distinction - field names in English, field values in target language, with concrete examples
     /// Version 14: Fixed prompt contradictions - aligned system/user prompts on language requirements, replaced all [TAB] placeholders with actual tab characters in examples
     /// Version 15: Added explicit template translation reminder - LLM must translate English template text (like "James's Path Today") to target language with concrete examples
+    /// Version 16: Translated zodiac signs in prompts to ensure language consistency
+    /// Version 17: Removed birthTime/birthCity from prompts for privacy; Changed wording from "prediction/fortune" to "reflection/insight" to reduce LLM refusal rate
+    /// Version 18: Removed fullname from prompts; Relaxed format requirements; Simplified fixed-format fields (path_title, cn_year, sun_arch, moon_arch, rising_arch) - backend constructs these
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 16; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 18; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -795,7 +798,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             };
 
             // System prompt with clear field value language requirement
-            var systemPrompt = $@"You are a professional astrology consultant providing personalized insights for entertainment purposes.
+            var systemPrompt = $@"You are a creative astrology guide helping users explore self-reflection through symbolic and thematic narratives.
 
 ===== CRITICAL LANGUAGE REQUIREMENT =====
 Write all FIELD VALUES in {languageName} ONLY.
@@ -803,13 +806,20 @@ Field names remain in English.
 DO NOT mix languages in field values.
 ============================================
 
-IMPORTANT DISCLAIMER:
-- All insights are for entertainment, self-reflection, and personal growth only
-- Not a substitute for professional advice (medical, financial, legal, or psychological)
-- Based on astrological and symbolic interpretations, not deterministic predictions
-- Users should make their own informed decisions
+IMPORTANT CONTEXT:
+- All content is for entertainment, self-reflection, and personal exploration only
+- Not deterministic predictions or professional advice
+- Based on symbolic, archetypal, and philosophical interpretations
+- Users explore possibilities, not fixed outcomes
+- Focus on empowerment, awareness, and personal growth
 
-Your task is to create engaging, positive, and thoughtful content that helps users reflect on their life path and potential.";
+CONTENT GUIDELINES:
+- Word counts are approximate guidelines, not strict requirements - focus on meaningful content
+- Use natural, flowing language rather than forcing exact word counts
+- Quality and relevance matter more than precise length
+- If you feel unable to meet a specific format, provide your best interpretation instead of refusing
+
+Your task is to create engaging, inspirational, and reflective content that invites users to contemplate their unique path and potential.";
 
             // Use "LUMEN" region for LLM calls
             var llmStopwatch = Stopwatch.StartNew();
@@ -1078,7 +1088,29 @@ Your task is to create engaging, positive, and thoughtful content that helps use
                     }
                 }
                 
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected enum fields into Daily prediction");
+                // Construct path_title from path_type
+                if (parsedResults.TryGetValue("todaysReading_pathType", out var pathType))
+                {
+                    var displayName = LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", targetLanguage);
+                    var pathTitle = $"{displayName}'s Path Today - A {pathType} Path";
+                    parsedResults["todaysReading_pathTitle"] = pathTitle;
+                    
+                    // Inject into all multilingual versions
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            if (multilingualResults[lang].TryGetValue("todaysReading_pathType", out var langPathType))
+                            {
+                                var langDisplayName = LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", lang);
+                                var langPathTitle = $"{langDisplayName}'s Path Today - A {langPathType} Path";
+                                multilingualResults[lang]["todaysReading_pathTitle"] = langPathTitle;
+                            }
+                        }
+                    }
+                }
+                
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected enum fields and constructed path_title for Daily prediction");
             }
 
             var predictionId = Guid.NewGuid();
@@ -1097,6 +1129,76 @@ Your task is to create engaging, positive, and thoughtful content that helps use
                         multilingualResults[lang]["currentPhase"] = currentPhase.ToString();
                     }
                 }
+                
+                // Construct cn_year from birthYearAnimal (backend-generated, not from LLM)
+                var cnYearTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
+                parsedResults["chineseAstrology_currentYear"] = cnYearTranslated;
+                
+                if (multilingualResults != null)
+                {
+                    foreach (var lang in multilingualResults.Keys)
+                    {
+                        var langCnYear = TranslateChineseZodiacAnimal(birthYearZodiac, lang);
+                        multilingualResults[lang]["chineseAstrology_currentYear"] = langCnYear;
+                    }
+                }
+                
+                // Construct sun_arch, moon_arch, rising_arch from arch_name fields
+                if (parsedResults.TryGetValue("westernOverview_sunArchetypeName", out var sunArchName))
+                {
+                    var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
+                    parsedResults["westernOverview_sunArchetype"] = $"Sun in {sunSignTranslated} - The {sunArchName}";
+                    
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            if (multilingualResults[lang].TryGetValue("westernOverview_sunArchetypeName", out var langSunArchName))
+                            {
+                                var langSunSign = TranslateSunSign(sunSign, lang);
+                                multilingualResults[lang]["westernOverview_sunArchetype"] = $"Sun in {langSunSign} - The {langSunArchName}";
+                            }
+                        }
+                    }
+                }
+                
+                if (parsedResults.TryGetValue("westernOverview_moonArchetypeName", out var moonArchName))
+                {
+                    var moonSignTranslated = TranslateSunSign(moonSign ?? sunSign, targetLanguage);
+                    parsedResults["westernOverview_moonArchetype"] = $"Moon in {moonSignTranslated} - The {moonArchName}";
+                    
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            if (multilingualResults[lang].TryGetValue("westernOverview_moonArchetypeName", out var langMoonArchName))
+                            {
+                                var langMoonSign = TranslateSunSign(moonSign ?? sunSign, lang);
+                                multilingualResults[lang]["westernOverview_moonArchetype"] = $"Moon in {langMoonSign} - The {langMoonArchName}";
+                            }
+                        }
+                    }
+                }
+                
+                if (parsedResults.TryGetValue("westernOverview_risingArchetypeName", out var risingArchName))
+                {
+                    var risingSignTranslated = TranslateSunSign(risingSign ?? sunSign, targetLanguage);
+                    parsedResults["westernOverview_risingArchetype"] = $"Rising in {risingSignTranslated} - The {risingArchName}";
+                    
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            if (multilingualResults[lang].TryGetValue("westernOverview_risingArchetypeName", out var langRisingArchName))
+                            {
+                                var langRisingSign = TranslateSunSign(risingSign ?? sunSign, lang);
+                                multilingualResults[lang]["westernOverview_risingArchetype"] = $"Rising in {langRisingSign} - The {langRisingArchName}";
+                            }
+                        }
+                    }
+                }
+                
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Constructed cn_year and arch fields for Lifetime prediction");
             }
 
             // Raise event to save prediction (unified structure)
@@ -1166,17 +1268,11 @@ Your task is to create engaging, positive, and thoughtful content that helps use
     private string BuildPredictionPrompt(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en", string? moonSign = null, string? risingSign = null)
     {
         // Build user info line dynamically based on available fields
+        // Note: Full name intentionally excluded to reduce privacy exposure
         var userInfoParts = new List<string>();
         
-        // Required fields
-        userInfoParts.Add($"{userInfo.FirstName} {userInfo.LastName}");
-        
-        // Birth date and time (only include time if provided)
+        // Birth date only (no time or location for privacy)
         var birthDateStr = $"Birth: {userInfo.BirthDate:yyyy-MM-dd}";
-        if (userInfo.BirthTime != default)
-        {
-            birthDateStr += $" {userInfo.BirthTime:HH:mm}";
-        }
         
         // Calendar type (only include if provided)
         if (userInfo.CalendarType.HasValue)
@@ -1186,12 +1282,6 @@ Your task is to create engaging, positive, and thoughtful content that helps use
         }
         
         userInfoParts.Add(birthDateStr);
-        
-        // Birth location (optional, BirthCountry is no longer used)
-        if (!string.IsNullOrWhiteSpace(userInfo.BirthCity))
-        {
-            userInfoParts.Add($"at {userInfo.BirthCity}");
-        }
         
         // Gender
         userInfoParts.Add($"Gender: {userInfo.Gender}");
@@ -1350,7 +1440,7 @@ FORMAT REQUIREMENT:
             var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
             var birthYearAnimalTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
             
-            prompt = singleLanguagePrefix + $@"Generate lifetime profile for user.
+            prompt = singleLanguagePrefix + $@"Create a lifetime astrological narrative for self-reflection.
 User: {userInfoLine}
 Current Year: {currentYear}
 
@@ -1371,90 +1461,91 @@ Each field on ONE line: fieldName	value
 CRITICAL: Use actual TAB character (\\t) between field and value.
 
 Output format (TAB shown as whitespace):
-pillars_id	[12-18 words addressing by name]
-pillars_detail	[45-60 words using {sunSign}, 'both...yet' patterns]
-cn_year	[CRITICAL: match target language - en='Year of the Snake', zh='蛇年', es='Año de la Serpiente']
-cn_trait1	[8-12 words]
-cn_trait2	[8-12 words]
-cn_trait3	[8-12 words]
-cn_trait4	[8-12 words]
-whisper	[40-50 words starting '{birthYearAnimal} adds...', 'You are not only X, but Y']
+pillars_id	[12-18 words addressing by name in reflective tone]
+pillars_detail	[45-60 words using {sunSign}, 'both...yet' patterns, contemplative]
+cn_trait1	[8-12 words describing symbolic qualities]
+cn_trait2	[8-12 words describing symbolic qualities]
+cn_trait3	[8-12 words describing symbolic qualities]
+cn_trait4	[8-12 words describing symbolic qualities]
+whisper	[40-50 words starting '{birthYearAnimal} invites...', 'You embody not only X, but Y']
 sun_tag	You [2-5 words poetic metaphor]
-sun_arch	Sun in {sunSign} - The [3-5 words archetype]
-sun_desc	[18-25 words core traits using 'You']
+sun_arch_name	[3-5 words archetype, e.g. 'Nurturing Protector', 'Visionary Dreamer']
+sun_desc	[18-25 words describing core symbolic qualities using 'You']
 moon_sign	{moonSign}
-moon_arch	Moon in {moonSign} - The [3-5 words archetype]
-moon_desc	[15-20 words emotional nature]
+moon_arch_name	[3-5 words archetype]
+moon_desc	[15-20 words describing emotional landscape]
 rising_sign	{risingSign}
-rising_arch	Rising in {risingSign} - The [3-5 words archetype]
-rising_desc	[20-28 words how they meet world]
-essence	[15-20 words 'You think like [Sun], feel like [Moon], move like [Rising]']
-str_intro	[10-15 words on growth path]
+rising_arch_name	[3-5 words archetype]
+rising_desc	[20-28 words describing how they express themselves]
+essence	[15-20 words 'You contemplate like [Sun], feel like [Moon], express like [Rising]']
+str_intro	[10-15 words on journey and inherent qualities]
 str1_title	[2-5 words]
-str1_desc	[15-25 words, attribute to sign combinations]
+str1_desc	[15-25 words, attribute to sign combinations, reflective tone]
 str2_title	[2-5 words]
-str2_desc	[12-18 words]
+str2_desc	[12-18 words, reflective tone]
 str3_title	[2-5 words]
-str3_desc	[12-18 words]
-chal_intro	[12-18 words starting 'Your power grows when...']
+str3_desc	[12-18 words, reflective tone]
+chal_intro	[12-18 words starting 'Your awareness deepens when...' or 'Growth invites you to...']
 chal1_title	[2-5 words]
-chal1_desc	[8-15 words using sign combinations]
+chal1_desc	[8-15 words using sign combinations, invitational tone]
 chal2_title	[2-5 words]
-chal2_desc	[10-18 words]
+chal2_desc	[10-18 words, invitational tone]
 chal3_title	[2-5 words]
-chal3_desc	[10-18 words]
-path_intro	[20-30 words starting 'You are here to...', end with dual identity]
-path1_title	[3-5 roles separated by /]
-path1_desc	[3-6 words]
-path2_title	[3-5 roles separated by /]
-path2_desc	[5-10 words]
-path3_title	[1-3 roles]
-path3_desc	[8-15 words]
-cn_essence	Essence like {birthYearElement}
-cycle_title	Zodiac Cycle Influence (YYYY-YYYY) [calculate 20-year period from birth year]
+chal3_desc	[10-18 words, invitational tone]
+destiny_intro	[20-30 words starting 'Your journey invites you to...' or 'You are here to explore...', end with dual nature]
+path1_title	[3-5 archetypal roles separated by /]
+path1_desc	[3-6 words describing symbolic expression]
+path2_title	[3-5 archetypal roles separated by /]
+path2_desc	[5-10 words describing symbolic expression]
+path3_title	[1-3 archetypal roles]
+path3_desc	[8-15 words describing symbolic expression]
+cn_essence	Essence resonating with {birthYearElement}
+cycle_title	Zodiac Cycle Resonance (YYYY-YYYY) [calculate 20-year period from birth year]
 cycle_name_en	[English name]
 cycle_name_zh	[Chinese name]
-cycle_intro	[50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Explain 20-year cycle]
-cycle_pt1	[8-12 words]
-cycle_pt2	[6-10 words]
-cycle_pt3	[8-12 words]
-cycle_pt4	[10-15 words]
-ten_intro	[40-60 words on Fate Palace sector, element, alignment]
-past_summary	[8-12 words]
-past_detail	[60-80 words past tense, element/energy, Ten Gods]
-curr_summary	[8-12 words]
-curr_detail	[60-80 words present tense, what it empowers, Ten Gods]
-future_summary	[8-12 words]
-future_detail	[60-80 words future tense, opportunities/challenges]
-plot_title	You are a [10-20 words poetic archetype]
-plot_chapter	[30-50 words addressing by name, describe destiny]
-plot_pt1	[5-15 words]
-plot_pt2	[5-15 words]
-plot_pt3	[5-15 words]
-plot_pt4	[5-15 words powerful identity statement]
+cycle_intro	[50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Describe 20-year symbolic cycle]
+cycle_pt1	[8-12 words describing symbolic theme]
+cycle_pt2	[6-10 words describing symbolic theme]
+cycle_pt3	[8-12 words describing symbolic theme]
+cycle_pt4	[10-15 words describing symbolic theme]
+ten_intro	[40-60 words on life phase energetics, element, symbolic alignment]
+past_summary	[8-12 words describing past phase energy]
+past_detail	[60-80 words past tense, element/energy patterns, symbolic dynamics]
+curr_summary	[8-12 words describing current phase energy]
+curr_detail	[60-80 words present tense, what invites exploration, symbolic dynamics]
+future_summary	[8-12 words describing future phase energy]
+future_detail	[60-80 words future tense, emerging themes/invitations for reflection]
+plot_title	You embody [10-20 words poetic archetype]
+plot_chapter	[30-50 words addressing by name, describe unique life narrative]
+plot_pt1	[5-15 words describing symbolic theme]
+plot_pt2	[5-15 words describing symbolic theme]
+plot_pt3	[5-15 words describing symbolic theme]
+plot_pt4	[5-15 words powerful identity exploration]
 act1_title	[2-5 words]
-act1_desc	[10-20 words actionable advice]
+act1_desc	[10-20 words inviting contemplation and exploration]
 act2_title	[2-5 words]
-act2_desc	[10-20 words]
+act2_desc	[10-20 words inviting contemplation and exploration]
 act3_title	[2-5 words]
-act3_desc	[10-20 words]
+act3_desc	[10-20 words inviting contemplation and exploration]
 act4_title	[2-5 words]
-act4_desc	[10-20 words most powerful]
+act4_desc	[10-20 words most empowering contemplation]
 mantra_title	[2-4 words]
-mantra_pt1	[5-15 words using 'X as if...' pattern]
-mantra_pt2	[5-15 words]
-mantra_pt3	[5-15 words most powerful]
+mantra_pt1	[5-15 words using 'I explore X as if...' or 'I embrace X' pattern]
+mantra_pt2	[5-15 words using exploratory language]
+mantra_pt3	[5-15 words most empowering exploration]
 
-CRITICAL FORMAT REQUIREMENTS:
-- Each line: exactly ONE TAB CHARACTER (\\t) between field name and value
-- Use actual tab character (not spaces, not literal word 'TAB')
-- No line breaks within field values
-- Return ONLY TSV format, no markdown, no extra text
+FORMAT REQUIREMENTS:
+- Return TSV format: one field per line with TAB between field name and value
+- Use actual tab character (\\t) as separator
+- Keep field values on single lines for easier parsing (use spaces or commas for lists)
+- Return only the data (no markdown wrappers)
 
-RULES:
-- All [VARIED] content must be FRESH for each user
-- Use 'both...yet' contrasts, 'You are here to...', 'Your power grows when...' patterns
-- Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";
+TONE & STYLE:
+- Content should be FRESH and tailored for each user's unique journey
+- Use invitational patterns like 'You are here to explore...', 'Your awareness deepens when...'
+- Focus on self-discovery and contemplation, not deterministic outcomes
+- Avoid commands ('will be', 'must do') - use invitations ('invites you to', 'may explore')
+- Warm, empowering, and reflective tone throughout";
         }
         else if (type == PredictionType.Yearly)
         {
@@ -1467,7 +1558,7 @@ RULES:
             var birthYearZodiacTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
             var yearlyTaishuiTranslated = TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
             
-            prompt = singleLanguagePrefix + $@"Generate yearly prediction for {yearlyYear}.
+            prompt = singleLanguagePrefix + $@"Create a yearly astrological insight for {yearlyYear} to support self-reflection.
 User: {userInfoLine}
 
 ========== PRE-CALCULATED VALUES (Use EXACT translated values in your output) ==========
@@ -1483,47 +1574,46 @@ Each field on ONE line: fieldName	value
 Use actual TAB character (not spaces) as separator. For arrays: Use pipe | to separate items.
 
 Output format (use TAB between field and value, shown as whitespace below):
-astro_overlay	{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary transits]
+astro_overlay	{sunSign} Sun · [2-3 word archetype] — {yearlyYear} [Key planetary themes]
 theme_title	[VARIED: 4-7 words using 'of' structure]
-theme_glance	[VARIED: 15-20 words on what both systems agree]
-theme_detail	[VARIED: 60-80 words in 3 parts (double space): P1 combination/clash, P2 what it creates, P3 define year 'not X but Y']
-career_score	[1-5 based on analysis]
-career_tag	[10-15 words starting 'Your superpower this year:']
-career_do	item1|item2
-career_avoid	item1|item2
-career_detail	[50-70 words in 3 parts: formula, feeling, meaning]
+theme_glance	[VARIED: 15-20 words on what both systems suggest for reflection]
+theme_detail	[VARIED: 60-80 words in 3 parts (double space): P1 energetic patterns, P2 what invites exploration, P3 define year's invitation 'not X but Y']
+career_score	[1-5 based on symbolic analysis]
+career_tag	[10-15 words starting 'Your contemplative focus this year:' or 'This year invites you to explore:']
+career_do	item1|item2 (areas to explore/consider)
+career_avoid	item1|item2 (patterns to be mindful of)
+career_detail	[50-70 words in 3 parts: symbolic pattern, energy quality, reflective meaning]
 love_score	[1-5]
-love_tag	[10-15 words philosophical]
-love_do	item1|item2
-love_avoid	item1|item2
-love_detail	[50-70 words in 3 parts: formula, emotional state, relationship needs]
+love_tag	[10-15 words philosophical and invitational]
+love_do	item1|item2 (themes to explore)
+love_avoid	item1|item2 (dynamics to reflect on)
+love_detail	[50-70 words in 3 parts: symbolic pattern, emotional landscape, relationship insights for reflection]
 prosperity_score	[1-5]
-prosperity_tag	[10-15 words]
-prosperity_do	item1|item2
-prosperity_avoid	item1|item2
-prosperity_detail	[50-70 words in 3 parts: formula, climate, abundance needs]
+prosperity_tag	[10-15 words invitational]
+prosperity_do	item1|item2 (possibilities to contemplate)
+prosperity_avoid	item1|item2 (considerations to be aware of)
+prosperity_detail	[50-70 words in 3 parts: symbolic pattern, energetic climate, abundance reflections]
 wellness_score	[1-5]
-wellness_tag	[10-15 words]
-wellness_do	item1|item2
-wellness_avoid	item1|item2
-wellness_detail	[50-70 words in 3 parts: formula, state, wellbeing needs]
-mantra	[18-25 words using first-person 'My' declarations, 2-3 powerful statements]
+wellness_tag	[10-15 words invitational]
+wellness_do	item1|item2 (practices to explore)
+wellness_avoid	item1|item2 (patterns to be mindful of)
+wellness_detail	[50-70 words in 3 parts: symbolic pattern, energetic state, wellbeing reflections]
+mantra	[18-25 words using first-person 'I explore...' or 'I contemplate...' declarations, 2-3 empowering statements]
 
-CRITICAL FORMAT REQUIREMENTS:
-- Each line: exactly ONE TAB CHARACTER (\\t) between field name and value
-- Use actual tab character (not spaces, not literal word 'TAB')
-- Array values: use | separator, NO tabs within arrays
-- Scores: integer 1-5 only
-- No line breaks within field values
-- Return ONLY TSV format, no markdown, no extra text
+FORMAT REQUIREMENTS:
+- Return TSV format: one field per line with TAB between field name and value
+- Use actual tab character (\\t) as separator
+- Array values: use | separator (e.g., item1|item2)
+- Scores: integer 1-5 (1=challenging, 3=favorable, 5=outstanding)
+- Avoid line breaks within field values
+- Return only the data (no markdown wrappers)
 
-RULES:
-- All [VARIED] content must be FRESH for each user
-- Scores: 1=challenging, 2=mixed, 3=favorable, 4=excellent, 5=outstanding
-- detail fields: Use formula pattern ('X + Y = Z.'), then state, then meaning
-- Career tagline starts 'Your superpower this year:', others philosophical
-- Avoid fields: 3-6 specific nouns (Job Hopping, Jealousy, Gambling, Late Nights)
-- Use double space not line breaks, warm tone, no special chars/emoji";
+TONE & STYLE:
+- Content should be FRESH and tailored for each user's year ahead
+- Use symbolic patterns and invitational language ('This year invites...', 'You may explore...')
+- _do fields: Areas/themes to explore (contemplative suggestions, not commands)
+- _avoid fields: Patterns to be mindful of (awareness, not prohibitions)
+- Warm, reflective, empowering - not deterministic or prescriptive";
         }
         else // PredictionType.Daily
         {
@@ -1537,7 +1627,7 @@ RULES:
                 _ => "Fire"
             };
             
-            prompt = singleLanguagePrefix + $@"Generate daily prediction for {predictionDate:yyyy-MM-dd}.
+            prompt = singleLanguagePrefix + $@"Create a daily astrological reflection for {predictionDate:yyyy-MM-dd}.
 User: {userInfoLine}
 
 ========== PRE-CALCULATED VALUES (Use for personalization) ==========
@@ -1556,61 +1646,63 @@ OUTPUT STRUCTURE (26 fields organized in 4 sections):
 === 1. DAY THEME ===
 dayTitle	The Day of [word1] and [word2]
 
-=== 2. TODAY'S READING ===
-# Tarot Card (3 fields)
+=== 2. TODAY'S EXPLORATION ===
+# Symbolic Card (3 fields)
 card_name	Card name (VARIED for {sunSign}/{zodiacElement})
 card_essence	1-2 words, comma-separated if two
 card_orient	Upright or Reversed
 
 # Your Path (3 fields)
-path_title	{displayName}'s Path Today - A [adjective] Path
+path_type	[1 adjective describing today's path quality, e.g. 'Courageous', 'Reflective', 'Transformative']
 path_intro	15-25 words starting 'Hi {displayName}'
-path_detail	30-40 words of wisdom
+path_detail	30-40 words of reflective wisdom
 
-# Life Areas (4 fields)
-career	10-20 words advice
-love	10-20 words advice
-prosperity	10-20 words advice
-wellness	10-15 words advice
+# Life Areas (4 fields - contemplative tone)
+career	10-20 words for reflection on work energy
+love	10-20 words for reflection on relationships
+prosperity	10-20 words for reflection on abundance
+wellness	10-15 words for reflection on wellbeing
 
 # Takeaway (1 field)
 takeaway	15-25 words '{displayName}, your...'
 
-=== 3. LUCKY ALIGNMENTS ===
+=== 3. RESONANT SYMBOLS ===
 # Number (4 fields)
 lucky_num	Word (digit) e.g. 八 (8)
 lucky_digit	1-9
-num_meaning	15-20 words for THIS user
-num_calc	12-18 words showing actual formula (e.g. 'November (11) + 18 + Metal element = 7 vibration')
+num_meaning	15-20 words symbolic significance for THIS user
+num_calc	12-18 words showing symbolic formula (e.g. 'November (11) + 18 + Metal element = 7 resonance')
 
 # Stone (3 fields)
 stone	Stone for {zodiacElement} element
-stone_power	15-20 words how it helps
-stone_use	15-20 words 'Meditate:' or 'Practice:'
+stone_power	15-20 words symbolic energy it represents
+stone_use	15-20 words 'Contemplate:' or 'Explore:'
 
-# Spell (3 fields)
+# Affirmation (3 fields)
 spell	2 words poetic
-spell_words	20-30 words affirmation in quotes
-spell_intent	10-12 words 'To [verb]...'
+spell_words	20-30 words inspirational affirmation in quotes
+spell_intent	10-12 words 'To explore...' or 'To contemplate...'
 
-=== 4. TWIST OF FORTUNE ===
+=== 4. PATHWAYS & REFLECTIONS ===
 fortune_title	4-8 words poetic metaphor
-fortune_do	activity1|activity2|activity3|activity4|activity5
-fortune_avoid	activity1|activity2|activity3|activity4|activity5
-fortune_tip	10-15 words 'Today's turning point...'
+fortune_do	activity1|activity2|activity3|activity4|activity5 (suggestions to explore)
+fortune_avoid	activity1|activity2|activity3|activity4|activity5 (considerations to reflect on)
+fortune_tip	10-15 words 'Today's reflection invites...'
 
-CONTENT REQUIREMENTS:
-- Each line: exactly ONE TAB CHARACTER (\\t) between field and value
-- Use actual tab character (not spaces, not literal word 'TAB')
-- Array values: EXACTLY 5 items for each array, each item 2-3 words
-- No line breaks within field values
+FORMAT REQUIREMENTS:
+- Return TSV format: one field per line with TAB between field name and value
+- Use actual tab character (\\t) as separator
+- Array values: use | separator, aim for 5 items per array (approximate is fine)
+- Avoid line breaks within field values
+- Return only the data (no markdown wrappers)
 
-PERSONALIZATION RULES:
-- Tarot Card: Select DIFFERENT card for each user based on {sunSign}/{zodiacElement}/today's energy
-- Lucky Stone by element: Fire→Carnelian/Ruby/Garnet, Earth→Jade/Emerald/Moss Agate, Air→Citrine/Aquamarine, Water→Moonstone/Pearl/Lapis Lazuli
-- Lucky Number: Generate VARIED numbers (1-9), ensure variety across users
-- All content: Generate NEW perspectives each time, tailored to THIS user
-- Use 'You/Your' extensively, warm tone, no special chars/emoji/line breaks";            
+PERSONALIZATION GUIDELINES:
+- Symbolic Card: Select varied cards based on {sunSign}/{zodiacElement}/today's energy
+- Resonant Stone by element: Fire→Carnelian/Ruby/Garnet, Earth→Jade/Emerald/Moss Agate, Air→Citrine/Aquamarine, Water→Moonstone/Pearl/Lapis Lazuli
+- Resonant Number: Generate varied numbers (1-9) for symbolic diversity
+- Content should be FRESH and tailored to each user's unique journey
+- Use invitational, reflective tone - not prescriptive or commanding
+- Warm and exploratory language, personal pronouns ('You/Your')";            
         }
 
         return prompt;
@@ -1639,7 +1731,7 @@ PERSONALIZATION RULES:
             sourceTsv.AppendLine($"{kvp.Key}\t{kvp.Value}");
         }
         
-        var translationPrompt = $@"TASK: Translate the following {type} prediction from {sourceLangName} into {targetLangNames}.
+        var translationPrompt = $@"TASK: Translate the following {type} astrological reflection from {sourceLangName} into {targetLangNames}.
 
 TRANSLATION RULES:
 - TRANSLATE content, do NOT regenerate or reinterpret
@@ -1930,8 +2022,8 @@ Generate translations for: {targetLangNames}
             var chatId = Guid.NewGuid().ToString();
             
             // Simple system prompt for translation
-            var translationSystemPrompt = @"You are a professional translator for astrology and divination content.
-All content is for entertainment and self-reflection purposes only.";
+            var translationSystemPrompt = @"You are a professional translator for astrological and philosophical reflection content.
+All content is for entertainment, self-exploration, and contemplative purposes only.";
             
             var response = await godChat.ChatWithoutHistoryAsync(
                 userGuid,
@@ -2286,7 +2378,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["card_orient"] = "todaysReading_tarotCard_orientation",
             
             // Path (path_*)
-            ["path_title"] = "todaysReading_pathTitle",
+            ["path_type"] = "todaysReading_pathType", // Backend will construct path_title
             ["path_intro"] = "todaysReading_pathDescription",
             ["path_detail"] = "todaysReading_pathDescriptionExpanded",
             
@@ -2351,20 +2443,20 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // ===== LIFETIME PREDICTION MAPPINGS =====
             ["pillars_id"] = "fourPillars_coreIdentity",
             ["pillars_detail"] = "fourPillars_coreIdentity_expanded",
-            ["cn_year"] = "chineseAstrology_currentYear",
+            // cn_year removed - backend generates this directly
             ["cn_trait1"] = "chineseAstrology_trait1",
             ["cn_trait2"] = "chineseAstrology_trait2",
             ["cn_trait3"] = "chineseAstrology_trait3",
             ["cn_trait4"] = "chineseAstrology_trait4",
             ["whisper"] = "zodiacWhisper",
             ["sun_tag"] = "sunSign_tagline",
-            ["sun_arch"] = "westernOverview_sunArchetype",
+            ["sun_arch_name"] = "westernOverview_sunArchetypeName", // Backend will construct sun_arch
             ["sun_desc"] = "westernOverview_sunDescription",
             ["moon_sign"] = "westernOverview_moonSign",
-            ["moon_arch"] = "westernOverview_moonArchetype",
+            ["moon_arch_name"] = "westernOverview_moonArchetypeName", // Backend will construct moon_arch
             ["moon_desc"] = "westernOverview_moonDescription",
             ["rising_sign"] = "westernOverview_risingSign",
-            ["rising_arch"] = "westernOverview_risingArchetype",
+            ["rising_arch_name"] = "westernOverview_risingArchetypeName", // Backend will construct rising_arch
             ["rising_desc"] = "westernOverview_risingDescription",
             ["essence"] = "combinedEssence",
             ["str_intro"] = "strengths_overview",
@@ -2381,7 +2473,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["chal2_desc"] = "challenges_item2_description",
             ["chal3_title"] = "challenges_item3_title",
             ["chal3_desc"] = "challenges_item3_description",
-            ["path_intro"] = "destiny_overview",
+            ["destiny_intro"] = "destiny_overview",
             ["path1_title"] = "destiny_path1_title",
             ["path1_desc"] = "destiny_path1_description",
             ["path2_title"] = "destiny_path2_title",
@@ -2825,7 +2917,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         if (string.IsNullOrWhiteSpace(cardName)) return TarotCardEnum.Unknown;
         
-        // Try Chinese mapping first
+        // Try Chinese mapping first (including common aliases)
         var chineseMapping = new Dictionary<string, TarotCardEnum>(StringComparer.OrdinalIgnoreCase)
         {
             // Major Arcana
@@ -2833,9 +2925,16 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             {"皇后", TarotCardEnum.TheEmpress}, {"皇帝", TarotCardEnum.TheEmperor}, {"教皇", TarotCardEnum.TheHierophant},
             {"恋人", TarotCardEnum.TheLovers}, {"战车", TarotCardEnum.TheChariot}, {"力量", TarotCardEnum.Strength},
             {"隐士", TarotCardEnum.TheHermit}, {"命运之轮", TarotCardEnum.WheelOfFortune}, {"正义", TarotCardEnum.Justice},
-            {"倒吊人", TarotCardEnum.TheHangedMan}, {"死神", TarotCardEnum.Death}, {"节制", TarotCardEnum.Temperance},
-            {"恶魔", TarotCardEnum.TheDevil}, {"高塔", TarotCardEnum.TheTower}, {"星星", TarotCardEnum.TheStar},
-            {"月亮", TarotCardEnum.TheMoon}, {"太阳", TarotCardEnum.TheSun}, {"审判", TarotCardEnum.Judgement},
+            {"倒吊人", TarotCardEnum.TheHangedMan}, {"倒吊者", TarotCardEnum.TheHangedMan}, // Alias: 倒吊者
+            {"倒悬者", TarotCardEnum.TheHangedMan}, // Another alias
+            {"死神", TarotCardEnum.Death}, {"死亡", TarotCardEnum.Death}, // Alias: 死亡
+            {"节制", TarotCardEnum.Temperance},
+            {"恶魔", TarotCardEnum.TheDevil}, {"魔鬼", TarotCardEnum.TheDevil}, // Alias: 魔鬼
+            {"高塔", TarotCardEnum.TheTower}, {"塔", TarotCardEnum.TheTower}, // Alias: 塔
+            {"星星", TarotCardEnum.TheStar}, {"星辰", TarotCardEnum.TheStar}, // Alias: 星辰
+            {"月亮", TarotCardEnum.TheMoon}, {"月", TarotCardEnum.TheMoon}, // Alias: 月
+            {"太阳", TarotCardEnum.TheSun}, {"日", TarotCardEnum.TheSun}, // Alias: 日
+            {"审判", TarotCardEnum.Judgement}, {"审讯", TarotCardEnum.Judgement}, // Alias: 审讯
             {"世界", TarotCardEnum.TheWorld},
             // Wands (only showing some common ones, expand as needed)
             {"权杖王牌", TarotCardEnum.AceOfWands}, {"权杖二", TarotCardEnum.TwoOfWands}, {"权杖三", TarotCardEnum.ThreeOfWands},
@@ -2863,9 +2962,31 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             {"星币王后", TarotCardEnum.QueenOfPentacles}, {"星币国王", TarotCardEnum.KingOfPentacles}
         };
         
-        if (chineseMapping.TryGetValue(cardName.Trim(), out var chineseResult))
+        var trimmedName = cardName.Trim();
+        
+        if (chineseMapping.TryGetValue(trimmedName, out var chineseResult))
         {
             return chineseResult;
+        }
+        
+        // Try common Chinese aliases with normalization (for court cards)
+        // Note: Only replace for suit cards (权杖/圣杯/宝剑/星币), not Major Arcana
+        var normalizedChinese = trimmedName;
+        
+        if (trimmedName.Contains("权杖") || trimmedName.Contains("圣杯") || 
+            trimmedName.Contains("宝剑") || trimmedName.Contains("星币"))
+        {
+            normalizedChinese = trimmedName
+                .Replace("侍者", "侍从")
+                .Replace("随从", "侍从")
+                .Replace("武士", "骑士")
+                .Replace("女王", "王后");
+        }
+        
+        if (normalizedChinese != trimmedName && chineseMapping.TryGetValue(normalizedChinese, out var normalizedResult))
+        {
+            _logger.LogDebug($"[LumenPredictionGAgent][ParseTarotCard] Normalized '{trimmedName}' to '{normalizedChinese}'");
+            return normalizedResult;
         }
         
         // Try English parsing with normalization
