@@ -83,8 +83,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 21: Softened command language - replaced MUST/NOT/CRITICAL with please/avoid/guideline; Added clear rules about using Display Name only
     /// Version 22: Strengthened language requirements with explicit examples - added ✓/✗ examples, "check before finishing" reminder, self-correction prompt
     /// Version 23: Changed card_name/card_orient/stone fields to use English standard names; Added automatic Chinese translation via dictionary lookup
+    /// Version 24: Fixed Daily translation to replace original field values; Localized Lifetime cycle_title and cycle_intro templates
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 23; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 24; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1611,6 +1612,21 @@ FORMAT REQUIREMENT:
             var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
             var birthYearAnimalTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
             
+            // Localize template strings
+            var cycleTitlePrefix = targetLanguage switch
+            {
+                "zh" => "生肖周期共振",
+                "zh-tw" => "生肖週期共振",
+                _ => "Zodiac Cycle Resonance"
+            };
+            
+            var cycleIntroInstruction = targetLanguage switch
+            {
+                "zh" => $"以\"你的生肖是{birthYearAnimalTranslated}…\"开头，描述20年象征周期",
+                "zh-tw" => $"以\"你的生肖是{birthYearAnimalTranslated}…\"開頭，描述20年象徵週期",
+                _ => $"Start with 'Your Chinese Zodiac is {birthYearAnimalTranslated}...' and describe the 20-year symbolic cycle"
+            };
+            
             prompt = singleLanguagePrefix + $@"Create a lifetime astrological narrative for self-reflection.
 User: {userInfoLine}
 Current Year: {currentYear}
@@ -1670,10 +1686,10 @@ path2_desc	[5-10 words describing symbolic expression]
 path3_title	[1-3 archetypal roles]
 path3_desc	[8-15 words describing symbolic expression]
 cn_essence	Essence resonating with {birthYearElement}
-cycle_title	Zodiac Cycle Resonance (YYYY-YYYY) [calculate 20-year period from birth year]
-cycle_name_en	[English name]
-cycle_name_zh	[Chinese name]
-cycle_intro	[50-65 words starting 'Your Chinese Zodiac is {birthYearAnimal}...' Describe 20-year symbolic cycle]
+cycle_title	{cycleTitlePrefix} (YYYY-YYYY) [calculate 20-year period from birth year]
+cycle_name_en	[English name for cycle theme]
+cycle_name_zh	[Chinese name for cycle theme]
+cycle_intro	[50-65 words. {cycleIntroInstruction}]
 cycle_pt1	[8-12 words describing symbolic theme]
 cycle_pt2	[6-10 words describing symbolic theme]
 cycle_pt3	[8-12 words describing symbolic theme]
@@ -3196,7 +3212,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Add Chinese translations for English-only fields (tarot card, stone, orientation)
-    /// This is called after parsing to enrich the result with localized translations
+    /// This is called after parsing to replace English values with Chinese translations
     /// </summary>
     private void AddChineseTranslations(Dictionary<string, string> parsedResults, string targetLanguage)
     {
@@ -3205,13 +3221,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return; // Only add translations for Chinese users
         }
         
-        // Translate tarot card name
+        // Translate tarot card name - REPLACE the original field value
         if (parsedResults.TryGetValue("todaysReading_tarotCard_name", out var cardName) && !string.IsNullOrWhiteSpace(cardName))
         {
             if (TarotCardTranslations.TryGetValue(cardName.Trim(), out var cardTranslation))
             {
                 var translatedName = targetLanguage == "zh" ? cardTranslation.zh : cardTranslation.zhTw;
-                parsedResults["todaysReading_tarotCard_name_zh"] = translatedName;
+                parsedResults["todaysReading_tarotCard_name"] = translatedName; // Replace original value
                 _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated tarot card: {cardName} → {translatedName}");
             }
             else
@@ -3220,13 +3236,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
         }
         
-        // Translate tarot card orientation
+        // Translate tarot card orientation - REPLACE the original field value
         if (parsedResults.TryGetValue("todaysReading_tarotCard_orientation", out var orientation) && !string.IsNullOrWhiteSpace(orientation))
         {
             if (OrientationTranslations.TryGetValue(orientation.Trim(), out var orientationTranslation))
             {
                 var translatedOrientation = targetLanguage == "zh" ? orientationTranslation.zh : orientationTranslation.zhTw;
-                parsedResults["todaysReading_tarotCard_orientation_zh"] = translatedOrientation;
+                parsedResults["todaysReading_tarotCard_orientation"] = translatedOrientation; // Replace original value
                 _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated orientation: {orientation} → {translatedOrientation}");
             }
             else
@@ -3235,13 +3251,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             }
         }
         
-        // Translate lucky stone
+        // Translate lucky stone - REPLACE the original field value
         if (parsedResults.TryGetValue("luckyAlignments_stone", out var stone) && !string.IsNullOrWhiteSpace(stone))
         {
             if (StoneTranslations.TryGetValue(stone.Trim(), out var stoneTranslation))
             {
                 var translatedStone = targetLanguage == "zh" ? stoneTranslation.zh : stoneTranslation.zhTw;
-                parsedResults["luckyAlignments_stone_zh"] = translatedStone;
+                parsedResults["luckyAlignments_stone"] = translatedStone; // Replace original value
                 _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated stone: {stone} → {translatedStone}");
             }
             else
