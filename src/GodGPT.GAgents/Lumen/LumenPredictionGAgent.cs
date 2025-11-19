@@ -37,6 +37,9 @@ public interface ILumenPredictionGAgent : IGAgent
     Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null);
     
     Task ClearCurrentPredictionAsync();
+    
+    [ReadOnly]
+    Task<Dictionary<string, string>> GetCalculatedValuesAsync(LumenUserDto userInfo, string userLanguage = "en");
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -3737,6 +3740,145 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LumenPredictionGAgent][ClearCurrentPredictionAsync] Error clearing prediction data");
+            throw;
+        }
+    }
+    
+    /// <summary>
+    /// Get all backend-calculated values for a user
+    /// Returns a dictionary of calculated astrological and zodiac data
+    /// </summary>
+    public async Task<Dictionary<string, string>> GetCalculatedValuesAsync(LumenUserDto userInfo, string userLanguage = "en")
+    {
+        try
+        {
+            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Calculating values for user {userInfo.UserId}, language: {userLanguage}");
+            
+            var results = new Dictionary<string, string>();
+            
+            // Calculate current date/time values
+            var currentYear = DateTime.UtcNow.Year;
+            var birthYear = userInfo.BirthDate.Year;
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            
+            // ========== WESTERN ASTROLOGY ==========
+            string sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            results["sunSign_name"] = TranslateSunSign(sunSign, userLanguage);
+            results["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+            
+            // Calculate Moon and Rising signs if birth time and location are available
+            string? moonSign = null;
+            string? risingSign = null;
+            
+            if (userInfo.BirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
+            {
+                try
+                {
+                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double latitude) && 
+                        double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
+                    {
+                        var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
+                        var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
+                            userInfo.BirthDate,
+                            userInfo.BirthTime.Value,
+                            latitude,
+                            longitude);
+                        
+                        moonSign = calculatedMoonSign;
+                        risingSign = calculatedRisingSign;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to calculate Moon/Rising signs");
+                }
+            }
+            
+            // Use sunSign as fallback if moon/rising not calculated
+            moonSign = moonSign ?? sunSign;
+            risingSign = risingSign ?? sunSign;
+            
+            results["moonSign_name"] = TranslateSunSign(moonSign, userLanguage);
+            results["risingSign_name"] = TranslateSunSign(risingSign, userLanguage);
+            
+            // ========== CHINESE ASTROLOGY ==========
+            var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
+            var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
+            var birthYearElement = LumenCalculator.CalculateChineseElement(birthYear);
+            
+            results["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, userLanguage);
+            results["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+            results["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, userLanguage);
+            results["birthYear_zodiac"] = birthYearZodiac;
+            results["birthYear_animal"] = birthYearAnimal;
+            results["birthYear_element"] = birthYearElement;
+            
+            // Birth Year Stems
+            var birthYearStems = LumenCalculator.CalculateStemsAndBranches(birthYear);
+            results["birthYear_stems"] = birthYearStems;
+            
+            // Current Year Zodiac
+            var currentYearZodiac = LumenCalculator.GetChineseZodiacWithElement(currentYear);
+            var currentYearAnimal = LumenCalculator.CalculateChineseZodiac(currentYear);
+            var currentYearElement = LumenCalculator.CalculateChineseElement(currentYear);
+            
+            results["currentYear"] = currentYear.ToString();
+            results["currentYear_zodiac"] = currentYearZodiac;
+            results["currentYear_animal"] = currentYearAnimal;
+            results["currentYear_element"] = currentYearElement;
+            
+            // Current Year Stems
+            var currentYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(currentYear);
+            results["currentYear_stems"] = LumenCalculator.CalculateStemsAndBranches(currentYear);
+            results["currentYear_stemChinese"] = currentYearStemsComponents.stemChinese;
+            results["currentYear_stemPinyin"] = currentYearStemsComponents.stemPinyin;
+            results["currentYear_branchChinese"] = currentYearStemsComponents.branchChinese;
+            results["currentYear_branchPinyin"] = currentYearStemsComponents.branchPinyin;
+            
+            // Taishui Relationship
+            var taishuiRelationship = LumenCalculator.CalculateTaishuiRelationship(birthYear, currentYear);
+            results["taishui_relationship"] = taishuiRelationship;
+            results["taishui_translated"] = TranslateTaishuiRelationship(taishuiRelationship, userLanguage);
+            
+            // Zodiac Influence
+            results["zodiacInfluence"] = BuildZodiacInfluence(birthYearZodiac, currentYearZodiac, taishuiRelationship, userLanguage);
+            
+            // ========== LIFE CYCLES ==========
+            var currentAge = LumenCalculator.CalculateAge(userInfo.BirthDate);
+            results["currentAge"] = currentAge.ToString();
+            
+            // 10-year Cycles
+            var pastCycle = LumenCalculator.CalculateTenYearCycle(birthYear, -1);
+            var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
+            var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
+            
+            results["pastCycle_ageRange"] = TranslateCycleAgeRange(pastCycle.AgeRange, userLanguage);
+            results["pastCycle_period"] = TranslateCyclePeriod(pastCycle.Period, userLanguage);
+            results["currentCycle_ageRange"] = TranslateCycleAgeRange(currentCycle.AgeRange, userLanguage);
+            results["currentCycle_period"] = TranslateCyclePeriod(currentCycle.Period, userLanguage);
+            results["futureCycle_ageRange"] = TranslateCycleAgeRange(futureCycle.AgeRange, userLanguage);
+            results["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, userLanguage);
+            
+            // Current Phase (for Lifetime)
+            var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+            results["currentPhase"] = currentPhase.ToString();
+            
+            // ========== FOUR PILLARS (BA ZI) ==========
+            var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+            results["fourPillars_yearPillar"] = fourPillars.YearPillar;
+            results["fourPillars_monthPillar"] = fourPillars.MonthPillar;
+            results["fourPillars_dayPillar"] = fourPillars.DayPillar;
+            results["fourPillars_hourPillar"] = fourPillars.HourPillar;
+            
+            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");
+            
+            return results;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Error calculating values for user {userInfo.UserId}");
             throw;
         }
     }

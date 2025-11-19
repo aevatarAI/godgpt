@@ -632,5 +632,16 @@ public class GetPredictionStatusResult
     [Id(5)] public DateTime? ProfileUpdatedAt { get; set; } // User profile last update time
 }
 
+/// <summary>
+/// Result for getting calculated values
+/// </summary>
+[GenerateSerializer]
+public class GetCalculatedValuesResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public Dictionary<string, string>? CalculatedValues { get; set; }
+}
+
 #endregion
 
