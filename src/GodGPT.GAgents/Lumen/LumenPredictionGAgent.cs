@@ -76,7 +76,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 14: Fixed prompt contradictions - aligned system/user prompts on language requirements, replaced all [TAB] placeholders with actual tab characters in examples
     /// Version 15: Added explicit template translation reminder - LLM must translate English template text (like "James's Path Today") to target language with concrete examples
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 15; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 16; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1344,19 +1344,26 @@ FORMAT REQUIREMENT:
         
         if (type == PredictionType.Lifetime)
         {
+            // Translate zodiac signs for prompt (so LLM uses translated values in output)
+            var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
+            var moonSignTranslated = TranslateSunSign(moonSign, targetLanguage);
+            var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
+            var birthYearAnimalTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
+            
             prompt = singleLanguagePrefix + $@"Generate lifetime profile for user.
 User: {userInfoLine}
 Current Year: {currentYear}
 
-========== PRE-CALCULATED VALUES (Use EXACT values, do NOT recalculate) ==========
-Sun Sign: {sunSign} | Moon Sign: {moonSign} | Rising Sign: {risingSign}
-Birth Year Zodiac: {birthYearZodiac} | Birth Year Animal: {birthYearAnimal} | Birth Year Element: {birthYearElement}
+========== PRE-CALCULATED VALUES (Use EXACT translated values in your output) ==========
+Sun Sign: {sunSignTranslated} | Moon Sign: {moonSignTranslated} | Rising Sign: {risingSignTranslated}
+Birth Year Zodiac: {birthYearZodiac} | Birth Year Animal: {birthYearAnimalTranslated} | Birth Year Element: {birthYearElement}
 Current Year ({currentYear}): {currentYearZodiac} | Current Year Stems: {currentYearStemsFormatted}
 Past Cycle: {pastCycle.AgeRange} · {pastCycle.Period}
 Current Cycle: {currentCycle.AgeRange} · {currentCycle.Period}
 Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
 
 IMPORTANT: All Chinese Zodiac content must reference USER'S Birth Year Zodiac ({birthYearZodiac}), NOT current year ({currentYearZodiac}).
+CRITICAL: When referring to zodiac signs in your text, use these exact translated values: {sunSignTranslated}, {moonSignTranslated}, {risingSignTranslated}, {birthYearAnimalTranslated}
 
 FORMAT (TSV - Tab-Separated Values):
 Each field on ONE line: fieldName	value
@@ -1455,14 +1462,20 @@ RULES:
             var yearlyYearZodiac = LumenCalculator.GetChineseZodiacWithElement(yearlyYear);
             var yearlyTaishui = LumenCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
             
+            // Translate zodiac signs for prompt (so LLM uses translated values in output)
+            var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
+            var birthYearZodiacTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
+            var yearlyTaishuiTranslated = TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
+            
             prompt = singleLanguagePrefix + $@"Generate yearly prediction for {yearlyYear}.
 User: {userInfoLine}
 
-========== PRE-CALCULATED VALUES (Use these EXACT values, do NOT recalculate) ==========
-Sun Sign: {sunSign}
-Birth Year Zodiac: {birthYearZodiac}
+========== PRE-CALCULATED VALUES (Use EXACT translated values in your output) ==========
+Sun Sign: {sunSignTranslated}
+Birth Year Zodiac: {birthYearZodiacTranslated}
 Yearly Year ({yearlyYear}): {yearlyYearZodiac}
-Taishui Relationship: {yearlyTaishui}
+Taishui Relationship: {yearlyTaishuiTranslated}
+CRITICAL: When referring to zodiac signs in your text, use these exact translated values.
 
 FORMAT (TSV - Tab-Separated Values):
 Each field on ONE line: fieldName	value
