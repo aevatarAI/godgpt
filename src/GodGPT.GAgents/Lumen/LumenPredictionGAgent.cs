@@ -735,16 +735,22 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             string? moonSign = null;
             string? risingSign = null;
             
+            // Diagnostic logging
+            _logger.LogInformation($"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime==default: {userInfo.BirthTime == default}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
+            
             if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
                     // Parse latitude and longitude from "lat, long" format
                     var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    _logger.LogInformation($"[LumenPredictionGAgent] Parsing LatLong - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
+                    
                     if (parts.Length == 2 && 
                         double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double latitude) && 
                         double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
                     {
+                        _logger.LogInformation($"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude})");
                         var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
                         var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
                             userInfo.BirthDate,
@@ -759,13 +765,17 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     }
                     else
                     {
-                        _logger.LogWarning($"[LumenPredictionGAgent] Invalid latlong format: {userInfo.LatLong}");
+                        _logger.LogWarning($"[LumenPredictionGAgent] Invalid latlong format or parse failed: '{userInfo.LatLong}'");
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, $"[LumenPredictionGAgent] Failed to calculate Moon/Rising signs for user {userInfo.UserId}, will use Sun sign as fallback");
                 }
+            }
+            else
+            {
+                _logger.LogInformation($"[LumenPredictionGAgent] Skipping Moon/Rising calculation - BirthTime or LatLong not provided");
             }
             
             // Get language name for system prompt (use native language names)
@@ -3837,15 +3847,21 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             string? moonSign = null;
             string? risingSign = null;
             
+            // Diagnostic logging
+            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime==default: {userInfo.BirthTime == default}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
+            
             if (userInfo.BirthTime != default && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
                     var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Parsing LatLong - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
+                    
                     if (parts.Length == 2 && 
                         double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double latitude) && 
                         double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
                     {
+                        _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Starting Western Astrology calculation at ({latitude}, {longitude})");
                         var westernCalculator = new WesternAstrologyCalculator(_logger as ILogger<WesternAstrologyCalculator>);
                         var (_, calculatedMoonSign, calculatedRisingSign) = await westernCalculator.CalculateSignsAsync(
                             userInfo.BirthDate,
@@ -3855,12 +3871,22 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         
                         moonSign = calculatedMoonSign;
                         risingSign = calculatedRisingSign;
+                        
+                        _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Calculated Moon: {moonSign}, Rising: {risingSign}");
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Invalid latlong format or parse failed: '{userInfo.LatLong}'");
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to calculate Moon/Rising signs");
                 }
+            }
+            else
+            {
+                _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Skipping Moon/Rising calculation - BirthTime or LatLong not provided");
             }
             
             // Use sunSign as fallback if moon/rising not calculated
@@ -3934,10 +3960,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             // ========== FOUR PILLARS (BA ZI) ==========
             var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
-            results["fourPillars_yearPillar"] = fourPillars.YearPillar.GetFormattedString(userLanguage);
-            results["fourPillars_monthPillar"] = fourPillars.MonthPillar.GetFormattedString(userLanguage);
-            results["fourPillars_dayPillar"] = fourPillars.DayPillar.GetFormattedString(userLanguage);
-            results["fourPillars_hourPillar"] = fourPillars.HourPillar.GetFormattedString(userLanguage);
+            // Use same detailed structure as Lifetime prediction
+            InjectFourPillarsIntoLifetimePrediction(results, fourPillars, userLanguage);
             
             _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");
             
