@@ -3961,7 +3961,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // ========== FOUR PILLARS (BA ZI) ==========
             var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
             // Use same detailed structure as Lifetime prediction
-            InjectFourPillarsIntoLifetimePrediction(results, fourPillars, userLanguage);
+            InjectFourPillarsData(results, fourPillars, userLanguage);
             
             _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");
             
