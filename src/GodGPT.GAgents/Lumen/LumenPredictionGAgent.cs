@@ -6,6 +6,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Lumen.Dtos;
+using Aevatar.Application.Grains.Lumen.Helpers;
 using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
@@ -959,6 +960,38 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         try
         {
+            // ========== TIMEZONE CORRECTION (EARLY) ==========
+            // Convert local birth time to UTC for accurate astrological calculations
+            var calcBirthDate = userInfo.BirthDate;
+            var calcBirthTime = userInfo.BirthTime;
+
+            if (!string.IsNullOrWhiteSpace(userInfo.LatLong))
+            {
+                try
+                {
+                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) && 
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
+                    {
+                        var localDateTime = userInfo.BirthDate.ToDateTime(userInfo.BirthTime ?? TimeOnly.MinValue);
+                        var (utcDateTime, offset, tzId) = LumenTimezoneHelper.GetUtcTimeFromLocal(localDateTime, lat, lon);
+                        
+                        calcBirthDate = DateOnly.FromDateTime(utcDateTime);
+                        if (userInfo.BirthTime.HasValue)
+                        {
+                            calcBirthTime = TimeOnly.FromDateTime(utcDateTime);
+                        }
+                        
+                        _logger.LogInformation($"[LumenPredictionGAgent] Timezone corrected: {localDateTime} (Local) -> {utcDateTime} (UTC) [{tzId}], BirthTime provided: {userInfo.BirthTime.HasValue}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[LumenPredictionGAgent] Failed to apply timezone correction");
+                }
+            }
+            
             // Pre-calculate Moon and Rising signs if birth time and latlong are available
             string? moonSign = null;
             string? risingSign = null;
@@ -967,7 +1000,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             _logger.LogInformation(
                 $"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
             
-            if (userInfo.BirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
+            if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
@@ -983,10 +1016,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                             out double longitude))
                     {
                         _logger.LogInformation(
-                            $"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude})");
+                            $"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude}) using Corrected UTC: {calcBirthDate} {calcBirthTime}");
                         var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
-                            userInfo.BirthDate,
-                            userInfo.BirthTime.Value,
+                            calcBirthDate,
+                            calcBirthTime.Value,
                             latitude,
                             longitude);
                         
@@ -1190,11 +1223,11 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 $"[PERF][Lumen] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             // ========== INJECT BACKEND-CALCULATED FIELDS ==========
-            // Pre-calculate values once
+            // Pre-calculate values once (using timezone-corrected calcBirthDate from method start)
             var currentYear = DateTime.UtcNow.Year;
-            var birthYear = userInfo.BirthDate.Year;
-            
-            var sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            var birthYear = calcBirthDate.Year;
+
+            var sunSign = LumenCalculator.CalculateZodiacSign(calcBirthDate);
             var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
             var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
             var currentYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(currentYear);
@@ -1209,7 +1242,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
             if (type == PredictionType.Lifetime)
             {
                 // Calculate Four Pillars (Ba Zi)
-                var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+                var fourPillars = LumenCalculator.CalculateFourPillars(calcBirthDate, calcBirthTime);
                 
                 // Inject into primary language results
                 parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
@@ -4488,8 +4521,40 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var birthYear = userInfo.BirthDate.Year;
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
+            // TIMEZONE CORRECTION
+            var calcBirthDate = userInfo.BirthDate;
+            var calcBirthTime = userInfo.BirthTime;
+
+            if (!string.IsNullOrWhiteSpace(userInfo.LatLong))
+            {
+                try
+                {
+                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) && 
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
+                    {
+                        var localDateTime = userInfo.BirthDate.ToDateTime(userInfo.BirthTime ?? TimeOnly.MinValue);
+                        var (utcDateTime, offset, tzId) = LumenTimezoneHelper.GetUtcTimeFromLocal(localDateTime, lat, lon);
+                        
+                        calcBirthDate = DateOnly.FromDateTime(utcDateTime);
+                        if (userInfo.BirthTime.HasValue) 
+                        {
+                            calcBirthTime = TimeOnly.FromDateTime(utcDateTime);
+                        }
+                        birthYear = calcBirthDate.Year;
+                        
+                        _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Timezone corrected: {localDateTime} (Local) -> {utcDateTime} (UTC) [{tzId}]");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to apply timezone correction");
+                }
+            }
+            
             // ========== WESTERN ASTROLOGY ==========
-            string sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            string sunSign = LumenCalculator.CalculateZodiacSign(calcBirthDate);
             results["sunSign_name"] = TranslateSunSign(sunSign, userLanguage);
             results["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
             
@@ -4516,10 +4581,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                             out double longitude))
                     {
                         _logger.LogInformation(
-                            $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Starting Western Astrology calculation at ({latitude}, {longitude})");
+                            $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Starting Western Astrology calculation at ({latitude}, {longitude}) using Corrected UTC: {calcBirthDate} {calcBirthTime}");
                         var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
-                            userInfo.BirthDate,
-                            userInfo.BirthTime.Value,
+                            calcBirthDate,
+                            calcBirthTime.Value,
                             latitude,
                             longitude);
                         
@@ -4625,7 +4690,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             results["currentPhase"] = currentPhase.ToString();
             
             // ========== FOUR PILLARS (BA ZI) ==========
-            var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+            var fourPillars = LumenCalculator.CalculateFourPillars(calcBirthDate, calcBirthTime);
             // Use same detailed structure as Lifetime prediction
             InjectFourPillarsData(results, fourPillars, userLanguage);
             

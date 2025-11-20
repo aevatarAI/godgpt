@@ -33,6 +33,9 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="GeoTimeZone" />
+        <PackageReference Include="TimeZoneConverter" />
+        <PackageReference Include="NodaTime" />
         <PackageReference Include="Newtonsoft.Json" />
         <PackageReference Include="JsonSchema.Net.Generation" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
