@@ -1,3 +1,7 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Common;
@@ -8,9 +12,9 @@ using Aevatar.Core.Abstractions;
 using Aevatar.GAgents.AI.Options;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Orleans.Concurrency;
 using SwissEphNet;
-using System.Diagnostics;
 
 namespace Aevatar.Application.Grains.Lumen;
 
@@ -19,9 +23,9 @@ namespace Aevatar.Application.Grains.Lumen;
 /// </summary>
 public enum PredictionType
 {
-    Daily = 0,      // Daily prediction - updates every day
-    Yearly = 1,     // Yearly prediction - updates every year
-    Lifetime = 2    // Lifetime prediction - never updates (unless profile changes)
+    Daily = 0, // Daily prediction - updates every day
+    Yearly = 1, // Yearly prediction - updates every year
+    Lifetime = 2 // Lifetime prediction - never updates (unless profile changes)
 }
 
 /// <summary>
@@ -29,7 +33,8 @@ public enum PredictionType
 /// </summary>
 public interface ILumenPredictionGAgent : IGAgent
 {
-    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(LumenUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en");
+    Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(LumenUserDto userInfo,
+        PredictionType type = PredictionType.Daily, string userLanguage = "en");
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en");
@@ -283,6 +288,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 {
                     state.GeneratedLanguages = new List<string> { generatedEvent.InitialLanguage };
                 }
+
                 break;
                 
             case LanguagesTranslatedEvent translatedEvent:
@@ -306,6 +312,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 {
                     state.GenerationLocks[lockSetEvent.Type] = new GenerationLockInfo();
                 }
+
                 state.GenerationLocks[lockSetEvent.Type].IsGenerating = true;
                 state.GenerationLocks[lockSetEvent.Type].StartedAt = lockSetEvent.StartedAt;
                 state.GenerationLocks[lockSetEvent.Type].RetryCount = lockSetEvent.RetryCount;
@@ -318,6 +325,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     state.GenerationLocks[lockClearedEvent.Type].IsGenerating = false;
                     state.GenerationLocks[lockClearedEvent.Type].StartedAt = null;
                 }
+
                 break;
                 
             case PredictionClearedEvent clearedEvent:
@@ -340,7 +348,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         }
     }
 
-    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(LumenUserDto userInfo, PredictionType type = PredictionType.Daily, string userLanguage = "en")
+    public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(LumenUserDto userInfo,
+        PredictionType type = PredictionType.Daily, string userLanguage = "en")
     {
         var totalStopwatch = Stopwatch.StartNew();
         try
@@ -348,7 +357,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var currentYear = today.Year;
             
-            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {today}, Language: {userLanguage}");
+            _logger.LogInformation(
+                $"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {today}, Language: {userLanguage}");
             
             // Update user activity and ensure daily reminder is registered (for Daily predictions only)
             await UpdateActivityAndEnsureReminderAsync();
@@ -366,18 +376,21 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     {
                         // Generation is in progress, return waiting status
                         totalStopwatch.Stop();
-                        _logger.LogWarning($"[Lumen] {userInfo.UserId} GENERATION_IN_PROGRESS - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalSeconds:F1}s");
+                        _logger.LogWarning(
+                            $"[Lumen] {userInfo.UserId} GENERATION_IN_PROGRESS - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalSeconds:F1}s");
                         
                         return new GetTodayPredictionResult
                         {
                             Success = false,
-                            Message = $"{type} prediction is currently being generated. Please wait a moment and try again."
+                            Message =
+                                $"{type} prediction is currently being generated. Please wait a moment and try again."
                         };
                     }
                     else
                     {
                         // Generation timed out (service restart or actual timeout), reset lock and retry using Event Sourcing
-                        _logger.LogWarning($"[Lumen] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalMinutes:F2} minutes, Resetting lock and retrying");
+                        _logger.LogWarning(
+                            $"[Lumen] {userInfo.UserId} GENERATION_TIMEOUT - Type: {type}, StartedAt: {lockInfo.StartedAt}, Elapsed: {elapsed.TotalMinutes:F2} minutes, Resetting lock and retrying");
                         RaiseEvent(new GenerationLockClearedEvent
                         {
                             Type = type
@@ -390,7 +403,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 // Check if profile has been updated since prediction was generated
                 // If State.ProfileUpdatedAt is null (first generation or after delete), profile is considered "changed" (need to generate)
                 // If State.ProfileUpdatedAt has value, check if profile update time is later than prediction time
-                var profileNotChanged = State.ProfileUpdatedAt.HasValue && userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
+            var profileNotChanged =
+                State.ProfileUpdatedAt.HasValue && userInfo.UpdatedAt <= State.ProfileUpdatedAt.Value;
                 
             // Check if prediction already exists (from cache/state)
             var hasCachedPrediction = State.PredictionId != Guid.Empty && 
@@ -411,7 +425,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var promptVersionMatches = State.PromptVersion == CURRENT_PROMPT_VERSION;
             if (!promptVersionMatches)
             {
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {CURRENT_PROMPT_VERSION}, Will regenerate prediction");
+                _logger.LogInformation(
+                    $"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {CURRENT_PROMPT_VERSION}, Will regenerate prediction");
             }
             
             // ========== CACHE HIT: Return cached prediction only if all conditions are met ==========
@@ -423,7 +438,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             {
                 // Return cached prediction
                 totalStopwatch.Stop();
-                _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+                _logger.LogInformation(
+                    $"[PERF][Lumen] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
                 
                 // ========== NEW LOGIC: Check if today already generated/translated ==========
                 bool todayAlreadyProcessed = State.LastGeneratedDate.HasValue && State.LastGeneratedDate.Value == today;
@@ -449,12 +465,14 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         localizedResults = State.MultilingualResults[availableLanguage];
                         returnedLanguage = availableLanguage;
                         isFallback = true;
-                        _logger.LogInformation($"[Lumen] {userInfo.UserId} Today already processed ({today}), returning available language '{availableLanguage}' instead of '{userLanguage}'");
+                        _logger.LogInformation(
+                            $"[Lumen] {userInfo.UserId} Today already processed ({today}), returning available language '{availableLanguage}' instead of '{userLanguage}'");
                 }
                 else
                 {
                         // No available language - should not happen after database clear
-                        _logger.LogWarning($"[Lumen] {userInfo.UserId} Today already processed but no multilingual results available");
+                        _logger.LogWarning(
+                            $"[Lumen] {userInfo.UserId} Today already processed but no multilingual results available");
                         return new GetTodayPredictionResult
                         {
                             Success = false,
@@ -465,23 +483,30 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 else
                 {
                     // New day - allow translation
-                    var sourceLanguage = State.MultilingualResults.ContainsKey("en") ? "en" : State.MultilingualResults.Keys.FirstOrDefault();
-                    if (sourceLanguage != null && State.MultilingualResults[sourceLanguage] != null && State.MultilingualResults[sourceLanguage].Count > 0)
+                    var sourceLanguage = State.MultilingualResults.ContainsKey("en")
+                        ? "en"
+                        : State.MultilingualResults.Keys.FirstOrDefault();
+                    if (sourceLanguage != null && State.MultilingualResults[sourceLanguage] != null &&
+                        State.MultilingualResults[sourceLanguage].Count > 0)
                     {
                         var sourceContent = State.MultilingualResults[sourceLanguage];
-                        TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, sourceLanguage, sourceContent, userLanguage);
+                        TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, sourceLanguage,
+                            sourceContent, userLanguage);
                         
-                        _logger.LogWarning($"[Lumen] {userInfo.UserId} Language {userLanguage} not available for {type}, triggered translation (new day)");
+                        _logger.LogWarning(
+                            $"[Lumen] {userInfo.UserId} Language {userLanguage} not available for {type}, triggered translation (new day)");
                         
                         return new GetTodayPredictionResult
                         {
                             Success = false,
-                            Message = $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
+                            Message =
+                                $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
                         };
                     }
                 else
                 {
-                        _logger.LogWarning($"[Lumen] {userInfo.UserId} No valid source content available for translation to {userLanguage}");
+                        _logger.LogWarning(
+                            $"[Lumen] {userInfo.UserId} No valid source content available for translation to {userLanguage}");
                         
                         return new GetTodayPredictionResult
                         {
@@ -536,17 +561,21 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // Log reason for regeneration
             if (hasCachedPrediction && !notExpired)
             {
-                _logger.LogInformation("[LumenPredictionGAgent][GetOrGeneratePredictionAsync] {Type} expired, regenerating for {UserId}", 
+                _logger.LogInformation(
+                    "[LumenPredictionGAgent][GetOrGeneratePredictionAsync] {Type} expired, regenerating for {UserId}",
                     type, userInfo.UserId);
             }
+
             if (hasCachedPrediction && !profileNotChanged)
             {
-                _logger.LogInformation("[LumenPredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating {Type} prediction for {UserId}",
+                _logger.LogInformation(
+                    "[LumenPredictionGAgent][GetOrGeneratePredictionAsync] Profile updated, regenerating {Type} prediction for {UserId}",
                     type, userInfo.UserId);
             }
 
             // Prediction not found - trigger async generation and return error
-            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Prediction not found for {type}, triggering async generation");
+            _logger.LogInformation(
+                $"[Lumen][OnDemand] {userInfo.UserId} Prediction not found for {type}, triggering async generation");
             
             // Trigger async generation (wait for lock to be set, then fire-and-forget the actual generation)
             await TriggerOnDemandGenerationAsync(userInfo, today, type, userLanguage);
@@ -555,13 +584,15 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             return new GetTodayPredictionResult
             {
                 Success = false,
-                Message = $"{type} prediction is not available yet. Generation has been triggered, please check status or try again in a moment."
+                Message =
+                    $"{type} prediction is not available yet. Generation has been triggered, please check status or try again in a moment."
             };
         }
         catch (Exception ex)
         {
             totalStopwatch.Stop();
-            _logger.LogError(ex, $"[PERF][Lumen] {userInfo.UserId} Error: {totalStopwatch.ElapsedMilliseconds}ms - Exception in GetOrGeneratePredictionAsync");
+            _logger.LogError(ex,
+                $"[PERF][Lumen] {userInfo.UserId} Error: {totalStopwatch.ElapsedMilliseconds}ms - Exception in GetOrGeneratePredictionAsync");
             return new GetTodayPredictionResult
             {
                 Success = false,
@@ -577,7 +608,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         if (State.PredictionId == Guid.Empty)
         {
-            _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] No prediction data - PredictionId is empty. UserId: {UserId}, Type: {Type}, MultilingualResults count: {Count}",
+            _logger.LogWarning(
+                "[LumenPredictionGAgent][GetPredictionAsync] No prediction data - PredictionId is empty. UserId: {UserId}, Type: {Type}, MultilingualResults count: {Count}",
                 State.UserId, State.Type, State.MultilingualResults?.Count ?? 0);
             return Task.FromResult<PredictionResultDto?>(null);
         }
@@ -606,25 +638,33 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 localizedResults = State.MultilingualResults[availableLanguage];
                 returnedLanguage = availableLanguage;
                 isFallback = true;
-                _logger.LogInformation("[LumenPredictionGAgent][GetPredictionAsync] Today already processed ({Today}), returning available language '{AvailableLanguage}' instead of '{RequestedLanguage}'", 
+                _logger.LogInformation(
+                    "[LumenPredictionGAgent][GetPredictionAsync] Today already processed ({Today}), returning available language '{AvailableLanguage}' instead of '{RequestedLanguage}'",
                     today, availableLanguage, userLanguage);
         }
         else
         {
                 // New day - allow translation
                 var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
-                var sourceLanguage = State.MultilingualResults.ContainsKey("en") ? "en" : State.MultilingualResults.Keys.FirstOrDefault();
+                var sourceLanguage = State.MultilingualResults.ContainsKey("en")
+                    ? "en"
+                    : State.MultilingualResults.Keys.FirstOrDefault();
                 
-                if (sourceLanguage != null && State.MultilingualResults[sourceLanguage] != null && State.MultilingualResults[sourceLanguage].Count > 0)
+                if (sourceLanguage != null && State.MultilingualResults[sourceLanguage] != null &&
+                    State.MultilingualResults[sourceLanguage].Count > 0)
                 {
                     var sourceContent = State.MultilingualResults[sourceLanguage];
-                    TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, sourceLanguage, sourceContent, userLanguage);
-                    _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found in MultilingualResults, triggered translation (new day)", userLanguage);
+                    TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, sourceLanguage,
+                        sourceContent, userLanguage);
+                    _logger.LogWarning(
+                        "[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found in MultilingualResults, triggered translation (new day)",
+                        userLanguage);
                     return Task.FromResult<PredictionResultDto?>(null);
                 }
                 else
                 {
-                    _logger.LogWarning("[LumenPredictionGAgent][GetPredictionAsync] Source language content is empty, cannot translate");
+                    _logger.LogWarning(
+                        "[LumenPredictionGAgent][GetPredictionAsync] Source language content is empty, cannot translate");
                     return Task.FromResult<PredictionResultDto?>(null);
                 }
             }
@@ -691,7 +731,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 if (isGenerating && lockInfo.StartedAt.HasValue && 
                     (DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes > 5)
                 {
-                    _logger.LogWarning($"[Lumen][Status] Detected stale generation lock for {actualType}, clearing it (elapsed: {(DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes:F2} minutes)");
+                    _logger.LogWarning(
+                        $"[Lumen][Status] Detected stale generation lock for {actualType}, clearing it (elapsed: {(DateTime.UtcNow - lockInfo.StartedAt.Value).TotalMinutes:F2} minutes)");
                     
                     // Persist lock clearing using Event Sourcing
                     RaiseEvent(new GenerationLockClearedEvent
@@ -732,7 +773,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             if (isGenerating2 && lockInfo2.StartedAt.HasValue && 
                 (DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes > 5)
             {
-                _logger.LogWarning($"[Lumen][Status] Detected stale generation lock for {actualType}, clearing it (elapsed: {(DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes:F2} minutes)");
+                _logger.LogWarning(
+                    $"[Lumen][Status] Detected stale generation lock for {actualType}, clearing it (elapsed: {(DateTime.UtcNow - lockInfo2.StartedAt.Value).TotalMinutes:F2} minutes)");
                 
                 // Persist lock clearing using Event Sourcing
                 RaiseEvent(new GenerationLockClearedEvent
@@ -752,7 +794,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         var needsRegeneration = false;
         if (profileUpdatedAt.HasValue)
         {
-            needsRegeneration = !State.ProfileUpdatedAt.HasValue || profileUpdatedAt.Value > State.ProfileUpdatedAt.Value;
+            needsRegeneration = !State.ProfileUpdatedAt.HasValue ||
+                                profileUpdatedAt.Value > State.ProfileUpdatedAt.Value;
         }
 
         // For Daily predictions, also check if prediction is for today
@@ -782,7 +825,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 if (isRegenerating && regenLockInfo.StartedAt.HasValue && 
                     (DateTime.UtcNow - regenLockInfo.StartedAt.Value).TotalMinutes > 5)
                 {
-                    _logger.LogWarning($"[Lumen][Status] Detected stale generation lock during regeneration for {actualType}, clearing it");
+                    _logger.LogWarning(
+                        $"[Lumen][Status] Detected stale generation lock during regeneration for {actualType}, clearing it");
                     
                     RaiseEvent(new GenerationLockClearedEvent { Type = actualType });
                     await ConfirmEvents();
@@ -792,7 +836,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 }
             }
             
-            _logger.LogInformation($"[Lumen] Status check - Regeneration needed for {State.Type}, isGenerating: {isRegenerating}, old data available: true");
+            _logger.LogInformation(
+                $"[Lumen] Status check - Regeneration needed for {State.Type}, isGenerating: {isRegenerating}, old data available: true");
             
             // Build translation status (same logic as below)
             TranslationStatusInfo? translationStatusForStale = null;
@@ -855,7 +900,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             {
                 foreach (var kvp in staleTranslations)
                 {
-                    _logger.LogWarning($"[Lumen][Status] Detected stale translation lock for language: {kvp.Key}, elapsed: {(DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes:F2} minutes (not clearing in status call, will be cleared on next translation attempt)");
+                    _logger.LogWarning(
+                        $"[Lumen][Status] Detected stale translation lock for language: {kvp.Key}, elapsed: {(DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes:F2} minutes (not clearing in status call, will be cleared on next translation attempt)");
                 }
             }
             
@@ -882,9 +928,11 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 
         // CRITICAL FIX: IsGenerated should be based on whether prediction data actually exists
         // If LLM refuses or parsing fails, PredictionId will be Guid.Empty even though generation "completed"
-        var isGenerated = State.PredictionId != Guid.Empty && State.MultilingualResults != null && State.MultilingualResults.Count > 0;
+        var isGenerated = State.PredictionId != Guid.Empty && State.MultilingualResults != null &&
+                          State.MultilingualResults.Count > 0;
 
-        _logger.LogDebug("[LumenPredictionGAgent][GetPredictionStatusAsync] Status check - Type: {Type}, PredictionId: {PredictionId}, isGenerated: {IsGenerated}, MultilingualResults count: {Count}, isGenerating: {IsGenerating}",
+        _logger.LogDebug(
+            "[LumenPredictionGAgent][GetPredictionStatusAsync] Status check - Type: {Type}, PredictionId: {PredictionId}, isGenerated: {IsGenerated}, MultilingualResults count: {Count}, isGenerating: {IsGenerating}",
             State.Type, State.PredictionId, isGenerated, State.MultilingualResults?.Count ?? 0, isGenerating2);
 
         var statusDto = new PredictionStatusDto
@@ -906,7 +954,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// <summary>
     /// Generate new prediction using AI
     /// </summary>
-    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en")
+    private async Task<GetTodayPredictionResult> GeneratePredictionAsync(LumenUserDto userInfo, DateOnly predictionDate,
+        PredictionType type, string targetLanguage = "en")
     {
         try
         {
@@ -915,7 +964,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             string? risingSign = null;
             
             // Diagnostic logging
-            _logger.LogInformation($"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
             
             if (userInfo.BirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
@@ -923,13 +973,17 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 {
                     // Parse latitude and longitude from "lat, long" format
                     var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
-                    _logger.LogInformation($"[LumenPredictionGAgent] Parsing LatLong - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
+                    _logger.LogInformation(
+                        $"[LumenPredictionGAgent] Parsing LatLong - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
                     
                     if (parts.Length == 2 && 
-                        double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double latitude) && 
-                        double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
+                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out double latitude) &&
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out double longitude))
                     {
-                        _logger.LogInformation($"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude})");
+                        _logger.LogInformation(
+                            $"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude})");
                         var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
                             userInfo.BirthDate,
                             userInfo.BirthTime.Value,
@@ -939,21 +993,25 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         moonSign = calculatedMoonSign;
                         risingSign = calculatedRisingSign;
                         
-                        _logger.LogInformation($"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude})");
+                        _logger.LogInformation(
+                            $"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude})");
                     }
                     else
                     {
-                        _logger.LogWarning($"[LumenPredictionGAgent] Invalid latlong format or parse failed: '{userInfo.LatLong}'");
+                        _logger.LogWarning(
+                            $"[LumenPredictionGAgent] Invalid latlong format or parse failed: '{userInfo.LatLong}'");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, $"[LumenPredictionGAgent] Failed to calculate Moon/Rising signs for user {userInfo.UserId}, will use Sun sign as fallback");
+                    _logger.LogWarning(ex,
+                        $"[LumenPredictionGAgent] Failed to calculate Moon/Rising signs for user {userInfo.UserId}, will use Sun sign as fallback");
                 }
             }
             else
             {
-                _logger.LogInformation($"[LumenPredictionGAgent] Skipping Moon/Rising calculation - BirthTime or LatLong not provided");
+                _logger.LogInformation(
+                    $"[LumenPredictionGAgent] Skipping Moon/Rising calculation - BirthTime or LatLong not provided");
             }
             
             // Get language name for system prompt (use native language names)
@@ -971,7 +1029,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage, moonSign, risingSign);
             promptStopwatch.Stop();
             var promptTokens = TokenHelper.EstimateTokenCount(prompt);
-            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}, Type: {type}, TargetLanguage: {targetLanguage}");
+            _logger.LogInformation(
+                $"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}, Type: {type}, TargetLanguage: {targetLanguage}");
             
             var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
             
@@ -989,7 +1048,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             };
 
             // System prompt with clear field value language requirement
-            var systemPrompt = $@"You are a creative astrology guide helping users explore self-reflection through symbolic and thematic narratives.
+            var systemPrompt =
+                $@"You are a creative astrology guide helping users explore self-reflection through symbolic and thematic narratives.
 
 ===== LANGUAGE REQUIREMENT (CRITICAL) =====
 Target Language: {languageName}
@@ -1032,11 +1092,13 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 true, 
                 "LUMEN");
             llmStopwatch.Stop();
-            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+            _logger.LogInformation(
+                $"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             if (response == null || response.Count() == 0)
             {
-                _logger.LogWarning("[LumenPredictionGAgent][GeneratePredictionAsync] No response from AI for user {UserId}",
+                _logger.LogWarning(
+                    "[LumenPredictionGAgent][GeneratePredictionAsync] No response from AI for user {UserId}",
                     userInfo.UserId);
                 return new GetTodayPredictionResult
                 {
@@ -1064,7 +1126,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
             
             if (parsedResults == null)
             {
-                _logger.LogError("[LumenPredictionGAgent][GeneratePredictionAsync] Failed to parse {Type} response", type);
+                _logger.LogError("[LumenPredictionGAgent][GeneratePredictionAsync] Failed to parse {Type} response",
+                    type);
                 return new GetTodayPredictionResult
                 {
                     Success = false,
@@ -1078,7 +1141,9 @@ Your task is to create engaging, inspirational, and reflective content that invi
             {
                 if (parsedResults != null && parsedResults.Count > 0)
                 {
-                    _logger.LogDebug("[LumenPredictionGAgent][GeneratePredictionAsync] multilingualResults is empty, populating with targetLanguage: {TargetLanguage}", targetLanguage);
+                    _logger.LogDebug(
+                        "[LumenPredictionGAgent][GeneratePredictionAsync] multilingualResults is empty, populating with targetLanguage: {TargetLanguage}",
+                        targetLanguage);
                     multilingualResults = new Dictionary<string, Dictionary<string, string>>
                     {
                         [targetLanguage] = parsedResults
@@ -1096,7 +1161,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     if (originalLanguages.Count > 1)
                     {
                         var extraLanguages = originalLanguages.Where(k => k != targetLanguage).ToList();
-                        _logger.LogWarning("[LumenPredictionGAgent][GeneratePredictionAsync] LLM returned extra languages {ExtraLanguages} for {TargetLanguage}, filtering them out", 
+                        _logger.LogWarning(
+                            "[LumenPredictionGAgent][GeneratePredictionAsync] LLM returned extra languages {ExtraLanguages} for {TargetLanguage}, filtering them out",
                             string.Join(", ", extraLanguages), targetLanguage);
                     }
                     
@@ -1113,13 +1179,15 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 else
                 {
                     // Target language not found, log warning but keep what we have
-                    _logger.LogWarning("[LumenPredictionGAgent][GeneratePredictionAsync] Target language {TargetLanguage} not found in LLM response, available: {AvailableLanguages}", 
+                    _logger.LogWarning(
+                        "[LumenPredictionGAgent][GeneratePredictionAsync] Target language {TargetLanguage} not found in LLM response, available: {AvailableLanguages}",
                         targetLanguage, string.Join(", ", originalLanguages));
                 }
             }
             
             parseStopwatch.Stop();
-            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+            _logger.LogInformation(
+                $"[PERF][Lumen] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             // ========== INJECT BACKEND-CALCULATED FIELDS ==========
             // Pre-calculate values once
@@ -1154,7 +1222,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 parsedResults["westernOverview_moonSign"] = TranslateSunSign(moonSign, targetLanguage);
                 parsedResults["westernOverview_risingSign"] = TranslateSunSign(risingSign, targetLanguage);
                 parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
-                parsedResults["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                parsedResults["chineseZodiac_enum"] =
+                    ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                 parsedResults["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, targetLanguage);
                 parsedResults["pastCycle_ageRange"] = TranslateCycleAgeRange(pastCycle.AgeRange, targetLanguage);
                 parsedResults["pastCycle_period"] = TranslateCyclePeriod(pastCycle.Period, targetLanguage);
@@ -1171,31 +1240,44 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     foreach (var lang in multilingualResults.Keys)
                     {
-                        multilingualResults[lang]["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
-                        multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
-                        multilingualResults[lang]["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
-                        multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
+                        multilingualResults[lang]["chineseAstrology_currentYearStem"] =
+                            currentYearStemsComponents.stemChinese;
+                        multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
+                            currentYearStemsComponents.stemPinyin;
+                        multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
+                            currentYearStemsComponents.branchChinese;
+                        multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
+                            currentYearStemsComponents.branchPinyin;
                         multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
-                        multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+                        multilingualResults[lang]["sunSign_enum"] =
+                            ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                         multilingualResults[lang]["westernOverview_sunSign"] = TranslateSunSign(sunSign, lang);
                         multilingualResults[lang]["westernOverview_moonSign"] = TranslateSunSign(moonSign, lang);
                         multilingualResults[lang]["westernOverview_risingSign"] = TranslateSunSign(risingSign, lang);
-                        multilingualResults[lang]["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, lang);
-                        multilingualResults[lang]["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                        multilingualResults[lang]["chineseZodiac_animal"] =
+                            TranslateChineseZodiacAnimal(birthYearZodiac, lang);
+                        multilingualResults[lang]["chineseZodiac_enum"] =
+                            ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                         multilingualResults[lang]["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, lang);
-                        multilingualResults[lang]["pastCycle_ageRange"] = TranslateCycleAgeRange(pastCycle.AgeRange, lang);
+                        multilingualResults[lang]["pastCycle_ageRange"] =
+                            TranslateCycleAgeRange(pastCycle.AgeRange, lang);
                         multilingualResults[lang]["pastCycle_period"] = TranslateCyclePeriod(pastCycle.Period, lang);
-                        multilingualResults[lang]["currentCycle_ageRange"] = TranslateCycleAgeRange(currentCycle.AgeRange, lang);
-                        multilingualResults[lang]["currentCycle_period"] = TranslateCyclePeriod(currentCycle.Period, lang);
-                        multilingualResults[lang]["futureCycle_ageRange"] = TranslateCycleAgeRange(futureCycle.AgeRange, lang);
-                        multilingualResults[lang]["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, lang);
+                        multilingualResults[lang]["currentCycle_ageRange"] =
+                            TranslateCycleAgeRange(currentCycle.AgeRange, lang);
+                        multilingualResults[lang]["currentCycle_period"] =
+                            TranslateCyclePeriod(currentCycle.Period, lang);
+                        multilingualResults[lang]["futureCycle_ageRange"] =
+                            TranslateCycleAgeRange(futureCycle.AgeRange, lang);
+                        multilingualResults[lang]["futureCycle_period"] =
+                            TranslateCyclePeriod(futureCycle.Period, lang);
                         
                         // Inject Four Pillars data with language-specific formatting
                         InjectFourPillarsData(multilingualResults[lang], fourPillars, lang);
                     }
                 }
                 
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Lifetime prediction");
+                _logger.LogInformation(
+                    $"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Lifetime prediction");
             }
             else if (type == PredictionType.Yearly)
             {
@@ -1207,13 +1289,16 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                 parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
-                parsedResults["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                parsedResults["chineseZodiac_enum"] =
+                    ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                 parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
                 parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
                 parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
                 parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
-                parsedResults["chineseAstrology_taishuiRelationship"] = TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
-                parsedResults["zodiacInfluence"] = BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, targetLanguage);
+                parsedResults["chineseAstrology_taishuiRelationship"] =
+                    TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
+                parsedResults["zodiacInfluence"] =
+                    BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, targetLanguage);
                 
                 // Inject into all multilingual versions
                 if (multilingualResults != null)
@@ -1221,19 +1306,29 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     foreach (var lang in multilingualResults.Keys)
                     {
                         multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
-                        multilingualResults[lang]["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
-                        multilingualResults[lang]["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, lang);
-                        multilingualResults[lang]["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
-                        multilingualResults[lang]["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
-                        multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
-                        multilingualResults[lang]["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
-                        multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
-                        multilingualResults[lang]["chineseAstrology_taishuiRelationship"] = TranslateTaishuiRelationship(yearlyTaishui, lang);
-                        multilingualResults[lang]["zodiacInfluence"] = BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, lang);
+                        multilingualResults[lang]["sunSign_enum"] =
+                            ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+                        multilingualResults[lang]["chineseZodiac_animal"] =
+                            TranslateChineseZodiacAnimal(birthYearZodiac, lang);
+                        multilingualResults[lang]["chineseZodiac_enum"] =
+                            ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                        multilingualResults[lang]["chineseAstrology_currentYearStem"] =
+                            currentYearStemsComponents.stemChinese;
+                        multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
+                            currentYearStemsComponents.stemPinyin;
+                        multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
+                            currentYearStemsComponents.branchChinese;
+                        multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
+                            currentYearStemsComponents.branchPinyin;
+                        multilingualResults[lang]["chineseAstrology_taishuiRelationship"] =
+                            TranslateTaishuiRelationship(yearlyTaishui, lang);
+                        multilingualResults[lang]["zodiacInfluence"] =
+                            BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, lang);
                     }
                 }
-                
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
+
+                _logger.LogInformation(
+                    $"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
             }
             else if (type == PredictionType.Daily)
             {
@@ -1267,7 +1362,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     {
                         foreach (var lang in multilingualResults.Keys)
                         {
-                            multilingualResults[lang]["todaysReading_tarotCard_orientation_enum"] = ((int)orientationEnum).ToString();
+                            multilingualResults[lang]["todaysReading_tarotCard_orientation_enum"] =
+                                ((int)orientationEnum).ToString();
                         }
                     }
                 }
@@ -1291,7 +1387,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 // Construct path_title from path_type
                 if (parsedResults.TryGetValue("todaysReading_pathType", out var pathType))
                 {
-                    var displayName = LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", targetLanguage);
+                    var displayName =
+                        LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", targetLanguage);
                     var pathTitle = BuildPathTitle(displayName, pathType, targetLanguage);
                     parsedResults["todaysReading_pathTitle"] = pathTitle;
                     
@@ -1302,7 +1399,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                         {
                             if (multilingualResults[lang].TryGetValue("todaysReading_pathType", out var langPathType))
                             {
-                                var langDisplayName = LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", lang);
+                                var langDisplayName =
+                                    LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", lang);
                                 var langPathTitle = BuildPathTitle(langDisplayName, langPathType, lang);
                                 multilingualResults[lang]["todaysReading_pathTitle"] = langPathTitle;
                             }
@@ -1310,10 +1408,12 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     }
                 }
                 
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Injected enum fields and constructed path_title for Daily prediction");
+                _logger.LogInformation(
+                    $"[Lumen] {userInfo.UserId} Injected enum fields and constructed path_title for Daily prediction");
                 
                 // Add Chinese translations for English-only fields (if user language is Chinese)
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Calling AddChineseTranslations for targetLanguage: {targetLanguage}");
+                _logger.LogInformation(
+                    $"[Lumen] {userInfo.UserId} Calling AddChineseTranslations for targetLanguage: {targetLanguage}");
                 AddChineseTranslations(parsedResults, targetLanguage);
                 
                 // Also add translations to all multilingual versions
@@ -1321,7 +1421,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     foreach (var lang in multilingualResults.Keys)
                     {
-                        _logger.LogInformation($"[Lumen] {userInfo.UserId} Calling AddChineseTranslations for multilingual language: {lang}");
+                        _logger.LogInformation(
+                            $"[Lumen] {userInfo.UserId} Calling AddChineseTranslations for multilingual language: {lang}");
                         AddChineseTranslations(multilingualResults[lang], lang);
                     }
                 }
@@ -1361,16 +1462,19 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 if (parsedResults.TryGetValue("westernOverview_sunArchetypeName", out var sunArchName))
                 {
                     var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
-                    parsedResults["westernOverview_sunArchetype"] = BuildArchetypeString("Sun", sunSignTranslated, sunArchName, targetLanguage);
+                    parsedResults["westernOverview_sunArchetype"] =
+                        BuildArchetypeString("Sun", sunSignTranslated, sunArchName, targetLanguage);
                     
                     if (multilingualResults != null)
                     {
                         foreach (var lang in multilingualResults.Keys)
                         {
-                            if (multilingualResults[lang].TryGetValue("westernOverview_sunArchetypeName", out var langSunArchName))
+                            if (multilingualResults[lang].TryGetValue("westernOverview_sunArchetypeName",
+                                    out var langSunArchName))
                             {
                                 var langSunSign = TranslateSunSign(sunSign, lang);
-                                multilingualResults[lang]["westernOverview_sunArchetype"] = BuildArchetypeString("Sun", langSunSign, langSunArchName, lang);
+                                multilingualResults[lang]["westernOverview_sunArchetype"] =
+                                    BuildArchetypeString("Sun", langSunSign, langSunArchName, lang);
                             }
                         }
                     }
@@ -1379,16 +1483,19 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 if (parsedResults.TryGetValue("westernOverview_moonArchetypeName", out var moonArchName))
                 {
                     var moonSignTranslated = TranslateSunSign(moonSign ?? sunSign, targetLanguage);
-                    parsedResults["westernOverview_moonArchetype"] = BuildArchetypeString("Moon", moonSignTranslated, moonArchName, targetLanguage);
+                    parsedResults["westernOverview_moonArchetype"] =
+                        BuildArchetypeString("Moon", moonSignTranslated, moonArchName, targetLanguage);
                     
                     if (multilingualResults != null)
                     {
                         foreach (var lang in multilingualResults.Keys)
                         {
-                            if (multilingualResults[lang].TryGetValue("westernOverview_moonArchetypeName", out var langMoonArchName))
+                            if (multilingualResults[lang].TryGetValue("westernOverview_moonArchetypeName",
+                                    out var langMoonArchName))
                             {
                                 var langMoonSign = TranslateSunSign(moonSign ?? sunSign, lang);
-                                multilingualResults[lang]["westernOverview_moonArchetype"] = BuildArchetypeString("Moon", langMoonSign, langMoonArchName, lang);
+                                multilingualResults[lang]["westernOverview_moonArchetype"] =
+                                    BuildArchetypeString("Moon", langMoonSign, langMoonArchName, lang);
                             }
                         }
                     }
@@ -1397,22 +1504,26 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 if (parsedResults.TryGetValue("westernOverview_risingArchetypeName", out var risingArchName))
                 {
                     var risingSignTranslated = TranslateSunSign(risingSign ?? sunSign, targetLanguage);
-                    parsedResults["westernOverview_risingArchetype"] = BuildArchetypeString("Rising", risingSignTranslated, risingArchName, targetLanguage);
+                    parsedResults["westernOverview_risingArchetype"] = BuildArchetypeString("Rising",
+                        risingSignTranslated, risingArchName, targetLanguage);
                     
                     if (multilingualResults != null)
                     {
                         foreach (var lang in multilingualResults.Keys)
                         {
-                            if (multilingualResults[lang].TryGetValue("westernOverview_risingArchetypeName", out var langRisingArchName))
+                            if (multilingualResults[lang].TryGetValue("westernOverview_risingArchetypeName",
+                                    out var langRisingArchName))
                             {
                                 var langRisingSign = TranslateSunSign(risingSign ?? sunSign, lang);
-                                multilingualResults[lang]["westernOverview_risingArchetype"] = BuildArchetypeString("Rising", langRisingSign, langRisingArchName, lang);
+                                multilingualResults[lang]["westernOverview_risingArchetype"] =
+                                    BuildArchetypeString("Rising", langRisingSign, langRisingArchName, lang);
                             }
                         }
                     }
                 }
                 
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Constructed cn_year and arch fields for Lifetime prediction");
+                _logger.LogInformation(
+                    $"[Lumen] {userInfo.UserId} Constructed cn_year and arch fields for Lifetime prediction");
             }
 
             // Raise event to save prediction (unified structure)
@@ -1434,7 +1545,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[LumenPredictionGAgent][GeneratePredictionAsync] {Type} prediction generated successfully for user {UserId}",
+            _logger.LogInformation(
+                "[LumenPredictionGAgent][GeneratePredictionAsync] {Type} prediction generated successfully for user {UserId}",
                 type, userInfo.UserId);
 
             // Get available languages from multilingualResults (actual available languages)
@@ -1479,7 +1591,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
     /// <summary>
     /// Build prediction prompt for AI (single language generation for first stage)
     /// </summary>
-    private string BuildPredictionPrompt(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage = "en", string? moonSign = null, string? risingSign = null)
+    private string BuildPredictionPrompt(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type,
+        string targetLanguage = "en", string? moonSign = null, string? risingSign = null)
     {
         // Build user info line dynamically based on available fields
         // Note: Full name intentionally excluded to reduce privacy exposure
@@ -1655,58 +1768,74 @@ FORMAT REQUIREMENT:
             {
                 "zh" => $"以\"你的生肖是{birthYearAnimalTranslated}…\"开头，描述20年象征周期",
                 "zh-tw" => $"以\"你的生肖是{birthYearAnimalTranslated}…\"開頭，描述20年象徵週期",
-                _ => $"Start with 'Your Chinese Zodiac is {birthYearAnimalTranslated}...' and describe the 20-year symbolic cycle"
+                _ =>
+                    $"Start with 'Your Chinese Zodiac is {birthYearAnimalTranslated}...' and describe the 20-year symbolic cycle"
             };
-            
+
             // DYNAMIC DESCRIPTIONS (Lifetime - Localized)
             bool isChinese = targetLanguage.StartsWith("zh");
-            
+
             // Pillars
             var desc_pillars_id = isChinese ? "12-18字，基于显示名的身份认同" : "[12-18 words addressing user by Display Name]";
-            var desc_pillars_detail = isChinese ? $"45-60字，结合{sunSign}的深度解读" : $"[45-60 words using {sunSign}, contemplative]";
+            var desc_pillars_detail =
+                isChinese ? $"45-60字，结合{sunSign}的深度解读" : $"[45-60 words using {sunSign}, contemplative]";
             var desc_trait = isChinese ? "8-12字，象征特质" : "[8-12 words describing symbolic qualities]";
-            
+
             // Whisper & Essence
-            var desc_whisper = isChinese ? $"40-50字，以'{birthYearAnimalTranslated}'开头的灵魂低语" : $"[40-50 words starting '{birthYearAnimalTranslated} invites...']";
+            var desc_whisper = isChinese
+                ? $"40-50字，以'{birthYearAnimalTranslated}'开头的灵魂低语"
+                : $"[40-50 words starting '{birthYearAnimalTranslated} invites...']";
             var desc_sun_tag = isChinese ? "2-5字，诗意比喻 (你...)" : "You [2-5 words poetic metaphor]";
             var desc_arch_name = isChinese ? "3-5字，原型名称" : "[3-5 words archetype]";
-            var desc_sun_desc = isChinese ? "18-25字，核心品质描述 (使用'你')" : "[18-25 words describing core symbolic qualities using 'You']";
+            var desc_sun_desc = isChinese
+                ? "18-25字，核心品质描述 (使用'你')"
+                : "[18-25 words describing core symbolic qualities using 'You']";
             var desc_moon_desc = isChinese ? "15-20字，情感景观描述" : "[15-20 words describing emotional landscape]";
-            var desc_rising_desc = isChinese ? "20-28字，自我表达方式描述" : "[20-28 words describing how they express themselves]";
+            var desc_rising_desc =
+                isChinese ? "20-28字，自我表达方式描述" : "[20-28 words describing how they express themselves]";
             var desc_essence = isChinese ? "15-20字，总结你的本质" : "[15-20 words 'You contemplate like [Sun]...']";
-            
+
             // Strengths & Challenges
             var desc_str_intro = isChinese ? "10-15字，关于旅程与内在品质的概述" : "[10-15 words on journey]";
             var desc_title = isChinese ? "2-5字，标题" : "[2-5 words]";
             var desc_str_desc = isChinese ? "15-25字，优势描述 (反思性语调)" : "[15-25 words reflective tone]";
-            var desc_chal_intro = isChinese ? "12-18字，以'当...时，觉察加深'开头" : "[12-18 words starting 'Your awareness deepens when...']";
+            var desc_chal_intro = isChinese
+                ? "12-18字，以'当...时，觉察加深'开头"
+                : "[12-18 words starting 'Your awareness deepens when...']";
             var desc_chal_desc = isChinese ? "8-15字，挑战描述 (邀请式语调)" : "[8-15 words invitational tone]";
-            
+
             // Destiny
-            var desc_destiny_intro = isChinese ? "20-30字，以'你的旅程邀请你...'开头" : "[20-30 words starting 'Your journey invites you...']";
+            var desc_destiny_intro =
+                isChinese ? "20-30字，以'你的旅程邀请你...'开头" : "[20-30 words starting 'Your journey invites you...']";
             var desc_path_title = isChinese ? "3-5个原型角色 (用/分隔)" : "[3-5 archetypal roles separated by /]";
             var desc_path_desc = isChinese ? "3-6字，象征性表达" : "[3-6 words describing symbolic expression]";
-            
+
             // Cycles
-            var desc_cycle_intro = isChinese ? $"50-65字，{cycleIntroInstruction}" : $"[50-65 words. {cycleIntroInstruction}]";
+            var desc_cycle_intro =
+                isChinese ? $"50-65字，{cycleIntroInstruction}" : $"[50-65 words. {cycleIntroInstruction}]";
             var desc_cycle_pt = isChinese ? "8-12字，象征主题" : "[8-12 words describing symbolic theme]";
             var desc_ten_intro = isChinese ? "40-60字，关于生命阶段能量、元素与象征一致性的概述" : "[40-60 words on life phase energetics]";
             var desc_phase_summary = isChinese ? "8-12字，阶段能量概述" : "[8-12 words describing phase energy]";
-            var desc_phase_detail_past = isChinese ? "60-80字，过去时态，描述能量模式" : "[60-80 words past tense, symbolic dynamics]";
-            var desc_phase_detail_curr = isChinese ? "60-80字，现在时态，描述当下的邀请" : "[60-80 words present tense, what invites exploration]";
-            var desc_phase_detail_fut = isChinese ? "60-80字，将来时态，描述浮现的主题" : "[60-80 words future tense, emerging themes]";
-            
+            var desc_phase_detail_past =
+                isChinese ? "60-80字，过去时态，描述能量模式" : "[60-80 words past tense, symbolic dynamics]";
+            var desc_phase_detail_curr =
+                isChinese ? "60-80字，现在时态，描述当下的邀请" : "[60-80 words present tense, what invites exploration]";
+            var desc_phase_detail_fut =
+                isChinese ? "60-80字，将来时态，描述浮现的主题" : "[60-80 words future tense, emerging themes]";
+
             // Plot
             var desc_plot_title = isChinese ? "10-20字，诗意原型 (你体现了...)" : "You embody [10-20 words poetic archetype]";
-            var desc_plot_chapter = isChinese ? $"30-50字，致{displayName}的人生叙事" : $"[30-50 words addressing user by Display Name]";
+            var desc_plot_chapter =
+                isChinese ? $"30-50字，致{displayName}的人生叙事" : $"[30-50 words addressing user by Display Name]";
             var desc_plot_pt = isChinese ? "5-15字，象征主题" : "[5-15 words describing symbolic theme]";
             var desc_act_desc = isChinese ? "10-20字，邀请沉思与探索" : "[10-20 words inviting contemplation]";
-            
+
             // Mantra
-            var desc_mantra_pt1 = isChinese ? "5-15字，'我探索...' (I explore...)" : "[5-15 words using 'I explore X as if...']";
+            var desc_mantra_pt1 =
+                isChinese ? "5-15字，'我探索...' (I explore...)" : "[5-15 words using 'I explore X as if...']";
             var desc_mantra_pt2 = isChinese ? "5-15字，探索性语言" : "[5-15 words using exploratory language]";
             var desc_mantra_pt3 = isChinese ? "5-15字，最有力量的探索" : "[5-15 words most empowering exploration]";
-
+            
             prompt = singleLanguagePrefix + $@"Create a lifetime astrological narrative for self-reflection.
 User: {userInfoLine}
 Current Year: {currentYear}
@@ -1819,19 +1948,24 @@ FORMAT REQUIREMENTS:
             
             // DYNAMIC DESCRIPTIONS BASED ON LANGUAGE (Yearly)
             bool isChinese = targetLanguage.StartsWith("zh");
-            
+
             var desc_theme_title = isChinese ? "4-7字，年度主题 (使用'之'字结构)" : "[VARIED: 4-7 words using 'of' structure]";
             var desc_theme_glance = isChinese ? "15-20字，年度运势综述" : "[VARIED: 15-20 words on what both systems suggest]";
             var desc_theme_detail = isChinese ? "60-80字，分三部分：1.能量模式 2.探索邀请 3.年度定义" : "[VARIED: 60-80 words in 3 parts]";
-            
+
             var desc_tag = isChinese ? "10-15字，反思性标语" : "[10-15 words invitational tagline]";
             var desc_do = isChinese ? "建议1|建议2|建议3 (竖线分隔)" : "item1|item2 (areas to explore)";
             var desc_avoid = isChinese ? "注意1|注意2|注意3 (竖线分隔)" : "item1|item2 (patterns to be mindful of)";
-            var desc_detail = isChinese ? "50-70字，分三部分：象征模式，能量质量，反思意义" : "[50-70 words in 3 parts: symbolic pattern, energy quality, reflective meaning]";
-            
-            var desc_mantra = isChinese ? "18-25字，第一人称年度真言 ('我探索...' 或 '我沉思...')" : "[18-25 words using first-person 'I explore...' or 'I contemplate...']";
+            var desc_detail = isChinese
+                ? "50-70字，分三部分：象征模式，能量质量，反思意义"
+                : "[50-70 words in 3 parts: symbolic pattern, energy quality, reflective meaning]";
 
-            prompt = singleLanguagePrefix + $@"Create a yearly astrological insight for {yearlyYear} to support self-reflection.
+            var desc_mantra = isChinese
+                ? "18-25字，第一人称年度真言 ('我探索...' 或 '我沉思...')"
+                : "[18-25 words using first-person 'I explore...' or 'I contemplate...']";
+
+            prompt = singleLanguagePrefix +
+                     $@"Create a yearly astrological insight for {yearlyYear} to support self-reflection.
 User: {userInfoLine}
 
 ========== CONTEXT VALUES (Use EXACT translated values) ==========
@@ -1905,40 +2039,43 @@ FORMAT REQUIREMENTS:
             // DYNAMIC DESCRIPTIONS BASED ON LANGUAGE
             // This "primes" the LLM to output in the target language naturally
             bool isChinese = targetLanguage.StartsWith("zh");
-            
+
             var desc_dayTitle = isChinese ? "今日主题 (如：反思与和谐之日)" : "The Day of [word1] and [word2]";
-            
+
             // Tarot Section - Explicitly requesting ID to avoid translation issues
             var desc_card_name = isChinese ? "[保留英文原名] (如 \"The Fool\")" : "[Use ENGLISH Name e.g. \"The Fool\"]";
-            var desc_card_orient = isChinese ? "[保留英文枚举] (\"Upright\" 或 \"Reversed\")" : "[Use ENGLISH: \"Upright\" or \"Reversed\"]";
+            var desc_card_orient = isChinese
+                ? "[保留英文枚举] (\"Upright\" 或 \"Reversed\")"
+                : "[Use ENGLISH: \"Upright\" or \"Reversed\"]";
             var desc_card_essence = isChinese ? "1-2个中文关键词" : "1-2 words essence";
-            
+
             // Path Section
             var desc_path_type = isChinese ? "1个形容词 (如：勇敢的)" : "1 adjective describing today's path";
             var desc_path_intro = isChinese ? $"你好 {displayName} (15-25字)" : $"15-25 words starting 'Hi {displayName}'";
             var desc_path_detail = isChinese ? "30-40字，基于今日星象的深刻反思与智慧指引" : "30-40 words of reflective wisdom";
-            
+
             // Life Areas
             var desc_career = isChinese ? "10-20字，关于工作的反思" : "10-20 words for reflection on work energy";
             var desc_love = isChinese ? "10-20字，关于关系的内省" : "10-20 words for reflection on relationships";
             var desc_prosperity = isChinese ? "10-20字，关于财富观念的思考" : "10-20 words for reflection on abundance";
             var desc_wellness = isChinese ? "10-15字，关于身心平衡的建议" : "10-15 words for reflection on wellbeing";
             var desc_takeaway = isChinese ? $"15-25字，{displayName}，你的..." : $"15-25 words '{displayName}, your...'";
-            
+
             // Resonance
             var desc_lucky_num = isChinese ? "中文数字 (阿拉伯数字) 如：八 (8)" : "Word (digit) e.g. Eight (8)";
             var desc_num_meaning = isChinese ? "15-20字，该数字对今日的象征意义" : "15-20 words symbolic significance";
             var desc_num_calc = isChinese ? "简单的加法象征公式" : "Symbolic formula";
-            
+
             var desc_stone = isChinese ? "[保留英文ID] (如 \"Amethyst\")" : "[Use ENGLISH Name as ID]";
             var desc_stone_power = isChinese ? "15-20字，水晶能量描述" : "15-20 words symbolic energy";
             var desc_stone_use = isChinese ? "15-20字，建议用法" : "15-20 words 'Contemplate:' or 'Explore:'";
-            
+
             // Affirmation (Renamed from 'spell' to avoid filters)
             var desc_spell = isChinese ? "2个字的诗意短语" : "2 words poetic";
-            var desc_spell_words = isChinese ? "20-30字，鼓舞人心的肯定语 (用引号包裹)" : "20-30 words inspirational affirmation in quotes";
+            var desc_spell_words =
+                isChinese ? "20-30字，鼓舞人心的肯定语 (用引号包裹)" : "20-30 words inspirational affirmation in quotes";
             var desc_spell_intent = isChinese ? "10-12字，意图" : "10-12 words 'To explore...'";
-            
+
             // Guidance (Renamed from 'fortune' to avoid filters in description)
             var desc_fortune_title = isChinese ? "4-8字，诗意隐喻" : "4-8 words poetic metaphor";
             var desc_fortune_do = isChinese ? "建议1|建议2|建议3 (竖线分隔)" : "activity1|activity2|activity3";
@@ -2011,13 +2148,17 @@ IMPORTANT:
 - Do NOT generate ANY explanation text before or after the data.
 ";
 
+            return prompt;
+        }
+
         return prompt;
     }
 
     /// <summary>
     /// Build translation prompt for remaining languages (second stage)
     /// </summary>
-    private string BuildTranslationPrompt(Dictionary<string, string> sourceContent, string sourceLanguage, List<string> targetLanguages, PredictionType type)
+        private string BuildTranslationPrompt(Dictionary<string, string> sourceContent, string sourceLanguage,
+            List<string> targetLanguages, PredictionType type)
     {
         var languageMap = new Dictionary<string, string>
         {
@@ -2028,16 +2169,18 @@ IMPORTANT:
         };
         
         var sourceLangName = languageMap.GetValueOrDefault(sourceLanguage, "English");
-        var targetLangNames = string.Join(", ", targetLanguages.Select(lang => languageMap.GetValueOrDefault(lang, lang)));
+            var targetLangNames = string.Join(", ",
+                targetLanguages.Select(lang => languageMap.GetValueOrDefault(lang, lang)));
         
         // Convert source content to TSV format
-        var sourceTsv = new System.Text.StringBuilder();
+            var sourceTsv = new StringBuilder();
         foreach (var kvp in sourceContent)
         {
             sourceTsv.AppendLine($"{kvp.Key}\t{kvp.Value}");
         }
         
-        var translationPrompt = $@"TASK: Translate the following {type} astrological reflection from {sourceLangName} into {targetLangNames}.
+            var translationPrompt =
+                $@"TASK: Translate the following {type} astrological reflection from {sourceLangName} into {targetLangNames}.
 
 TRANSLATION RULES:
 - TRANSLATE content, do NOT regenerate or reinterpret
@@ -2074,16 +2217,19 @@ Generate translations for: {targetLangNames}
     /// Trigger on-demand generation for a prediction
     /// Waits for lock to be persisted, then starts generation in background
     /// </summary>
-    private async Task TriggerOnDemandGenerationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
+        private async Task TriggerOnDemandGenerationAsync(LumenUserDto userInfo, DateOnly predictionDate,
+            PredictionType type, string targetLanguage)
     {
         // Check if generation is already in progress (memory-based check, may not survive deactivation)
         if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
         {
-            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Generation already in progress for {type}, skipping");
+                _logger.LogInformation(
+                    $"[Lumen][OnDemand] {userInfo.UserId} Generation already in progress for {type}, skipping");
             return;
         }
         
-        _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering async generation for {type}, Language: {targetLanguage}");
+            _logger.LogInformation(
+                $"[Lumen][OnDemand] {userInfo.UserId} Triggering async generation for {type}, Language: {targetLanguage}");
         
         // Set generation lock using Event Sourcing (persisted to survive Grain deactivation)
         // IMPORTANT: Wait for ConfirmEvents to complete before returning, so status interface can see the lock
@@ -2095,7 +2241,8 @@ Generate translations for: {targetLangNames}
         });
         await ConfirmEvents();
         
-        _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} GENERATION_LOCK_SET (Persisted) - Type: {type}");
+            _logger.LogInformation(
+                $"[Lumen][OnDemand] {userInfo.UserId} GENERATION_LOCK_SET (Persisted) - Type: {type}");
         
         // Fire and forget - Process directly in the grain context instead of using Task.Run
         // This ensures proper Orleans activation context access
@@ -2105,7 +2252,8 @@ Generate translations for: {targetLangNames}
     /// <summary>
     /// Generate prediction in background (handles concurrent generation requests safely)
     /// </summary>
-    private async Task GeneratePredictionInBackgroundAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
+        private async Task GeneratePredictionInBackgroundAsync(LumenUserDto userInfo, DateOnly predictionDate,
+            PredictionType type, string targetLanguage)
     {
         const int MAX_RETRY_COUNT = 3;
         
@@ -2139,16 +2287,19 @@ Generate translations for: {targetLangNames}
             // If data is expired/outdated, clear old data before generating new
             if (needsRegeneration && State.PredictionId != Guid.Empty)
             {
-                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Clearing outdated {type} data - Date: {State.PredictionDate}, Profile: {profileChanged}, Prompt: {promptVersionChanged}");
+                    _logger.LogInformation(
+                        $"[Lumen][OnDemand] {userInfo.UserId} Clearing outdated {type} data - Date: {State.PredictionDate}, Profile: {profileChanged}, Prompt: {promptVersionChanged}");
                 
                 // Clear the state but keep the grain active for new generation
                 // Note: We don't use ClearPredictionAsync here to avoid interfering with the ongoing generation process
             }
             
             // Double-check if already exists AND is not expired (in case of concurrent calls or Grain reactivation)
-            if (!needsRegeneration && State.MultilingualResults != null && State.MultilingualResults.ContainsKey(targetLanguage))
+                if (!needsRegeneration && State.MultilingualResults != null &&
+                    State.MultilingualResults.ContainsKey(targetLanguage))
             {
-                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists and not expired, skipping generation");
+                    _logger.LogInformation(
+                        $"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists and not expired, skipping generation");
                 return;
             }
             
@@ -2163,7 +2314,8 @@ Generate translations for: {targetLangNames}
                     ? State.GenerationLocks[type].RetryCount 
                     : 0;
                 
-                _logger.LogWarning($"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}, RetryCount: {currentRetryCount}/{MAX_RETRY_COUNT}");
+                    _logger.LogWarning(
+                        $"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}, RetryCount: {currentRetryCount}/{MAX_RETRY_COUNT}");
                 
                 // Check if we should retry (parse failure with retry budget remaining)
                 if (currentRetryCount < MAX_RETRY_COUNT && predictionResult.Message?.Contains("parse") == true)
@@ -2178,7 +2330,8 @@ Generate translations for: {targetLangNames}
                     });
                     await ConfirmEvents();
                     
-                    _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{MAX_RETRY_COUNT})");
+                        _logger.LogInformation(
+                            $"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{MAX_RETRY_COUNT})");
                     
                     // Trigger retry (fire-and-forget)
                     _ = GeneratePredictionInBackgroundAsync(userInfo, predictionDate, type, targetLanguage);
@@ -2186,12 +2339,14 @@ Generate translations for: {targetLangNames}
                 }
                 else if (currentRetryCount >= MAX_RETRY_COUNT)
                 {
-                    _logger.LogError($"[Lumen][OnDemand] {userInfo.UserId} MAX_RETRY_EXCEEDED for {type}, giving up after {currentRetryCount} attempts");
+                        _logger.LogError(
+                            $"[Lumen][OnDemand] {userInfo.UserId} MAX_RETRY_EXCEEDED for {type}, giving up after {currentRetryCount} attempts");
                 }
             }
             else
             {
-                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
+                    _logger.LogInformation(
+                        $"[Lumen][OnDemand] {userInfo.UserId} Generation_Success: {generateStopwatch.ElapsedMilliseconds}ms for {type}");
                 
                 // Reset retry count on success (using Event Sourcing)
                 if (State.GenerationLocks.ContainsKey(type) && State.GenerationLocks[type].RetryCount > 0)
@@ -2220,7 +2375,8 @@ Generate translations for: {targetLangNames}
                     Type = type
                 });
                 await ConfirmEvents();
-                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} GENERATION_LOCK_RELEASED (Persisted) - Type: {type}");
+                    _logger.LogInformation(
+                        $"[Lumen][OnDemand] {userInfo.UserId} GENERATION_LOCK_RELEASED (Persisted) - Type: {type}");
             }
         }
     }
@@ -2228,23 +2384,27 @@ Generate translations for: {targetLangNames}
     /// <summary>
     /// Trigger on-demand translation for a specific language (Fire-and-forget)
     /// </summary>
-    private void TriggerOnDemandTranslationAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
+        private void TriggerOnDemandTranslationAsync(LumenUserDto userInfo, DateOnly predictionDate,
+            PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
     {
         // Validate source content first
         if (sourceContent == null || sourceContent.Count == 0)
         {
-            _logger.LogError($"[Lumen][OnDemand] {userInfo.UserId} Cannot translate to {targetLanguage}: Source content is empty (sourceLanguage: {sourceLanguage})");
+                _logger.LogError(
+                    $"[Lumen][OnDemand] {userInfo.UserId} Cannot translate to {targetLanguage}: Source content is empty (sourceLanguage: {sourceLanguage})");
                 return;
             }
             
         // Check if already exists (most reliable check - persisted state)
         if (State.MultilingualResults.ContainsKey(targetLanguage))
         {
-            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists, skipping translation");
+                _logger.LogInformation(
+                    $"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists, skipping translation");
             return;
         }
             
-        _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Triggering translation: {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
+            _logger.LogInformation(
+                $"[Lumen][OnDemand] {userInfo.UserId} Triggering translation: {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
         
         // Fire and forget - Process directly in the grain context instead of using Task.Run
         // This ensures proper Orleans activation context access
@@ -2254,14 +2414,16 @@ Generate translations for: {targetLangNames}
     /// <summary>
     /// Translate and save to state (handles concurrent translation requests safely)
     /// </summary>
-    private async Task TranslateAndSaveAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
+        private async Task TranslateAndSaveAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type,
+            string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
     {
         try
         {
             // Double-check if already exists (in case of concurrent calls)
             if (State.MultilingualResults.ContainsKey(targetLanguage))
             {
-                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists (double-check), skipping");
+                    _logger.LogInformation(
+                        $"[Lumen][OnDemand] {userInfo.UserId} Language {targetLanguage} already exists (double-check), skipping");
                 return;
             }
             
@@ -2270,16 +2432,20 @@ Generate translations for: {targetLangNames}
             {
                 State.TranslationLocks[targetLanguage] = new TranslationLockInfo();
             }
+
             State.TranslationLocks[targetLanguage].IsTranslating = true;
             State.TranslationLocks[targetLanguage].StartedAt = DateTime.UtcNow;
             State.TranslationLocks[targetLanguage].SourceLanguage = sourceLanguage;
-            _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} TRANSLATION_LOCK_SET - Language: {targetLanguage}, Source: {sourceLanguage}");
+                _logger.LogInformation(
+                    $"[Lumen][OnDemand] {userInfo.UserId} TRANSLATION_LOCK_SET - Language: {targetLanguage}, Source: {sourceLanguage}");
             
-            await TranslateSingleLanguageAsync(userInfo, predictionDate, type, sourceLanguage, sourceContent, targetLanguage);
+                await TranslateSingleLanguageAsync(userInfo, predictionDate, type, sourceLanguage, sourceContent,
+                    targetLanguage);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[Lumen][OnDemand] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
+                _logger.LogError(ex,
+                    $"[Lumen][OnDemand] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
         }
         finally
         {
@@ -2288,7 +2454,8 @@ Generate translations for: {targetLangNames}
             {
                 State.TranslationLocks[targetLanguage].IsTranslating = false;
                 State.TranslationLocks[targetLanguage].StartedAt = null;
-                _logger.LogInformation($"[Lumen][OnDemand] {userInfo.UserId} TRANSLATION_LOCK_RELEASED - Language: {targetLanguage}");
+                    _logger.LogInformation(
+                        $"[Lumen][OnDemand] {userInfo.UserId} TRANSLATION_LOCK_RELEASED - Language: {targetLanguage}");
             }
         }
     }
@@ -2296,25 +2463,30 @@ Generate translations for: {targetLangNames}
     /// <summary>
     /// Translate to a single language (used for on-demand translation)
     /// </summary>
-    private async Task TranslateSingleLanguageAsync(LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
+        private async Task TranslateSingleLanguageAsync(LumenUserDto userInfo, DateOnly predictionDate,
+            PredictionType type, string sourceLanguage, Dictionary<string, string> sourceContent, string targetLanguage)
     {
         try
         {
             // Validate source content early
             if (sourceContent == null || sourceContent.Count == 0)
             {
-                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} Cannot translate {sourceLanguage} → {targetLanguage}: Source content is empty");
+                    _logger.LogError(
+                        $"[Lumen][OnDemandTranslation] {userInfo.UserId} Cannot translate {sourceLanguage} → {targetLanguage}: Source content is empty");
                 return;
             }
             
-            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
             
             // Build single-language translation prompt
             var promptBuildStopwatch = Stopwatch.StartNew();
-            var translationPrompt = BuildSingleLanguageTranslationPrompt(sourceContent, sourceLanguage, targetLanguage, type);
+                var translationPrompt =
+                    BuildSingleLanguageTranslationPrompt(sourceContent, sourceLanguage, targetLanguage, type);
             promptBuildStopwatch.Stop();
             var translationPromptTokens = TokenHelper.EstimateTokenCount(translationPrompt);
-            _logger.LogInformation($"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Prompt_Build: {promptBuildStopwatch.ElapsedMilliseconds}ms, Prompt_Length: {translationPrompt.Length} chars, Tokens: ~{translationPromptTokens}, Source_Fields: {sourceContent.Count}");
+                _logger.LogInformation(
+                    $"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Prompt_Build: {promptBuildStopwatch.ElapsedMilliseconds}ms, Prompt_Length: {translationPrompt.Length} chars, Tokens: ~{translationPromptTokens}, Source_Fields: {sourceContent.Count}");
             
             // Call LLM for translation
             var llmStopwatch = Stopwatch.StartNew();
@@ -2328,7 +2500,8 @@ Generate translations for: {targetLangNames}
             var chatId = Guid.NewGuid().ToString();
             
             // Simple system prompt for translation
-            var translationSystemPrompt = @"You are a professional translator for astrological and philosophical reflection content.
+                var translationSystemPrompt =
+                    @"You are a professional translator for astrological and philosophical reflection content.
 All content is for entertainment, self-exploration, and contemplative purposes only.";
             
             var response = await godChat.ChatWithoutHistoryAsync(
@@ -2340,16 +2513,19 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                 true,
                 "LUMEN");
             llmStopwatch.Stop();
-            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms");
             
             if (response == null || response.Count() == 0)
             {
-                _logger.LogWarning($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} No response from LLM");
+                    _logger.LogWarning(
+                        $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} No response from LLM");
                 return;
             }
             
             var aiResponse = response[0].Content;
-            _logger.LogInformation($"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Response_Length: {aiResponse.Length} chars");
+                _logger.LogInformation(
+                    $"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM_Response_Length: {aiResponse.Length} chars");
             
             // Parse response
             var parseStopwatch = Stopwatch.StartNew();
@@ -2357,7 +2533,8 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             // Check for LLM refusal
             if (IsLLMRefusal(aiResponse))
             {
-                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Full response:\n{aiResponse}");
+                    _logger.LogError(
+                        $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Full response:\n{aiResponse}");
                 return;
             }
             
@@ -2375,12 +2552,14 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             }
             else
             {
-                _logger.LogError($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
+                    _logger.LogError(
+                        $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
                 return;
             }
             
             parseStopwatch.Stop();
-            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Parse: {parseStopwatch.ElapsedMilliseconds}ms, Fields: {contentDict.Count}");
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Parse: {parseStopwatch.ElapsedMilliseconds}ms, Fields: {contentDict.Count}");
             
             // Raise event to update state with this language
             var translatedLanguages = new Dictionary<string, Dictionary<string, string>>
@@ -2389,7 +2568,8 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             };
             
             var allLanguages = new List<string> { "en", "zh-tw", "zh", "es" };
-            var updatedLanguages = (State.GeneratedLanguages ?? new List<string>()).Union(new[] { targetLanguage }).ToList();
+                var updatedLanguages = (State.GeneratedLanguages ?? new List<string>()).Union(new[] { targetLanguage })
+                    .ToList();
             
             // For Daily: LastGeneratedDate = predictionDate (since predictionDate changes daily)
             // For Yearly/Lifetime: LastGeneratedDate = today (to prevent duplicate translations on the same day)
@@ -2409,23 +2589,27 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             // Confirm events to persist state changes
             await ConfirmEvents();
             
-            _logger.LogInformation($"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} COMPLETED - Total: {llmStopwatch.ElapsedMilliseconds + parseStopwatch.ElapsedMilliseconds}ms");
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} COMPLETED - Total: {llmStopwatch.ElapsedMilliseconds + parseStopwatch.ElapsedMilliseconds}ms");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[Lumen][OnDemandTranslation] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
+                _logger.LogError(ex,
+                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} Error translating to {targetLanguage} for {type}");
         }
     }
 
     /// <summary>
     /// Build single-language translation prompt (for on-demand translation)
     /// </summary>
-    private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent, string sourceLanguage, string targetLanguage, PredictionType type)
+        private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
+            string sourceLanguage, string targetLanguage, PredictionType type)
     {
         // Validate source content (should not happen as callers check, but defensive)
         if (sourceContent == null || sourceContent.Count == 0)
         {
-            _logger.LogError($"[Lumen][BuildTranslationPrompt] Source content is empty for {type}, sourceLanguage: {sourceLanguage}, targetLanguage: {targetLanguage}");
+                _logger.LogError(
+                    $"[Lumen][BuildTranslationPrompt] Source content is empty for {type}, sourceLanguage: {sourceLanguage}, targetLanguage: {targetLanguage}");
             return string.Empty; // Return empty prompt to avoid exception in fire-and-forget task
         }
         
@@ -2441,13 +2625,14 @@ All content is for entertainment, self-exploration, and contemplative purposes o
         var targetLangName = languageMap.GetValueOrDefault(targetLanguage, targetLanguage);
         
         // Convert source content to TSV format
-        var sourceTsv = new System.Text.StringBuilder();
+            var sourceTsv = new StringBuilder();
         foreach (var kvp in sourceContent)
         {
             sourceTsv.AppendLine($"{kvp.Key}\t{kvp.Value}");
         }
         
-        var translationPrompt = $@"You are a professional translator specializing in astrology and divination content.
+            var translationPrompt =
+                $@"You are a professional translator specializing in astrology and divination content.
 
 TASK: Translate the following {type} prediction from {sourceLangName} into {targetLangName}.
 
@@ -2517,7 +2702,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// <summary>
     /// Parse Lifetime & Weekly AI response
     /// </summary>
-    private (Dictionary<string, string>?, Dictionary<string, string>?) ParseLifetimeWeeklyResponse(string aiResponse)
+        private (Dictionary<string, string>?, Dictionary<string, string>?) ParseLifetimeWeeklyResponse(
+            string aiResponse)
     {
         try
         {
@@ -2546,6 +2732,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                     {
                         lifetimeDict["traits"] = JsonConvert.SerializeObject(response.lifetime.traits);
                     }
+
                     if (response.lifetime.phases != null)
                     {
                         lifetimeDict["phases"] = JsonConvert.SerializeObject(response.lifetime.phases);
@@ -2611,7 +2798,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         {
             if (lowerResponse.Contains(pattern))
                 {
-                _logger.LogWarning($"[LumenPredictionGAgent][IsLLMRefusal] Detected refusal pattern: '{pattern}'. Response preview: {aiResponse.Substring(0, Math.Min(200, aiResponse.Length))}");
+                    _logger.LogWarning(
+                        $"[LumenPredictionGAgent][IsLLMRefusal] Detected refusal pattern: '{pattern}'. Response preview: {aiResponse.Substring(0, Math.Min(200, aiResponse.Length))}");
                 return true;
         }
         }
@@ -2639,10 +2827,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             "divineInfluence_career_avoid",
             "divineInfluence_love_bestMoves",
             "divineInfluence_love_avoid",
-            "divineInfluence_wealth_bestMoves",  // prosperity_* maps to this
-            "divineInfluence_wealth_avoid",      // prosperity_* maps to this
-            "divineInfluence_health_bestMoves",  // wellness_* maps to this
-            "divineInfluence_health_avoid"       // wellness_* maps to this
+                "divineInfluence_wealth_bestMoves", // prosperity_* maps to this
+                "divineInfluence_wealth_avoid", // prosperity_* maps to this
+                "divineInfluence_health_bestMoves", // wellness_* maps to this
+                "divineInfluence_health_avoid" // wellness_* maps to this
             
             // Lifetime prediction has no array fields
         };
@@ -2651,7 +2839,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         
         foreach (var fieldName in arrayFieldNames)
         {
-            if (result.ContainsKey(fieldName) && !string.IsNullOrEmpty(result[fieldName]) && result[fieldName].Contains('|'))
+                if (result.ContainsKey(fieldName) && !string.IsNullOrEmpty(result[fieldName]) &&
+                    result[fieldName].Contains('|'))
             {
                 // Split pipe-separated string and convert to JSON array
                 var items = result[fieldName].Split('|', StringSplitOptions.RemoveEmptyEntries)
@@ -2672,48 +2861,48 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         var keyMapping = new Dictionary<string, string>
         {
             // ===== DAILY PREDICTION MAPPINGS =====
-            ["daily_theme_title"] = "dayTitle",
-            
-            // Tarot Card (tarot_*) - Semantic keys for prompt
-            ["tarot_card_name"] = "todaysReading_tarotCard_name",
-            ["tarot_card_essence"] = "todaysReading_tarotCard_represents",
-            ["tarot_card_orientation"] = "todaysReading_tarotCard_orientation",
+                ["daily_theme_title"] = "dayTitle",
+
+                // Tarot Card (tarot_*) - Semantic keys for prompt
+                ["tarot_card_name"] = "todaysReading_tarotCard_name",
+                ["tarot_card_essence"] = "todaysReading_tarotCard_represents",
+                ["tarot_card_orientation"] = "todaysReading_tarotCard_orientation",
             
             // Path (path_*)
-            ["path_adjective"] = "todaysReading_pathType", // Backend will construct path_title
-            ["path_greeting"] = "todaysReading_pathDescription",
-            ["path_wisdom"] = "todaysReading_pathDescriptionExpanded",
-            
-            // Life Areas (reflection_*)
-            ["reflection_career"] = "todaysReading_careerAndWork",
-            ["reflection_relationships"] = "todaysReading_loveAndRelationships",
-            ["reflection_wealth"] = "todaysReading_wealthAndFinance",
-            ["reflection_wellbeing"] = "todaysReading_healthAndWellness",
+                ["path_adjective"] = "todaysReading_pathType", // Backend will construct path_title
+                ["path_greeting"] = "todaysReading_pathDescription",
+                ["path_wisdom"] = "todaysReading_pathDescriptionExpanded",
+
+                // Life Areas (reflection_*)
+                ["reflection_career"] = "todaysReading_careerAndWork",
+                ["reflection_relationships"] = "todaysReading_loveAndRelationships",
+                ["reflection_wealth"] = "todaysReading_wealthAndFinance",
+                ["reflection_wellbeing"] = "todaysReading_healthAndWellness",
             
             // Takeaway
-            ["daily_takeaway"] = "todaysTakeaway",
-            
-            // Lucky Number (numerology_*)
-            ["numerology_digit_word"] = "luckyAlignments_luckyNumber_number",
-            ["numerology_digit"] = "luckyAlignments_luckyNumber_digit",
-            ["numerology_meaning"] = "luckyAlignments_luckyNumber_description",
-            ["numerology_formula"] = "luckyAlignments_luckyNumber_calculation",
-            
-            // Lucky Stone (crystal_*)
-            ["crystal_stone_id"] = "luckyAlignments_luckyStone",
-            ["crystal_power"] = "luckyAlignments_luckyStone_description",
-            ["crystal_usage"] = "luckyAlignments_luckyStone_guidance",
-            
-            // Affirmation (affirmation_*) - Replaces 'spell' to avoid filters
-            ["affirmation_poetic"] = "luckyAlignments_luckySpell",
-            ["affirmation_text"] = "luckyAlignments_luckySpell_description",
-            ["affirmation_intent"] = "luckyAlignments_luckySpell_intent",
-            
-            // Guidance (guidance_*) - Replaces 'fortune' to avoid filters
-            ["guidance_metaphor"] = "twistOfFate_title",
-            ["guidance_suggestions"] = "twistOfFate_favorable",
-            ["guidance_mindful_of"] = "twistOfFate_avoid",
-            ["guidance_tip"] = "twistOfFate_todaysRecommendation",
+                ["daily_takeaway"] = "todaysTakeaway",
+
+                // Lucky Number (numerology_*)
+                ["numerology_digit_word"] = "luckyAlignments_luckyNumber_number",
+                ["numerology_digit"] = "luckyAlignments_luckyNumber_digit",
+                ["numerology_meaning"] = "luckyAlignments_luckyNumber_description",
+                ["numerology_formula"] = "luckyAlignments_luckyNumber_calculation",
+
+                // Lucky Stone (crystal_*)
+                ["crystal_stone_id"] = "luckyAlignments_luckyStone",
+                ["crystal_power"] = "luckyAlignments_luckyStone_description",
+                ["crystal_usage"] = "luckyAlignments_luckyStone_guidance",
+
+                // Affirmation (affirmation_*) - Replaces 'spell' to avoid filters
+                ["affirmation_poetic"] = "luckyAlignments_luckySpell",
+                ["affirmation_text"] = "luckyAlignments_luckySpell_description",
+                ["affirmation_intent"] = "luckyAlignments_luckySpell_intent",
+
+                // Guidance (guidance_*) - Replaces 'fortune' to avoid filters
+                ["guidance_metaphor"] = "twistOfFate_title",
+                ["guidance_suggestions"] = "twistOfFate_favorable",
+                ["guidance_mindful_of"] = "twistOfFate_avoid",
+                ["guidance_tip"] = "twistOfFate_todaysRecommendation",
             
             // ===== YEARLY PREDICTION MAPPINGS =====
             ["astro_overlay"] = "westernAstroOverlay",
@@ -2845,7 +3034,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Check for LLM refusal
             if (IsLLMRefusal(aiResponse))
             {
-                _logger.LogError($"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Full response:\n{aiResponse}");
+                    _logger.LogError(
+                        $"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Full response:\n{aiResponse}");
                 return null;
             }
 
@@ -2866,6 +3056,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         inCodeBlock = !inCodeBlock;
                         continue;
                     }
+
                     if (inCodeBlock)
                     {
                         contentLines.Add(line);
@@ -2904,15 +3095,18 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             if (result.Count == 0)
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Full response:\n{aiResponse}");
+                    _logger.LogWarning(
+                        $"[LumenPredictionGAgent][ParseTsvResponse] No valid TSV fields found. Full response:\n{aiResponse}");
                 return null;
             }
             
-            _logger.LogInformation($"[LumenPredictionGAgent][ParseTsvResponse] Successfully parsed {result.Count} fields from TSV response");
+                _logger.LogInformation(
+                    $"[LumenPredictionGAgent][ParseTsvResponse] Successfully parsed {result.Count} fields from TSV response");
             
             // Map shortened keys to full field names expected by frontend
             var mappedResult = MapShortKeysToFullKeys(result);
-            _logger.LogDebug($"[LumenPredictionGAgent][ParseTsvResponse] Mapped {result.Count} short keys to {mappedResult.Count} full keys");
+                _logger.LogDebug(
+                    $"[LumenPredictionGAgent][ParseTsvResponse] Mapped {result.Count} short keys to {mappedResult.Count} full keys");
             
             // Convert pipe-separated array fields to JSON array strings
             mappedResult = ConvertArrayFieldsToJson(mappedResult);
@@ -2921,7 +3115,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseTsvResponse] TSV parse error. Full response:\n{Response}", aiResponse);
+                _logger.LogError(ex,
+                    "[LumenPredictionGAgent][ParseTsvResponse] TSV parse error. Full response:\n{Response}",
+                    aiResponse);
             return null;
         }
     }
@@ -2951,7 +3147,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 if (colonIndex == -1)
                 {
                     // Log lines without colon for debugging
-                    _logger.LogDebug($"[Lumen][ParsePlainText] Skipping line without colon: {(trimmedLine.Length > 100 ? trimmedLine.Substring(0, 100) + "..." : trimmedLine)}");
+                        _logger.LogDebug(
+                            $"[Lumen][ParsePlainText] Skipping line without colon: {(trimmedLine.Length > 100 ? trimmedLine.Substring(0, 100) + "..." : trimmedLine)}");
                     continue;
                 }
                 
@@ -2987,7 +3184,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                     // Warn if array doesn't have expected count
                     if (items.Length != 5 && (key.Contains("favorable") || key.Contains("avoid")))
                     {
-                        _logger.LogWarning($"[Lumen][ParsePlainText] Array field {key} has {items.Length} items, expected 5");
+                            _logger.LogWarning(
+                                $"[Lumen][ParsePlainText] Array field {key} has {items.Length} items, expected 5");
                     }
                 }
                 else
@@ -2996,12 +3194,14 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 }
             }
             
-            _logger.LogInformation($"[Lumen][ParsePlainText] Parsed {result.Count} fields from {lines.Length} lines");
+                _logger.LogInformation(
+                    $"[Lumen][ParsePlainText] Parsed {result.Count} fields from {lines.Length} lines");
             
             // Warn if parsed field count is suspiciously low
             if (result.Count < 5)
             {
-                _logger.LogWarning($"[Lumen][ParsePlainText] Only parsed {result.Count} fields, which seems low. First 500 chars of response: {(aiResponse.Length > 500 ? aiResponse.Substring(0, 500) : aiResponse)}...");
+                    _logger.LogWarning(
+                        $"[Lumen][ParsePlainText] Only parsed {result.Count} fields, which seems low. First 500 chars of response: {(aiResponse.Length > 500 ? aiResponse.Substring(0, 500) : aiResponse)}...");
             }
 
             return result;
@@ -3009,7 +3209,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         catch (Exception ex)
             {
             // Enhanced error logging with response preview
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParsePlainTextResponse] Failed to parse plain text. First 500 chars: {ResponsePreview}", 
+                _logger.LogError(ex,
+                    "[LumenPredictionGAgent][ParsePlainTextResponse] Failed to parse plain text. First 500 chars: {ResponsePreview}",
                 aiResponse.Length > 500 ? aiResponse.Substring(0, 500) : aiResponse);
             _logger.LogError("[LumenPredictionGAgent][ParsePlainTextResponse] Last 200 chars: {ResponseEnd}", 
                 aiResponse.Length > 200 ? aiResponse.Substring(aiResponse.Length - 200) : aiResponse);
@@ -3021,7 +3222,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// Parse daily response from AI (single language only)
     /// Returns (parsed results, null) - second parameter kept for signature compatibility
     /// </summary>
-    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseDailyResponse(string aiResponse)
+        private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseDailyResponse(
+            string aiResponse)
     {
         try
             {
@@ -3030,18 +3232,21 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
             {
-                _logger.LogInformation($"[LumenPredictionGAgent][ParseDailyResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                    _logger.LogInformation(
+                        $"[LumenPredictionGAgent][ParseDailyResponse] Successfully parsed {tsvResult.Count} fields from TSV");
                 // Return parsed results; multilingualResults will be populated by caller with targetLanguage
                 return (tsvResult, null);
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
+                _logger.LogError(
+                    $"[LumenPredictionGAgent][ParseDailyResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
                 return (null, null);
             }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Full response:\n{Response}", 
+                _logger.LogError(ex,
+                    "[LumenPredictionGAgent][ParseDailyResponse] Exception during TSV parsing. Full response:\n{Response}",
                 aiResponse);
             return (null, null);
         }
@@ -3051,26 +3256,31 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// Parse lifetime/yearly response from AI (single language only)
     /// Returns (parsed results, null) - second parameter kept for signature compatibility
     /// </summary>
-    private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseLifetimeResponse(string aiResponse)
+        private (Dictionary<string, string>?, Dictionary<string, Dictionary<string, string>>?) ParseLifetimeResponse(
+            string aiResponse)
     {
         try
         {
             // Prompt requires TSV format, parse as TSV only (no fallback)
-            _logger.LogDebug("[LumenPredictionGAgent][ParseLifetimeResponse] Parsing TSV format (required by prompt)");
+                _logger.LogDebug(
+                    "[LumenPredictionGAgent][ParseLifetimeResponse] Parsing TSV format (required by prompt)");
             var tsvResult = ParseTsvResponse(aiResponse);
             if (tsvResult != null && tsvResult.Count > 0)
                         {
-                _logger.LogInformation($"[LumenPredictionGAgent][ParseLifetimeResponse] Successfully parsed {tsvResult.Count} fields from TSV");
+                    _logger.LogInformation(
+                        $"[LumenPredictionGAgent][ParseLifetimeResponse] Successfully parsed {tsvResult.Count} fields from TSV");
                 return (tsvResult, null);
             }
             
             // TSV parsing failed - this indicates LLM did not follow prompt instructions
-            _logger.LogError($"[LumenPredictionGAgent][ParseLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
+                _logger.LogError(
+                    $"[LumenPredictionGAgent][ParseLifetimeResponse] TSV parse failed. LLM may have returned wrong format. Full response:\n{aiResponse}");
             return (null, null);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeResponse] Exception during TSV parsing. Full response:\n{Response}", 
+                _logger.LogError(ex,
+                    "[LumenPredictionGAgent][ParseLifetimeResponse] Exception during TSV parsing. Full response:\n{Response}",
                 aiResponse);
             return (null, null);
         }
@@ -3103,7 +3313,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Recursively flatten the entire object into a single-level dictionary
             FlattenObject(data, "", flatResult);
             
-            _logger.LogDebug("[LumenPredictionGAgent][FlattenNestedJsonToFlat] Flattened {Count} fields", flatResult.Count);
+                _logger.LogDebug("[LumenPredictionGAgent][FlattenNestedJsonToFlat] Flattened {Count} fields",
+                    flatResult.Count);
             
             return flatResult;
         }
@@ -3125,6 +3336,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             {
                 result[prefix] = "";
             }
+
             return;
         }
         
@@ -3137,6 +3349,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 {
                     result[prefix] = strValue;
                 }
+
                 break;
                 
             case Dictionary<string, object> dict:
@@ -3148,9 +3361,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         : $"{prefix}_{kvp.Key}";
                     FlattenObject(kvp.Value, newKey, result);
                 }
+
                 break;
                 
-            case Newtonsoft.Json.Linq.JObject jObject:
+                case JObject jObject:
                 // Nested object - recurse into it
                 foreach (var property in jObject.Properties())
                 {
@@ -3159,22 +3373,25 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         : $"{prefix}_{property.Name}";
                     FlattenObject(property.Value, newKey, result);
                 }
+
                 break;
                 
-            case Newtonsoft.Json.Linq.JArray jArray:
+                case JArray jArray:
                 // Array - store as JSON string for now (could expand to array_0, array_1, etc.)
                 if (!string.IsNullOrEmpty(prefix))
                 {
-                    result[prefix] = jArray.ToString(Newtonsoft.Json.Formatting.None);
+                        result[prefix] = jArray.ToString(Formatting.None);
                 }
+
                 break;
                 
-            case Newtonsoft.Json.Linq.JValue jValue:
+                case JValue jValue:
                 // Primitive value (number, boolean, etc.)
                 if (!string.IsNullOrEmpty(prefix))
                 {
                     result[prefix] = jValue.ToString();
                 }
+
                 break;
                 
             default:
@@ -3205,6 +3422,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                     // Last resort - convert to string
                     result[prefix] = obj.ToString() ?? "";
                 }
+
                 break;
         }
     }
@@ -3218,10 +3436,14 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         // Theme
         { "daily_theme_title", "dayTitle" },
-        
+
         // Tarot (Use explicit 'tarot_' prefix in prompt for clarity)
-        { "tarot_card_name", "todaysReading_tarotCard_name" }, // Note: The prompt generator injects parsing logic for this later
-        { "tarot_card_essence", "todaysReading_tarotCard_essence" }, // Actual frontend key might be different, checking parsing logic...
+        {
+            "tarot_card_name", "todaysReading_tarotCard_name"
+        }, // Note: The prompt generator injects parsing logic for this later
+        {
+            "tarot_card_essence", "todaysReading_tarotCard_essence"
+        }, // Actual frontend key might be different, checking parsing logic...
         // WAIT: looking at line 1244 "todaysReading_tarotCard_name" seems to be the key used in injection logic
         // But let's look at the OLD prompt (line 1868): key was "card_name"
         // So parse logic likely outputs "card_name", and then injection logic (or frontend) expects...
@@ -3243,6 +3465,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         // AND the Injection logic MIGHT be looking for "todaysReading_tarotCard_name" which implies there WAS a mapping or I missed it.
         // Let's search for "todaysReading_" in the file.
     };
+
     private TarotCardEnum ParseTarotCard(string cardName)
     {
         if (string.IsNullOrWhiteSpace(cardName)) return TarotCardEnum.Unknown;
@@ -3251,45 +3474,64 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         var chineseMapping = new Dictionary<string, TarotCardEnum>(StringComparer.OrdinalIgnoreCase)
         {
             // Major Arcana
-            {"愚者", TarotCardEnum.TheFool}, {"魔术师", TarotCardEnum.TheMagician}, {"女祭司", TarotCardEnum.TheHighPriestess},
-            {"皇后", TarotCardEnum.TheEmpress}, {"皇帝", TarotCardEnum.TheEmperor}, {"教皇", TarotCardEnum.TheHierophant},
-            {"恋人", TarotCardEnum.TheLovers}, {"战车", TarotCardEnum.TheChariot}, {"力量", TarotCardEnum.Strength},
-            {"隐士", TarotCardEnum.TheHermit}, {"命运之轮", TarotCardEnum.WheelOfFortune}, {"正义", TarotCardEnum.Justice},
-            {"倒吊人", TarotCardEnum.TheHangedMan}, {"倒吊者", TarotCardEnum.TheHangedMan}, // Alias: 倒吊者
-            {"倒悬者", TarotCardEnum.TheHangedMan}, // Another alias
-            {"死神", TarotCardEnum.Death}, {"死亡", TarotCardEnum.Death}, // Alias: 死亡
-            {"节制", TarotCardEnum.Temperance},
-            {"恶魔", TarotCardEnum.TheDevil}, {"魔鬼", TarotCardEnum.TheDevil}, // Alias: 魔鬼
-            {"高塔", TarotCardEnum.TheTower}, {"塔", TarotCardEnum.TheTower}, // Alias: 塔
-            {"星星", TarotCardEnum.TheStar}, {"星辰", TarotCardEnum.TheStar}, // Alias: 星辰
-            {"月亮", TarotCardEnum.TheMoon}, {"月", TarotCardEnum.TheMoon}, // Alias: 月
-            {"太阳", TarotCardEnum.TheSun}, {"日", TarotCardEnum.TheSun}, // Alias: 日
-            {"审判", TarotCardEnum.Judgement}, {"审讯", TarotCardEnum.Judgement}, // Alias: 审讯
-            {"世界", TarotCardEnum.TheWorld},
+            { "愚者", TarotCardEnum.TheFool }, { "魔术师", TarotCardEnum.TheMagician },
+            { "女祭司", TarotCardEnum.TheHighPriestess },
+            { "皇后", TarotCardEnum.TheEmpress }, { "皇帝", TarotCardEnum.TheEmperor },
+            { "教皇", TarotCardEnum.TheHierophant },
+            { "恋人", TarotCardEnum.TheLovers }, { "战车", TarotCardEnum.TheChariot }, { "力量", TarotCardEnum.Strength },
+            { "隐士", TarotCardEnum.TheHermit }, { "命运之轮", TarotCardEnum.WheelOfFortune },
+            { "正义", TarotCardEnum.Justice },
+            { "倒吊人", TarotCardEnum.TheHangedMan }, { "倒吊者", TarotCardEnum.TheHangedMan }, // Alias: 倒吊者
+            { "倒悬者", TarotCardEnum.TheHangedMan }, // Another alias
+            { "死神", TarotCardEnum.Death }, { "死亡", TarotCardEnum.Death }, // Alias: 死亡
+            { "节制", TarotCardEnum.Temperance },
+            { "恶魔", TarotCardEnum.TheDevil }, { "魔鬼", TarotCardEnum.TheDevil }, // Alias: 魔鬼
+            { "高塔", TarotCardEnum.TheTower }, { "塔", TarotCardEnum.TheTower }, // Alias: 塔
+            { "星星", TarotCardEnum.TheStar }, { "星辰", TarotCardEnum.TheStar }, // Alias: 星辰
+            { "月亮", TarotCardEnum.TheMoon }, { "月", TarotCardEnum.TheMoon }, // Alias: 月
+            { "太阳", TarotCardEnum.TheSun }, { "日", TarotCardEnum.TheSun }, // Alias: 日
+            { "审判", TarotCardEnum.Judgement }, { "审讯", TarotCardEnum.Judgement }, // Alias: 审讯
+            { "世界", TarotCardEnum.TheWorld },
             // Wands (only showing some common ones, expand as needed)
-            {"权杖王牌", TarotCardEnum.AceOfWands}, {"权杖二", TarotCardEnum.TwoOfWands}, {"权杖三", TarotCardEnum.ThreeOfWands},
-            {"权杖四", TarotCardEnum.FourOfWands}, {"权杖五", TarotCardEnum.FiveOfWands}, {"权杖六", TarotCardEnum.SixOfWands},
-            {"权杖七", TarotCardEnum.SevenOfWands}, {"权杖八", TarotCardEnum.EightOfWands}, {"权杖九", TarotCardEnum.NineOfWands},
-            {"权杖十", TarotCardEnum.TenOfWands}, {"权杖侍从", TarotCardEnum.PageOfWands}, {"权杖骑士", TarotCardEnum.KnightOfWands},
-            {"权杖王后", TarotCardEnum.QueenOfWands}, {"权杖国王", TarotCardEnum.KingOfWands},
+            { "权杖王牌", TarotCardEnum.AceOfWands }, { "权杖二", TarotCardEnum.TwoOfWands },
+            { "权杖三", TarotCardEnum.ThreeOfWands },
+            { "权杖四", TarotCardEnum.FourOfWands }, { "权杖五", TarotCardEnum.FiveOfWands },
+            { "权杖六", TarotCardEnum.SixOfWands },
+            { "权杖七", TarotCardEnum.SevenOfWands }, { "权杖八", TarotCardEnum.EightOfWands },
+            { "权杖九", TarotCardEnum.NineOfWands },
+            { "权杖十", TarotCardEnum.TenOfWands }, { "权杖侍从", TarotCardEnum.PageOfWands },
+            { "权杖骑士", TarotCardEnum.KnightOfWands },
+            { "权杖王后", TarotCardEnum.QueenOfWands }, { "权杖国王", TarotCardEnum.KingOfWands },
             // Cups
-            {"圣杯王牌", TarotCardEnum.AceOfCups}, {"圣杯二", TarotCardEnum.TwoOfCups}, {"圣杯三", TarotCardEnum.ThreeOfCups},
-            {"圣杯四", TarotCardEnum.FourOfCups}, {"圣杯五", TarotCardEnum.FiveOfCups}, {"圣杯六", TarotCardEnum.SixOfCups},
-            {"圣杯七", TarotCardEnum.SevenOfCups}, {"圣杯八", TarotCardEnum.EightOfCups}, {"圣杯九", TarotCardEnum.NineOfCups},
-            {"圣杯十", TarotCardEnum.TenOfCups}, {"圣杯侍从", TarotCardEnum.PageOfCups}, {"圣杯骑士", TarotCardEnum.KnightOfCups},
-            {"圣杯王后", TarotCardEnum.QueenOfCups}, {"圣杯国王", TarotCardEnum.KingOfCups},
+            { "圣杯王牌", TarotCardEnum.AceOfCups }, { "圣杯二", TarotCardEnum.TwoOfCups },
+            { "圣杯三", TarotCardEnum.ThreeOfCups },
+            { "圣杯四", TarotCardEnum.FourOfCups }, { "圣杯五", TarotCardEnum.FiveOfCups },
+            { "圣杯六", TarotCardEnum.SixOfCups },
+            { "圣杯七", TarotCardEnum.SevenOfCups }, { "圣杯八", TarotCardEnum.EightOfCups },
+            { "圣杯九", TarotCardEnum.NineOfCups },
+            { "圣杯十", TarotCardEnum.TenOfCups }, { "圣杯侍从", TarotCardEnum.PageOfCups },
+            { "圣杯骑士", TarotCardEnum.KnightOfCups },
+            { "圣杯王后", TarotCardEnum.QueenOfCups }, { "圣杯国王", TarotCardEnum.KingOfCups },
             // Swords
-            {"宝剑王牌", TarotCardEnum.AceOfSwords}, {"宝剑二", TarotCardEnum.TwoOfSwords}, {"宝剑三", TarotCardEnum.ThreeOfSwords},
-            {"宝剑四", TarotCardEnum.FourOfSwords}, {"宝剑五", TarotCardEnum.FiveOfSwords}, {"宝剑六", TarotCardEnum.SixOfSwords},
-            {"宝剑七", TarotCardEnum.SevenOfSwords}, {"宝剑八", TarotCardEnum.EightOfSwords}, {"宝剑九", TarotCardEnum.NineOfSwords},
-            {"宝剑十", TarotCardEnum.TenOfSwords}, {"宝剑侍从", TarotCardEnum.PageOfSwords}, {"宝剑骑士", TarotCardEnum.KnightOfSwords},
-            {"宝剑王后", TarotCardEnum.QueenOfSwords}, {"宝剑国王", TarotCardEnum.KingOfSwords},
+            { "宝剑王牌", TarotCardEnum.AceOfSwords }, { "宝剑二", TarotCardEnum.TwoOfSwords },
+            { "宝剑三", TarotCardEnum.ThreeOfSwords },
+            { "宝剑四", TarotCardEnum.FourOfSwords }, { "宝剑五", TarotCardEnum.FiveOfSwords },
+            { "宝剑六", TarotCardEnum.SixOfSwords },
+            { "宝剑七", TarotCardEnum.SevenOfSwords }, { "宝剑八", TarotCardEnum.EightOfSwords },
+            { "宝剑九", TarotCardEnum.NineOfSwords },
+            { "宝剑十", TarotCardEnum.TenOfSwords }, { "宝剑侍从", TarotCardEnum.PageOfSwords },
+            { "宝剑骑士", TarotCardEnum.KnightOfSwords },
+            { "宝剑王后", TarotCardEnum.QueenOfSwords }, { "宝剑国王", TarotCardEnum.KingOfSwords },
             // Pentacles
-            {"星币王牌", TarotCardEnum.AceOfPentacles}, {"星币二", TarotCardEnum.TwoOfPentacles}, {"星币三", TarotCardEnum.ThreeOfPentacles},
-            {"星币四", TarotCardEnum.FourOfPentacles}, {"星币五", TarotCardEnum.FiveOfPentacles}, {"星币六", TarotCardEnum.SixOfPentacles},
-            {"星币七", TarotCardEnum.SevenOfPentacles}, {"星币八", TarotCardEnum.EightOfPentacles}, {"星币九", TarotCardEnum.NineOfPentacles},
-            {"星币十", TarotCardEnum.TenOfPentacles}, {"星币侍从", TarotCardEnum.PageOfPentacles}, {"星币骑士", TarotCardEnum.KnightOfPentacles},
-            {"星币王后", TarotCardEnum.QueenOfPentacles}, {"星币国王", TarotCardEnum.KingOfPentacles}
+            { "星币王牌", TarotCardEnum.AceOfPentacles }, { "星币二", TarotCardEnum.TwoOfPentacles },
+            { "星币三", TarotCardEnum.ThreeOfPentacles },
+            { "星币四", TarotCardEnum.FourOfPentacles }, { "星币五", TarotCardEnum.FiveOfPentacles },
+            { "星币六", TarotCardEnum.SixOfPentacles },
+            { "星币七", TarotCardEnum.SevenOfPentacles }, { "星币八", TarotCardEnum.EightOfPentacles },
+            { "星币九", TarotCardEnum.NineOfPentacles },
+            { "星币十", TarotCardEnum.TenOfPentacles }, { "星币侍从", TarotCardEnum.PageOfPentacles },
+            { "星币骑士", TarotCardEnum.KnightOfPentacles },
+            { "星币王后", TarotCardEnum.QueenOfPentacles }, { "星币国王", TarotCardEnum.KingOfPentacles }
         };
         
         var trimmedName = cardName.Trim();
@@ -3315,22 +3557,24 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         
         if (normalizedChinese != trimmedName && chineseMapping.TryGetValue(normalizedChinese, out var normalizedResult))
         {
-            _logger.LogDebug($"[LumenPredictionGAgent][ParseTarotCard] Normalized '{trimmedName}' to '{normalizedChinese}'");
+            _logger.LogDebug(
+                $"[LumenPredictionGAgent][ParseTarotCard] Normalized '{trimmedName}' to '{normalizedChinese}'");
             return normalizedResult;
         }
         
         // Try English parsing with normalization
         // Handle both "The Fool" and "TheFool", "Ace of Wands" and "AceOfWands"
         var normalized = cardName.Trim()
-            .Replace(" of ", "Of")  // "Ace of Wands" → "AceOfWands"
-            .Replace(" ", "");      // Remove all spaces: "The Fool" → "TheFool"
+            .Replace(" of ", "Of") // "Ace of Wands" → "AceOfWands"
+            .Replace(" ", ""); // Remove all spaces: "The Fool" → "TheFool"
         
         if (Enum.TryParse<TarotCardEnum>(normalized, true, out var result))
         {
             return result;
         }
         
-        _logger.LogWarning($"[LumenPredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}, normalized: {normalized}");
+        _logger.LogWarning(
+            $"[LumenPredictionGAgent][ParseTarotCard] Unknown tarot card: {cardName}, normalized: {normalized}");
         return TarotCardEnum.Unknown;
     }
     
@@ -3370,32 +3614,39 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
         
         // Translate tarot card name - REPLACE the original field value
-        if (parsedResults.TryGetValue("todaysReading_tarotCard_name", out var cardName) && !string.IsNullOrWhiteSpace(cardName))
+        if (parsedResults.TryGetValue("todaysReading_tarotCard_name", out var cardName) &&
+            !string.IsNullOrWhiteSpace(cardName))
         {
             if (TarotCardTranslations.TryGetValue(cardName.Trim(), out var cardTranslation))
             {
                 var translatedName = targetLanguage == "zh" ? cardTranslation.zh : cardTranslation.zhTw;
                 parsedResults["todaysReading_tarotCard_name"] = translatedName; // Replace original value
-                _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated tarot card: {cardName} → {translatedName}");
+                _logger.LogDebug(
+                    $"[LumenPredictionGAgent][AddChineseTranslations] Translated tarot card: {cardName} → {translatedName}");
             }
             else
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][AddChineseTranslations] No translation found for tarot card: {cardName}");
+                _logger.LogWarning(
+                    $"[LumenPredictionGAgent][AddChineseTranslations] No translation found for tarot card: {cardName}");
             }
         }
         
         // Translate tarot card orientation - REPLACE the original field value
-        if (parsedResults.TryGetValue("todaysReading_tarotCard_orientation", out var orientation) && !string.IsNullOrWhiteSpace(orientation))
+        if (parsedResults.TryGetValue("todaysReading_tarotCard_orientation", out var orientation) &&
+            !string.IsNullOrWhiteSpace(orientation))
         {
             if (OrientationTranslations.TryGetValue(orientation.Trim(), out var orientationTranslation))
             {
-                var translatedOrientation = targetLanguage == "zh" ? orientationTranslation.zh : orientationTranslation.zhTw;
+                var translatedOrientation =
+                    targetLanguage == "zh" ? orientationTranslation.zh : orientationTranslation.zhTw;
                 parsedResults["todaysReading_tarotCard_orientation"] = translatedOrientation; // Replace original value
-                _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated orientation: {orientation} → {translatedOrientation}");
+                _logger.LogDebug(
+                    $"[LumenPredictionGAgent][AddChineseTranslations] Translated orientation: {orientation} → {translatedOrientation}");
             }
             else
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][AddChineseTranslations] No translation found for orientation: {orientation}");
+                _logger.LogWarning(
+                    $"[LumenPredictionGAgent][AddChineseTranslations] No translation found for orientation: {orientation}");
             }
         }
         
@@ -3406,11 +3657,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             {
                 var translatedStone = targetLanguage == "zh" ? stoneTranslation.zh : stoneTranslation.zhTw;
                 parsedResults["luckyAlignments_luckyStone"] = translatedStone; // Replace original value
-                _logger.LogDebug($"[LumenPredictionGAgent][AddChineseTranslations] Translated stone: {stone} → {translatedStone}");
+                _logger.LogDebug(
+                    $"[LumenPredictionGAgent][AddChineseTranslations] Translated stone: {stone} → {translatedStone}");
             }
             else
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][AddChineseTranslations] No translation found for stone: {stone}");
+                _logger.LogWarning(
+                    $"[LumenPredictionGAgent][AddChineseTranslations] No translation found for stone: {stone}");
             }
         }
     }
@@ -3476,16 +3729,23 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             { "LapisLazuli", CrystalStoneEnum.Lapis },
             { "Lapis", CrystalStoneEnum.Lapis },
             // Chinese mappings
-            { "紫水晶", CrystalStoneEnum.Amethyst }, { "粉晶", CrystalStoneEnum.RoseQuartz }, { "芙蓉石", CrystalStoneEnum.RoseQuartz },
-            { "白水晶", CrystalStoneEnum.ClearQuartz }, { "黄水晶", CrystalStoneEnum.Citrine }, { "茶晶", CrystalStoneEnum.SmokyQuartz },
-            { "黑碧玺", CrystalStoneEnum.BlackTourmaline }, { "透石膏", CrystalStoneEnum.Selenite }, { "拉长石", CrystalStoneEnum.Labradorite },
-            { "月光石", CrystalStoneEnum.Moonstone }, { "红玛瑙", CrystalStoneEnum.Carnelian }, { "虎眼石", CrystalStoneEnum.TigersEye },
+            { "紫水晶", CrystalStoneEnum.Amethyst }, { "粉晶", CrystalStoneEnum.RoseQuartz },
+            { "芙蓉石", CrystalStoneEnum.RoseQuartz },
+            { "白水晶", CrystalStoneEnum.ClearQuartz }, { "黄水晶", CrystalStoneEnum.Citrine },
+            { "茶晶", CrystalStoneEnum.SmokyQuartz },
+            { "黑碧玺", CrystalStoneEnum.BlackTourmaline }, { "透石膏", CrystalStoneEnum.Selenite },
+            { "拉长石", CrystalStoneEnum.Labradorite },
+            { "月光石", CrystalStoneEnum.Moonstone }, { "红玛瑙", CrystalStoneEnum.Carnelian },
+            { "虎眼石", CrystalStoneEnum.TigersEye },
             { "玉", CrystalStoneEnum.Jade }, { "绿松石", CrystalStoneEnum.Turquoise }, { "青金石", CrystalStoneEnum.Lapis },
-            { "海蓝宝", CrystalStoneEnum.Aquamarine }, { "祖母绿", CrystalStoneEnum.Emerald }, { "红宝石", CrystalStoneEnum.Ruby },
+            { "海蓝宝", CrystalStoneEnum.Aquamarine }, { "祖母绿", CrystalStoneEnum.Emerald },
+            { "红宝石", CrystalStoneEnum.Ruby },
             { "蓝宝石", CrystalStoneEnum.Sapphire }, { "石榴石", CrystalStoneEnum.Garnet }, { "蛋白石", CrystalStoneEnum.Opal },
             { "黄玉", CrystalStoneEnum.Topaz }, { "橄榄石", CrystalStoneEnum.Peridot }, { "黑曜石", CrystalStoneEnum.Obsidian },
-            { "孔雀石", CrystalStoneEnum.Malachite }, { "赤铁矿", CrystalStoneEnum.Hematite }, { "黄铁矿", CrystalStoneEnum.Pyrite },
-            { "萤石", CrystalStoneEnum.Fluorite }, { "东陵玉", CrystalStoneEnum.Aventurine }, { "碧玉", CrystalStoneEnum.Jasper },
+            { "孔雀石", CrystalStoneEnum.Malachite }, { "赤铁矿", CrystalStoneEnum.Hematite },
+            { "黄铁矿", CrystalStoneEnum.Pyrite },
+            { "萤石", CrystalStoneEnum.Fluorite }, { "东陵玉", CrystalStoneEnum.Aventurine },
+            { "碧玉", CrystalStoneEnum.Jasper },
             { "玛瑙", CrystalStoneEnum.Agate }, { "血石", CrystalStoneEnum.Bloodstone }, { "黑玛瑙", CrystalStoneEnum.Onyx },
             { "菱镁矿", CrystalStoneEnum.Howlite }, { "天河石", CrystalStoneEnum.Amazonite }
         };
@@ -3507,7 +3767,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// <summary>
     /// Inject Four Pillars (Ba Zi) data into prediction dictionary with language-specific formatting
     /// </summary>
-    private void InjectFourPillarsData(Dictionary<string, string> prediction, FourPillarsInfo fourPillars, string language)
+    private void InjectFourPillarsData(Dictionary<string, string> prediction, FourPillarsInfo fourPillars,
+        string language)
     {
         // Year Pillar - Standardized field naming: separate stem and branch attributes
         prediction["fourPillars_yearPillar"] = fourPillars.YearPillar.GetFormattedString(language);
@@ -3516,13 +3777,17 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         prediction["fourPillars_yearPillar_stemPinyin"] = fourPillars.YearPillar.StemPinyin;
         prediction["fourPillars_yearPillar_stemYinYang"] = TranslateYinYang(fourPillars.YearPillar.YinYang, language);
         prediction["fourPillars_yearPillar_stemElement"] = TranslateElement(fourPillars.YearPillar.Element, language);
-        prediction["fourPillars_yearPillar_stemDirection"] = TranslateDirection(fourPillars.YearPillar.Direction, language);
+        prediction["fourPillars_yearPillar_stemDirection"] =
+            TranslateDirection(fourPillars.YearPillar.Direction, language);
         // Branch attributes
         prediction["fourPillars_yearPillar_branchChinese"] = fourPillars.YearPillar.BranchChinese;
         prediction["fourPillars_yearPillar_branchPinyin"] = fourPillars.YearPillar.BranchPinyin;
-        prediction["fourPillars_yearPillar_branchYinYang"] = TranslateYinYang(fourPillars.YearPillar.BranchYinYang, language);
-        prediction["fourPillars_yearPillar_branchElement"] = TranslateElement(fourPillars.YearPillar.BranchElement, language);
-        prediction["fourPillars_yearPillar_branchZodiac"] = TranslateZodiac(fourPillars.YearPillar.BranchZodiac, language);
+        prediction["fourPillars_yearPillar_branchYinYang"] =
+            TranslateYinYang(fourPillars.YearPillar.BranchYinYang, language);
+        prediction["fourPillars_yearPillar_branchElement"] =
+            TranslateElement(fourPillars.YearPillar.BranchElement, language);
+        prediction["fourPillars_yearPillar_branchZodiac"] =
+            TranslateZodiac(fourPillars.YearPillar.BranchZodiac, language);
         
         // Month Pillar
         prediction["fourPillars_monthPillar"] = fourPillars.MonthPillar.GetFormattedString(language);
@@ -3531,13 +3796,17 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         prediction["fourPillars_monthPillar_stemPinyin"] = fourPillars.MonthPillar.StemPinyin;
         prediction["fourPillars_monthPillar_stemYinYang"] = TranslateYinYang(fourPillars.MonthPillar.YinYang, language);
         prediction["fourPillars_monthPillar_stemElement"] = TranslateElement(fourPillars.MonthPillar.Element, language);
-        prediction["fourPillars_monthPillar_stemDirection"] = TranslateDirection(fourPillars.MonthPillar.Direction, language);
+        prediction["fourPillars_monthPillar_stemDirection"] =
+            TranslateDirection(fourPillars.MonthPillar.Direction, language);
         // Branch attributes
         prediction["fourPillars_monthPillar_branchChinese"] = fourPillars.MonthPillar.BranchChinese;
         prediction["fourPillars_monthPillar_branchPinyin"] = fourPillars.MonthPillar.BranchPinyin;
-        prediction["fourPillars_monthPillar_branchYinYang"] = TranslateYinYang(fourPillars.MonthPillar.BranchYinYang, language);
-        prediction["fourPillars_monthPillar_branchElement"] = TranslateElement(fourPillars.MonthPillar.BranchElement, language);
-        prediction["fourPillars_monthPillar_branchZodiac"] = TranslateZodiac(fourPillars.MonthPillar.BranchZodiac, language);
+        prediction["fourPillars_monthPillar_branchYinYang"] =
+            TranslateYinYang(fourPillars.MonthPillar.BranchYinYang, language);
+        prediction["fourPillars_monthPillar_branchElement"] =
+            TranslateElement(fourPillars.MonthPillar.BranchElement, language);
+        prediction["fourPillars_monthPillar_branchZodiac"] =
+            TranslateZodiac(fourPillars.MonthPillar.BranchZodiac, language);
         
         // Day Pillar
         prediction["fourPillars_dayPillar"] = fourPillars.DayPillar.GetFormattedString(language);
@@ -3546,13 +3815,17 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         prediction["fourPillars_dayPillar_stemPinyin"] = fourPillars.DayPillar.StemPinyin;
         prediction["fourPillars_dayPillar_stemYinYang"] = TranslateYinYang(fourPillars.DayPillar.YinYang, language);
         prediction["fourPillars_dayPillar_stemElement"] = TranslateElement(fourPillars.DayPillar.Element, language);
-        prediction["fourPillars_dayPillar_stemDirection"] = TranslateDirection(fourPillars.DayPillar.Direction, language);
+        prediction["fourPillars_dayPillar_stemDirection"] =
+            TranslateDirection(fourPillars.DayPillar.Direction, language);
         // Branch attributes
         prediction["fourPillars_dayPillar_branchChinese"] = fourPillars.DayPillar.BranchChinese;
         prediction["fourPillars_dayPillar_branchPinyin"] = fourPillars.DayPillar.BranchPinyin;
-        prediction["fourPillars_dayPillar_branchYinYang"] = TranslateYinYang(fourPillars.DayPillar.BranchYinYang, language);
-        prediction["fourPillars_dayPillar_branchElement"] = TranslateElement(fourPillars.DayPillar.BranchElement, language);
-        prediction["fourPillars_dayPillar_branchZodiac"] = TranslateZodiac(fourPillars.DayPillar.BranchZodiac, language);
+        prediction["fourPillars_dayPillar_branchYinYang"] =
+            TranslateYinYang(fourPillars.DayPillar.BranchYinYang, language);
+        prediction["fourPillars_dayPillar_branchElement"] =
+            TranslateElement(fourPillars.DayPillar.BranchElement, language);
+        prediction["fourPillars_dayPillar_branchZodiac"] =
+            TranslateZodiac(fourPillars.DayPillar.BranchZodiac, language);
         
         // Hour Pillar (always include fields, empty if birth time not provided)
         if (fourPillars.HourPillar != null)
@@ -3561,15 +3834,21 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Stem attributes
             prediction["fourPillars_hourPillar_stemChinese"] = fourPillars.HourPillar.StemChinese;
             prediction["fourPillars_hourPillar_stemPinyin"] = fourPillars.HourPillar.StemPinyin;
-            prediction["fourPillars_hourPillar_stemYinYang"] = TranslateYinYang(fourPillars.HourPillar.YinYang, language);
-            prediction["fourPillars_hourPillar_stemElement"] = TranslateElement(fourPillars.HourPillar.Element, language);
-            prediction["fourPillars_hourPillar_stemDirection"] = TranslateDirection(fourPillars.HourPillar.Direction, language);
+            prediction["fourPillars_hourPillar_stemYinYang"] =
+                TranslateYinYang(fourPillars.HourPillar.YinYang, language);
+            prediction["fourPillars_hourPillar_stemElement"] =
+                TranslateElement(fourPillars.HourPillar.Element, language);
+            prediction["fourPillars_hourPillar_stemDirection"] =
+                TranslateDirection(fourPillars.HourPillar.Direction, language);
             // Branch attributes
             prediction["fourPillars_hourPillar_branchChinese"] = fourPillars.HourPillar.BranchChinese;
             prediction["fourPillars_hourPillar_branchPinyin"] = fourPillars.HourPillar.BranchPinyin;
-            prediction["fourPillars_hourPillar_branchYinYang"] = TranslateYinYang(fourPillars.HourPillar.BranchYinYang, language);
-            prediction["fourPillars_hourPillar_branchElement"] = TranslateElement(fourPillars.HourPillar.BranchElement, language);
-            prediction["fourPillars_hourPillar_branchZodiac"] = TranslateZodiac(fourPillars.HourPillar.BranchZodiac, language);
+            prediction["fourPillars_hourPillar_branchYinYang"] =
+                TranslateYinYang(fourPillars.HourPillar.BranchYinYang, language);
+            prediction["fourPillars_hourPillar_branchElement"] =
+                TranslateElement(fourPillars.HourPillar.BranchElement, language);
+            prediction["fourPillars_hourPillar_branchZodiac"] =
+                TranslateZodiac(fourPillars.HourPillar.BranchZodiac, language);
         }
         else
         {
@@ -3594,7 +3873,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         "zh-tw" or "zh" => yinYang == "Yang" ? "陽" : "陰",
         "es" => yinYang == "Yang" ? "Yang" : "Yin",
-        _ => yinYang  // English default
+        _ => yinYang // English default
     };
     
     private string TranslateElement(string element, string language) => (element, language) switch
@@ -3609,7 +3888,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         ("Earth", "es") => "Tierra",
         ("Metal", "es") => "Metal",
         ("Water", "es") => "Agua",
-        _ => element  // English default
+        _ => element // English default
     };
     
     private string TranslateDirection(string direction, string language) => (direction, language) switch
@@ -3632,14 +3911,15 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         ("North 1", "es") => "Norte 1",
         ("North 2", "es") => "Norte 2",
         ("Centre", "es") => "Centro",
-        _ => direction  // English default
+        _ => direction // English default
     };
     
     /// <summary>
     /// Build zodiacInfluence string based on language
     /// Format: "{birthYearZodiac} native in {yearlyYearZodiac} year → {taishuiRelationship}"
     /// </summary>
-    private string BuildZodiacInfluence(string birthYearZodiac, string yearlyYearZodiac, string taishuiRelationship, string language)
+    private string BuildZodiacInfluence(string birthYearZodiac, string yearlyYearZodiac, string taishuiRelationship,
+        string language)
     {
         // Parse taishui to extract Chinese, Pinyin, and English parts
         // Example input: "相害 (Xiang Hai - Harm)"
@@ -3657,12 +3937,14 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Spanish: "Serpiente de Madera nativo en año del Dragón de Madera → Daño (相害 Xiang Hai)"
             var birthZodiacSpanish = TranslateZodiacWithElementToSpanish(birthYearZodiac);
             var yearlyZodiacSpanish = TranslateZodiacWithElementToSpanish(yearlyYearZodiac);
-            return $"{birthZodiacSpanish} nativo en año del {yearlyZodiacSpanish} → {taishuiParts.spanish} ({taishuiParts.chinese} {taishuiParts.pinyin})";
+            return
+                $"{birthZodiacSpanish} nativo en año del {yearlyZodiacSpanish} → {taishuiParts.spanish} ({taishuiParts.chinese} {taishuiParts.pinyin})";
         }
         else
         {
             // English: "Wood Snake native in Wood Dragon year → Harm (相害 Xiang Hai)"
-            return $"{birthYearZodiac} native in {yearlyYearZodiac} year → {taishuiParts.english} ({taishuiParts.chinese} {taishuiParts.pinyin})";
+            return
+                $"{birthYearZodiac} native in {yearlyYearZodiac} year → {taishuiParts.english} ({taishuiParts.chinese} {taishuiParts.pinyin})";
         }
     }
     
@@ -3726,7 +4008,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// </summary>
     private (string chinese, string pinyin, string english, string spanish) ParseTaishuiRelationship(string taishui)
     {
-        var match = System.Text.RegularExpressions.Regex.Match(taishui, @"^(.*?)\s*\((.*?)\s*-\s*(.*?)\)$");
+        var match = Regex.Match(taishui, @"^(.*?)\s*\((.*?)\s*-\s*(.*?)\)$");
         if (match.Success)
         {
             var chinese = match.Groups[1].Value.Trim();
@@ -3928,7 +4210,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     private string TranslateCycleAgeRange(string ageRange, string language)
     {
         // Extract numbers using regex: "Age 20-29 (1990-1999)"
-        var match = System.Text.RegularExpressions.Regex.Match(ageRange, @"Age (\d+)-(\d+) \((\d+)-(\d+)\)");
+        var match = Regex.Match(ageRange, @"Age (\d+)-(\d+) \((\d+)-(\d+)\)");
         if (!match.Success) return ageRange;
         
         var startAge = match.Groups[1].Value;
@@ -4005,7 +4287,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         ("Rooster", "es") => "Gallo",
         ("Dog", "es") => "Perro",
         ("Pig", "es") => "Cerdo",
-        _ => zodiac  // English default
+        _ => zodiac // English default
     };
     
     /// <summary>
@@ -4050,7 +4332,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 "Pig" => "El Cerdo",
                 _ => $"El {animalName}"
             },
-            _ => $"The {animalName}"  // English default
+            _ => $"The {animalName}" // English default
         };
     }
     
@@ -4071,15 +4353,17 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Check if reminder TargetId matches current version
             if (State.DailyReminderTargetId != CURRENT_REMINDER_TARGET_ID)
             {
-                _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} TargetId mismatch (State: {State.DailyReminderTargetId}, Current: {CURRENT_REMINDER_TARGET_ID}), unregistering old reminder");
+                _logger.LogInformation(
+                    $"[Lumen][DailyReminder] {State.UserId} TargetId mismatch (State: {State.DailyReminderTargetId}, Current: {CURRENT_REMINDER_TARGET_ID}), unregistering old reminder");
                 await UnregisterDailyReminderAsync();
-                return;  // User will re-register with new logic when active
+                return; // User will re-register with new logic when active
             }
             
             // Check if this is a Daily prediction grain
             if (State.Type != PredictionType.Daily)
             {
-                _logger.LogWarning($"[Lumen][DailyReminder] {State.UserId} Reminder triggered on non-Daily grain (Type: {State.Type}), unregistering");
+                _logger.LogWarning(
+                    $"[Lumen][DailyReminder] {State.UserId} Reminder triggered on non-Daily grain (Type: {State.Type}), unregistering");
                 await UnregisterDailyReminderAsync();
                 return;
             }
@@ -4088,7 +4372,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var daysSinceActive = (DateTime.UtcNow - State.LastActiveDate).TotalDays;
             if (daysSinceActive > 3)
             {
-                _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} User inactive for {daysSinceActive:F1} days, stopping reminder");
+                _logger.LogInformation(
+                    $"[Lumen][DailyReminder] {State.UserId} User inactive for {daysSinceActive:F1} days, stopping reminder");
                 await UnregisterDailyReminderAsync();
                 return;
             }
@@ -4097,7 +4382,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             if (State.LastGeneratedDate == today)
             {
-                _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Daily prediction already generated today, skipping");
+                _logger.LogInformation(
+                    $"[Lumen][DailyReminder] {State.UserId} Daily prediction already generated today, skipping");
                 return;
             }
             
@@ -4111,18 +4397,22 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             if (profileResult == null || !profileResult.Success || profileResult.UserProfile == null)
             {
-                _logger.LogWarning($"[Lumen][DailyReminder] {State.UserId} User profile not found, cannot generate daily prediction");
+                _logger.LogWarning(
+                    $"[Lumen][DailyReminder] {State.UserId} User profile not found, cannot generate daily prediction");
                 return;
             }
             
-            _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Generating daily prediction for language: {targetLanguage}");
+            _logger.LogInformation(
+                $"[Lumen][DailyReminder] {State.UserId} Generating daily prediction for language: {targetLanguage}");
             
             // Convert LumenUserProfileDto to LumenUserDto
             var userDto = new LumenUserDto
             {
                 UserId = profileResult.UserProfile.UserId,
                 FirstName = profileResult.UserProfile.FullName.Split(' ').FirstOrDefault() ?? "",
-                LastName = profileResult.UserProfile.FullName.Contains(' ') ? string.Join(" ", profileResult.UserProfile.FullName.Split(' ').Skip(1)) : "",
+                LastName = profileResult.UserProfile.FullName.Contains(' ')
+                    ? string.Join(" ", profileResult.UserProfile.FullName.Split(' ').Skip(1))
+                    : "",
                 Gender = profileResult.UserProfile.Gender,
                 BirthDate = profileResult.UserProfile.BirthDate,
                 BirthTime = profileResult.UserProfile.BirthTime,
@@ -4176,7 +4466,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         );
         
         State.IsDailyReminderEnabled = true;
-        _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, next execution at {nextMidnight} UTC");
+        _logger.LogInformation(
+            $"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, next execution at {nextMidnight} UTC");
     }
     
     /// <summary>
@@ -4223,7 +4514,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         try
         {
-            _logger.LogDebug("[LumenPredictionGAgent][ClearCurrentPredictionAsync] Clearing prediction data for: {GrainId}", 
+            _logger.LogDebug(
+                "[LumenPredictionGAgent][ClearCurrentPredictionAsync] Clearing prediction data for: {GrainId}",
                 this.GetPrimaryKey());
 
             // Raise event to clear prediction state
@@ -4235,7 +4527,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Confirm events to persist state changes
             await ConfirmEvents();
 
-            _logger.LogInformation("[LumenPredictionGAgent][ClearCurrentPredictionAsync] Prediction data cleared successfully");
+            _logger.LogInformation(
+                "[LumenPredictionGAgent][ClearCurrentPredictionAsync] Prediction data cleared successfully");
         }
         catch (Exception ex)
         {
@@ -4248,11 +4541,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// Get all backend-calculated values for a user
     /// Returns a dictionary of calculated astrological and zodiac data
     /// </summary>
-    public async Task<Dictionary<string, string>> GetCalculatedValuesAsync(LumenUserDto userInfo, string userLanguage = "en")
+    public async Task<Dictionary<string, string>> GetCalculatedValuesAsync(LumenUserDto userInfo,
+        string userLanguage = "en")
     {
         try
         {
-            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Calculating values for user {userInfo.UserId}, language: {userLanguage}");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Calculating values for user {userInfo.UserId}, language: {userLanguage}");
             
             var results = new Dictionary<string, string>();
             
@@ -4271,20 +4566,25 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             string? risingSign = null;
             
             // Diagnostic logging
-            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
             
             if (userInfo.BirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
                     var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
-                    _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Parsing LatLong - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
+                    _logger.LogInformation(
+                        $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Parsing LatLong - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
                     
                     if (parts.Length == 2 && 
-                        double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double latitude) && 
-                        double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double longitude))
+                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out double latitude) &&
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out double longitude))
                     {
-                        _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Starting Western Astrology calculation at ({latitude}, {longitude})");
+                        _logger.LogInformation(
+                            $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Starting Western Astrology calculation at ({latitude}, {longitude})");
                         var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
                             userInfo.BirthDate,
                             userInfo.BirthTime.Value,
@@ -4294,21 +4594,25 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         moonSign = calculatedMoonSign;
                         risingSign = calculatedRisingSign;
                         
-                        _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Calculated Moon: {moonSign}, Rising: {risingSign}");
+                        _logger.LogInformation(
+                            $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Calculated Moon: {moonSign}, Rising: {risingSign}");
                     }
                     else
                     {
-                        _logger.LogWarning($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Invalid latlong format or parse failed: '{userInfo.LatLong}'");
+                        _logger.LogWarning(
+                            $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Invalid latlong format or parse failed: '{userInfo.LatLong}'");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to calculate Moon/Rising signs");
+                    _logger.LogWarning(ex,
+                        $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to calculate Moon/Rising signs");
                 }
             }
             else
             {
-                _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Skipping Moon/Rising calculation - BirthTime or LatLong not provided");
+                _logger.LogInformation(
+                    $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Skipping Moon/Rising calculation - BirthTime or LatLong not provided");
             }
             
             // Use sunSign as fallback if moon/rising not calculated
@@ -4358,7 +4662,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             results["taishui_translated"] = TranslateTaishuiRelationship(taishuiRelationship, userLanguage);
             
             // Zodiac Influence
-            results["zodiacInfluence"] = BuildZodiacInfluence(birthYearZodiac, currentYearZodiac, taishuiRelationship, userLanguage);
+            results["zodiacInfluence"] =
+                BuildZodiacInfluence(birthYearZodiac, currentYearZodiac, taishuiRelationship, userLanguage);
             
             // ========== LIFE CYCLES ==========
             var currentAge = LumenCalculator.CalculateAge(userInfo.BirthDate);
@@ -4385,13 +4690,15 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Use same detailed structure as Lifetime prediction
             InjectFourPillarsData(results, fourPillars, userLanguage);
             
-            _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");
             
             return results;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Error calculating values for user {userInfo.UserId}");
+            _logger.LogError(ex,
+                $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Error calculating values for user {userInfo.UserId}");
             throw;
         }
     }
@@ -4418,7 +4725,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         try
         {
-            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Calculating signs for coordinates ({latitude}, {longitude})");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent][WesternAstrology] Calculating signs for coordinates ({latitude}, {longitude})");
             
             // Create SwissEph instance for this calculation
             using var swissEph = new SwissEph();
@@ -4436,13 +4744,15 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Step 4: Calculate Rising Sign (Ascendant)
             string risingSign = CalculateRisingSign(swissEph, julianDay, latitude, longitude);
             
-            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Results - Sun: {sunSign}, Moon: {moonSign}, Rising: {risingSign}");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent][WesternAstrology] Results - Sun: {sunSign}, Moon: {moonSign}, Rising: {risingSign}");
             
             return (sunSign, moonSign, risingSign);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, $"[LumenPredictionGAgent][WesternAstrology] Failed to calculate signs for coordinates ({latitude}, {longitude})");
+            _logger.LogError(ex,
+                $"[LumenPredictionGAgent][WesternAstrology] Failed to calculate signs for coordinates ({latitude}, {longitude})");
             // Fallback: at least return Sun sign based on date
             string sunSign = CalculateSunSignSimple(birthDate);
             return (sunSign, sunSign, sunSign); // Use Sun sign as fallback for all
@@ -4468,14 +4778,16 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             if (result < 0)
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Sun calculation failed: {errorMsg}");
+                _logger.LogWarning(
+                    $"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Sun calculation failed: {errorMsg}");
                 return "Aries"; // Fallback
             }
             
             // positions[0] is longitude in degrees (0-360)
             // Each zodiac sign is 30 degrees
             int signIndex = (int)(positions[0] / 30.0);
-            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Sun position: {positions[0]}° -> {ZodiacSigns[signIndex % 12]}");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent][WesternAstrology] Sun position: {positions[0]}° -> {ZodiacSigns[signIndex % 12]}");
             return ZodiacSigns[signIndex % 12];
         }
         catch (Exception ex)
@@ -4504,12 +4816,14 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             if (result < 0)
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Moon calculation failed: {errorMsg}");
+                _logger.LogWarning(
+                    $"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Moon calculation failed: {errorMsg}");
                 return "Aries"; // Fallback
             }
             
             int signIndex = (int)(positions[0] / 30.0);
-            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Moon position: {positions[0]}° -> {ZodiacSigns[signIndex % 12]}");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent][WesternAstrology] Moon position: {positions[0]}° -> {ZodiacSigns[signIndex % 12]}");
             return ZodiacSigns[signIndex % 12];
         }
         catch (Exception ex)
@@ -4539,13 +4853,15 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             if (result < 0)
             {
-                _logger.LogWarning($"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Ascendant calculation failed");
+                _logger.LogWarning(
+                    $"[LumenPredictionGAgent][WesternAstrology] Swiss Ephemeris Ascendant calculation failed");
                 return "Aries"; // Fallback
             }
             
             // ascmc[0] is the Ascendant (Rising Sign) longitude
             int signIndex = (int)(ascmc[0] / 30.0);
-            _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Rising position: {ascmc[0]}° -> {ZodiacSigns[signIndex % 12]}");
+            _logger.LogInformation(
+                $"[LumenPredictionGAgent][WesternAstrology] Rising position: {ascmc[0]}° -> {ZodiacSigns[signIndex % 12]}");
             return ZodiacSigns[signIndex % 12];
         }
         catch (Exception ex)
@@ -4569,7 +4885,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         double hour = dateTime.Hour + dateTime.Minute / 60.0 + dateTime.Second / 3600.0;
         
         double julianDay = swissEph.swe_julday(year, month, day, hour, SwissEph.SE_GREG_CAL);
-        _logger.LogInformation($"[LumenPredictionGAgent][WesternAstrology] Julian Day: {julianDay} for {dateTime:yyyy-MM-dd HH:mm:ss} UTC");
+        _logger.LogInformation(
+            $"[LumenPredictionGAgent][WesternAstrology] Julian Day: {julianDay} for {dateTime:yyyy-MM-dd HH:mm:ss} UTC");
         return julianDay;
     }
     
@@ -4601,4 +4918,3 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     #endregion
 }
-
