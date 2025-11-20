@@ -766,7 +766,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         }
         
         // ========== IF REGENERATION NEEDED, CHECK IF GENERATION IS IN PROGRESS ==========
-        // This handles delete+reregister scenario: old data exists but regeneration triggered
+        // NEW BEHAVIOR: Old data remains available while new data generates
+        // Return isGenerated=true (old data exists) AND isGenerating=true (new data generating)
         if (needsRegeneration && State.PredictionId != Guid.Empty)
         {
             // Check if generation is currently in progress (even though old data exists)
@@ -791,19 +792,46 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 }
             }
             
-            _logger.LogInformation($"[Lumen] Status check - Regeneration needed for {State.Type}, isGenerating: {isRegenerating}");
+            _logger.LogInformation($"[Lumen] Status check - Regeneration needed for {State.Type}, isGenerating: {isRegenerating}, old data available: true");
             
+            // Build translation status (same logic as below)
+            TranslationStatusInfo? translationStatusForStale = null;
+            var activeTranslationsForStale = State.TranslationLocks
+                .Where(kvp => kvp.Value.IsTranslating && kvp.Value.StartedAt.HasValue)
+                .ToList();
+            
+            if (activeTranslationsForStale.Any())
+            {
+                var validTranslationsForStale = activeTranslationsForStale
+                    .Where(kvp => (DateTime.UtcNow - kvp.Value.StartedAt!.Value).TotalMinutes <= 5)
+                    .ToList();
+                
+                if (validTranslationsForStale.Any())
+                {
+                    var earliestStart = validTranslationsForStale.Min(kvp => kvp.Value.StartedAt!.Value);
+                    var translatingLanguages = validTranslationsForStale.Select(kvp => kvp.Key).ToList();
+                    
+                    translationStatusForStale = new TranslationStatusInfo
+                    {
+                        IsTranslating = true,
+                        StartedAt = earliestStart,
+                        TargetLanguages = translatingLanguages
+                    };
+                }
+            }
+            
+            // Return status indicating old data is available but new data is generating
             return new PredictionStatusDto
             {
                 Type = actualType,
-                IsGenerated = false, // Old data is stale, tell frontend no valid data
-                IsGenerating = isRegenerating, // But show if regeneration is in progress
-                GeneratedAt = null,
-                GenerationStartedAt = regenerationStartedAt,
-                PredictionDate = null,
-                AvailableLanguages = new List<string>(),
-                NeedsRegeneration = true,
-                TranslationStatus = null
+                IsGenerated = true, // ✅ Old data exists and is queryable
+                IsGenerating = isRegenerating, // ✅ New data is generating (if true)
+                GeneratedAt = State.CreatedAt, // When old data was generated
+                GenerationStartedAt = regenerationStartedAt, // When regeneration started
+                PredictionDate = State.PredictionDate, // Date of old prediction
+                AvailableLanguages = State.GeneratedLanguages ?? new List<string>(),
+                NeedsRegeneration = true, // ✅ Mark as stale/needs update
+                TranslationStatus = translationStatusForStale
             };
         }
 
