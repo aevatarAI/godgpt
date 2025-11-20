@@ -1212,13 +1212,10 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
                 
                 // Inject into primary language results
-                // NOTE: Use birth year stems (年柱) to match BaZi year pillar
-                var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
-                
-                parsedResults["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
-                parsedResults["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
-                parsedResults["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
-                parsedResults["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
+                parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
+                parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
+                parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
+                parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
                 
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
@@ -1245,13 +1242,13 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     foreach (var lang in multilingualResults.Keys)
                     {
                         multilingualResults[lang]["chineseAstrology_currentYearStem"] =
-                            birthYearStemsComponents.stemChinese;
+                            currentYearStemsComponents.stemChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
-                            birthYearStemsComponents.stemPinyin;
+                            currentYearStemsComponents.stemPinyin;
                         multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
-                            birthYearStemsComponents.branchChinese;
+                            currentYearStemsComponents.branchChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
-                            birthYearStemsComponents.branchPinyin;
+                            currentYearStemsComponents.branchPinyin;
                         multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
                         multilingualResults[lang]["sunSign_enum"] =
                             ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
