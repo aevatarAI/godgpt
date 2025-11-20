@@ -1212,10 +1212,14 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
                 
                 // Inject into primary language results
-                parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
-                parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
-                parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
-                parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
+                // NOTE: Use birth year stems (年柱) to match BaZi year pillar
+                var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
+                
+                parsedResults["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
+                parsedResults["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
+                parsedResults["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
+                parsedResults["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
+                
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                 parsedResults["westernOverview_sunSign"] = TranslateSunSign(sunSign, targetLanguage);
@@ -1241,13 +1245,13 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     foreach (var lang in multilingualResults.Keys)
                     {
                         multilingualResults[lang]["chineseAstrology_currentYearStem"] =
-                            currentYearStemsComponents.stemChinese;
+                            birthYearStemsComponents.stemChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
-                            currentYearStemsComponents.stemPinyin;
+                            birthYearStemsComponents.stemPinyin;
                         multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
-                            currentYearStemsComponents.branchChinese;
+                            birthYearStemsComponents.branchChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
-                            currentYearStemsComponents.branchPinyin;
+                            birthYearStemsComponents.branchPinyin;
                         multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
                         multilingualResults[lang]["sunSign_enum"] =
                             ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
@@ -1286,15 +1290,18 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 var yearlyTaishui = LumenCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
                 
                 // Inject into primary language results
+                // NOTE: Use birth year stems (年柱) to match BaZi year pillar
+                var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
+                
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                 parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
                 parsedResults["chineseZodiac_enum"] =
                     ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
-                parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
-                parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
-                parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
-                parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
+                parsedResults["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
+                parsedResults["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
+                parsedResults["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
+                parsedResults["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
                 parsedResults["chineseAstrology_taishuiRelationship"] =
                     TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
                 parsedResults["zodiacInfluence"] =
@@ -1313,13 +1320,13 @@ Your task is to create engaging, inspirational, and reflective content that invi
                         multilingualResults[lang]["chineseZodiac_enum"] =
                             ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                         multilingualResults[lang]["chineseAstrology_currentYearStem"] =
-                            currentYearStemsComponents.stemChinese;
+                            birthYearStemsComponents.stemChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
-                            currentYearStemsComponents.stemPinyin;
+                            birthYearStemsComponents.stemPinyin;
                         multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
-                            currentYearStemsComponents.branchChinese;
+                            birthYearStemsComponents.branchChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
-                            currentYearStemsComponents.branchPinyin;
+                            birthYearStemsComponents.branchPinyin;
                         multilingualResults[lang]["chineseAstrology_taishuiRelationship"] =
                             TranslateTaishuiRelationship(yearlyTaishui, lang);
                         multilingualResults[lang]["zodiacInfluence"] =
@@ -2317,8 +2324,8 @@ Generate translations for: {targetLangNames}
                     _logger.LogWarning(
                         $"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}, RetryCount: {currentRetryCount}/{MAX_RETRY_COUNT}");
                 
-                // Check if we should retry (parse failure with retry budget remaining)
-                if (currentRetryCount < MAX_RETRY_COUNT && predictionResult.Message?.Contains("parse") == true)
+                // Check if we should retry (any failure with retry budget remaining)
+                if (currentRetryCount < MAX_RETRY_COUNT)
                 {
                     // Increment retry count using Event Sourcing
                     var newRetryCount = currentRetryCount + 1;
@@ -2331,16 +2338,16 @@ Generate translations for: {targetLangNames}
                     await ConfirmEvents();
                     
                         _logger.LogInformation(
-                            $"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{MAX_RETRY_COUNT})");
+                            $"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{MAX_RETRY_COUNT}), Reason: {predictionResult.Message}");
                     
                     // Trigger retry (fire-and-forget)
                     _ = GeneratePredictionInBackgroundAsync(userInfo, predictionDate, type, targetLanguage);
                     return; // Don't release lock in finally block, as we're retrying
                 }
-                else if (currentRetryCount >= MAX_RETRY_COUNT)
+                else
                 {
                         _logger.LogError(
-                            $"[Lumen][OnDemand] {userInfo.UserId} MAX_RETRY_EXCEEDED for {type}, giving up after {currentRetryCount} attempts");
+                            $"[Lumen][OnDemand] {userInfo.UserId} MAX_RETRY_EXCEEDED for {type}, giving up after {currentRetryCount} attempts, Last error: {predictionResult.Message}");
                 }
             }
             else
@@ -2529,14 +2536,6 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             
             // Parse response
             var parseStopwatch = Stopwatch.StartNew();
-            
-            // Check for LLM refusal
-            if (IsLLMRefusal(aiResponse))
-            {
-                    _logger.LogError(
-                        $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Full response:\n{aiResponse}");
-                return;
-            }
             
             // Try TSV format first (new format)
             var contentDict = new Dictionary<string, string>();
@@ -2767,47 +2766,6 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// </summary>
     
     /// <summary>
-    /// Check if the LLM response is a refusal or error message
-    /// </summary>
-    private bool IsLLMRefusal(string aiResponse)
-    {
-        if (string.IsNullOrWhiteSpace(aiResponse))
-        {
-            return true;
-        }
-
-        var lowerResponse = aiResponse.ToLower();
-                
-        // Common refusal patterns
-        var refusalPatterns = new[]
-        {
-            "i'm sorry",
-            "i cannot",
-            "i can't",
-            "i am unable",
-            "unable to fulfill",
-            "cannot fulfill",
-            "i apologize",
-            "as an ai",
-            "against my",
-            "not appropriate",
-            "cannot comply"
-        };
-
-        foreach (var pattern in refusalPatterns)
-        {
-            if (lowerResponse.Contains(pattern))
-                {
-                    _logger.LogWarning(
-                        $"[LumenPredictionGAgent][IsLLMRefusal] Detected refusal pattern: '{pattern}'. Response preview: {aiResponse.Substring(0, Math.Min(200, aiResponse.Length))}");
-                return true;
-        }
-        }
-
-        return false;
-    }
-
-    /// <summary>
     /// Convert array fields from pipe-separated strings to JSON array strings for frontend
     /// </summary>
     private Dictionary<string, string> ConvertArrayFieldsToJson(Dictionary<string, string> data)
@@ -3031,14 +2989,6 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         try
         {
-            // Check for LLM refusal
-            if (IsLLMRefusal(aiResponse))
-            {
-                    _logger.LogError(
-                        $"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Full response:\n{aiResponse}");
-                return null;
-            }
-
             var result = new Dictionary<string, string>();
             
             // Remove markdown code blocks if present
@@ -4648,13 +4598,20 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             results["currentYear_animal"] = currentYearAnimal;
             results["currentYear_element"] = currentYearElement;
             
-            // Current Year Stems
-            var currentYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(currentYear);
-            results["currentYear_stems"] = LumenCalculator.CalculateStemsAndBranches(currentYear);
-            results["currentYear_stemChinese"] = currentYearStemsComponents.stemChinese;
-            results["currentYear_stemPinyin"] = currentYearStemsComponents.stemPinyin;
-            results["currentYear_branchChinese"] = currentYearStemsComponents.branchChinese;
-            results["currentYear_branchPinyin"] = currentYearStemsComponents.branchPinyin;
+            // Current Year Stems (using birth year to match BaZi year pillar)
+            var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
+            results["currentYear_stems"] = LumenCalculator.CalculateStemsAndBranches(birthYear);
+            results["currentYear_stemChinese"] = birthYearStemsComponents.stemChinese;
+            results["currentYear_stemPinyin"] = birthYearStemsComponents.stemPinyin;
+            results["currentYear_branchChinese"] = birthYearStemsComponents.branchChinese;
+            results["currentYear_branchPinyin"] = birthYearStemsComponents.branchPinyin;
+            
+            // Add chineseAstrology_ prefixed fields (matching prediction response format)
+            results["chineseAstrology_currentYear"] = TranslateChineseZodiacAnimal(birthYearZodiac, userLanguage);
+            results["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
+            results["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
+            results["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
+            results["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
             
             // Taishui Relationship
             var taishuiRelationship = LumenCalculator.CalculateTaishuiRelationship(birthYear, currentYear);
