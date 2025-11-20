@@ -1779,69 +1779,54 @@ FORMAT REQUIREMENT:
                     $"Start with 'Your Chinese Zodiac is {birthYearAnimalTranslated}...' and describe the 20-year symbolic cycle"
             };
 
-            // DYNAMIC DESCRIPTIONS (Lifetime - Localized)
+            // DYNAMIC DESCRIPTIONS (Lifetime - Localized & Relaxed)
             bool isChinese = targetLanguage.StartsWith("zh");
-
+            
             // Pillars
-            var desc_pillars_id = isChinese ? "12-18字，基于显示名的身份认同" : "[12-18 words addressing user by Display Name]";
-            var desc_pillars_detail =
-                isChinese ? $"45-60字，结合{sunSign}的深度解读" : $"[45-60 words using {sunSign}, contemplative]";
-            var desc_trait = isChinese ? "8-12字，象征特质" : "[8-12 words describing symbolic qualities]";
-
+            var desc_pillars_id = isChinese ? "身份认同短语" : "[Short phrase addressing user]";
+            var desc_pillars_detail = isChinese ? $"基于{sunSign}的深度解读 (限60字)" : $"[Reflection using {sunSign}, max 60 words]";
+            var desc_trait = isChinese ? "象征特质" : "[Symbolic quality]";
+            
             // Whisper & Essence
-            var desc_whisper = isChinese
-                ? $"40-50字，以'{birthYearAnimalTranslated}'开头的灵魂低语"
-                : $"[40-50 words starting '{birthYearAnimalTranslated} invites...']";
-            var desc_sun_tag = isChinese ? "2-5字，诗意比喻 (你...)" : "You [2-5 words poetic metaphor]";
-            var desc_arch_name = isChinese ? "3-5字，原型名称" : "[3-5 words archetype]";
-            var desc_sun_desc = isChinese
-                ? "18-25字，核心品质描述 (使用'你')"
-                : "[18-25 words describing core symbolic qualities using 'You']";
-            var desc_moon_desc = isChinese ? "15-20字，情感景观描述" : "[15-20 words describing emotional landscape]";
-            var desc_rising_desc =
-                isChinese ? "20-28字，自我表达方式描述" : "[20-28 words describing how they express themselves]";
-            var desc_essence = isChinese ? "15-20字，总结你的本质" : "[15-20 words 'You contemplate like [Sun]...']";
-
+            var desc_whisper = isChinese ? $"以'{birthYearAnimalTranslated}'开头的灵魂低语 (限50字)" : $"[Short message starting '{birthYearAnimalTranslated} invites...', max 50 words]";
+            var desc_sun_tag = isChinese ? "诗意比喻 (你...)" : "You [poetic metaphor]";
+            var desc_arch_name = isChinese ? "原型名称" : "[Archetype name]";
+            var desc_sun_desc = isChinese ? "核心品质描述" : "[Core qualities]";
+            var desc_moon_desc = isChinese ? "情感景观描述" : "[Emotional landscape]";
+            var desc_rising_desc = isChinese ? "自我表达方式" : "[Expression style]";
+            var desc_essence = isChinese ? "本质总结 (限20字)" : "[Essence summary, max 20 words]";
+            
             // Strengths & Challenges
-            var desc_str_intro = isChinese ? "10-15字，关于旅程与内在品质的概述" : "[10-15 words on journey]";
-            var desc_title = isChinese ? "2-5字，标题" : "[2-5 words]";
-            var desc_str_desc = isChinese ? "15-25字，优势描述 (反思性语调)" : "[15-25 words reflective tone]";
-            var desc_chal_intro = isChinese
-                ? "12-18字，以'当...时，觉察加深'开头"
-                : "[12-18 words starting 'Your awareness deepens when...']";
-            var desc_chal_desc = isChinese ? "8-15字，挑战描述 (邀请式语调)" : "[8-15 words invitational tone]";
-
+            var desc_str_intro = isChinese ? "旅程与品质概述" : "[Journey overview]";
+            var desc_title = isChinese ? "标题" : "[Title]";
+            var desc_str_desc = isChinese ? "优势描述" : "[Strength description]";
+            var desc_chal_intro = isChinese ? "关于觉察的引导" : "[Awareness intro]";
+            var desc_chal_desc = isChinese ? "挑战描述 (邀请式语调)" : "[Challenge description (invitational)]";
+            
             // Destiny
-            var desc_destiny_intro =
-                isChinese ? "20-30字，以'你的旅程邀请你...'开头" : "[20-30 words starting 'Your journey invites you...']";
-            var desc_path_title = isChinese ? "3-5个原型角色 (用/分隔)" : "[3-5 archetypal roles separated by /]";
-            var desc_path_desc = isChinese ? "3-6字，象征性表达" : "[3-6 words describing symbolic expression]";
-
+            var desc_destiny_intro = isChinese ? "关于旅程的邀请 (限30字)" : "[Journey invitation, max 30 words]";
+            var desc_path_title = isChinese ? "原型角色" : "[Archetypal role]";
+            var desc_path_desc = isChinese ? "象征性表达" : "[Symbolic expression]";
+            
             // Cycles
-            var desc_cycle_intro =
-                isChinese ? $"50-65字，{cycleIntroInstruction}" : $"[50-65 words. {cycleIntroInstruction}]";
-            var desc_cycle_pt = isChinese ? "8-12字，象征主题" : "[8-12 words describing symbolic theme]";
-            var desc_ten_intro = isChinese ? "40-60字，关于生命阶段能量、元素与象征一致性的概述" : "[40-60 words on life phase energetics]";
-            var desc_phase_summary = isChinese ? "8-12字，阶段能量概述" : "[8-12 words describing phase energy]";
-            var desc_phase_detail_past =
-                isChinese ? "60-80字，过去时态，描述能量模式" : "[60-80 words past tense, symbolic dynamics]";
-            var desc_phase_detail_curr =
-                isChinese ? "60-80字，现在时态，描述当下的邀请" : "[60-80 words present tense, what invites exploration]";
-            var desc_phase_detail_fut =
-                isChinese ? "60-80字，将来时态，描述浮现的主题" : "[60-80 words future tense, emerging themes]";
-
+            var desc_cycle_intro = isChinese ? $"周期概述 (限60字)" : $"[Cycle overview, max 60 words]";
+            var desc_cycle_pt = isChinese ? "象征主题" : "[Symbolic theme]";
+            var desc_ten_intro = isChinese ? "生命阶段能量概述 (限50字)" : "[Life phase energy, max 50 words]";
+            var desc_phase_summary = isChinese ? "阶段能量关键词" : "[Phase energy keyword]";
+            var desc_phase_detail_past = isChinese ? "过去能量模式 (限60字)" : "[Past energy pattern, max 60 words]";
+            var desc_phase_detail_curr = isChinese ? "当下探索邀请 (限60字)" : "[Current exploration, max 60 words]";
+            var desc_phase_detail_fut = isChinese ? "未来浮现主题 (限60字)" : "[Future emerging theme, max 60 words]";
+            
             // Plot
-            var desc_plot_title = isChinese ? "10-20字，诗意原型 (你体现了...)" : "You embody [10-20 words poetic archetype]";
-            var desc_plot_chapter =
-                isChinese ? $"30-50字，致{displayName}的人生叙事" : $"[30-50 words addressing user by Display Name]";
-            var desc_plot_pt = isChinese ? "5-15字，象征主题" : "[5-15 words describing symbolic theme]";
-            var desc_act_desc = isChinese ? "10-20字，邀请沉思与探索" : "[10-20 words inviting contemplation]";
-
+            var desc_plot_title = isChinese ? "诗意原型 (你体现了...)" : "You embody [poetic archetype]";
+            var desc_plot_chapter = isChinese ? $"致{displayName}的人生叙事 (限40字)" : $"[Narrative for {displayName}, max 40 words]";
+            var desc_plot_pt = isChinese ? "象征主题" : "[Symbolic theme]";
+            var desc_act_desc = isChinese ? "沉思与探索邀请" : "[Contemplation invitation]";
+            
             // Mantra
-            var desc_mantra_pt1 =
-                isChinese ? "5-15字，'我探索...' (I explore...)" : "[5-15 words using 'I explore X as if...']";
-            var desc_mantra_pt2 = isChinese ? "5-15字，探索性语言" : "[5-15 words using exploratory language]";
-            var desc_mantra_pt3 = isChinese ? "5-15字，最有力量的探索" : "[5-15 words most empowering exploration]";
+            var desc_mantra_pt1 = isChinese ? "探索宣言 (我探索...)" : "['I explore...' statement]";
+            var desc_mantra_pt2 = isChinese ? "探索性语言" : "[Exploratory language]";
+            var desc_mantra_pt3 = isChinese ? "最有力量的探索" : "[Empowering exploration]";
             
             prompt = singleLanguagePrefix + $@"Create a lifetime astrological narrative for self-reflection.
 User: {userInfoLine}
