@@ -93,8 +93,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 24: Fixed Daily translation to replace original field values; Localized Lifetime cycle_title and cycle_intro templates
     /// Version 25: Moved Western Astrology calculation logic from WesternAstrologyCalculator into LumenPredictionGAgent to fix logger null issue
     /// Version 26: Changed zodiacCycle_title to be backend-constructed - LLM returns only year range (cycle_year_range), backend injects localized prefix
+    /// Version 27: Dynamic cycle_name fields - always request cycle_name_zh plus one language-specific field (en/zh-tw/es) based on targetLanguage
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 26; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 27; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1889,6 +1890,16 @@ FORMAT REQUIREMENT:
             var desc_mantra_pt2 = isChinese ? "探索性语言" : "[Exploratory language]";
             var desc_mantra_pt3 = isChinese ? "最有力量的探索" : "[Empowering exploration]";
             
+            // Dynamic cycle_name field based on target language
+            // Always include cycle_name_zh (baseline), plus one additional language-specific field
+            var additionalCycleNameField = targetLanguage switch
+            {
+                "zh" => "cycle_name_en\t[English name for cycle theme]",
+                "zh-tw" => "cycle_name_zh-tw\t[Traditional Chinese name for cycle theme]",
+                "es" => "cycle_name_es\t[Spanish name for cycle theme]",
+                _ => "cycle_name_en\t[English name for cycle theme]" // Default to English for other languages
+            };
+            
             prompt = singleLanguagePrefix + $@"Create a lifetime astrological narrative for self-reflection.
 User: {userInfoLine}
 Current Year: {currentYear}
@@ -1948,8 +1959,8 @@ path3_title	{desc_path_title}
 path3_desc	{desc_path_desc}
 cn_essence	{desc_cn_essence}
 cycle_year_range	YYYY-YYYY
-cycle_name_en	[English name for cycle theme]
-cycle_name_zh	[Chinese name for cycle theme]
+cycle_name_zh	[Simplified Chinese name for cycle theme]
+{additionalCycleNameField}
 cycle_intro	{desc_cycle_intro}
 cycle_pt1	{desc_cycle_pt}
 cycle_pt2	{desc_cycle_pt}
@@ -2977,8 +2988,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["path3_desc"] = "destiny_path3_description",
             ["cn_essence"] = "chineseZodiac_essence",
             ["cycle_year_range"] = "zodiacCycle_yearRange",
-            ["cycle_name_en"] = "zodiacCycle_cycleName",
             ["cycle_name_zh"] = "zodiacCycle_cycleNameChinese",
+            ["cycle_name_en"] = "zodiacCycle_cycleName",
+            ["cycle_name_zh-tw"] = "zodiacCycle_cycleName", // Traditional Chinese -> same field
+            ["cycle_name_es"] = "zodiacCycle_cycleName", // Spanish -> same field
             ["cycle_intro"] = "zodiacCycle_overview",
             ["cycle_pt1"] = "zodiacCycle_dayMasterPoint1",
             ["cycle_pt2"] = "zodiacCycle_dayMasterPoint2",
