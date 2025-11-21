@@ -6,6 +6,7 @@ using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Lumen.Dtos;
+using Aevatar.Application.Grains.Lumen.Helpers;
 using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
@@ -959,6 +960,38 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         try
         {
+            // ========== TIMEZONE CORRECTION (EARLY) ==========
+            // Convert local birth time to UTC for accurate astrological calculations
+            var calcBirthDate = userInfo.BirthDate;
+            var calcBirthTime = userInfo.BirthTime;
+
+            if (!string.IsNullOrWhiteSpace(userInfo.LatLong))
+            {
+                try
+                {
+                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) && 
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
+                    {
+                        var localDateTime = userInfo.BirthDate.ToDateTime(userInfo.BirthTime ?? TimeOnly.MinValue);
+                        var (utcDateTime, offset, tzId) = LumenTimezoneHelper.GetUtcTimeFromLocal(localDateTime, lat, lon);
+                        
+                        calcBirthDate = DateOnly.FromDateTime(utcDateTime);
+                        if (userInfo.BirthTime.HasValue)
+                        {
+                            calcBirthTime = TimeOnly.FromDateTime(utcDateTime);
+                        }
+                        
+                        _logger.LogInformation($"[LumenPredictionGAgent] Timezone corrected: {localDateTime} (Local) -> {utcDateTime} (UTC) [{tzId}], BirthTime provided: {userInfo.BirthTime.HasValue}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[LumenPredictionGAgent] Failed to apply timezone correction");
+                }
+            }
+            
             // Pre-calculate Moon and Rising signs if birth time and latlong are available
             string? moonSign = null;
             string? risingSign = null;
@@ -967,7 +1000,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             _logger.LogInformation(
                 $"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
             
-            if (userInfo.BirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
+            if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
                 {
@@ -983,10 +1016,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                             out double longitude))
                     {
                         _logger.LogInformation(
-                            $"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude})");
+                            $"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude}) using Corrected UTC: {calcBirthDate} {calcBirthTime}");
                         var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
-                            userInfo.BirthDate,
-                            userInfo.BirthTime.Value,
+                            calcBirthDate,
+                            calcBirthTime.Value,
                             latitude,
                             longitude);
                         
@@ -1190,11 +1223,11 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 $"[PERF][Lumen] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             // ========== INJECT BACKEND-CALCULATED FIELDS ==========
-            // Pre-calculate values once
+            // Pre-calculate values once (using timezone-corrected calcBirthDate from method start)
             var currentYear = DateTime.UtcNow.Year;
-            var birthYear = userInfo.BirthDate.Year;
-            
-            var sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            var birthYear = calcBirthDate.Year;
+
+            var sunSign = LumenCalculator.CalculateZodiacSign(calcBirthDate);
             var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
             var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
             var currentYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(currentYear);
@@ -1209,13 +1242,14 @@ Your task is to create engaging, inspirational, and reflective content that invi
             if (type == PredictionType.Lifetime)
             {
                 // Calculate Four Pillars (Ba Zi)
-                var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+                var fourPillars = LumenCalculator.CalculateFourPillars(calcBirthDate, calcBirthTime);
                 
                 // Inject into primary language results
                 parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
                 parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
                 parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
                 parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
+                
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                 parsedResults["westernOverview_sunSign"] = TranslateSunSign(sunSign, targetLanguage);
@@ -1286,15 +1320,18 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 var yearlyTaishui = LumenCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
                 
                 // Inject into primary language results
+                // NOTE: Use birth year stems (年柱) to match BaZi year pillar
+                var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
+                
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
                 parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
                 parsedResults["chineseZodiac_enum"] =
                     ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
-                parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
-                parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
-                parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
-                parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
+                parsedResults["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
+                parsedResults["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
+                parsedResults["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
+                parsedResults["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
                 parsedResults["chineseAstrology_taishuiRelationship"] =
                     TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
                 parsedResults["zodiacInfluence"] =
@@ -1313,13 +1350,13 @@ Your task is to create engaging, inspirational, and reflective content that invi
                         multilingualResults[lang]["chineseZodiac_enum"] =
                             ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                         multilingualResults[lang]["chineseAstrology_currentYearStem"] =
-                            currentYearStemsComponents.stemChinese;
+                            birthYearStemsComponents.stemChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
-                            currentYearStemsComponents.stemPinyin;
+                            birthYearStemsComponents.stemPinyin;
                         multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
-                            currentYearStemsComponents.branchChinese;
+                            birthYearStemsComponents.branchChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
-                            currentYearStemsComponents.branchPinyin;
+                            birthYearStemsComponents.branchPinyin;
                         multilingualResults[lang]["chineseAstrology_taishuiRelationship"] =
                             TranslateTaishuiRelationship(yearlyTaishui, lang);
                         multilingualResults[lang]["zodiacInfluence"] =
@@ -1772,69 +1809,62 @@ FORMAT REQUIREMENT:
                     $"Start with 'Your Chinese Zodiac is {birthYearAnimalTranslated}...' and describe the 20-year symbolic cycle"
             };
 
-            // DYNAMIC DESCRIPTIONS (Lifetime - Localized)
+            // DYNAMIC DESCRIPTIONS (Lifetime - Localized & Relaxed)
             bool isChinese = targetLanguage.StartsWith("zh");
-
+            
             // Pillars
-            var desc_pillars_id = isChinese ? "12-18字，基于显示名的身份认同" : "[12-18 words addressing user by Display Name]";
-            var desc_pillars_detail =
-                isChinese ? $"45-60字，结合{sunSign}的深度解读" : $"[45-60 words using {sunSign}, contemplative]";
-            var desc_trait = isChinese ? "8-12字，象征特质" : "[8-12 words describing symbolic qualities]";
-
+            var desc_pillars_id = isChinese ? "身份认同短语" : "[Short phrase addressing user]";
+            var desc_pillars_detail = isChinese ? $"基于{sunSign}的深度解读 (限60字)" : $"[Reflection using {sunSign}, max 60 words]";
+            var desc_trait = isChinese ? "象征特质" : "[Symbolic quality]";
+            
             // Whisper & Essence
-            var desc_whisper = isChinese
-                ? $"40-50字，以'{birthYearAnimalTranslated}'开头的灵魂低语"
-                : $"[40-50 words starting '{birthYearAnimalTranslated} invites...']";
-            var desc_sun_tag = isChinese ? "2-5字，诗意比喻 (你...)" : "You [2-5 words poetic metaphor]";
-            var desc_arch_name = isChinese ? "3-5字，原型名称" : "[3-5 words archetype]";
-            var desc_sun_desc = isChinese
-                ? "18-25字，核心品质描述 (使用'你')"
-                : "[18-25 words describing core symbolic qualities using 'You']";
-            var desc_moon_desc = isChinese ? "15-20字，情感景观描述" : "[15-20 words describing emotional landscape]";
-            var desc_rising_desc =
-                isChinese ? "20-28字，自我表达方式描述" : "[20-28 words describing how they express themselves]";
-            var desc_essence = isChinese ? "15-20字，总结你的本质" : "[15-20 words 'You contemplate like [Sun]...']";
-
+            var desc_whisper = isChinese ? $"以'{birthYearAnimalTranslated}'开头的灵魂低语 (限50字)" : $"[Short message starting '{birthYearAnimalTranslated} invites...', max 50 words]";
+            var desc_sun_tag = isChinese ? "诗意比喻 (你...)" : "You [poetic metaphor]";
+            var desc_arch_name = isChinese ? "原型名称" : "[Archetype name]";
+            var desc_sun_desc = isChinese ? "核心品质描述" : "[Core qualities]";
+            var desc_moon_desc = isChinese ? "情感景观描述" : "[Emotional landscape]";
+            var desc_rising_desc = isChinese ? "自我表达方式" : "[Expression style]";
+            var desc_essence = isChinese ? "本质总结 (限20字)" : "[Essence summary, max 20 words]";
+            
             // Strengths & Challenges
-            var desc_str_intro = isChinese ? "10-15字，关于旅程与内在品质的概述" : "[10-15 words on journey]";
-            var desc_title = isChinese ? "2-5字，标题" : "[2-5 words]";
-            var desc_str_desc = isChinese ? "15-25字，优势描述 (反思性语调)" : "[15-25 words reflective tone]";
-            var desc_chal_intro = isChinese
-                ? "12-18字，以'当...时，觉察加深'开头"
-                : "[12-18 words starting 'Your awareness deepens when...']";
-            var desc_chal_desc = isChinese ? "8-15字，挑战描述 (邀请式语调)" : "[8-15 words invitational tone]";
-
+            var desc_str_intro = isChinese ? "旅程与品质概述" : "[Journey overview]";
+            var desc_title = isChinese ? "标题" : "[Title]";
+            var desc_str_desc = isChinese ? "优势描述" : "[Strength description]";
+            var desc_chal_intro = isChinese ? "关于觉察的引导" : "[Awareness intro]";
+            var desc_chal_desc = isChinese ? "挑战描述 (邀请式语调)" : "[Challenge description (invitational)]";
+            
             // Destiny
-            var desc_destiny_intro =
-                isChinese ? "20-30字，以'你的旅程邀请你...'开头" : "[20-30 words starting 'Your journey invites you...']";
-            var desc_path_title = isChinese ? "3-5个原型角色 (用/分隔)" : "[3-5 archetypal roles separated by /]";
-            var desc_path_desc = isChinese ? "3-6字，象征性表达" : "[3-6 words describing symbolic expression]";
-
+            var desc_destiny_intro = isChinese ? "关于旅程的邀请 (限30字)" : "[Journey invitation, max 30 words]";
+            var desc_path_title = isChinese ? "原型角色" : "[Archetypal role]";
+            var desc_path_desc = isChinese ? "象征性表达" : "[Symbolic expression]";
+            
+            // Chinese Zodiac Essence
+            var desc_cn_essence = targetLanguage switch
+            {
+                "zh" => $"与{birthYearElement}共鸣的本质",
+                "zh-tw" => $"與{birthYearElement}共鳴的本質",
+                _ => $"Essence resonating with {birthYearElement}"
+            };
+            
             // Cycles
-            var desc_cycle_intro =
-                isChinese ? $"50-65字，{cycleIntroInstruction}" : $"[50-65 words. {cycleIntroInstruction}]";
-            var desc_cycle_pt = isChinese ? "8-12字，象征主题" : "[8-12 words describing symbolic theme]";
-            var desc_ten_intro = isChinese ? "40-60字，关于生命阶段能量、元素与象征一致性的概述" : "[40-60 words on life phase energetics]";
-            var desc_phase_summary = isChinese ? "8-12字，阶段能量概述" : "[8-12 words describing phase energy]";
-            var desc_phase_detail_past =
-                isChinese ? "60-80字，过去时态，描述能量模式" : "[60-80 words past tense, symbolic dynamics]";
-            var desc_phase_detail_curr =
-                isChinese ? "60-80字，现在时态，描述当下的邀请" : "[60-80 words present tense, what invites exploration]";
-            var desc_phase_detail_fut =
-                isChinese ? "60-80字，将来时态，描述浮现的主题" : "[60-80 words future tense, emerging themes]";
-
+            var desc_cycle_intro = isChinese ? $"周期概述 (限60字)" : $"[Cycle overview, max 60 words]";
+            var desc_cycle_pt = isChinese ? "象征主题" : "[Symbolic theme]";
+            var desc_ten_intro = isChinese ? "生命阶段能量概述 (限50字)" : "[Life phase energy, max 50 words]";
+            var desc_phase_summary = isChinese ? "阶段能量关键词" : "[Phase energy keyword]";
+            var desc_phase_detail_past = isChinese ? "过去能量模式 (限60字)" : "[Past energy pattern, max 60 words]";
+            var desc_phase_detail_curr = isChinese ? "当下探索邀请 (限60字)" : "[Current exploration, max 60 words]";
+            var desc_phase_detail_fut = isChinese ? "未来浮现主题 (限60字)" : "[Future emerging theme, max 60 words]";
+            
             // Plot
-            var desc_plot_title = isChinese ? "10-20字，诗意原型 (你体现了...)" : "You embody [10-20 words poetic archetype]";
-            var desc_plot_chapter =
-                isChinese ? $"30-50字，致{displayName}的人生叙事" : $"[30-50 words addressing user by Display Name]";
-            var desc_plot_pt = isChinese ? "5-15字，象征主题" : "[5-15 words describing symbolic theme]";
-            var desc_act_desc = isChinese ? "10-20字，邀请沉思与探索" : "[10-20 words inviting contemplation]";
-
+            var desc_plot_title = isChinese ? "诗意原型 (你体现了...)" : "You embody [poetic archetype]";
+            var desc_plot_chapter = isChinese ? $"致{displayName}的人生叙事 (限40字)" : $"[Narrative for {displayName}, max 40 words]";
+            var desc_plot_pt = isChinese ? "象征主题" : "[Symbolic theme]";
+            var desc_act_desc = isChinese ? "沉思与探索邀请" : "[Contemplation invitation]";
+            
             // Mantra
-            var desc_mantra_pt1 =
-                isChinese ? "5-15字，'我探索...' (I explore...)" : "[5-15 words using 'I explore X as if...']";
-            var desc_mantra_pt2 = isChinese ? "5-15字，探索性语言" : "[5-15 words using exploratory language]";
-            var desc_mantra_pt3 = isChinese ? "5-15字，最有力量的探索" : "[5-15 words most empowering exploration]";
+            var desc_mantra_pt1 = isChinese ? "探索宣言 (我探索...)" : "['I explore...' statement]";
+            var desc_mantra_pt2 = isChinese ? "探索性语言" : "[Exploratory language]";
+            var desc_mantra_pt3 = isChinese ? "最有力量的探索" : "[Empowering exploration]";
             
             prompt = singleLanguagePrefix + $@"Create a lifetime astrological narrative for self-reflection.
 User: {userInfoLine}
@@ -1893,7 +1923,7 @@ path2_title	{desc_path_title}
 path2_desc	{desc_path_desc}
 path3_title	{desc_path_title}
 path3_desc	{desc_path_desc}
-cn_essence	Essence resonating with {birthYearElement}
+cn_essence	{desc_cn_essence}
 cycle_title	{cycleTitlePrefix} (YYYY-YYYY)
 cycle_name_en	[English name for cycle theme]
 cycle_name_zh	[Chinese name for cycle theme]
@@ -2317,8 +2347,8 @@ Generate translations for: {targetLangNames}
                     _logger.LogWarning(
                         $"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}, RetryCount: {currentRetryCount}/{MAX_RETRY_COUNT}");
                 
-                // Check if we should retry (parse failure with retry budget remaining)
-                if (currentRetryCount < MAX_RETRY_COUNT && predictionResult.Message?.Contains("parse") == true)
+                // Check if we should retry (any failure with retry budget remaining)
+                if (currentRetryCount < MAX_RETRY_COUNT)
                 {
                     // Increment retry count using Event Sourcing
                     var newRetryCount = currentRetryCount + 1;
@@ -2331,16 +2361,16 @@ Generate translations for: {targetLangNames}
                     await ConfirmEvents();
                     
                         _logger.LogInformation(
-                            $"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{MAX_RETRY_COUNT})");
+                            $"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{MAX_RETRY_COUNT}), Reason: {predictionResult.Message}");
                     
                     // Trigger retry (fire-and-forget)
                     _ = GeneratePredictionInBackgroundAsync(userInfo, predictionDate, type, targetLanguage);
                     return; // Don't release lock in finally block, as we're retrying
                 }
-                else if (currentRetryCount >= MAX_RETRY_COUNT)
+                else
                 {
                         _logger.LogError(
-                            $"[Lumen][OnDemand] {userInfo.UserId} MAX_RETRY_EXCEEDED for {type}, giving up after {currentRetryCount} attempts");
+                            $"[Lumen][OnDemand] {userInfo.UserId} MAX_RETRY_EXCEEDED for {type}, giving up after {currentRetryCount} attempts, Last error: {predictionResult.Message}");
                 }
             }
             else
@@ -2529,14 +2559,6 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             
             // Parse response
             var parseStopwatch = Stopwatch.StartNew();
-            
-            // Check for LLM refusal
-            if (IsLLMRefusal(aiResponse))
-            {
-                    _logger.LogError(
-                        $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} LLM refused to generate content. Full response:\n{aiResponse}");
-                return;
-            }
             
             // Try TSV format first (new format)
             var contentDict = new Dictionary<string, string>();
@@ -2767,47 +2789,6 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// </summary>
     
     /// <summary>
-    /// Check if the LLM response is a refusal or error message
-    /// </summary>
-    private bool IsLLMRefusal(string aiResponse)
-    {
-        if (string.IsNullOrWhiteSpace(aiResponse))
-        {
-            return true;
-        }
-
-        var lowerResponse = aiResponse.ToLower();
-                
-        // Common refusal patterns
-        var refusalPatterns = new[]
-        {
-            "i'm sorry",
-            "i cannot",
-            "i can't",
-            "i am unable",
-            "unable to fulfill",
-            "cannot fulfill",
-            "i apologize",
-            "as an ai",
-            "against my",
-            "not appropriate",
-            "cannot comply"
-        };
-
-        foreach (var pattern in refusalPatterns)
-        {
-            if (lowerResponse.Contains(pattern))
-                {
-                    _logger.LogWarning(
-                        $"[LumenPredictionGAgent][IsLLMRefusal] Detected refusal pattern: '{pattern}'. Response preview: {aiResponse.Substring(0, Math.Min(200, aiResponse.Length))}");
-                return true;
-        }
-        }
-
-        return false;
-    }
-
-    /// <summary>
     /// Convert array fields from pipe-separated strings to JSON array strings for frontend
     /// </summary>
     private Dictionary<string, string> ConvertArrayFieldsToJson(Dictionary<string, string> data)
@@ -3031,14 +3012,6 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     {
         try
         {
-            // Check for LLM refusal
-            if (IsLLMRefusal(aiResponse))
-            {
-                    _logger.LogError(
-                        $"[LumenPredictionGAgent][ParseTsvResponse] LLM refused to generate content. Full response:\n{aiResponse}");
-                return null;
-            }
-
             var result = new Dictionary<string, string>();
             
             // Remove markdown code blocks if present
@@ -4556,8 +4529,40 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var birthYear = userInfo.BirthDate.Year;
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
+            // TIMEZONE CORRECTION
+            var calcBirthDate = userInfo.BirthDate;
+            var calcBirthTime = userInfo.BirthTime;
+
+            if (!string.IsNullOrWhiteSpace(userInfo.LatLong))
+            {
+                try
+                {
+                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) && 
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
+                    {
+                        var localDateTime = userInfo.BirthDate.ToDateTime(userInfo.BirthTime ?? TimeOnly.MinValue);
+                        var (utcDateTime, offset, tzId) = LumenTimezoneHelper.GetUtcTimeFromLocal(localDateTime, lat, lon);
+                        
+                        calcBirthDate = DateOnly.FromDateTime(utcDateTime);
+                        if (userInfo.BirthTime.HasValue) 
+                        {
+                            calcBirthTime = TimeOnly.FromDateTime(utcDateTime);
+                        }
+                        birthYear = calcBirthDate.Year;
+                        
+                        _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Timezone corrected: {localDateTime} (Local) -> {utcDateTime} (UTC) [{tzId}]");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to apply timezone correction");
+                }
+            }
+            
             // ========== WESTERN ASTROLOGY ==========
-            string sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+            string sunSign = LumenCalculator.CalculateZodiacSign(calcBirthDate);
             results["sunSign_name"] = TranslateSunSign(sunSign, userLanguage);
             results["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
             
@@ -4584,10 +4589,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                             out double longitude))
                     {
                         _logger.LogInformation(
-                            $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Starting Western Astrology calculation at ({latitude}, {longitude})");
+                            $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Starting Western Astrology calculation at ({latitude}, {longitude}) using Corrected UTC: {calcBirthDate} {calcBirthTime}");
                         var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
-                            userInfo.BirthDate,
-                            userInfo.BirthTime.Value,
+                            calcBirthDate,
+                            calcBirthTime.Value,
                             latitude,
                             longitude);
                         
@@ -4648,13 +4653,20 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             results["currentYear_animal"] = currentYearAnimal;
             results["currentYear_element"] = currentYearElement;
             
-            // Current Year Stems
-            var currentYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(currentYear);
-            results["currentYear_stems"] = LumenCalculator.CalculateStemsAndBranches(currentYear);
-            results["currentYear_stemChinese"] = currentYearStemsComponents.stemChinese;
-            results["currentYear_stemPinyin"] = currentYearStemsComponents.stemPinyin;
-            results["currentYear_branchChinese"] = currentYearStemsComponents.branchChinese;
-            results["currentYear_branchPinyin"] = currentYearStemsComponents.branchPinyin;
+            // Current Year Stems (using birth year to match BaZi year pillar)
+            var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
+            results["currentYear_stems"] = LumenCalculator.CalculateStemsAndBranches(birthYear);
+            results["currentYear_stemChinese"] = birthYearStemsComponents.stemChinese;
+            results["currentYear_stemPinyin"] = birthYearStemsComponents.stemPinyin;
+            results["currentYear_branchChinese"] = birthYearStemsComponents.branchChinese;
+            results["currentYear_branchPinyin"] = birthYearStemsComponents.branchPinyin;
+            
+            // Add chineseAstrology_ prefixed fields (matching prediction response format)
+            results["chineseAstrology_currentYear"] = TranslateChineseZodiacAnimal(birthYearZodiac, userLanguage);
+            results["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
+            results["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
+            results["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
+            results["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
             
             // Taishui Relationship
             var taishuiRelationship = LumenCalculator.CalculateTaishuiRelationship(birthYear, currentYear);
@@ -4686,7 +4698,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             results["currentPhase"] = currentPhase.ToString();
             
             // ========== FOUR PILLARS (BA ZI) ==========
-            var fourPillars = LumenCalculator.CalculateFourPillars(userInfo.BirthDate, userInfo.BirthTime);
+            var fourPillars = LumenCalculator.CalculateFourPillars(calcBirthDate, calcBirthTime);
             // Use same detailed structure as Lifetime prediction
             InjectFourPillarsData(results, fourPillars, userLanguage);
             
