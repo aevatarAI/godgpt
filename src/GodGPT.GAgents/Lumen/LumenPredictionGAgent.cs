@@ -1233,7 +1233,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
             var sunSign = LumenCalculator.CalculateZodiacSign(calcBirthDate);
             var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
             var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
-            var currentYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(currentYear);
+            var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
             var pastCycle = LumenCalculator.CalculateTenYearCycle(birthYear, -1);
             var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
             var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
@@ -1248,10 +1248,11 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 var fourPillars = LumenCalculator.CalculateFourPillars(calcBirthDate, calcBirthTime);
                 
                 // Inject into primary language results
-                parsedResults["chineseAstrology_currentYearStem"] = currentYearStemsComponents.stemChinese;
-                parsedResults["chineseAstrology_currentYearStemPinyin"] = currentYearStemsComponents.stemPinyin;
-                parsedResults["chineseAstrology_currentYearBranch"] = currentYearStemsComponents.branchChinese;
-                parsedResults["chineseAstrology_currentYearBranchPinyin"] = currentYearStemsComponents.branchPinyin;
+                // NOTE: Use birth year stems (年柱) to match BaZi year pillar
+                parsedResults["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
+                parsedResults["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
+                parsedResults["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
+                parsedResults["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
                 
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
@@ -1298,14 +1299,15 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     foreach (var lang in multilingualResults.Keys)
                     {
+                        // NOTE: Use birth year stems (年柱) to match BaZi year pillar
                         multilingualResults[lang]["chineseAstrology_currentYearStem"] =
-                            currentYearStemsComponents.stemChinese;
+                            birthYearStemsComponents.stemChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
-                            currentYearStemsComponents.stemPinyin;
+                            birthYearStemsComponents.stemPinyin;
                         multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
-                            currentYearStemsComponents.branchChinese;
+                            birthYearStemsComponents.branchChinese;
                         multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
-                            currentYearStemsComponents.branchPinyin;
+                            birthYearStemsComponents.branchPinyin;
                         multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
                         multilingualResults[lang]["sunSign_enum"] =
                             ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
@@ -4939,11 +4941,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Convert DateTime to Julian Day Number (for Swiss Ephemeris)
+    /// Input dateTime should already be in UTC from timezone correction
     /// </summary>
     private double ToJulianDay(SwissEph swissEph, DateTime dateTime)
     {
-        // Convert to UTC for astronomical calculations
-        dateTime = dateTime.ToUniversalTime();
+        // Specify as UTC kind (do NOT call ToUniversalTime as it would double-convert)
+        // The input is already UTC from calcBirthDate + calcBirthTime
+        dateTime = DateTime.SpecifyKind(dateTime, DateTimeKind.Utc);
         
         int year = dateTime.Year;
         int month = dateTime.Month;
