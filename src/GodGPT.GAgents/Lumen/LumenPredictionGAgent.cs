@@ -1838,6 +1838,14 @@ FORMAT REQUIREMENT:
             var desc_path_title = isChinese ? "原型角色" : "[Archetypal role]";
             var desc_path_desc = isChinese ? "象征性表达" : "[Symbolic expression]";
             
+            // Chinese Zodiac Essence
+            var desc_cn_essence = targetLanguage switch
+            {
+                "zh" => $"与{birthYearElement}共鸣的本质",
+                "zh-tw" => $"與{birthYearElement}共鳴的本質",
+                _ => $"Essence resonating with {birthYearElement}"
+            };
+            
             // Cycles
             var desc_cycle_intro = isChinese ? $"周期概述 (限60字)" : $"[Cycle overview, max 60 words]";
             var desc_cycle_pt = isChinese ? "象征主题" : "[Symbolic theme]";
@@ -1915,7 +1923,7 @@ path2_title	{desc_path_title}
 path2_desc	{desc_path_desc}
 path3_title	{desc_path_title}
 path3_desc	{desc_path_desc}
-cn_essence	Essence resonating with {birthYearElement}
+cn_essence	{desc_cn_essence}
 cycle_title	{cycleTitlePrefix} (YYYY-YYYY)
 cycle_name_en	[English name for cycle theme]
 cycle_name_zh	[Chinese name for cycle theme]
