@@ -92,8 +92,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 23: Changed card_name/card_orient/stone fields to use English standard names; Added automatic Chinese translation via dictionary lookup
     /// Version 24: Fixed Daily translation to replace original field values; Localized Lifetime cycle_title and cycle_intro templates
     /// Version 25: Moved Western Astrology calculation logic from WesternAstrologyCalculator into LumenPredictionGAgent to fix logger null issue
+    /// Version 26: Changed zodiacCycle_title to be backend-constructed - LLM returns only year range (cycle_year_range), backend injects localized prefix
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 25; // TODO: Change to 0 or remove before production
+    private const int CURRENT_PROMPT_VERSION = 26; // TODO: Change to 0 or remove before production
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
@@ -1266,6 +1267,19 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 parsedResults["futureCycle_ageRange"] = TranslateCycleAgeRange(futureCycle.AgeRange, targetLanguage);
                 parsedResults["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, targetLanguage);
                 
+                // Construct zodiacCycle_title from backend prefix + LLM-generated year range
+                if (parsedResults.TryGetValue("zodiacCycle_yearRange", out var yearRange) && !string.IsNullOrWhiteSpace(yearRange))
+                {
+                    var cycleTitlePrefix = targetLanguage switch
+                    {
+                        "zh" => "生肖周期影响",
+                        "zh-tw" => "生肖週期影響",
+                        "es" => "Influencia del Ciclo Zodiacal",
+                        _ => "Zodiac Cycle Influence"
+                    };
+                    parsedResults["zodiacCycle_title"] = $"{cycleTitlePrefix} ({yearRange})";
+                }
+                
                 // Inject Four Pillars data
                 InjectFourPillarsData(parsedResults, fourPillars, targetLanguage);
                 
@@ -1304,6 +1318,20 @@ Your task is to create engaging, inspirational, and reflective content that invi
                             TranslateCycleAgeRange(futureCycle.AgeRange, lang);
                         multilingualResults[lang]["futureCycle_period"] =
                             TranslateCyclePeriod(futureCycle.Period, lang);
+                        
+                        // Construct zodiacCycle_title for each language
+                        if (multilingualResults[lang].TryGetValue("zodiacCycle_yearRange", out var langYearRange) && 
+                            !string.IsNullOrWhiteSpace(langYearRange))
+                        {
+                            var langCycleTitlePrefix = lang switch
+                            {
+                                "zh" => "生肖周期影响",
+                                "zh-tw" => "生肖週期影響",
+                                "es" => "Influencia del Ciclo Zodiacal",
+                                _ => "Zodiac Cycle Influence"
+                            };
+                            multilingualResults[lang]["zodiacCycle_title"] = $"{langCycleTitlePrefix} ({langYearRange})";
+                        }
                         
                         // Inject Four Pillars data with language-specific formatting
                         InjectFourPillarsData(multilingualResults[lang], fourPillars, lang);
@@ -1793,13 +1821,8 @@ FORMAT REQUIREMENT:
             var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
             var birthYearAnimalTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
             
-            // Localize template strings
-            var cycleTitlePrefix = targetLanguage switch
-            {
-                "zh" => "生肖周期共振",
-                "zh-tw" => "生肖週期共振",
-                _ => "Zodiac Cycle Resonance"
-            };
+            // Note: cycleTitlePrefix is no longer used in prompt - backend will inject the localized prefix
+            // LLM only needs to return the year range (e.g. "1984-2004")
             
             var cycleIntroInstruction = targetLanguage switch
             {
@@ -1924,7 +1947,7 @@ path2_desc	{desc_path_desc}
 path3_title	{desc_path_title}
 path3_desc	{desc_path_desc}
 cn_essence	{desc_cn_essence}
-cycle_title	{cycleTitlePrefix} (YYYY-YYYY)
+cycle_year_range	YYYY-YYYY
 cycle_name_en	[English name for cycle theme]
 cycle_name_zh	[Chinese name for cycle theme]
 cycle_intro	{desc_cycle_intro}
@@ -2953,7 +2976,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["path3_title"] = "destiny_path3_title",
             ["path3_desc"] = "destiny_path3_description",
             ["cn_essence"] = "chineseZodiac_essence",
-            ["cycle_title"] = "zodiacCycle_title",
+            ["cycle_year_range"] = "zodiacCycle_yearRange",
             ["cycle_name_en"] = "zodiacCycle_cycleName",
             ["cycle_name_zh"] = "zodiacCycle_cycleNameChinese",
             ["cycle_intro"] = "zodiacCycle_overview",
