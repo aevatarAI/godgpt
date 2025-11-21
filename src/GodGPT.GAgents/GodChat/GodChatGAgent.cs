@@ -2044,13 +2044,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         var response = await GodChatAsync(await configuration.GetSystemLLM(), content, promptSettings);
         return new Tuple<string, string>(response, title);
     }
-
-
-    private string GetFormulaFormatPrompt()
-    {
-        return "When outputting mathematical formulas, use standard Markdown LaTeX format: inline formulas with single dollar signs like $\\psi$, block formulas with double dollar signs on separate lines. Use single backslash in formulas (e.g., \\psi, \\frac), never double backslashes. Example: $$\\psi = \\psi(\\psi)$$";
-    }
-
+    
     private string GetFormulaFormatPrompt()
     {
         return "When outputting mathematical formulas, use standard Markdown LaTeX format: inline formulas with single dollar signs like $\\psi$, block formulas with double dollar signs on separate lines. Use single backslash in formulas (e.g., \\psi, \\frac), never double backslashes. Example: $$\\psi = \\psi(\\psi)$$";
