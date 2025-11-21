@@ -1368,8 +1368,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 var yearlyTaishui = LumenCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
                 
                 // Inject into primary language results
-                // NOTE: Use birth year stems (年柱) to match BaZi year pillar
-                var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
+                // NOTE: Use birth year stems (年柱) to match BaZi year pillar (already calculated above)
                 
                 parsedResults["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
