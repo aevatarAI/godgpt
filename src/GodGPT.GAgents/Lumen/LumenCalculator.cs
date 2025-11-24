@@ -446,11 +446,11 @@ public static partial class LumenCalculator
     private static PillarInfo CalculateDayPillar(DateOnly date)
     {
         // Day pillar calculation using accurate base date
-        // Reference: 2000-01-01 (Gregorian) = 戊午 (Wu Wu) - stem 4, branch 6
+        // Reference: 2000-01-01 (Gregorian) = 戊戌 (Wu Xu) - stem 4, branch 10
         // This is a well-established reference point in Chinese astrology
         var referenceDate = new DateOnly(2000, 1, 1);
         var referenceStem = 4;   // 戊
-        var referenceBranch = 6; // 午
+        var referenceBranch = 10; // 戌 (fixed from 午)
         
         var daysDiff = date.DayNumber - referenceDate.DayNumber;
         

@@ -567,11 +567,21 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     Feedbacks = null
                 };
                 
+                // Calculate remaining generations for today (only relevant for by-date API)
+                int? remainingGenerations = null;
+                if (predictionDate.HasValue)
+                {
+                    var maxDailyGenerations = _options?.MaxDailyGenerationsPerDay ?? 10;
+                    var todayGenerationCount = State.DailyGenerationCount.GetValueOrDefault(today, 0);
+                    remainingGenerations = Math.Max(0, maxDailyGenerations - todayGenerationCount);
+                }
+                
                 return new GetTodayPredictionResult
                 {
                     Success = true,
                     Message = string.Empty,
-                    Prediction = cachedDto
+                    Prediction = cachedDto,
+                    RemainingGenerations = remainingGenerations
                 };
             }
             
@@ -593,6 +603,52 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // Prediction not found - trigger async generation and return error
             _logger.LogInformation(
                 $"[Lumen][OnDemand] {userInfo.UserId} Prediction not found for {type}, triggering async generation");
+            
+            // ========== RATE LIMITING: Check if user exceeds daily generation quota (only for on-demand by-date API) ==========
+            // This applies only when generation is triggered by by-date API (predictionDate parameter is provided)
+            // Automatic daily reminder generation is NOT rate-limited
+            if (predictionDate.HasValue)
+            {
+                var maxDailyGenerations = _options?.MaxDailyGenerationsPerDay ?? 10;
+                var todayGenerationCount = State.DailyGenerationCount.GetValueOrDefault(today, 0);
+                
+                if (todayGenerationCount >= maxDailyGenerations)
+                {
+                    _logger.LogWarning(
+                        $"[Lumen][RateLimit] {userInfo.UserId} Daily generation quota exceeded - Count: {todayGenerationCount}/{maxDailyGenerations}");
+                    
+                    totalStopwatch.Stop();
+                    return new GetTodayPredictionResult
+                    {
+                        Success = false,
+                        Message = $"Daily prediction generation limit reached. You can generate up to {maxDailyGenerations} predictions per day. Please try again tomorrow.",
+                        RemainingGenerations = 0
+                    };
+                }
+                
+                // Increment generation count for today using Event Sourcing
+                RaiseEvent(new DailyGenerationCountIncrementedEvent
+                {
+                    Date = today,
+                    NewCount = todayGenerationCount + 1
+                });
+                
+                // Clean up old entries (keep only last 7 days to prevent state bloat)
+                var cutoffDate = today.AddDays(-7);
+                var keysToRemove = State.DailyGenerationCount.Keys.Where(date => date < cutoffDate).ToList();
+                if (keysToRemove.Any())
+                {
+                    RaiseEvent(new DailyGenerationCountCleanedEvent
+                    {
+                        RemovedDates = keysToRemove
+                    });
+                }
+                
+                await ConfirmEvents();
+                
+                _logger.LogInformation(
+                    $"[Lumen][RateLimit] {userInfo.UserId} Generation count updated - Count: {State.DailyGenerationCount[today]}/{maxDailyGenerations}, Remaining: {maxDailyGenerations - State.DailyGenerationCount[today]}");
+            }
             
             // Trigger async generation (wait for lock to be set, then fire-and-forget the actual generation)
             await TriggerOnDemandGenerationAsync(userInfo, today, type, userLanguage);
@@ -976,11 +1032,20 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     {
         try
         {
-            // ========== TIMEZONE CORRECTION (EARLY) ==========
-            // Convert local birth time to UTC for accurate astrological calculations
+            // ========== TIMEZONE HANDLING ==========
+            // IMPORTANT: Chinese Four Pillars (BaZi) MUST use LOCAL time, not UTC!
+            // - BaZi is based on local solar time and Chinese calendar
+            // - Day pillar changes at local midnight (子时)
+            // - Hour pillar is determined by local time
+            // 
+            // Western Astrology (Sun/Moon/Rising signs) uses UTC for celestial calculations,
+            // but we'll keep it simple and use local time for consistency.
+            
+            // Use LOCAL birth date and time (do NOT convert to UTC for BaZi)
             var calcBirthDate = userInfo.BirthDate;
             var calcBirthTime = userInfo.BirthTime;
-
+            
+            // For reference: log timezone info if available
             if (!string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
@@ -993,18 +1058,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         var localDateTime = userInfo.BirthDate.ToDateTime(userInfo.BirthTime ?? TimeOnly.MinValue);
                         var (utcDateTime, offset, tzId) = LumenTimezoneHelper.GetUtcTimeFromLocal(localDateTime, lat, lon);
                         
-                        calcBirthDate = DateOnly.FromDateTime(utcDateTime);
-                        if (userInfo.BirthTime.HasValue)
-                        {
-                            calcBirthTime = TimeOnly.FromDateTime(utcDateTime);
-                        }
-                        
-                        _logger.LogInformation($"[LumenPredictionGAgent] Timezone corrected: {localDateTime} (Local) -> {utcDateTime} (UTC) [{tzId}], BirthTime provided: {userInfo.BirthTime.HasValue}");
+                        _logger.LogInformation($"[LumenPredictionGAgent] Using LOCAL time for BaZi: {localDateTime} [{tzId}, UTC{offset}], UTC would be: {utcDateTime}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[LumenPredictionGAgent] Failed to apply timezone correction");
+                    _logger.LogWarning(ex, "[LumenPredictionGAgent] Failed to get timezone info");
                 }
             }
             
@@ -4629,10 +4688,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var birthYear = userInfo.BirthDate.Year;
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
-            // TIMEZONE CORRECTION
+            // TIMEZONE HANDLING
+            // IMPORTANT: Chinese Four Pillars (BaZi) MUST use LOCAL time, not UTC!
+            // Use LOCAL birth date and time (do NOT convert to UTC for BaZi)
             var calcBirthDate = userInfo.BirthDate;
             var calcBirthTime = userInfo.BirthTime;
 
+            // For reference: log timezone info if available
             if (!string.IsNullOrWhiteSpace(userInfo.LatLong))
             {
                 try
@@ -4645,19 +4707,12 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                         var localDateTime = userInfo.BirthDate.ToDateTime(userInfo.BirthTime ?? TimeOnly.MinValue);
                         var (utcDateTime, offset, tzId) = LumenTimezoneHelper.GetUtcTimeFromLocal(localDateTime, lat, lon);
                         
-                        calcBirthDate = DateOnly.FromDateTime(utcDateTime);
-                        if (userInfo.BirthTime.HasValue) 
-                        {
-                            calcBirthTime = TimeOnly.FromDateTime(utcDateTime);
-                        }
-                        birthYear = calcBirthDate.Year;
-                        
-                        _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Timezone corrected: {localDateTime} (Local) -> {utcDateTime} (UTC) [{tzId}]");
+                        _logger.LogInformation($"[LumenPredictionGAgent][GetCalculatedValuesAsync] Using LOCAL time for BaZi: {localDateTime} [{tzId}, UTC{offset}], UTC would be: {utcDateTime}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to apply timezone correction");
+                    _logger.LogWarning(ex, "[LumenPredictionGAgent][GetCalculatedValuesAsync] Failed to get timezone info");
                 }
             }
             
@@ -5028,6 +5083,29 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             (2, >= 19) or (3, <= 20) => "Pisces",
             _ => "Aries"
         };
+    }
+    
+    #endregion
+    
+    #region Event Handlers
+    
+    /// <summary>
+    /// Apply daily generation count incremented event to state
+    /// </summary>
+    protected void Apply(DailyGenerationCountIncrementedEvent @event)
+    {
+        State.DailyGenerationCount[@event.Date] = @event.NewCount;
+    }
+    
+    /// <summary>
+    /// Apply daily generation count cleaned event to state
+    /// </summary>
+    protected void Apply(DailyGenerationCountCleanedEvent @event)
+    {
+        foreach (var date in @event.RemovedDates)
+        {
+            State.DailyGenerationCount.Remove(date);
+        }
     }
     
     #endregion

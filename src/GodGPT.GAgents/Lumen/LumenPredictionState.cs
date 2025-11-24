@@ -41,6 +41,9 @@ public class LumenPredictionState : StateBase
     
     // Prompt version tracking (for prompt updates triggering regeneration)
     [Id(15)] public int PromptVersion { get; set; } // Version of prompt used to generate this prediction (default: 0)
+    
+    // On-demand generation rate limiting (tracks daily generation count for by-date API)
+    [Id(16)] public Dictionary<DateOnly, int> DailyGenerationCount { get; set; } = new(); // Date -> generation count
 }
 
 /// <summary>

@@ -140,6 +140,25 @@ public class GenerationLockClearedEvent : LumenPredictionEventLog
     [Id(0)] public PredictionType Type { get; set; }
 }
 
+/// <summary>
+/// Daily generation count incremented event (for rate limiting)
+/// </summary>
+[GenerateSerializer]
+public class DailyGenerationCountIncrementedEvent : LumenPredictionEventLog
+{
+    [Id(0)] public DateOnly Date { get; set; }
+    [Id(1)] public int NewCount { get; set; }
+}
+
+/// <summary>
+/// Daily generation count cleaned event (remove old entries)
+/// </summary>
+[GenerateSerializer]
+public class DailyGenerationCountCleanedEvent : LumenPredictionEventLog
+{
+    [Id(0)] public List<DateOnly> RemovedDates { get; set; } = new();
+}
+
 #endregion
 
 #region Feedback Events

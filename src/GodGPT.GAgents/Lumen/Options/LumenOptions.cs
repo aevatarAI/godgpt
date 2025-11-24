@@ -33,6 +33,13 @@ public class LumenPredictionOptions
     /// Default: 5 minutes
     /// </summary>
     public int GenerationTimeoutMinutes { get; set; } = 5;
+    
+    /// <summary>
+    /// Maximum number of on-demand daily prediction generations per day (via by-date API)
+    /// This limits how many times a user can trigger new daily predictions in a 24-hour period
+    /// Default: 10
+    /// </summary>
+    public int MaxDailyGenerationsPerDay { get; set; } = 10;
 }
 
 /// <summary>
