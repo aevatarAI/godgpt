@@ -2,6 +2,8 @@ using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.Agents.ChatManager.Options;
 using Aevatar.Application.Grains.Agents.Anonymous.Options;
+using Aevatar.Application.Grains.Lumen.Helpers;
+using Aevatar.Application.Grains.Lumen.Options;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Aevatar.Application.Grains.UserFeedback.Options;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,6 +52,15 @@ public class GodGPTGAgentModule : AbpModule
         
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
         Configure<DailyPushOptions>(configuration.GetSection("DailyPush"));
+        
+        // Configure Lumen options
+        Configure<LumenPredictionOptions>(configuration.GetSection("Lumen:Prediction"));
+        Configure<LumenUserProfileOptions>(configuration.GetSection("Lumen:UserProfile"));
+        Configure<LumenSolarTermOptions>(configuration.GetSection("Lumen:SolarTerm"));
+        
+        // Configure SolarTermData with file path from options
+        var solarTermOptions = configuration.GetSection("Lumen:SolarTerm").Get<LumenSolarTermOptions>();
+        SolarTermData.Configure(solarTermOptions?.DataFilePath);
         
         // Register speech services
         context.Services.AddSingleton<ISpeechService, SpeechService>();

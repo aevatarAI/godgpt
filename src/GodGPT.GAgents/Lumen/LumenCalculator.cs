@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Aevatar.Application.Grains.Lumen.Dtos;
+using Aevatar.Application.Grains.Lumen.Helpers;
 
 namespace Aevatar.Application.Grains.Lumen;
 
@@ -47,8 +48,10 @@ public static partial class LumenCalculator
     };
     
     /// <summary>
-    /// Calculate Chinese zodiac animal based on birth year
+    /// Calculate Chinese zodiac animal based on birth year (Gregorian)
+    /// NOTE: This is a simplified method. For accurate calculation, use CalculateFourPillars().YearPillar
     /// </summary>
+    [Obsolete("Use CalculateFourPillars() for accurate zodiac calculation based on solar terms")]
     public static string CalculateChineseZodiac(int birthYear)
     {
         // 1900 is Rat year (子鼠)
@@ -58,6 +61,15 @@ public static partial class LumenCalculator
         return ChineseAnimals[index];
     }
     
+    /// <summary>
+    /// Calculate Chinese zodiac animal from birth date (accurate method using solar terms)
+    /// </summary>
+    public static string CalculateChineseZodiacAccurate(DateOnly birthDate, TimeOnly? birthTime = null)
+    {
+        var fourPillars = CalculateFourPillars(birthDate, birthTime);
+        return fourPillars.YearPillar.BranchZodiac;
+    }
+    
     #endregion
     
     #region Chinese Element (Five Elements)
@@ -65,7 +77,9 @@ public static partial class LumenCalculator
     /// <summary>
     /// Calculate Chinese element (Wu Xing) based on birth year using Nayin system
     /// Returns simplified element name only (Metal/Wood/Water/Fire/Earth)
+    /// NOTE: This is a simplified method. For accurate calculation, use CalculateFourPillars().YearPillar.Element
     /// </summary>
+    [Obsolete("Use CalculateFourPillars() for accurate element calculation based on solar terms")]
     public static string CalculateChineseElement(int birthYear)
     {
         // Nayin 60-year cycle elements (simplified to 5 basic elements)
@@ -88,11 +102,24 @@ public static partial class LumenCalculator
     
     /// <summary>
     /// Get Chinese zodiac with element (e.g., "Fire Dragon")
+    /// NOTE: This is a simplified method. For accurate calculation, use CalculateFourPillars()
     /// </summary>
+    [Obsolete("Use GetChineseZodiacWithElementAccurate() for accurate calculation based on solar terms")]
     public static string GetChineseZodiacWithElement(int birthYear)
     {
         var element = CalculateChineseElement(birthYear);
         var animal = CalculateChineseZodiac(birthYear);
+        return $"{element} {animal}";
+    }
+    
+    /// <summary>
+    /// Get Chinese zodiac with element using accurate solar term calculation
+    /// </summary>
+    public static string GetChineseZodiacWithElementAccurate(DateOnly birthDate, TimeOnly? birthTime = null)
+    {
+        var fourPillars = CalculateFourPillars(birthDate, birthTime);
+        var element = fourPillars.YearPillar.Element;
+        var animal = fourPillars.YearPillar.BranchZodiac;
         return $"{element} {animal}";
     }
     
@@ -122,8 +149,10 @@ public static partial class LumenCalculator
     
     /// <summary>
     /// Calculate Heavenly Stems and Earthly Branches (天干地支) for a given year
+    /// NOTE: This is a simplified method. For accurate calculation, use CalculateFourPillars().YearPillar
     /// </summary>
     /// <returns>Format: "乙 巳 Yi Si"</returns>
+    [Obsolete("Use CalculateFourPillars() for accurate stems/branches calculation based on solar terms")]
     public static string CalculateStemsAndBranches(int year)
     {
         // Year 4 AD is 甲子 (Jia Zi), the start of the 60-year cycle
@@ -138,7 +167,9 @@ public static partial class LumenCalculator
     
     /// <summary>
     /// Calculate Stems and Branches for a year and return structured data
+    /// NOTE: This is a simplified method. For accurate calculation, use CalculateFourPillars().YearPillar
     /// </summary>
+    [Obsolete("Use CalculateFourPillars() for accurate stems/branches calculation based on solar terms")]
     public static (string stemChinese, string stemPinyin, string branchChinese, string branchPinyin) GetStemsAndBranchesComponents(int year)
     {
         // Year 4 AD is 甲子 (Jia Zi), the start of the 60-year cycle
@@ -153,6 +184,20 @@ public static partial class LumenCalculator
             stemPinyin: HeavenlyStemsPinyin[stemIndex],
             branchChinese: EarthlyBranches[branchIndex],
             branchPinyin: EarthlyBranchesPinyin[branchIndex]
+        );
+    }
+    
+    /// <summary>
+    /// Get Stems and Branches components from birth date (accurate method using solar terms)
+    /// </summary>
+    public static (string stemChinese, string stemPinyin, string branchChinese, string branchPinyin) GetStemsAndBranchesComponentsAccurate(DateOnly birthDate, TimeOnly? birthTime = null)
+    {
+        var fourPillars = CalculateFourPillars(birthDate, birthTime);
+        return (
+            stemChinese: fourPillars.YearPillar.StemChinese,
+            stemPinyin: fourPillars.YearPillar.StemPinyin,
+            branchChinese: fourPillars.YearPillar.BranchChinese,
+            branchPinyin: fourPillars.YearPillar.BranchPinyin
         );
     }
     
@@ -213,7 +258,9 @@ public static partial class LumenCalculator
     
     /// <summary>
     /// Calculate 10-year cycle information (大运)
+    /// NOTE: This is a simplified method. For accurate calculation, use CalculateTenYearCycleAccurate()
     /// </summary>
+    [Obsolete("Use CalculateTenYearCycleAccurate() for accurate cycle calculation based on solar terms")]
     public static (string AgeRange, string Period) CalculateTenYearCycle(int birthYear, int cycleOffset)
     {
         var currentYear = DateTime.UtcNow.Year;
@@ -227,6 +274,39 @@ public static partial class LumenCalculator
         
         var stems = CalculateStemsAndBranches(cycleStartYear);
         var zodiac = GetChineseZodiacWithElement(cycleStartYear);
+        
+        return (
+            AgeRange: $"Age {cycleStartAge}-{cycleEndAge} ({cycleStartYear}-{cycleEndYear})",
+            Period: $"{stems} · {zodiac}"
+        );
+    }
+    
+    /// <summary>
+    /// Calculate 10-year cycle information (大运) using accurate solar term calculation
+    /// </summary>
+    public static (string AgeRange, string Period) CalculateTenYearCycleAccurate(DateOnly birthDate, TimeOnly? birthTime, int cycleOffset)
+    {
+        // Get accurate birth year from Four Pillars
+        var birthYearPillar = CalculateFourPillars(birthDate, birthTime).YearPillar;
+        var birthYearGanZhi = $"{birthYearPillar.StemChinese}{birthYearPillar.BranchChinese}";
+        
+        // Calculate solar age (based on Four Pillars year, not Gregorian year)
+        var currentYear = DateTime.UtcNow.Year;
+        var currentAge = currentYear - birthDate.Year;
+        
+        // Calculate the cycle's start age (aligned to 10-year boundaries)
+        var cycleStartAge = ((currentAge / 10) + cycleOffset) * 10;
+        var cycleEndAge = cycleStartAge + 9;
+        var cycleStartYear = birthDate.Year + cycleStartAge;
+        var cycleEndYear = birthDate.Year + cycleEndAge;
+        
+        // Use accurate Four Pillars for cycle start year
+        var cycleStartDate = new DateOnly(cycleStartYear, birthDate.Month, birthDate.Day);
+        var cycleStartPillars = CalculateFourPillars(cycleStartDate, birthTime);
+        
+        var stems = $"{cycleStartPillars.YearPillar.StemChinese} {cycleStartPillars.YearPillar.BranchChinese} " +
+                   $"{cycleStartPillars.YearPillar.StemPinyin} {cycleStartPillars.YearPillar.BranchPinyin}";
+        var zodiac = $"{cycleStartPillars.YearPillar.Element} {cycleStartPillars.YearPillar.BranchZodiac}";
         
         return (
             AgeRange: $"Age {cycleStartAge}-{cycleEndAge} ({cycleStartYear}-{cycleEndYear})",
@@ -268,21 +348,40 @@ public static partial class LumenCalculator
     #region Four Pillars (Ba Zi / 八字)
     
     /// <summary>
-    /// Calculate complete Four Pillars (Year, Month, Day, Hour)
+    /// Calculate complete Four Pillars (Year, Month, Day, Hour) using accurate solar term calculation
     /// </summary>
     public static FourPillarsInfo CalculateFourPillars(DateOnly birthDate, TimeOnly? birthTime = null)
     {
+        // Convert to UTC DateTime for accurate solar term calculation
+        var utcDateTime = birthTime.HasValue 
+            ? new DateTime(birthDate.Year, birthDate.Month, birthDate.Day, 
+                          birthTime.Value.Hour, birthTime.Value.Minute, birthTime.Value.Second, DateTimeKind.Utc)
+            : new DateTime(birthDate.Year, birthDate.Month, birthDate.Day, 0, 0, 0, DateTimeKind.Utc);
+        
+        // Get solar term month (0-11) for accurate month pillar calculation
+        var solarMonth = SolarTermCalculator.GetSolarTermMonth(utcDateTime);
+        
+        // Determine year for year pillar calculation
+        // Year changes at 立春 (Start of Spring), not at Jan 1
+        // If in Jan/Feb but before 立春 (solarMonth 11 = 丑月, which is the last month of previous year)
         var year = birthDate.Year;
-        var month = birthDate.Month;
-        var day = birthDate.Day;
+        if (birthDate.Month <= 2)
+        {
+            // Check if we're before 立春
+            // If solarMonth is 11, we're in the last month of the previous solar year
+            if (solarMonth == 11)
+            {
+                year = birthDate.Year - 1;
+            }
+        }
         
         // Calculate Year Pillar
         var yearPillar = CalculateYearPillar(year);
         
-        // Calculate Month Pillar (based on year stem and month)
-        var monthPillar = CalculateMonthPillar(year, month);
+        // Calculate Month Pillar (based on year stem and solar month)
+        var monthPillar = CalculateMonthPillar(year, solarMonth);
         
-        // Calculate Day Pillar (most complex - requires solar calendar calculation)
+        // Calculate Day Pillar
         var dayPillar = CalculateDayPillar(birthDate);
         
         // Calculate Hour Pillar (if birth time is provided)
@@ -312,9 +411,9 @@ public static partial class LumenCalculator
         return new PillarInfo(stemIndex, branchIndex);
     }
     
-    private static PillarInfo CalculateMonthPillar(int year, int month)
+    private static PillarInfo CalculateMonthPillar(int year, int solarMonth)
     {
-        // Month pillar calculation:
+        // Month pillar calculation based on solar terms (accurate method)
         // Year stem determines the starting point for month stems
         // 年上起月法：甲己之年丙作首（甲年和己年从丙寅开始）
         var yearStemIndex = (year - 4) % 10;
@@ -324,33 +423,42 @@ public static partial class LumenCalculator
         // 甲己(0,5)→丙(2), 乙庚(1,6)→戊(4), 丙辛(2,7)→庚(6), 丁壬(3,8)→壬(8), 戊癸(4,9)→甲(0)
         int monthStemStart = yearStemIndex switch
         {
-            0 or 5 => 2,  // 甲己 starts from 丙
-            1 or 6 => 4,  // 乙庚 starts from 戊
-            2 or 7 => 6,  // 丙辛 starts from 庚
-            3 or 8 => 8,  // 丁壬 starts from 壬
-            4 or 9 => 0,  // 戊癸 starts from 甲
+            0 or 5 => 2,  // 甲己 starts from 丙寅
+            1 or 6 => 4,  // 乙庚 starts from 戊寅
+            2 or 7 => 6,  // 丙辛 starts from 庚寅
+            3 or 8 => 8,  // 丁壬 starts from 壬寅
+            4 or 9 => 0,  // 戊癸 starts from 甲寅
             _ => 0
         };
         
-        // Month branches start from 寅(2) for lunar January
-        // Approximate: month 1-2 = 寅, 3 = 卯, 4 = 辰, etc.
-        // This is simplified - in reality, months are based on solar terms
-        var monthBranchIndex = (month + 1) % 12;  // Simplified mapping
-        var monthStemIndex = (monthStemStart + month - 1) % 10;
+        // Solar month (0-11) corresponds to earthly branches starting from 寅(2)
+        // solarMonth 0 (立春 to 惊蛰) = 寅月 (branch index 2)
+        // solarMonth 1 (惊蛰 to 清明) = 卯月 (branch index 3)
+        // ... and so on
+        var monthBranchIndex = (solarMonth + 2) % 12;
+        
+        // Calculate month stem: start + solar month
+        var monthStemIndex = (monthStemStart + solarMonth) % 10;
         
         return new PillarInfo(monthStemIndex, monthBranchIndex);
     }
     
     private static PillarInfo CalculateDayPillar(DateOnly date)
     {
-        // Day pillar calculation using simplified algorithm
-        // Reference date: 1900-01-01 is 甲戌 (Jia Xu) - stem 0, branch 10
-        var referenceDate = new DateOnly(1900, 1, 1);
+        // Day pillar calculation using accurate base date
+        // Reference: 2000-01-01 (Gregorian) = 戊午 (Wu Wu) - stem 4, branch 6
+        // This is a well-established reference point in Chinese astrology
+        var referenceDate = new DateOnly(2000, 1, 1);
+        var referenceStem = 4;   // 戊
+        var referenceBranch = 6; // 午
+        
         var daysDiff = date.DayNumber - referenceDate.DayNumber;
         
-        var stemIndex = (daysDiff % 10);
-        var branchIndex = (daysDiff + 10) % 12;  // Offset to match 甲戌
+        // Calculate stem and branch indices
+        var stemIndex = (referenceStem + daysDiff) % 10;
+        var branchIndex = (referenceBranch + daysDiff) % 12;
         
+        // Handle negative values (for dates before 2000-01-01)
         if (stemIndex < 0) stemIndex += 10;
         if (branchIndex < 0) branchIndex += 12;
         

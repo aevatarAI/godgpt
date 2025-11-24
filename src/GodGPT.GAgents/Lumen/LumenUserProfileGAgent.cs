@@ -1,9 +1,11 @@
 using Aevatar.Application.Grains.Lumen.Dtos;
+using Aevatar.Application.Grains.Lumen.Options;
 using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Application.Grains.UserInfo;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Orleans;
 using Orleans.Concurrency;
 
@@ -42,10 +44,12 @@ public interface ILumenUserProfileGAgent : IGAgent
 public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUserProfileEventLog>, ILumenUserProfileGAgent
 {
     private readonly ILogger<LumenUserProfileGAgent> _logger;
+    private readonly LumenUserProfileOptions _options;
     
     /// <summary>
     /// Maximum number of profile updates allowed per week (for testing: 100)
     /// </summary>
+    [Obsolete("Use _options.MaxProfileUpdatesPerWeek instead. This constant is kept as fallback only.")]
     private const int MaxProfileUpdatesPerWeek = 100;
     
     /// <summary>
@@ -58,9 +62,12 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
         "humanFigure", "tarot", "zhengYu"
     };
 
-    public LumenUserProfileGAgent(ILogger<LumenUserProfileGAgent> logger)
+    public LumenUserProfileGAgent(
+        ILogger<LumenUserProfileGAgent> logger,
+        IOptions<LumenUserProfileOptions> options)
     {
         _logger = logger;
+        _options = options?.Value ?? new LumenUserProfileOptions(); // Fallback to default if options not configured
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -94,9 +101,16 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Occupation = updateEvent.Occupation;
                 state.Icon = updateEvent.Icon;
                 state.IsDeleted = false; // Clear deleted flag on profile update/registration
-                // Record update timestamp for rate limiting
-                state.UpdateHistory.Add(updateEvent.UpdatedAt);
-                if (state.CreatedAt == default)
+                
+                // Record update timestamp for rate limiting (only for actual updates, not initial registration)
+                var isInitialRegistration = state.CreatedAt == default;
+                if (!isInitialRegistration)
+                {
+                    state.UpdateHistory.Add(updateEvent.UpdatedAt);
+                }
+                
+                // Set CreatedAt on first registration
+                if (isInitialRegistration)
                 {
                     state.CreatedAt = updateEvent.UpdatedAt;
                 }
@@ -170,7 +184,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 .ToList();
             
             // Check if limit exceeded
-            if (State.UpdateHistory.Count >= MaxProfileUpdatesPerWeek)
+            var maxProfileUpdatesPerWeek = _options?.MaxProfileUpdatesPerWeek ?? MaxProfileUpdatesPerWeek;
+            if (State.UpdateHistory.Count >= maxProfileUpdatesPerWeek)
             {
                 var oldestUpdateInWeek = State.UpdateHistory.Min();
                 var nextAllowedUpdate = oldestUpdateInWeek.AddDays(7);
@@ -179,12 +194,12 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 _logger.LogWarning(
                     "[LumenUserProfileGAgent][UpdateUserProfileAsync] Rate limit exceeded for UserId: {UserId}. " +
                     "Updates this week: {Count}/{Max}, Next allowed update: {NextAllowedUpdate}",
-                    request.UserId, State.UpdateHistory.Count, MaxProfileUpdatesPerWeek, nextAllowedUpdate);
+                    request.UserId, State.UpdateHistory.Count, maxProfileUpdatesPerWeek, nextAllowedUpdate);
                 
                 return new UpdateUserProfileResult
                 {
                     Success = false,
-                    Message = $"Profile update limit exceeded. You have reached the maximum of {MaxProfileUpdatesPerWeek} updates per week. " +
+                    Message = $"Profile update limit exceeded. You have reached the maximum of {maxProfileUpdatesPerWeek} updates per week. " +
                               $"Please try again in {remainingTime.Days} day(s) and {remainingTime.Hours} hour(s)."
                 };
             }
@@ -486,8 +501,9 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 .Where(timestamp => timestamp > oneWeekAgo)
                 .ToList();
             
+            var maxProfileUpdatesPerWeek = _options?.MaxProfileUpdatesPerWeek ?? MaxProfileUpdatesPerWeek;
             var usedCount = recentUpdates.Count;
-            var remainingCount = Math.Max(0, MaxProfileUpdatesPerWeek - usedCount);
+            var remainingCount = Math.Max(0, maxProfileUpdatesPerWeek - usedCount);
             
             // Calculate when next update will be available if limit is reached
             DateTime? nextAvailableAt = null;
@@ -499,13 +515,13 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
             
             _logger.LogDebug(
                 "[LumenUserProfileGAgent][GetRemainingUpdatesAsync] UserId: {UserId}, Used: {Used}/{Max}, Remaining: {Remaining}",
-                State.UserId, usedCount, MaxProfileUpdatesPerWeek, remainingCount);
+                State.UserId, usedCount, maxProfileUpdatesPerWeek, remainingCount);
             
             return Task.FromResult(new GetRemainingUpdatesResult
             {
                 Success = true,
                 UsedCount = usedCount,
-                MaxCount = MaxProfileUpdatesPerWeek,
+                MaxCount = maxProfileUpdatesPerWeek,
                 RemainingCount = remainingCount,
                 NextAvailableAt = nextAvailableAt
             });
@@ -517,7 +533,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
             {
                 Success = false,
                 UsedCount = 0,
-                MaxCount = MaxProfileUpdatesPerWeek,
+                MaxCount = _options?.MaxProfileUpdatesPerWeek ?? MaxProfileUpdatesPerWeek,
                 RemainingCount = 0,
                 NextAvailableAt = null
             });
