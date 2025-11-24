@@ -5087,4 +5087,27 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     }
     
     #endregion
+    
+    #region Event Handlers
+    
+    /// <summary>
+    /// Apply daily generation count incremented event to state
+    /// </summary>
+    protected void Apply(DailyGenerationCountIncrementedEvent @event)
+    {
+        State.DailyGenerationCount[@event.Date] = @event.NewCount;
+    }
+    
+    /// <summary>
+    /// Apply daily generation count cleaned event to state
+    /// </summary>
+    protected void Apply(DailyGenerationCountCleanedEvent @event)
+    {
+        foreach (var date in @event.RemovedDates)
+        {
+            State.DailyGenerationCount.Remove(date);
+        }
+    }
+    
+    #endregion
 }
