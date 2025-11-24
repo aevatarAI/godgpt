@@ -4414,8 +4414,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// </summary>
     public async Task ReceiveReminder(string reminderName, TickStatus status)
     {
-        var dailyReminderName = _options?.DailyReminderName ?? DEFAULT_DAILY_REMINDER_NAME;
-        if (reminderName != dailyReminderName)
+        if (reminderName != DEFAULT_DAILY_REMINDER_NAME)
             return;
             
         try
@@ -4517,8 +4516,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return;
             
         // Check if already registered
-        var dailyReminderName = _options?.DailyReminderName ?? DEFAULT_DAILY_REMINDER_NAME;
-        var existingReminder = await this.GetReminder(dailyReminderName);
+        var existingReminder = await this.GetReminder(DEFAULT_DAILY_REMINDER_NAME);
         if (existingReminder != null)
         {
             _logger.LogDebug($"[Lumen][DailyReminder] {State.UserId} Reminder already registered");
@@ -4534,11 +4532,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         var nextMidnight = now.Date.AddDays(1); // Tomorrow at 00:00 UTC
         var dueTime = nextMidnight - now;
         
-        var reminderInterval = _options?.DailyReminderInterval ?? TimeSpan.FromHours(24);
         await this.RegisterOrUpdateReminder(
-            dailyReminderName,
+            DEFAULT_DAILY_REMINDER_NAME,
             dueTime,
-            reminderInterval
+            TimeSpan.FromHours(24)
         );
         
         State.IsDailyReminderEnabled = true;
@@ -4551,8 +4548,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// </summary>
     private async Task UnregisterDailyReminderAsync()
     {
-        var dailyReminderName = _options?.DailyReminderName ?? DEFAULT_DAILY_REMINDER_NAME;
-        var existingReminder = await this.GetReminder(dailyReminderName);
+        var existingReminder = await this.GetReminder(DEFAULT_DAILY_REMINDER_NAME);
         if (existingReminder != null)
         {
             await this.UnregisterReminder(existingReminder);

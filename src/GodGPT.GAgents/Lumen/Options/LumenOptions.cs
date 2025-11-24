@@ -33,25 +33,6 @@ public class LumenPredictionOptions
     /// Default: 5 minutes
     /// </summary>
     public int GenerationTimeoutMinutes { get; set; } = 5;
-    
-    /// <summary>
-    /// Total number of supported languages
-    /// Used to determine if all languages have been generated
-    /// Default: 4 (en, zh, zh-tw, es)
-    /// </summary>
-    public int TotalLanguageCount { get; set; } = 4;
-    
-    /// <summary>
-    /// Daily reminder interval
-    /// Default: 24 hours
-    /// </summary>
-    public TimeSpan DailyReminderInterval { get; set; } = TimeSpan.FromHours(24);
-    
-    /// <summary>
-    /// Daily reminder name
-    /// Default: "LumenDailyPredictionReminder"
-    /// </summary>
-    public string DailyReminderName { get; set; } = "LumenDailyPredictionReminder";
 }
 
 /// <summary>
@@ -64,40 +45,6 @@ public class LumenUserProfileOptions
     /// Default: 100 (for testing)
     /// </summary>
     public int MaxProfileUpdatesPerWeek { get; set; } = 100;
-    
-    /// <summary>
-    /// Valid lumen prediction actions
-    /// </summary>
-    public string[] ValidActions { get; set; } = new[]
-    {
-        "forecast", "horoscope", "bazi", "ziwei", "constellation",
-        "numerology", "synastry", "chineseZodiac", "mayanTotem",
-        "humanFigure", "tarot", "zhengYu"
-    };
-}
-
-/// <summary>
-/// Lumen prediction history configuration options
-/// </summary>
-public class LumenPredictionHistoryOptions
-{
-    /// <summary>
-    /// Maximum number of days to keep in prediction history
-    /// Default: 30 days
-    /// </summary>
-    public int MaxHistoryDays { get; set; } = 30;
-}
-
-/// <summary>
-/// Lumen favourite configuration options
-/// </summary>
-public class LumenFavouriteOptions
-{
-    /// <summary>
-    /// Maximum number of favourites per user
-    /// Default: 100
-    /// </summary>
-    public int MaxFavourites { get; set; } = 100;
 }
 
 /// <summary>
