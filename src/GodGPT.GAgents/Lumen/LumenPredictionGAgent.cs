@@ -10,8 +10,10 @@ using Aevatar.Application.Grains.Lumen.Helpers;
 using Aevatar.Application.Grains.Lumen.SEvents;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
+using Aevatar.Application.Grains.Lumen.Options;
 using Aevatar.GAgents.AI.Options;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Orleans.Concurrency;
@@ -35,7 +37,7 @@ public enum PredictionType
 public interface ILumenPredictionGAgent : IGAgent
 {
     Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(LumenUserDto userInfo,
-        PredictionType type = PredictionType.Daily, string userLanguage = "en");
+        PredictionType type = PredictionType.Daily, string userLanguage = "en", DateOnly? predictionDate = null);
     
     [ReadOnly]
     Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en");
@@ -57,8 +59,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 {
     private readonly ILogger<LumenPredictionGAgent> _logger;
     private readonly IClusterClient _clusterClient;
+    private readonly LumenPredictionOptions _options;
 
-    private const string DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
+    // Default fallback values if options are not configured
+    private const string DEFAULT_DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
+    private const int DEFAULT_PROMPT_VERSION = 28;
+    private const int DEFAULT_MAX_RETRY_COUNT = 3;
     
     /// <summary>
     /// Global prompt version - increment this when prompt content is updated
@@ -96,10 +102,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 27: Dynamic cycle_name fields - always request cycle_name_zh plus one language-specific field (en/zh-tw/es) based on targetLanguage
     /// Version 28: Simplified Chinese (zh) only requests cycle_name_zh, which is copied to both zodiacCycle_cycleName and zodiacCycle_cycleNameChinese
     /// </summary>
-    private const int CURRENT_PROMPT_VERSION = 28; // TODO: Change to 0 or remove before production
+    [Obsolete("Use _options.PromptVersion instead. This constant is kept as fallback only.")]
+    private const int CURRENT_PROMPT_VERSION = 28;
     
     // Daily reminder version control - change this GUID to invalidate all existing reminders
     // When logic changes (e.g., switching from UTC 00:00 to user timezone 08:00), update this value
+    [Obsolete("Use _options.ReminderTargetId instead. This constant is kept as fallback only.")]
     private static readonly Guid CURRENT_REMINDER_TARGET_ID = new Guid("00000000-0000-0000-0000-000000000001");
 
     // Translation dictionaries for English -> Chinese (Simplified/Traditional)
@@ -250,10 +258,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 
     public LumenPredictionGAgent(
         ILogger<LumenPredictionGAgent> logger,
-        IClusterClient clusterClient)
+        IClusterClient clusterClient,
+        IOptions<LumenPredictionOptions> options)
     {
         _logger = logger;
         _clusterClient = clusterClient;
+        _options = options?.Value ?? new LumenPredictionOptions(); // Fallback to default if options not configured
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -353,16 +363,18 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     }
 
     public async Task<GetTodayPredictionResult> GetOrGeneratePredictionAsync(LumenUserDto userInfo,
-        PredictionType type = PredictionType.Daily, string userLanguage = "en")
+        PredictionType type = PredictionType.Daily, string userLanguage = "en", DateOnly? predictionDate = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
         try
         {
+            // Use provided date or default to today
+            var targetDate = predictionDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var currentYear = today.Year;
             
             _logger.LogInformation(
-                $"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {today}, Language: {userLanguage}");
+                $"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {targetDate}, Language: {userLanguage}");
             
             // Update user activity and ensure daily reminder is registered (for Daily predictions only)
             await UpdateActivityAndEnsureReminderAsync();
@@ -420,17 +432,18 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             {
                 PredictionType.Lifetime => true, // Lifetime never expires
                 PredictionType.Yearly => State.PredictionDate.Year == currentYear, // Yearly expires after 1 year
-                PredictionType.Daily => State.PredictionDate == today, // Daily expires every day
+                PredictionType.Daily => State.PredictionDate == targetDate, // Daily expires when target date changes
                 _ => false
             };
             
             // TODO: REMOVE BEFORE PRODUCTION - Prompt version check for testing only
             // Check if prompt version matches (if version changed, allow regeneration on the same day)
-            var promptVersionMatches = State.PromptVersion == CURRENT_PROMPT_VERSION;
+            var currentPromptVersion = _options?.PromptVersion ?? DEFAULT_PROMPT_VERSION;
+            var promptVersionMatches = State.PromptVersion == currentPromptVersion;
             if (!promptVersionMatches)
             {
                 _logger.LogInformation(
-                    $"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {CURRENT_PROMPT_VERSION}, Will regenerate prediction");
+                    $"[Lumen] {userInfo.UserId} Prompt version mismatch - State: {State.PromptVersion}, Current: {currentPromptVersion}, Will regenerate prediction");
             }
             
             // ========== CACHE HIT: Return cached prediction only if all conditions are met ==========
@@ -566,8 +579,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             if (hasCachedPrediction && !notExpired)
             {
                 _logger.LogInformation(
-                    "[LumenPredictionGAgent][GetOrGeneratePredictionAsync] {Type} expired, regenerating for {UserId}",
-                    type, userInfo.UserId);
+                    "[LumenPredictionGAgent][GetOrGeneratePredictionAsync] {Type} expired, regenerating for {UserId}, TargetDate: {TargetDate}",
+                    type, userInfo.UserId, targetDate);
             }
 
             if (hasCachedPrediction && !profileNotChanged)
@@ -1623,7 +1636,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 MultilingualResults = multilingualResults,
                 InitialLanguage = targetLanguage,
                 LastGeneratedDate = predictionDate,
-                PromptVersion = CURRENT_PROMPT_VERSION
+                PromptVersion = _options?.PromptVersion ?? DEFAULT_PROMPT_VERSION
             });
 
             // Confirm events to persist state changes
@@ -1635,6 +1648,35 @@ Your task is to create engaging, inspirational, and reflective content that invi
 
             // Get available languages from multilingualResults (actual available languages)
             var availableLanguages = multilingualResults?.Keys.ToList() ?? new List<string> { targetLanguage };
+            
+            // Archive Daily predictions to yearly history (fire-and-forget)
+            if (type == PredictionType.Daily && multilingualResults != null)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var yearlyHistoryGrainId = $"{userInfo.UserId}-{predictionDate.Year}";
+                        var yearlyHistoryGrain = _clusterClient.GetGrain<ILumenDailyYearlyHistoryGAgent>(yearlyHistoryGrainId);
+                        
+                        await yearlyHistoryGrain.AddOrUpdateDailyPredictionAsync(
+                            predictionId,
+                            predictionDate,
+                            multilingualResults,
+                            availableLanguages);
+                        
+                        _logger.LogDebug(
+                            "[Lumen][YearlyHistory] Daily prediction archived - UserId: {UserId}, Date: {Date}",
+                            userInfo.UserId, predictionDate);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex,
+                            "[Lumen][YearlyHistory] Failed to archive daily prediction - UserId: {UserId}, Date: {Date}",
+                            userInfo.UserId, predictionDate);
+                    }
+                });
+            }
 
             // Build return DTO
             var newPredictionDto = new PredictionResultDto
@@ -2338,7 +2380,7 @@ Generate translations for: {targetLangNames}
         private async Task GeneratePredictionInBackgroundAsync(LumenUserDto userInfo, DateOnly predictionDate,
             PredictionType type, string targetLanguage)
     {
-        const int MAX_RETRY_COUNT = 3;
+        var maxRetryCount = _options?.MaxRetryCount ?? DEFAULT_MAX_RETRY_COUNT;
         
         try
         {
@@ -2363,7 +2405,8 @@ Generate translations for: {targetLangNames}
                                  || userInfo.UpdatedAt > State.ProfileUpdatedAt.Value;
             
             // Check prompt version
-            bool promptVersionChanged = State.PromptVersion != CURRENT_PROMPT_VERSION;
+            var currentPromptVersion = _options?.PromptVersion ?? DEFAULT_PROMPT_VERSION;
+            bool promptVersionChanged = State.PromptVersion != currentPromptVersion;
             
             needsRegeneration = dataExpired || profileChanged || promptVersionChanged;
             
@@ -2398,10 +2441,10 @@ Generate translations for: {targetLangNames}
                     : 0;
                 
                     _logger.LogWarning(
-                        $"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}, RetryCount: {currentRetryCount}/{MAX_RETRY_COUNT}");
+                        $"[Lumen][OnDemand] {userInfo.UserId} Generation_Failed: {generateStopwatch.ElapsedMilliseconds}ms for {type}, RetryCount: {currentRetryCount}/{maxRetryCount}");
                 
                 // Check if we should retry (any failure with retry budget remaining)
-                if (currentRetryCount < MAX_RETRY_COUNT)
+                if (currentRetryCount < maxRetryCount)
                 {
                     // Increment retry count using Event Sourcing
                     var newRetryCount = currentRetryCount + 1;
@@ -2414,7 +2457,7 @@ Generate translations for: {targetLangNames}
                     await ConfirmEvents();
                     
                         _logger.LogInformation(
-                            $"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{MAX_RETRY_COUNT}), Reason: {predictionResult.Message}");
+                            $"[Lumen][OnDemand] {userInfo.UserId} RETRY_TRIGGERED for {type} (Attempt {newRetryCount}/{maxRetryCount}), Reason: {predictionResult.Message}");
                     
                     // Trigger retry (fire-and-forget)
                     _ = GeneratePredictionInBackgroundAsync(userInfo, predictionDate, type, targetLanguage);
@@ -4371,7 +4414,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// </summary>
     public async Task ReceiveReminder(string reminderName, TickStatus status)
     {
-        if (reminderName != DAILY_REMINDER_NAME)
+        if (reminderName != DEFAULT_DAILY_REMINDER_NAME)
             return;
             
         try
@@ -4379,10 +4422,11 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder triggered at {DateTime.UtcNow}");
             
             // Check if reminder TargetId matches current version
-            if (State.DailyReminderTargetId != CURRENT_REMINDER_TARGET_ID)
+            var currentReminderTargetId = _options?.ReminderTargetId ?? CURRENT_REMINDER_TARGET_ID;
+            if (State.DailyReminderTargetId != currentReminderTargetId)
             {
                 _logger.LogInformation(
-                    $"[Lumen][DailyReminder] {State.UserId} TargetId mismatch (State: {State.DailyReminderTargetId}, Current: {CURRENT_REMINDER_TARGET_ID}), unregistering old reminder");
+                    $"[Lumen][DailyReminder] {State.UserId} TargetId mismatch (State: {State.DailyReminderTargetId}, Current: {currentReminderTargetId}), unregistering old reminder");
                 await UnregisterDailyReminderAsync();
                 return; // User will re-register with new logic when active
             }
@@ -4472,7 +4516,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return;
             
         // Check if already registered
-        var existingReminder = await this.GetReminder(DAILY_REMINDER_NAME);
+        var existingReminder = await this.GetReminder(DEFAULT_DAILY_REMINDER_NAME);
         if (existingReminder != null)
         {
             _logger.LogDebug($"[Lumen][DailyReminder] {State.UserId} Reminder already registered");
@@ -4480,7 +4524,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
         
         // Record current TargetId for version control
-        State.DailyReminderTargetId = CURRENT_REMINDER_TARGET_ID;
+        var currentReminderTargetId = _options?.ReminderTargetId ?? CURRENT_REMINDER_TARGET_ID;
+        State.DailyReminderTargetId = currentReminderTargetId;
         
         // Calculate next UTC 00:00
         var now = DateTime.UtcNow;
@@ -4488,9 +4533,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         var dueTime = nextMidnight - now;
         
         await this.RegisterOrUpdateReminder(
-            DAILY_REMINDER_NAME,
+            DEFAULT_DAILY_REMINDER_NAME,
             dueTime,
-            TimeSpan.FromHours(24) // Repeat every 24 hours
+            TimeSpan.FromHours(24)
         );
         
         State.IsDailyReminderEnabled = true;
@@ -4503,7 +4548,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// </summary>
     private async Task UnregisterDailyReminderAsync()
     {
-        var existingReminder = await this.GetReminder(DAILY_REMINDER_NAME);
+        var existingReminder = await this.GetReminder(DEFAULT_DAILY_REMINDER_NAME);
         if (existingReminder != null)
         {
             await this.UnregisterReminder(existingReminder);
