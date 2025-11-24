@@ -437,7 +437,6 @@ public class GetTodayPredictionResult
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
     [Id(2)] public PredictionResultDto? Prediction { get; set; }
-    [Id(3)] public int? RemainingGenerations { get; set; } // Remaining on-demand generation quota for today (only for by-date API)
 }
 
 /// <summary>
