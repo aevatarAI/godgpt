@@ -106,7 +106,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 var isInitialRegistration = state.CreatedAt == default;
                 if (!isInitialRegistration)
                 {
-                    state.UpdateHistory.Add(updateEvent.UpdatedAt);
+                state.UpdateHistory.Add(updateEvent.UpdatedAt);
                 }
                 
                 // Set CreatedAt on first registration

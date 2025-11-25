@@ -582,14 +582,14 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     warning = "Birth city not provided. Moon and Rising sign calculations are unavailable. Please update your profile with birth city or latitude/longitude for more accurate predictions.";
                 }
             }
-            
-            return new GetTodayPredictionResult
-            {
-                Success = true,
-                Message = string.Empty,
+                
+                return new GetTodayPredictionResult
+                {
+                    Success = true,
+                    Message = string.Empty,
                 Prediction = cachedDto,
                 Warning = warning
-            };
+                };
             }
             
             // Log reason for regeneration
@@ -4923,6 +4923,14 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         // Only register for Daily predictions
         if (State.Type != PredictionType.Daily)
             return;
+        
+        // Check if daily auto-generation is enabled in options
+        var enableAutoGeneration = _options?.EnableDailyAutoGeneration ?? false;
+        if (!enableAutoGeneration)
+        {
+            _logger.LogDebug($"[Lumen][DailyReminder] {State.UserId} Daily auto-generation is disabled in options, skipping reminder registration");
+            return;
+        }
             
         // Check if already registered
         var existingReminder = await this.GetReminder(DEFAULT_DAILY_REMINDER_NAME);

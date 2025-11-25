@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Aevatar.Application.Grains.Lumen.Options;
 
@@ -33,6 +34,21 @@ public class LumenPredictionOptions
     /// Default: 5 minutes
     /// </summary>
     public int GenerationTimeoutMinutes { get; set; } = 5;
+    
+    /// <summary>
+    /// Enable daily prediction auto-generation via scheduled reminders
+    /// When disabled, daily predictions will only be generated on-demand
+    /// Default: false (disabled)
+    /// </summary>
+    public bool EnableDailyAutoGeneration { get; set; } = false;
+    
+    /// <summary>
+    /// Feature flags dictionary for frontend configuration
+    /// Can be used to enable/disable features dynamically without code changes
+    /// Example: { "showLifetimePrediction": "true", "maxFavorites": "10" }
+    /// Default: empty dictionary
+    /// </summary>
+    public Dictionary<string, string> FeatureFlags { get; set; } = new Dictionary<string, string>();
 }
 
 /// <summary>
