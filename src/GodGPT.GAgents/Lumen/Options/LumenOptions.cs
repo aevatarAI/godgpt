@@ -41,14 +41,6 @@ public class LumenPredictionOptions
     /// Default: false (disabled)
     /// </summary>
     public bool EnableDailyAutoGeneration { get; set; } = false;
-    
-    /// <summary>
-    /// Feature flags dictionary for frontend configuration
-    /// Can be used to enable/disable features dynamically without code changes
-    /// Example: { "showLifetimePrediction": "true", "maxFavorites": "10" }
-    /// Default: empty dictionary
-    /// </summary>
-    public Dictionary<string, string> FeatureFlags { get; set; } = new Dictionary<string, string>();
 }
 
 /// <summary>
@@ -73,5 +65,19 @@ public class LumenSolarTermOptions
     /// Default: /app/lumen/solar-terms-full.json
     /// </summary>
     public string DataFilePath { get; set; } = "/app/lumen/solar-terms-full.json";
+}
+
+/// <summary>
+/// Feature flags configuration for frontend (not used by backend business logic)
+/// </summary>
+public class LumenFeatureFlagsOptions
+{
+    /// <summary>
+    /// Feature flags dictionary for frontend configuration
+    /// Can be used to enable/disable features dynamically without code changes
+    /// Example: { "showLifetimePrediction": "true", "maxFavorites": "10" }
+    /// Default: empty dictionary
+    /// </summary>
+    public Dictionary<string, string> Flags { get; set; } = new Dictionary<string, string>();
 }
 
