@@ -373,6 +373,20 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var currentYear = today.Year;
             
+            // Check if location info is missing (affects Moon/Rising sign calculation)
+            string? warningMessage = null;
+            if (string.IsNullOrWhiteSpace(userInfo.LatLong) && string.IsNullOrWhiteSpace(userInfo.LatLongInferred))
+            {
+                if (!string.IsNullOrWhiteSpace(userInfo.BirthCity))
+                {
+                    warningMessage = "Location coordinates could not be determined from your birth city. Moon and Rising sign calculations may be unavailable. Please update your profile with latitude/longitude for more accurate predictions.";
+                }
+                else
+                {
+                    warningMessage = "Birth city not provided. Moon and Rising sign calculations are unavailable. Please update your profile with birth city or latitude/longitude for more accurate predictions.";
+                }
+            }
+            
             _logger.LogInformation(
                 $"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {targetDate}, Language: {userLanguage}");
             
@@ -571,7 +585,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 {
                     Success = true,
                     Message = string.Empty,
-                    Prediction = cachedDto
+                    Prediction = cachedDto,
+                    Warning = warningMessage
                 };
             }
             
@@ -1015,18 +1030,26 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             string? moonSign = null;
             string? risingSign = null;
             
+            // Determine effective LatLong: prioritize user-provided, fallback to LLM-inferred
+            var effectiveLatLong = !string.IsNullOrWhiteSpace(userInfo.LatLong) 
+                ? userInfo.LatLong 
+                : userInfo.LatLongInferred;
+            
+            var latLongSource = !string.IsNullOrWhiteSpace(userInfo.LatLong) ? "user-provided" : 
+                               !string.IsNullOrWhiteSpace(userInfo.LatLongInferred) ? "LLM-inferred" : "none";
+            
             // Diagnostic logging
             _logger.LogInformation(
-                $"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLong IsNullOrWhiteSpace: {string.IsNullOrWhiteSpace(userInfo.LatLong)}");
+                $"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLongInferred: '{userInfo.LatLongInferred}', Effective: '{effectiveLatLong}', Source: {latLongSource}");
             
-            if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(userInfo.LatLong))
+            if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(effectiveLatLong))
             {
                 try
                 {
                     // Parse latitude and longitude from "lat, long" format
-                    var parts = userInfo.LatLong.Split(',', StringSplitOptions.TrimEntries);
+                    var parts = effectiveLatLong.Split(',', StringSplitOptions.TrimEntries);
                     _logger.LogInformation(
-                        $"[LumenPredictionGAgent] Parsing LatLong - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
+                        $"[LumenPredictionGAgent] Parsing LatLong ({latLongSource}) - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
                     
                     if (parts.Length == 2 && 
                         double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture,
@@ -1035,7 +1058,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                             out double longitude))
                     {
                         _logger.LogInformation(
-                            $"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude}) using Corrected UTC: {calcBirthDate} {calcBirthTime}");
+                            $"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}] using Corrected UTC: {calcBirthDate} {calcBirthTime}");
                         var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
                             calcBirthDate,
                             calcBirthTime.Value,
@@ -1046,12 +1069,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         risingSign = calculatedRisingSign;
                         
                         _logger.LogInformation(
-                            $"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude})");
+                            $"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}]");
                     }
                     else
                     {
                         _logger.LogWarning(
-                            $"[LumenPredictionGAgent] Invalid latlong format or parse failed: '{userInfo.LatLong}'");
+                            $"[LumenPredictionGAgent] Invalid latlong format or parse failed ({latLongSource}): '{effectiveLatLong}'");
                     }
                 }
                 catch (Exception ex)
@@ -1063,7 +1086,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             else
             {
                 _logger.LogInformation(
-                    $"[LumenPredictionGAgent] Skipping Moon/Rising calculation - BirthTime or LatLong not provided");
+                    $"[LumenPredictionGAgent] Skipping Moon/Rising calculation - BirthTime: {calcBirthTime.HasValue}, LatLong available: {!string.IsNullOrWhiteSpace(effectiveLatLong)}");
             }
             
             // Get language name for system prompt (use native language names)
@@ -1185,6 +1208,34 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     Success = false,
                     Message = "Failed to parse AI response"
                 };
+            }
+            
+            // Extract and save inferred LatLong if provided by LLM (for Daily predictions only)
+            if (type == PredictionType.Daily && parsedResults.ContainsKey("location_latlong"))
+            {
+                var inferredLatLong = parsedResults["location_latlong"];
+                if (!string.IsNullOrWhiteSpace(inferredLatLong))
+                {
+                    _logger.LogInformation(
+                        $"[Lumen] {userInfo.UserId} LLM inferred LatLong: {inferredLatLong} from BirthCity: {userInfo.BirthCity}");
+                    
+                    // Save to UserGAgent (fire-and-forget)
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var userGAgent = _clusterClient.GetGrain<ILumenUserGAgent>(userInfo.UserId);
+                            await userGAgent.SaveInferredLatLongAsync(inferredLatLong, userInfo.BirthCity ?? "Unknown");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, $"[Lumen] {userInfo.UserId} Failed to save inferred LatLong");
+                        }
+                    });
+                }
+                
+                // Remove from parsed results (not needed in prediction output)
+                parsedResults.Remove("location_latlong");
             }
             
             // Filter multilingualResults to only include targetLanguage (LLM may return multiple languages, but we only requested one)
@@ -1703,7 +1754,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
             {
                 Success = true,
                 Message = string.Empty,
-                Prediction = newPredictionDto
+                Prediction = newPredictionDto,
+                Warning = warningMessage
             };
         }
         catch (Exception ex)
@@ -2210,6 +2262,21 @@ FORMAT REQUIREMENTS:
             var desc_fortune_avoid = isChinese ? "注意1|注意2|注意3 (竖线分隔)" : "avoid1|avoid2|avoid3";
             var desc_fortune_tip = isChinese ? "10-15字，今日反思贴士" : "10-15 words 'Today's reflection invites...'";
 
+            // Check if we need to request LatLong inference from LLM
+            var needLatLongInference = !string.IsNullOrWhiteSpace(userInfo.BirthCity) 
+                && string.IsNullOrWhiteSpace(userInfo.LatLong) 
+                && string.IsNullOrWhiteSpace(userInfo.LatLongInferred);
+            
+            var latLongInferenceSection = needLatLongInference
+                ? $@"
+
+========== OPTIONAL: LOCATION INFERENCE ==========
+Birth City: {userInfo.BirthCity}
+⚠️ INSTRUCTION: If you can identify the latitude and longitude for the birth city above, please add this field to the output:
+location_latlong	latitude,longitude (format: ""34.0522,-118.2437"")
+⚠️ If the city name is ambiguous or you cannot determine coordinates, you may SKIP this field entirely."
+                : string.Empty;
+
             prompt = singleLanguagePrefix + $@"Generate a daily reflection entry.
 Date: {predictionDate:yyyy-MM-dd}
 User: {userInfoLine}
@@ -2218,7 +2285,7 @@ User: {userInfoLine}
 Display Name: {displayName}
 Sun Sign: {sunSign}
 Element: {zodiacElement}
-Birth Year Zodiac: {birthYearZodiac}
+Birth Year Zodiac: {birthYearZodiac}{latLongInferenceSection}
 
 ========== OUTPUT FORMAT (TSV) ==========
 Key	Value

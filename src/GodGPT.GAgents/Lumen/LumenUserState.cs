@@ -16,8 +16,9 @@ public class LumenUserState : StateBase
     [Id(4)] public DateOnly BirthDate { get; set; }
     [Id(5)] public TimeOnly BirthTime { get; set; }
     [Id(6)] public string? BirthCity { get; set; } // Optional
-    [Id(7)] public string? LatLong { get; set; } // Optional - Latitude,Longitude for astrology calculations
+    [Id(7)] public string? LatLong { get; set; } // Optional - Latitude,Longitude for astrology calculations (user provided)
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
+    [Id(17)] public string? LatLongInferred { get; set; } // Optional - LLM inferred from BirthCity (not exposed in profile API)
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
     [Id(10)] public string? Interests { get; set; } // Optional
     [Id(11)] public CalendarTypeEnum CalendarType { get; set; }

@@ -57,6 +57,18 @@ public class UserActionsUpdatedEvent : LumenUserEventLog
     [Id(2)] public DateTime UpdatedAt { get; set; }
 }
 
+/// <summary>
+/// LatLong inferred by LLM from BirthCity
+/// </summary>
+[GenerateSerializer]
+public class LatLongInferredEvent : LumenUserEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string LatLongInferred { get; set; } = string.Empty; // Format: "latitude,longitude"
+    [Id(2)] public string BirthCity { get; set; } = string.Empty; // Source city
+    [Id(3)] public DateTime InferredAt { get; set; }
+}
+
 #endregion
 
 #region Prediction Events
