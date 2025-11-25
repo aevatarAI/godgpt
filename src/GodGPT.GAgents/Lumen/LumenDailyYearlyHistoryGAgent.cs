@@ -13,7 +13,7 @@ namespace Aevatar.Application.Grains.Lumen;
 /// Manages yearly archive of daily predictions
 /// GrainId format: {UserId}-{YYYY}
 /// </summary>
-public interface ILumenDailyYearlyHistoryGAgent : IGAgent, IGrainWithStringKey
+public interface ILumenDailyYearlyHistoryGAgent : IGrainWithStringKey
 {
     /// <summary>
     /// Add or update a daily prediction in yearly history
