@@ -23,6 +23,11 @@ public interface ILumenUserGAgent : IGAgent
     /// Clear user data (for testing purposes)
     /// </summary>
     Task<ClearUserResult> ClearUserAsync();
+    
+    /// <summary>
+    /// Save LLM-inferred LatLong from BirthCity (internal use only, not exposed in profile API)
+    /// </summary>
+    Task SaveInferredLatLongAsync(string latLongInferred, string birthCity);
 }
 
 [GAgent(nameof(LumenUserGAgent))]
@@ -100,6 +105,10 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
             case UserActionsUpdatedEvent actionsEvent:
                 state.Actions = actionsEvent.Actions;
                 state.UpdatedAt = actionsEvent.UpdatedAt;
+                break;
+            case LatLongInferredEvent latLongEvent:
+                state.LatLongInferred = latLongEvent.LatLongInferred;
+                state.UpdatedAt = latLongEvent.InferredAt;
                 break;
         }
     }
@@ -218,7 +227,8 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
                     Actions = State.Actions,
                     CreatedAt = State.CreatedAt,
                     CurrentResidence = State.CurrentResidence,
-                    Email = State.Email
+                    Email = State.Email,
+                    LatLongInferred = State.LatLongInferred
                 }
             });
         }
@@ -278,6 +288,50 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
                 Success = false,
                 Message = "Internal error occurred"
             };
+        }
+    }
+
+    public async Task SaveInferredLatLongAsync(string latLongInferred, string birthCity)
+    {
+        try
+        {
+            _logger.LogDebug("[LumenUserGAgent][SaveInferredLatLongAsync] Saving inferred latlong for: {UserId}, City: {BirthCity}", 
+                State.UserId, birthCity);
+
+            // Check if user exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[LumenUserGAgent][SaveInferredLatLongAsync] User not found");
+                return;
+            }
+
+            // Only save if not already exists
+            if (!string.IsNullOrEmpty(State.LatLongInferred))
+            {
+                _logger.LogDebug("[LumenUserGAgent][SaveInferredLatLongAsync] LatLongInferred already exists, skipping");
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Raise event to save inferred latlong
+            RaiseEvent(new LatLongInferredEvent
+            {
+                UserId = State.UserId,
+                LatLongInferred = latLongInferred,
+                BirthCity = birthCity,
+                InferredAt = now
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenUserGAgent][SaveInferredLatLongAsync] LatLongInferred saved successfully: {LatLong}", 
+                latLongInferred);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserGAgent][SaveInferredLatLongAsync] Error saving inferred latlong");
         }
     }
 

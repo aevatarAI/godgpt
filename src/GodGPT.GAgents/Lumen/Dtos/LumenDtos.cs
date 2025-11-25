@@ -337,6 +337,7 @@ public class LumenUserDto
     [Id(16)] public DateTime UpdatedAt { get; set; } // Track profile updates for prediction regeneration
     [Id(17)] public string? Occupation { get; set; } // Optional
     [Id(18)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
+    [Id(19)] public string? LatLongInferred { get; set; } // Internal - LLM inferred from BirthCity (not exposed in profile API)
 }
 
 /// <summary>
@@ -437,6 +438,7 @@ public class GetTodayPredictionResult
     [Id(0)] public bool Success { get; set; }
     [Id(1)] public string Message { get; set; } = string.Empty;
     [Id(2)] public PredictionResultDto? Prediction { get; set; }
+    [Id(3)] public string? Warning { get; set; } // Optional warning message (e.g., location info missing)
 }
 
 /// <summary>
