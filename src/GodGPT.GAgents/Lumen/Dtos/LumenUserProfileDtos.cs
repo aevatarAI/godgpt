@@ -14,7 +14,7 @@ public class UpdateUserProfileRequest
     [Id(3)] public DateOnly BirthDate { get; set; } // Required
     [Id(4)] public TimeOnly BirthTime { get; set; } // Required for accurate Moon/Rising calculation
     [Id(5)] public string BirthCity { get; set; } = string.Empty; // Required - format: "Los Angeles, USA"
-    [Id(6)] public string LatLong { get; set; } = string.Empty; // Required - format: "34.0522, -118.2437" (latitude, longitude)
+    [Id(6)] public string? LatLong { get; set; } // Optional - format: "34.0522, -118.2437" (latitude, longitude)
     [Id(7)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
     [Id(8)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
     [Id(9)] public string? Interests { get; set; } // Optional
@@ -51,7 +51,7 @@ public class LumenUserProfileDto
     [Id(3)] public DateOnly BirthDate { get; set; }
     [Id(4)] public TimeOnly BirthTime { get; set; } // Required
     [Id(5)] public string BirthCity { get; set; } = string.Empty; // Required - format: "Los Angeles, USA"
-    [Id(6)] public string LatLong { get; set; } = string.Empty; // Required - format: "34.0522, -118.2437"
+    [Id(6)] public string? LatLong { get; set; } // Optional - format: "34.0522, -118.2437" (latitude, longitude)
     [Id(7)] public CalendarTypeEnum? CalendarType { get; set; } // Optional
     [Id(8)] public DateTime CreatedAt { get; set; }
     [Id(9)] public string? CurrentResidence { get; set; }

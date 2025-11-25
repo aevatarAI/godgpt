@@ -290,7 +290,7 @@ public class UpdateUserInfoRequest
     [Id(4)] public DateOnly BirthDate { get; set; } // Required
     [Id(5)] public TimeOnly BirthTime { get; set; } // Required
     [Id(6)] public string BirthCity { get; set; } = string.Empty; // Required
-    [Id(7)] public string LatLong { get; set; } = string.Empty; // Latitude,Longitude for astrology calculations
+    [Id(7)] public string? LatLong { get; set; } // Optional - Latitude,Longitude for astrology calculations
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
     [Id(10)] public string? Interests { get; set; } // Optional
@@ -325,7 +325,7 @@ public class LumenUserDto
     [Id(4)] public DateOnly BirthDate { get; set; } // Required
     [Id(5)] public TimeOnly? BirthTime { get; set; } // Optional - Required for accurate Moon/Rising calculation
     [Id(6)] public string BirthCity { get; set; } = string.Empty; // Required - format: "Los Angeles, USA"
-    [Id(7)] public string LatLong { get; set; } = string.Empty; // Required - format: "34.0522, -118.2437"
+    [Id(7)] public string? LatLong { get; set; } // Optional - format: "34.0522, -118.2437" (latitude, longitude)
     [Id(8)] public MbtiTypeEnum? MbtiType { get; set; } // Optional
     [Id(9)] public RelationshipStatusEnum? RelationshipStatus { get; set; } // Optional
     [Id(10)] public string? Interests { get; set; } // Optional
