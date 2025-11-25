@@ -373,19 +373,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var currentYear = today.Year;
             
-            // Check if location info is missing (affects Moon/Rising sign calculation)
-            string? warningMessage = null;
-            if (string.IsNullOrWhiteSpace(userInfo.LatLong) && string.IsNullOrWhiteSpace(userInfo.LatLongInferred))
-            {
-                if (!string.IsNullOrWhiteSpace(userInfo.BirthCity))
-                {
-                    warningMessage = "Location coordinates could not be determined from your birth city. Moon and Rising sign calculations may be unavailable. Please update your profile with latitude/longitude for more accurate predictions.";
-                }
-                else
-                {
-                    warningMessage = "Birth city not provided. Moon and Rising sign calculations are unavailable. Please update your profile with birth city or latitude/longitude for more accurate predictions.";
-                }
-            }
+            // Note: Location warning is generated in GeneratePredictionAsync method
             
             _logger.LogInformation(
                 $"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {targetDate}, Language: {userLanguage}");
@@ -581,13 +569,27 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     Feedbacks = null
                 };
                 
-                return new GetTodayPredictionResult
+            // Generate location warning message
+            string? warning = null;
+            if (string.IsNullOrWhiteSpace(userInfo.LatLong) && string.IsNullOrWhiteSpace(userInfo.LatLongInferred))
+            {
+                if (!string.IsNullOrWhiteSpace(userInfo.BirthCity))
                 {
-                    Success = true,
-                    Message = string.Empty,
-                    Prediction = cachedDto,
-                    Warning = warningMessage
-                };
+                    warning = "Location coordinates could not be determined from your birth city. Moon and Rising sign calculations may be unavailable. Please update your profile with latitude/longitude for more accurate predictions.";
+                }
+                else
+                {
+                    warning = "Birth city not provided. Moon and Rising sign calculations are unavailable. Please update your profile with birth city or latitude/longitude for more accurate predictions.";
+                }
+            }
+            
+            return new GetTodayPredictionResult
+            {
+                Success = true,
+                Message = string.Empty,
+                Prediction = cachedDto,
+                Warning = warning
+            };
             }
             
             // Log reason for regeneration
@@ -1224,7 +1226,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     {
                         try
                         {
-                            var userGAgent = _clusterClient.GetGrain<ILumenUserGAgent>(userInfo.UserId);
+                            var userGrainId = CommonHelper.StringToGuid(userInfo.UserId);
+                            var userGAgent = _clusterClient.GetGrain<ILumenUserGAgent>(userGrainId);
                             await userGAgent.SaveInferredLatLongAsync(inferredLatLong, userInfo.BirthCity ?? "Unknown");
                         }
                         catch (Exception ex)
@@ -1750,12 +1753,26 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 Feedbacks = null
             };
             
+            // Generate location warning message
+            string? warning = null;
+            if (string.IsNullOrWhiteSpace(userInfo.LatLong) && string.IsNullOrWhiteSpace(userInfo.LatLongInferred))
+            {
+                if (!string.IsNullOrWhiteSpace(userInfo.BirthCity))
+                {
+                    warning = "Location coordinates could not be determined from your birth city. Moon and Rising sign calculations may be unavailable. Please update your profile with latitude/longitude for more accurate predictions.";
+                }
+                else
+                {
+                    warning = "Birth city not provided. Moon and Rising sign calculations are unavailable. Please update your profile with birth city or latitude/longitude for more accurate predictions.";
+                }
+            }
+            
             return new GetTodayPredictionResult
             {
                 Success = true,
                 Message = string.Empty,
                 Prediction = newPredictionDto,
-                Warning = warningMessage
+                Warning = warning
             };
         }
         catch (Exception ex)
@@ -3083,29 +3100,27 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             }
             else if (type == PredictionType.Daily)
             {
-                // Re-inject tarot/stone translated names if they exist in source
-                if (targetDict.TryGetValue("tarot_card_name", out var tarotCardName))
+                // For Daily, tarot/stone names are already translated by LLM
+                // Only inject enum values if the text fields exist
+                if (targetDict.TryGetValue("todaysReading_tarotCard_name", out var tarotCardName))
                 {
                     var tarotCardEnum = ParseTarotCard(tarotCardName);
                     targetDict["todaysReading_tarotCard_enum"] = ((int)tarotCardEnum).ToString();
-                    targetDict["todaysReading_tarotCard_name"] = TranslateTarotCard(tarotCardEnum, targetLanguage);
                 }
                 
-                if (targetDict.TryGetValue("tarot_card_orientation", out var orientation))
+                if (targetDict.TryGetValue("todaysReading_tarotCard_orientation", out var orientation))
                 {
-                    var orientationEnum = ParseOrientation(orientation);
+                    var orientationEnum = ParseTarotOrientation(orientation);
                     targetDict["todaysReading_tarotCard_orientation_enum"] = ((int)orientationEnum).ToString();
-                    targetDict["todaysReading_tarotCard_orientation"] = TranslateOrientation(orientationEnum, targetLanguage);
                 }
                 
-                if (targetDict.TryGetValue("crystal_stone_id", out var stoneId))
+                if (targetDict.TryGetValue("luckyAlignments_luckyStone", out var stoneId))
                 {
-                    var stoneEnum = ParseLuckyStone(stoneId);
+                    var stoneEnum = ParseCrystalStone(stoneId);
                     targetDict["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
-                    targetDict["luckyAlignments_luckyStone"] = TranslateLuckyStone(stoneEnum, targetLanguage);
                 }
                 
-                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Daily backend fields for {targetLanguage}");
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Daily backend enum fields for {targetLanguage}");
             }
         }
         catch (Exception ex)
