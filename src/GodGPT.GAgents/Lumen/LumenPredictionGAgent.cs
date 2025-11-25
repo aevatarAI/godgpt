@@ -2757,14 +2757,52 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                 _logger.LogInformation(
                     $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Parse: {parseStopwatch.ElapsedMilliseconds}ms, Fields: {contentDict.Count}");
             
-            // Merge back skipped fields (enums, numbers, etc.)
+            // Separate skipped fields into backend-calculated vs others
+            var backendCalculatedFields = new Dictionary<string, string>();
+            var otherSkippedFields = new Dictionary<string, string>();
+            
+            var backendCalculatedPatterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "sunSign_name", "westernOverview_sunSign", "westernOverview_moonSign", "westernOverview_risingSign",
+                "westernOverview_sunArchetype", "westernOverview_moonArchetype", "westernOverview_risingArchetype",
+                "chineseZodiac_animal", "chineseZodiac_title",
+                "chineseAstrology_currentYearStem", "chineseAstrology_currentYearStemPinyin",
+                "chineseAstrology_currentYearBranch", "chineseAstrology_currentYearBranchPinyin",
+                "chineseAstrology_taishuiRelationship", "chineseAstrology_currentYear",
+                "pastCycle_ageRange", "pastCycle_period", "currentCycle_ageRange", "currentCycle_period",
+                "futureCycle_ageRange", "futureCycle_period", "zodiacCycle_title", "zodiacCycle_cycleName",
+                "zodiacInfluence", "currentPhase",
+                "todaysReading_tarotCard_name", "todaysReading_tarotCard_orientation",
+                "luckyAlignments_luckyStone", "todaysReading_pathTitle"
+            };
+            
             foreach (var skipped in skippedFields)
+            {
+                if (backendCalculatedPatterns.Contains(skipped.Key) || 
+                    skipped.Key.StartsWith("fourPillars_year", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_month", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_day", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_hour", StringComparison.OrdinalIgnoreCase))
+                {
+                    backendCalculatedFields[skipped.Key] = skipped.Value;
+                }
+                else
+                {
+                    otherSkippedFields[skipped.Key] = skipped.Value;
+                }
+            }
+            
+            // Merge back non-backend-calculated skipped fields (enums, numbers, etc.)
+            foreach (var skipped in otherSkippedFields)
             {
                 contentDict[skipped.Key] = skipped.Value;
             }
             
+            // Re-inject backend-calculated fields for target language
+            await InjectBackendFieldsForLanguageAsync(contentDict, userInfo, predictionDate, type, targetLanguage);
+            
                 _logger.LogInformation(
-                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Added {skippedFields.Count} skipped fields back, Total fields: {contentDict.Count}");
+                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Merged {otherSkippedFields.Count} skipped fields, re-injected {backendCalculatedFields.Count} backend fields, Total: {contentDict.Count}");
             
             // Raise event to update state with this language
             var translatedLanguages = new Dictionary<string, Dictionary<string, string>>
@@ -2808,11 +2846,67 @@ All content is for entertainment, self-exploration, and contemplative purposes o
     /// Build single-language translation prompt (for on-demand translation)
     /// </summary>
     /// <summary>
-    /// Filter fields that don't need translation (enums, numbers, empty values, etc.)
+    /// Filter fields that don't need translation (enums, numbers, backend-calculated fields, etc.)
     /// </summary>
         private Dictionary<string, string> FilterFieldsForTranslation(Dictionary<string, string> sourceContent)
     {
         var filtered = new Dictionary<string, string>();
+        
+        // Backend-calculated field patterns (these are translated via backend dictionary, not LLM)
+        var backendCalculatedPatterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Zodiac signs
+            "sunSign_name",
+            "westernOverview_sunSign",
+            "westernOverview_moonSign",
+            "westernOverview_risingSign",
+            "westernOverview_sunArchetype",
+            "westernOverview_moonArchetype",
+            "westernOverview_risingArchetype",
+            
+            // Chinese zodiac
+            "chineseZodiac_animal",
+            "chineseZodiac_title",
+            
+            // Chinese astrology (stems/branches)
+            "chineseAstrology_currentYearStem",
+            "chineseAstrology_currentYearStemPinyin",
+            "chineseAstrology_currentYearBranch",
+            "chineseAstrology_currentYearBranchPinyin",
+            "chineseAstrology_taishuiRelationship",
+            "chineseAstrology_currentYear",
+            
+            // Cycles
+            "pastCycle_ageRange",
+            "pastCycle_period",
+            "currentCycle_ageRange",
+            "currentCycle_period",
+            "futureCycle_ageRange",
+            "futureCycle_period",
+            
+            // Zodiac cycle
+            "zodiacCycle_title",
+            "zodiacCycle_cycleName",
+            "zodiacInfluence",
+            
+            // Phase
+            "currentPhase",
+            
+            // Daily specific (these are translated by backend tarot/stone dictionaries)
+            "todaysReading_tarotCard_name",
+            "todaysReading_tarotCard_orientation",
+            "luckyAlignments_luckyStone",
+            "todaysReading_pathTitle"  // Constructed by backend
+        };
+        
+        // Backend-calculated field prefixes (Four Pillars fields)
+        var backendCalculatedPrefixes = new[]
+        {
+            "fourPillars_year",
+            "fourPillars_month",
+            "fourPillars_day",
+            "fourPillars_hour"
+        };
         
         foreach (var kvp in sourceContent)
         {
@@ -2827,6 +2921,18 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             
             // Skip enum fields (ending with _enum)
             if (key.EndsWith("_enum", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            
+            // Skip backend-calculated fields
+            if (backendCalculatedPatterns.Contains(key))
+            {
+                continue;
+            }
+            
+            // Skip backend-calculated prefixes (Four Pillars)
+            if (backendCalculatedPrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
@@ -2855,6 +2961,157 @@ All content is for entertainment, self-exploration, and contemplative purposes o
         }
         
         return filtered;
+    }
+
+    /// <summary>
+    /// Re-inject backend-calculated fields for a specific language (used in OnDemandTranslation)
+    /// </summary>
+        private async Task InjectBackendFieldsForLanguageAsync(Dictionary<string, string> targetDict,
+            LumenUserDto userInfo, DateOnly predictionDate, PredictionType type, string targetLanguage)
+    {
+        try
+        {
+            // Calculate timezone-corrected birth date/time (same logic as in GeneratePredictionAsync)
+            var calcBirthDate = userInfo.BirthDate;
+            var calcBirthTime = userInfo.BirthTime;
+            
+            var currentYear = DateTime.UtcNow.Year;
+            var birthYear = calcBirthDate.Year;
+            
+            var sunSign = LumenCalculator.CalculateZodiacSign(calcBirthDate);
+            var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
+            var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
+            var birthYearStemsComponents = LumenCalculator.GetStemsAndBranchesComponents(birthYear);
+            var pastCycle = LumenCalculator.CalculateTenYearCycle(birthYear, -1);
+            var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
+            var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
+            
+            // Calculate Moon/Rising signs if available (simplified - reuse from source if needed)
+            var effectiveLatLong = !string.IsNullOrWhiteSpace(userInfo.LatLong) 
+                ? userInfo.LatLong 
+                : userInfo.LatLongInferred;
+            
+            string? moonSign = null;
+            string? risingSign = null;
+            
+            if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(effectiveLatLong))
+            {
+                try
+                {
+                    var parts = effectiveLatLong.Split(',', StringSplitOptions.TrimEntries);
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double latitude) &&
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double longitude))
+                    {
+                        var localDateTime = calcBirthDate.ToDateTime(calcBirthTime.Value);
+                        var (utcDateTime, _, _) = LumenTimezoneHelper.GetUtcTimeFromLocal(localDateTime, latitude, longitude);
+                        var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(calcBirthDate, calcBirthTime.Value, latitude, longitude);
+                        moonSign = calculatedMoonSign;
+                        risingSign = calculatedRisingSign;
+                    }
+                }
+                catch { /* Ignore errors, use fallback */ }
+            }
+            
+            moonSign = moonSign ?? sunSign;
+            risingSign = risingSign ?? sunSign;
+            
+            if (type == PredictionType.Lifetime)
+            {
+                var fourPillars = LumenCalculator.CalculateFourPillars(calcBirthDate, calcBirthTime);
+                
+                targetDict["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
+                targetDict["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
+                targetDict["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
+                targetDict["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
+                targetDict["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
+                targetDict["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+                targetDict["westernOverview_sunSign"] = TranslateSunSign(sunSign, targetLanguage);
+                targetDict["westernOverview_moonSign"] = TranslateSunSign(moonSign, targetLanguage);
+                targetDict["westernOverview_risingSign"] = TranslateSunSign(risingSign, targetLanguage);
+                targetDict["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
+                targetDict["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                targetDict["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, targetLanguage);
+                targetDict["pastCycle_ageRange"] = TranslateCycleAgeRange(pastCycle.AgeRange, targetLanguage);
+                targetDict["pastCycle_period"] = TranslateCyclePeriod(pastCycle.Period, targetLanguage);
+                targetDict["currentCycle_ageRange"] = TranslateCycleAgeRange(currentCycle.AgeRange, targetLanguage);
+                targetDict["currentCycle_period"] = TranslateCyclePeriod(currentCycle.Period, targetLanguage);
+                targetDict["futureCycle_ageRange"] = TranslateCycleAgeRange(futureCycle.AgeRange, targetLanguage);
+                targetDict["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, targetLanguage);
+                
+                // Construct zodiacCycle_title
+                if (targetDict.TryGetValue("zodiacCycle_yearRange", out var yearRange) && !string.IsNullOrWhiteSpace(yearRange))
+                {
+                    var cycleTitlePrefix = targetLanguage switch
+                    {
+                        "zh" => "生肖周期影响",
+                        "zh-tw" => "生肖週期影響",
+                        "es" => "Influencia del Ciclo Zodiacal",
+                        _ => "Zodiac Cycle Influence"
+                    };
+                    targetDict["zodiacCycle_title"] = $"{cycleTitlePrefix} ({yearRange})";
+                }
+                
+                // For zh, copy cycle_name_zh
+                if (targetLanguage == "zh" && targetDict.TryGetValue("zodiacCycle_cycleNameChinese", out var zhCycleName) && !string.IsNullOrWhiteSpace(zhCycleName))
+                {
+                    targetDict["zodiacCycle_cycleName"] = zhCycleName;
+                }
+                
+                InjectFourPillarsData(targetDict, fourPillars, targetLanguage);
+                
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Lifetime backend fields for {targetLanguage}");
+            }
+            else if (type == PredictionType.Yearly)
+            {
+                var yearlyYear = predictionDate.Year;
+                var yearlyYearZodiac = LumenCalculator.GetChineseZodiacWithElement(yearlyYear);
+                var yearlyTaishui = LumenCalculator.CalculateTaishuiRelationship(birthYear, yearlyYear);
+                
+                targetDict["sunSign_name"] = TranslateSunSign(sunSign, targetLanguage);
+                targetDict["sunSign_enum"] = ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
+                targetDict["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
+                targetDict["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
+                targetDict["chineseAstrology_currentYearStem"] = birthYearStemsComponents.stemChinese;
+                targetDict["chineseAstrology_currentYearStemPinyin"] = birthYearStemsComponents.stemPinyin;
+                targetDict["chineseAstrology_currentYearBranch"] = birthYearStemsComponents.branchChinese;
+                targetDict["chineseAstrology_currentYearBranchPinyin"] = birthYearStemsComponents.branchPinyin;
+                targetDict["chineseAstrology_taishuiRelationship"] = TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
+                targetDict["zodiacInfluence"] = BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, targetLanguage);
+                
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Yearly backend fields for {targetLanguage}");
+            }
+            else if (type == PredictionType.Daily)
+            {
+                // Re-inject tarot/stone translated names if they exist in source
+                if (targetDict.TryGetValue("tarot_card_name", out var tarotCardName))
+                {
+                    var tarotCardEnum = ParseTarotCard(tarotCardName);
+                    targetDict["todaysReading_tarotCard_enum"] = ((int)tarotCardEnum).ToString();
+                    targetDict["todaysReading_tarotCard_name"] = TranslateTarotCard(tarotCardEnum, targetLanguage);
+                }
+                
+                if (targetDict.TryGetValue("tarot_card_orientation", out var orientation))
+                {
+                    var orientationEnum = ParseOrientation(orientation);
+                    targetDict["todaysReading_tarotCard_orientation_enum"] = ((int)orientationEnum).ToString();
+                    targetDict["todaysReading_tarotCard_orientation"] = TranslateOrientation(orientationEnum, targetLanguage);
+                }
+                
+                if (targetDict.TryGetValue("crystal_stone_id", out var stoneId))
+                {
+                    var stoneEnum = ParseLuckyStone(stoneId);
+                    targetDict["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
+                    targetDict["luckyAlignments_luckyStone"] = TranslateLuckyStone(stoneEnum, targetLanguage);
+                }
+                
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Daily backend fields for {targetLanguage}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[Lumen][OnDemandTranslation] Error re-injecting backend fields for {targetLanguage}");
+        }
     }
 
         private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
