@@ -2608,14 +2608,22 @@ Generate translations for: {targetLangNames}
                 _logger.LogInformation(
                     $"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
             
+            // Filter fields that don't need translation
+            var filteredForTranslation = FilterFieldsForTranslation(sourceContent);
+            var skippedFields = sourceContent.Where(kvp => !filteredForTranslation.ContainsKey(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} Filtered {skippedFields.Count} fields (enums/numbers), {filteredForTranslation.Count} fields to translate");
+            
             // Build single-language translation prompt
             var promptBuildStopwatch = Stopwatch.StartNew();
                 var translationPrompt =
-                    BuildSingleLanguageTranslationPrompt(sourceContent, sourceLanguage, targetLanguage, type);
+                    BuildSingleLanguageTranslationPrompt(filteredForTranslation, sourceLanguage, targetLanguage, type);
             promptBuildStopwatch.Stop();
             var translationPromptTokens = TokenHelper.EstimateTokenCount(translationPrompt);
                 _logger.LogInformation(
-                    $"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Prompt_Build: {promptBuildStopwatch.ElapsedMilliseconds}ms, Prompt_Length: {translationPrompt.Length} chars, Tokens: ~{translationPromptTokens}, Source_Fields: {sourceContent.Count}");
+                    $"[PERF][Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Prompt_Build: {promptBuildStopwatch.ElapsedMilliseconds}ms, Prompt_Length: {translationPrompt.Length} chars, Tokens: ~{translationPromptTokens}, Source_Fields: {filteredForTranslation.Count}");
             
             // Call LLM for translation
             var llmStopwatch = Stopwatch.StartNew();
@@ -2682,6 +2690,15 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                 _logger.LogInformation(
                     $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Parse: {parseStopwatch.ElapsedMilliseconds}ms, Fields: {contentDict.Count}");
             
+            // Merge back skipped fields (enums, numbers, etc.)
+            foreach (var skipped in skippedFields)
+            {
+                contentDict[skipped.Key] = skipped.Value;
+            }
+            
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Added {skippedFields.Count} skipped fields back, Total fields: {contentDict.Count}");
+            
             // Raise event to update state with this language
             var translatedLanguages = new Dictionary<string, Dictionary<string, string>>
             {
@@ -2723,6 +2740,56 @@ All content is for entertainment, self-exploration, and contemplative purposes o
     /// <summary>
     /// Build single-language translation prompt (for on-demand translation)
     /// </summary>
+    /// <summary>
+    /// Filter fields that don't need translation (enums, numbers, empty values, etc.)
+    /// </summary>
+        private Dictionary<string, string> FilterFieldsForTranslation(Dictionary<string, string> sourceContent)
+    {
+        var filtered = new Dictionary<string, string>();
+        
+        foreach (var kvp in sourceContent)
+        {
+            var key = kvp.Key;
+            var value = kvp.Value;
+            
+            // Skip empty or whitespace-only values
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+            
+            // Skip enum fields (ending with _enum)
+            if (key.EndsWith("_enum", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            
+            // Skip pure number fields (integers or decimals)
+            if (int.TryParse(value, out _) || double.TryParse(value, out _))
+            {
+                continue;
+            }
+            
+            // Skip URL fields
+            if (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+                value.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            
+            // Skip very short values (likely codes or IDs, e.g., "1", "A", "en")
+            if (value.Length <= 2 && !value.Contains(" "))
+            {
+                continue;
+            }
+            
+            // Keep this field for translation
+            filtered[key] = value;
+        }
+        
+        return filtered;
+    }
+
         private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
             string sourceLanguage, string targetLanguage, PredictionType type)
     {
