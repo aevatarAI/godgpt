@@ -2131,6 +2131,7 @@ cn_trait2	{desc_trait}
 cn_trait3	{desc_trait}
 cn_trait4	{desc_trait}
 whisper	{desc_whisper}
+sun_sign	{sunSignTranslated}
 sun_tag	{desc_sun_tag}
 sun_arch_name	{desc_arch_name}
 sun_desc	{desc_sun_desc}
@@ -3519,6 +3520,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["cn_trait3"] = "chineseAstrology_trait3",
             ["cn_trait4"] = "chineseAstrology_trait4",
             ["whisper"] = "zodiacWhisper",
+            ["sun_sign"] = "westernOverview_sunSign",
             ["sun_tag"] = "sunSign_tagline",
             ["sun_arch_name"] = "westernOverview_sunArchetypeName", // Backend will construct sun_arch
             ["sun_desc"] = "westernOverview_sunDescription",
