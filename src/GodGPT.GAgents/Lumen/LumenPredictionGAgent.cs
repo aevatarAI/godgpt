@@ -1400,6 +1400,34 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 parsedResults["westernOverview_sunSign"] = TranslateSunSign(sunSign, targetLanguage);
                 parsedResults["westernOverview_moonSign"] = TranslateSunSign(moonSign, targetLanguage);
                 parsedResults["westernOverview_risingSign"] = TranslateSunSign(risingSign, targetLanguage);
+                
+                // Replace sign names in combined essence statement with backend-calculated translations
+                if (parsedResults.TryGetValue("westernOverview_combinedEssenceStatement", out var combinedEssenceStatement))
+                {
+                    var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
+                    var moonSignTranslated = TranslateSunSign(moonSign, targetLanguage);
+                    var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
+                    
+                    // Replace any occurrence of sign names (case-insensitive) with accurate translations
+                    foreach (var signToReplace in new[] { sunSign, moonSign, risingSign })
+                    {
+                        combinedEssenceStatement = System.Text.RegularExpressions.Regex.Replace(
+                            combinedEssenceStatement,
+                            $@"\b{signToReplace}\b",
+                            match =>
+                            {
+                                if (signToReplace == sunSign) return sunSignTranslated;
+                                if (signToReplace == moonSign) return moonSignTranslated;
+                                if (signToReplace == risingSign) return risingSignTranslated;
+                                return match.Value;
+                            },
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                        );
+                    }
+                    
+                    parsedResults["westernOverview_combinedEssenceStatement"] = combinedEssenceStatement;
+                }
+                
                 parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
                 parsedResults["chineseZodiac_enum"] =
                     ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
@@ -2032,6 +2060,7 @@ FORMAT REQUIREMENT:
             {
                 "zh" => $"以\"你的生肖是{birthYearAnimalTranslated}…\"开头，描述20年象征周期",
                 "zh-tw" => $"以\"你的生肖是{birthYearAnimalTranslated}…\"開頭，描述20年象徵週期",
+                "es" => $"Comienza con 'Tu Zodiaco Chino es {birthYearAnimalTranslated}...' y describe el ciclo simbólico de 20 años",
                 _ =>
                     $"Start with 'Your Chinese Zodiac is {birthYearAnimalTranslated}...' and describe the 20-year symbolic cycle"
             };
@@ -2052,6 +2081,13 @@ FORMAT REQUIREMENT:
             var desc_moon_desc = isChinese ? "情感景观描述" : "[Emotional landscape]";
             var desc_rising_desc = isChinese ? "自我表达方式" : "[Expression style]";
             var desc_essence = isChinese ? "本质总结 (限20字)" : "[Essence summary, max 20 words]";
+            var desc_combined_essence = targetLanguage switch
+            {
+                "zh" => $"结合三个星座的陈述句，例如：你像{sunSignTranslated}一样思考，像{moonSignTranslated}一样感受，像{risingSignTranslated}一样行动 (使用提供的星座名称)",
+                "zh-tw" => $"結合三個星座的陳述句，例如：你像{sunSignTranslated}一樣思考，像{moonSignTranslated}一樣感受，像{risingSignTranslated}一樣行動 (使用提供的星座名稱)",
+                "es" => $"Declaración que combine los tres signos, ej. 'Piensas como {sunSignTranslated}, sientes como {moonSignTranslated}, y te mueves por el mundo como {risingSignTranslated}.' (usar nombres de signos proporcionados)",
+                _ => $"Statement combining all three signs, e.g. 'You think like a {sunSignTranslated}, feel like {moonSignTranslated}, and move through the world like a {risingSignTranslated}.' (use provided sign names)"
+            };
             
             // Strengths & Challenges
             var desc_str_intro = isChinese ? "旅程与品质概述" : "[Journey overview]";
@@ -2070,6 +2106,7 @@ FORMAT REQUIREMENT:
             {
                 "zh" => $"与{birthYearElement}共鸣的本质",
                 "zh-tw" => $"與{birthYearElement}共鳴的本質",
+                "es" => $"Esencia que resuena con {birthYearElement}",
                 _ => $"Essence resonating with {birthYearElement}"
             };
             
@@ -2139,6 +2176,7 @@ moon_desc	{desc_moon_desc}
 rising_arch_name	{desc_arch_name}
 rising_desc	{desc_rising_desc}
 essence	{desc_essence}
+combined_essence	{desc_combined_essence}
 str_intro	{desc_str_intro}
 str1_title	{desc_title}
 str1_desc	{desc_str_desc}
@@ -3115,6 +3153,35 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                 targetDict["westernOverview_sunSign"] = TranslateSunSign(sunSign, targetLanguage);
                 targetDict["westernOverview_moonSign"] = TranslateSunSign(moonSign, targetLanguage);
                 targetDict["westernOverview_risingSign"] = TranslateSunSign(risingSign, targetLanguage);
+                
+                // Replace sign names in combined essence statement with backend-calculated translations
+                if (targetDict.TryGetValue("westernOverview_combinedEssenceStatement", out var combinedEssenceStatement))
+                {
+                    var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
+                    var moonSignTranslated = TranslateSunSign(moonSign, targetLanguage);
+                    var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
+                    
+                    // Replace any occurrence of sign names (case-insensitive) with accurate translations
+                    // This ensures LLM-generated statement uses correct translations
+                    foreach (var signToReplace in new[] { sunSign, moonSign, risingSign })
+                    {
+                        combinedEssenceStatement = System.Text.RegularExpressions.Regex.Replace(
+                            combinedEssenceStatement,
+                            $@"\b{signToReplace}\b",
+                            match =>
+                            {
+                                if (signToReplace == sunSign) return sunSignTranslated;
+                                if (signToReplace == moonSign) return moonSignTranslated;
+                                if (signToReplace == risingSign) return risingSignTranslated;
+                                return match.Value;
+                            },
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+                        );
+                    }
+                    
+                    targetDict["westernOverview_combinedEssenceStatement"] = combinedEssenceStatement;
+                }
+                
                 targetDict["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
                 targetDict["chineseZodiac_enum"] = ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
                 targetDict["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, targetLanguage);
@@ -3525,6 +3592,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["rising_arch_name"] = "westernOverview_risingArchetypeName", // Backend will construct rising_arch
             ["rising_desc"] = "westernOverview_risingDescription",
             ["essence"] = "combinedEssence",
+            ["combined_essence"] = "westernOverview_combinedEssenceStatement", // LLM generates, backend replaces sign names
             ["str_intro"] = "strengths_overview",
             ["str1_title"] = "strengths_item1_title",
             ["str1_desc"] = "strengths_item1_description",
