@@ -34,5 +34,8 @@ public class LumenUserProfileState : StateBase
     
     // Profile update history (timestamps) for rate limiting
     [Id(18)] public List<DateTime> UpdateHistory { get; set; } = new();
+    
+    // Icon upload history (timestamps) for daily rate limiting - only keeps today's records
+    [Id(21)] public List<DateTime> IconUploadHistory { get; set; } = new();
 }
 

@@ -72,6 +72,18 @@ public class LumenUserProfileDto
 }
 
 /// <summary>
+/// Update icon result
+/// </summary>
+[GenerateSerializer]
+public class UpdateIconResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public string? IconUrl { get; set; }
+    [Id(3)] public int? RemainingUploads { get; set; } // Remaining uploads today
+}
+
+/// <summary>
 /// Get user profile result (V2)
 /// </summary>
 [GenerateSerializer]

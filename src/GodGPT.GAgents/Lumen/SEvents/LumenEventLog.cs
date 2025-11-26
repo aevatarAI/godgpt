@@ -35,6 +35,7 @@ public class UserRegisteredEvent : LumenUserEventLog
     [Id(12)] public DateTime CreatedAt { get; set; }
     [Id(13)] public string? CurrentResidence { get; set; } // Optional
     [Id(14)] public string? Email { get; set; } // Optional
+    [Id(15)] public string InitialLanguage { get; set; } = "en"; // Initial language from Accept-Language header
 }
 
 /// <summary>
@@ -67,6 +68,20 @@ public class LatLongInferredEvent : LumenUserEventLog
     [Id(1)] public string LatLongInferred { get; set; } = string.Empty; // Format: "latitude,longitude"
     [Id(2)] public string BirthCity { get; set; } = string.Empty; // Source city
     [Id(3)] public DateTime InferredAt { get; set; }
+}
+
+/// <summary>
+/// Language switched event
+/// </summary>
+[GenerateSerializer]
+public class LanguageSwitchedEvent : LumenUserEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string PreviousLanguage { get; set; } = string.Empty;
+    [Id(2)] public string NewLanguage { get; set; } = string.Empty;
+    [Id(3)] public DateTime SwitchedAt { get; set; }
+    [Id(4)] public DateOnly SwitchDate { get; set; } // Date of the switch (for daily counting)
+    [Id(5)] public int TodayCount { get; set; } // Count after this switch
 }
 
 #endregion

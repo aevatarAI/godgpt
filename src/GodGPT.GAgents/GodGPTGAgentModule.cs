@@ -53,10 +53,13 @@ public class GodGPTGAgentModule : AbpModule
         Configure<SpeechOptions>(configuration.GetSection("Speech"));
         Configure<DailyPushOptions>(configuration.GetSection("DailyPush"));
         
-        // Configure Lumen options
+        // Configure Lumen options (backend)
         Configure<LumenPredictionOptions>(configuration.GetSection("Lumen:Prediction"));
         Configure<LumenUserProfileOptions>(configuration.GetSection("Lumen:UserProfile"));
         Configure<LumenSolarTermOptions>(configuration.GetSection("Lumen:SolarTerm"));
+        
+        // Configure Lumen feature flags (frontend only)
+        Configure<LumenFeatureFlagsOptions>(configuration.GetSection("Lumen:FeatureFlags"));
         
         // Configure SolarTermData with file path from options
         var solarTermOptions = configuration.GetSection("Lumen:SolarTerm").Get<LumenSolarTermOptions>();

@@ -99,9 +99,17 @@ public static class SolarTermCalculator
     {
         // Simplified calculation for years without precise data
         // 立春 formula: (year - 2000) * 0.2422 + 3.87
-        var day = (int)Math.Floor((year - 2000) * 0.2422 + 3.87);
-        var hour = ((year - 2000) * 0.2422 + 3.87 - day) * 24;
-        day = Math.Clamp(day, 3, 5);
+        var dayOfMonth = (year - 2000) * 0.2422 + 3.87;
+        
+        // Clamp to reasonable range
+        dayOfMonth = Math.Clamp(dayOfMonth, 3, 5);
+        
+        var day = (int)Math.Floor(dayOfMonth);
+        var hour = (dayOfMonth - day) * 24;
+        
+        // Ensure hour is within valid range (0-23)
+        hour = Math.Clamp(hour, 0, 23);
+        
         return new DateTime(year, 2, day, (int)hour, 0, 0, DateTimeKind.Utc);
     }
 
@@ -174,9 +182,15 @@ public static class SolarTermCalculator
     
     private static DateTime ApproximateSolarTerm(int year, int month, int baseDay, double dayOfMonth)
     {
+        // Clamp dayOfMonth to reasonable range first
+        dayOfMonth = Math.Clamp(dayOfMonth, baseDay - 1, baseDay + 2);
+        
         var day = (int)Math.Floor(dayOfMonth);
         var hour = (dayOfMonth - day) * 24;
-        day = Math.Clamp(day, baseDay - 1, baseDay + 2);
+        
+        // Ensure hour is within valid range (0-23)
+        hour = Math.Clamp(hour, 0, 23);
+        
         return new DateTime(year, month, day, (int)hour, 0, 0, DateTimeKind.Utc);
     }
 

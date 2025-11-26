@@ -298,6 +298,7 @@ public class UpdateUserInfoRequest
     [Id(12)] public string? CurrentResidence { get; set; } // Optional
     [Id(13)] public string? Email { get; set; } // Optional
     [Id(14)] public string? Occupation { get; set; } // Optional
+    [Id(15)] public string InitialLanguage { get; set; } = "en"; // Initial language from Accept-Language header (only used for new registrations)
 }
 
 /// <summary>
@@ -338,6 +339,7 @@ public class LumenUserDto
     [Id(17)] public string? Occupation { get; set; } // Optional
     [Id(18)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
     [Id(19)] public string? LatLongInferred { get; set; } // Internal - LLM inferred from BirthCity (not exposed in profile API)
+    [Id(20)] public string CurrentLanguage { get; set; } = "en"; // Current active language
 }
 
 /// <summary>
@@ -384,6 +386,33 @@ public class UpdateMethodRatingResult
     [Id(2)] public string? PredictionMethod { get; set; }
     [Id(3)] public int UpdatedRating { get; set; }
     [Id(4)] public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// Set language result
+/// </summary>
+[GenerateSerializer]
+public class SetLanguageResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public string? CurrentLanguage { get; set; }
+    [Id(3)] public int RemainingChanges { get; set; } // Remaining language switches for today
+    [Id(4)] public int MaxChangesPerDay { get; set; } // Maximum changes allowed per day
+}
+
+/// <summary>
+/// Get language info result
+/// </summary>
+[GenerateSerializer]
+public class GetLanguageInfoResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public string CurrentLanguage { get; set; } = "en";
+    [Id(3)] public int RemainingChanges { get; set; } // Remaining language switches for today
+    [Id(4)] public int MaxChangesPerDay { get; set; } // Maximum changes allowed per day
+    [Id(5)] public DateTime? LastSwitchDate { get; set; } // Last switch date
 }
 
 #endregion
@@ -464,11 +493,12 @@ public class PredictionSummaryDto
 {
     [Id(0)] public Guid PredictionId { get; set; }
     [Id(1)] public DateOnly PredictionDate { get; set; }
-    [Id(2)] public Dictionary<string, string> Results { get; set; } = new(); // Flattened prediction results (deprecated for /history/recent)
+    [Id(2)] public Dictionary<string, string> Results { get; set; } = new(); // Flattened prediction results (empty if language mismatch)
     [Id(3)] public PredictionType Type { get; set; } // Daily/Yearly/Lifetime
-    [Id(4)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks if exist (deprecated for /history/recent)
+    [Id(4)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks if exist
     [Id(5)] public DateTime CreatedAt { get; set; }
     [Id(6)] public string? DayTitle { get; set; } // Daily prediction title (e.g., twistOfFate_title)
+    [Id(7)] public List<string> AvailableLanguages { get; set; } = new(); // Available languages for this prediction
 }
 
 /// <summary>

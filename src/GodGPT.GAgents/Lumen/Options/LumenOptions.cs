@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Aevatar.Application.Grains.Lumen.Options;
 
@@ -33,6 +34,13 @@ public class LumenPredictionOptions
     /// Default: 5 minutes
     /// </summary>
     public int GenerationTimeoutMinutes { get; set; } = 5;
+    
+    /// <summary>
+    /// Enable daily prediction auto-generation via scheduled reminders
+    /// When disabled, daily predictions will only be generated on-demand
+    /// Default: false (disabled)
+    /// </summary>
+    public bool EnableDailyAutoGeneration { get; set; } = false;
 }
 
 /// <summary>
@@ -45,6 +53,18 @@ public class LumenUserProfileOptions
     /// Default: 100 (for testing)
     /// </summary>
     public int MaxProfileUpdatesPerWeek { get; set; } = 100;
+    
+    /// <summary>
+    /// Maximum number of icon uploads allowed per day
+    /// Default: 1
+    /// </summary>
+    public int MaxIconUploadsPerDay { get; set; } = 1;
+    
+    /// <summary>
+    /// Maximum number of language switches allowed per day
+    /// Default: 1
+    /// </summary>
+    public int MaxLanguageSwitchesPerDay { get; set; } = 1;
 }
 
 /// <summary>
@@ -57,5 +77,19 @@ public class LumenSolarTermOptions
     /// Default: /app/lumen/solar-terms-full.json
     /// </summary>
     public string DataFilePath { get; set; } = "/app/lumen/solar-terms-full.json";
+}
+
+/// <summary>
+/// Feature flags configuration for frontend (not used by backend business logic)
+/// </summary>
+public class LumenFeatureFlagsOptions
+{
+    /// <summary>
+    /// Feature flags dictionary for frontend configuration
+    /// Can be used to enable/disable features dynamically without code changes
+    /// Example: { "showLifetimePrediction": "true", "maxFavorites": "10" }
+    /// Default: empty dictionary
+    /// </summary>
+    public Dictionary<string, string> Flags { get; set; } = new Dictionary<string, string>();
 }
 

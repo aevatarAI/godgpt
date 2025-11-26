@@ -41,6 +41,10 @@ public class LumenPredictionState : StateBase
     
     // Prompt version tracking (for prompt updates triggering regeneration)
     [Id(15)] public int PromptVersion { get; set; } // Version of prompt used to generate this prediction (default: 0)
+    
+    // Today's processed languages (for Daily: allow one translation per day per language)
+    [Id(16)] public DateOnly? TodayProcessDate { get; set; } // Date when TodayProcessedLanguages was last updated
+    [Id(17)] public List<string> TodayProcessedLanguages { get; set; } = new(); // Languages generated/translated today (reset daily)
 }
 
 /// <summary>

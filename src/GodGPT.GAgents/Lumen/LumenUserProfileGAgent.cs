@@ -37,6 +37,11 @@ public interface ILumenUserProfileGAgent : IGAgent
     /// </summary>
     [ReadOnly]
     Task<GetRemainingUpdatesResult> GetRemainingUpdatesAsync();
+    
+    /// <summary>
+    /// Update user icon (with daily upload limit)
+    /// </summary>
+    Task<UpdateIconResult> UpdateIconAsync(string iconUrl);
 }
 
 [GAgent(nameof(LumenUserProfileGAgent))]
@@ -106,7 +111,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 var isInitialRegistration = state.CreatedAt == default;
                 if (!isInitialRegistration)
                 {
-                    state.UpdateHistory.Add(updateEvent.UpdatedAt);
+                state.UpdateHistory.Add(updateEvent.UpdatedAt);
                 }
                 
                 // Set CreatedAt on first registration
@@ -537,6 +542,89 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 RemainingCount = 0,
                 NextAvailableAt = null
             });
+        }
+    }
+    
+    public async Task<UpdateIconResult> UpdateIconAsync(string iconUrl)
+    {
+        try
+        {
+            _logger.LogDebug("[LumenUserProfileGAgent][UpdateIconAsync] Start - UserId: {UserId}, IconUrl: {IconUrl}", 
+                State.UserId, iconUrl);
+
+            // Check if user profile exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateIconAsync] User profile not found");
+                return new UpdateIconResult
+                {
+                    Success = false,
+                    Message = "User profile not found. Please create your profile first."
+                };
+            }
+
+            // Check daily upload limit
+            var now = DateTime.UtcNow;
+            var todayStart = now.Date;
+            
+            // Clean up old upload history (only keep today's records to prevent infinite growth)
+            State.IconUploadHistory = State.IconUploadHistory
+                .Where(timestamp => timestamp.Date == todayStart)
+                .ToList();
+            
+            // Check if daily limit exceeded
+            var maxIconUploadsPerDay = _options?.MaxIconUploadsPerDay ?? 1;
+            if (State.IconUploadHistory.Count >= maxIconUploadsPerDay)
+            {
+                var remainingTime = todayStart.AddDays(1) - now;
+                var resetTime = todayStart.AddDays(1);
+                
+                _logger.LogWarning(
+                    "[LumenUserProfileGAgent][UpdateIconAsync] Daily upload limit exceeded for UserId: {UserId}. " +
+                    "Current: {Current}/{Limit}, Reset at: {ResetTime}",
+                    State.UserId, State.IconUploadHistory.Count, maxIconUploadsPerDay, resetTime);
+
+                return new UpdateIconResult
+                {
+                    Success = false,
+                    Message = $"Daily icon upload limit ({maxIconUploadsPerDay}) exceeded. Please try again tomorrow.",
+                    RemainingUploads = 0
+                };
+            }
+
+            // Update icon URL
+            State.Icon = iconUrl;
+            State.UpdatedAt = now;
+            
+            // Record upload timestamp
+            State.IconUploadHistory.Add(now);
+
+            // Persist state changes
+            await WriteStateAsync();
+
+            var remainingUploads = Math.Max(0, maxIconUploadsPerDay - State.IconUploadHistory.Count);
+
+            _logger.LogInformation(
+                "[LumenUserProfileGAgent][UpdateIconAsync] Icon updated successfully for UserId: {UserId}, " +
+                "Remaining uploads today: {Remaining}/{Max}",
+                State.UserId, remainingUploads, maxIconUploadsPerDay);
+
+            return new UpdateIconResult
+            {
+                Success = true,
+                Message = "Icon updated successfully",
+                IconUrl = iconUrl,
+                RemainingUploads = remainingUploads
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserProfileGAgent][UpdateIconAsync] Error updating icon");
+            return new UpdateIconResult
+            {
+                Success = false,
+                Message = "Internal error occurred"
+            };
         }
     }
 
