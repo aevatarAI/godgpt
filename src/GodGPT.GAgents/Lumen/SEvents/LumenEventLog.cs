@@ -286,6 +286,18 @@ public class UserProfileClearedEvent : LumenUserProfileEventLog
     [Id(0)] public DateTime ClearedAt { get; set; }
 }
 
+/// <summary>
+/// User icon updated event
+/// </summary>
+[GenerateSerializer]
+public class IconUpdatedEvent : LumenUserProfileEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string IconUrl { get; set; } = string.Empty;
+    [Id(2)] public DateTime UpdatedAt { get; set; }
+    [Id(3)] public DateTime UploadTimestamp { get; set; } // For daily limit tracking
+}
+
 #endregion
 
 #region Prediction History Events
