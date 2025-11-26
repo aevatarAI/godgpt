@@ -27,5 +27,10 @@ public class LumenUserState : StateBase
     [Id(14)] public List<string> Actions { get; set; } = new(); // User selected lumen prediction actions
     [Id(15)] public string? CurrentResidence { get; set; } // Optional
     [Id(16)] public string? Email { get; set; } // Optional
+    
+    // Language settings for multi-language support
+    [Id(18)] public string CurrentLanguage { get; set; } = "en"; // Current active language
+    [Id(19)] public DateOnly? LastLanguageSwitchDate { get; set; } // Last date when language was switched
+    [Id(20)] public int TodayLanguageSwitchCount { get; set; } = 0; // Number of language switches today
 }
 

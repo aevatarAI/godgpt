@@ -49,6 +49,11 @@ public interface ILumenPredictionGAgent : IGAgent
     
     [ReadOnly]
     Task<Dictionary<string, string>> GetCalculatedValuesAsync(LumenUserDto userInfo, string userLanguage = "en");
+    
+    /// <summary>
+    /// Trigger translation for this prediction to target language (fire-and-forget, triggered by language switch)
+    /// </summary>
+    Task TriggerTranslationAsync(LumenUserDto userInfo, string targetLanguage);
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -301,6 +306,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 if (!string.IsNullOrEmpty(generatedEvent.InitialLanguage))
                 {
                     state.GeneratedLanguages = new List<string> { generatedEvent.InitialLanguage };
+                    
+                    // Initialize today's processed languages
+                    state.TodayProcessDate = generatedEvent.LastGeneratedDate;
+                    state.TodayProcessedLanguages = new List<string> { generatedEvent.InitialLanguage };
                 }
 
                 break;
@@ -356,6 +365,8 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 state.GeneratedLanguages.Clear();
                 state.GenerationLocks.Clear();
                 state.TranslationLocks.Clear();
+                state.TodayProcessDate = null;
+                state.TodayProcessedLanguages.Clear();
                 // Note: Do NOT clear LastActiveDate, DailyReminderTargetId, IsDailyReminderEnabled
                 // These are user activity tracking fields, not prediction data
                 break;
@@ -460,8 +471,19 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _logger.LogInformation(
                     $"[PERF][Lumen] {userInfo.UserId} Cache_Hit: {totalStopwatch.ElapsedMilliseconds}ms - Type: {type}");
                 
-                // ========== NEW LOGIC: Check if today already generated/translated ==========
-                bool todayAlreadyProcessed = State.LastGeneratedDate.HasValue && State.LastGeneratedDate.Value == today;
+                // ========== NEW LOGIC: Check if translation is allowed ==========
+                // Rule: No translation on registration day, allow translation from Day 2 onwards
+                var createdDate = DateOnly.FromDateTime(State.CreatedAt);
+                bool isRegistrationDay = (createdDate == today);
+                
+                // Clear today's processed languages if it's a new day
+                if (!State.TodayProcessDate.HasValue || State.TodayProcessDate.Value != today)
+                {
+                    State.TodayProcessedLanguages.Clear();
+                    State.TodayProcessDate = today;
+                }
+                
+                bool languageAlreadyProcessedToday = State.TodayProcessedLanguages.Contains(userLanguage);
                 
                 // Get localized results
                 Dictionary<string, string> localizedResults;
@@ -475,23 +497,47 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     returnedLanguage = userLanguage;
                     isFallback = false;
                 }
-                else if (todayAlreadyProcessed)
+                else if (isRegistrationDay)
                 {
-                    // Today already processed - return any available language instead of triggering translation
-                    var availableLanguage = State.MultilingualResults.Keys.FirstOrDefault();
-                    if (availableLanguage != null)
+                    // Registration day - no translation allowed, return fallback language (priority: en > zh > zh-tw > es)
+                    var fallbackLanguage = GetFallbackLanguage(State.MultilingualResults);
+                    if (fallbackLanguage != null)
                 {
-                        localizedResults = State.MultilingualResults[availableLanguage];
-                        returnedLanguage = availableLanguage;
+                        localizedResults = State.MultilingualResults[fallbackLanguage];
+                        returnedLanguage = fallbackLanguage;
                         isFallback = true;
                         _logger.LogInformation(
-                            $"[Lumen] {userInfo.UserId} Today already processed ({today}), returning available language '{availableLanguage}' instead of '{userLanguage}'");
+                            $"[Lumen] {userInfo.UserId} Registration day ({createdDate}), translation not allowed. Returning fallback language '{fallbackLanguage}'");
+                }
+                else
+                {
+                        // No available language - should not happen
+                        _logger.LogWarning(
+                            $"[Lumen] {userInfo.UserId} Registration day but no multilingual results available");
+                        return new GetTodayPredictionResult
+                        {
+                            Success = false,
+                            Message = "No prediction data available"
+                        };
+                    }
+                }
+                else if (languageAlreadyProcessedToday)
+                {
+                    // Today already tried to process this language - return fallback language (priority: en > zh > zh-tw > es)
+                    var fallbackLanguage = GetFallbackLanguage(State.MultilingualResults);
+                    if (fallbackLanguage != null)
+                {
+                        localizedResults = State.MultilingualResults[fallbackLanguage];
+                        returnedLanguage = fallbackLanguage;
+                        isFallback = true;
+                        _logger.LogInformation(
+                            $"[Lumen] {userInfo.UserId} Language '{userLanguage}' already processed today ({today}), returning fallback language '{fallbackLanguage}'");
                 }
                 else
                 {
                         // No available language - should not happen after database clear
                         _logger.LogWarning(
-                            $"[Lumen] {userInfo.UserId} Today already processed but no multilingual results available");
+                            $"[Lumen] {userInfo.UserId} Language '{userLanguage}' already processed today but no multilingual results available");
                         return new GetTodayPredictionResult
                         {
                             Success = false,
@@ -501,7 +547,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 }
                 else
                 {
-                    // New day - allow translation
+                    // Not registration day and language not processed today - trigger translation and return fallback
                     var sourceLanguage = State.MultilingualResults.ContainsKey("en")
                         ? "en"
                         : State.MultilingualResults.Keys.FirstOrDefault();
@@ -509,18 +555,23 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         State.MultilingualResults[sourceLanguage].Count > 0)
                     {
                         var sourceContent = State.MultilingualResults[sourceLanguage];
+                        
+                        // Mark this language as processed today to prevent duplicate translations
+                        State.TodayProcessedLanguages.Add(userLanguage);
+                        await WriteStateAsync();
+                        
+                        // Trigger translation in background
                         TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, sourceLanguage,
                             sourceContent, userLanguage);
                         
-                        _logger.LogWarning(
-                            $"[Lumen] {userInfo.UserId} Language {userLanguage} not available for {type}, triggered translation (new day)");
+                        // Return fallback language immediately (priority: en > zh > zh-tw > es)
+                        var fallbackLanguage = GetFallbackLanguage(State.MultilingualResults);
+                        localizedResults = State.MultilingualResults[fallbackLanguage];
+                        returnedLanguage = fallbackLanguage;
+                        isFallback = true;
                         
-                        return new GetTodayPredictionResult
-                        {
-                            Success = false,
-                            Message =
-                                $"Language '{userLanguage}' is not available yet. Translation has been triggered, please try again in a moment."
-                        };
+                        _logger.LogInformation(
+                            $"[Lumen] {userInfo.UserId} Language '{userLanguage}' not available, triggered translation and returning fallback '{fallbackLanguage}'");
                     }
                 else
                 {
@@ -652,9 +703,17 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         string returnedLanguage;
         bool isFallback = false;
 
-        // ========== NEW LOGIC: Check if today already generated/translated ==========
+        // ========== NEW LOGIC: Check if today already processed this specific language ==========
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        bool todayAlreadyProcessed = State.LastGeneratedDate.HasValue && State.LastGeneratedDate.Value == today;
+        
+        // Clear today's processed languages if it's a new day
+        if (!State.TodayProcessDate.HasValue || State.TodayProcessDate.Value != today)
+        {
+            State.TodayProcessedLanguages.Clear();
+            State.TodayProcessDate = today;
+        }
+        
+        bool languageAlreadyProcessedToday = State.TodayProcessedLanguages.Contains(userLanguage);
         
         // Check if MultilingualResults has the requested language
         if (State.MultilingualResults != null && State.MultilingualResults.ContainsKey(userLanguage))
@@ -665,20 +724,20 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         }
         else if (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
         {
-            if (todayAlreadyProcessed)
+            if (languageAlreadyProcessedToday)
         {
-                // Today already processed - return any available language instead of triggering translation
-                var availableLanguage = State.MultilingualResults.Keys.FirstOrDefault();
-                localizedResults = State.MultilingualResults[availableLanguage];
-                returnedLanguage = availableLanguage;
+                // Today already tried to process this language - return fallback language (priority: en > zh > zh-tw > es)
+                var fallbackLanguage = GetFallbackLanguage(State.MultilingualResults);
+                localizedResults = State.MultilingualResults[fallbackLanguage];
+                returnedLanguage = fallbackLanguage;
                 isFallback = true;
                 _logger.LogInformation(
-                    "[LumenPredictionGAgent][GetPredictionAsync] Today already processed ({Today}), returning available language '{AvailableLanguage}' instead of '{RequestedLanguage}'",
-                    today, availableLanguage, userLanguage);
+                    "[LumenPredictionGAgent][GetPredictionAsync] Language '{RequestedLanguage}' already processed today ({Today}), returning fallback language '{FallbackLanguage}'",
+                    userLanguage, today, fallbackLanguage);
         }
         else
         {
-                // New day - allow translation
+                // Language not processed today - trigger translation and return fallback
                 var minimalUserInfo = new LumenUserDto { UserId = State.UserId };
                 var sourceLanguage = State.MultilingualResults.ContainsKey("en")
                     ? "en"
@@ -688,12 +747,24 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     State.MultilingualResults[sourceLanguage].Count > 0)
                 {
                     var sourceContent = State.MultilingualResults[sourceLanguage];
+                    
+                    // Mark this language as processed today to prevent duplicate translations
+                    State.TodayProcessedLanguages.Add(userLanguage);
+                    await WriteStateAsync();
+                    
+                    // Trigger translation in background
                     TriggerOnDemandTranslationAsync(minimalUserInfo, State.PredictionDate, State.Type, sourceLanguage,
                         sourceContent, userLanguage);
-                    _logger.LogWarning(
-                        "[LumenPredictionGAgent][GetPredictionAsync] Language {UserLanguage} not found in MultilingualResults, triggered translation (new day)",
-                        userLanguage);
-                    return Task.FromResult<PredictionResultDto?>(null);
+                    
+                    // Return fallback language immediately (priority: en > zh > zh-tw > es)
+                    var fallbackLanguage = GetFallbackLanguage(State.MultilingualResults);
+                    localizedResults = State.MultilingualResults[fallbackLanguage];
+                    returnedLanguage = fallbackLanguage;
+                    isFallback = true;
+                    
+                    _logger.LogInformation(
+                        "[LumenPredictionGAgent][GetPredictionAsync] Language '{RequestedLanguage}' not available, triggered translation and returning fallback '{FallbackLanguage}'",
+                        userLanguage, fallbackLanguage);
                 }
                 else
                 {
@@ -3129,6 +3200,28 @@ All content is for entertainment, self-exploration, and contemplative purposes o
         }
     }
 
+    /// <summary>
+    /// Get fallback language based on priority: en > zh > zh-tw > es
+    /// </summary>
+    private string GetFallbackLanguage(Dictionary<string, Dictionary<string, string>> multilingualResults)
+    {
+        // Priority order
+        var priorityOrder = new[] { "en", "zh", "zh-tw", "es" };
+        
+        foreach (var lang in priorityOrder)
+        {
+            if (multilingualResults.ContainsKey(lang) && 
+                multilingualResults[lang] != null && 
+                multilingualResults[lang].Count > 0)
+            {
+                return lang;
+            }
+        }
+        
+        // If none of the priority languages exist, return first available
+        return multilingualResults.Keys.FirstOrDefault() ?? "en";
+    }
+
         private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
             string sourceLanguage, string targetLanguage, PredictionType type)
     {
@@ -5441,6 +5534,59 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             (2, >= 19) or (3, <= 20) => "Pisces",
             _ => "Aries"
         };
+    }
+    
+    #endregion
+    
+    #region Language Switch Translation
+    
+    /// <summary>
+    /// Trigger translation for this prediction to target language (triggered by language switch)
+    /// </summary>
+    public async Task TriggerTranslationAsync(LumenUserDto userInfo, string targetLanguage)
+    {
+        try
+        {
+            _logger.LogInformation("[LumenPredictionGAgent][TriggerTranslationAsync] Triggering translation - User: {UserId}, Type: {Type}, Language: {Language}", 
+                userInfo.UserId, State.Type, targetLanguage);
+
+            // Check if prediction exists
+            if (State.PredictionId == Guid.Empty || State.MultilingualResults == null || State.MultilingualResults.Count == 0)
+            {
+                _logger.LogWarning("[LumenPredictionGAgent][TriggerTranslationAsync] No prediction exists to translate");
+                return;
+            }
+
+            // Check if target language already exists
+            if (State.MultilingualResults.ContainsKey(targetLanguage))
+            {
+                _logger.LogInformation("[LumenPredictionGAgent][TriggerTranslationAsync] Target language '{Language}' already exists, skipping", 
+                    targetLanguage);
+                return;
+            }
+
+            // Find source language (prefer English, fallback to any available)
+            var sourceLanguage = State.MultilingualResults.ContainsKey("en") 
+                ? "en" 
+                : State.MultilingualResults.Keys.FirstOrDefault();
+            
+            if (sourceLanguage == null)
+            {
+                _logger.LogWarning("[LumenPredictionGAgent][TriggerTranslationAsync] No source language available");
+                return;
+            }
+
+            var sourceContent = State.MultilingualResults[sourceLanguage];
+            
+            // Trigger on-demand translation (async, fire-and-forget)
+            TriggerOnDemandTranslationAsync(userInfo, State.PredictionDate, State.Type, sourceLanguage, sourceContent, targetLanguage);
+            
+            _logger.LogInformation("[LumenPredictionGAgent][TriggerTranslationAsync] Translation triggered successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenPredictionGAgent][TriggerTranslationAsync] Error triggering translation");
+        }
     }
     
     #endregion

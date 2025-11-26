@@ -53,6 +53,18 @@ public class LumenUserProfileOptions
     /// Default: 100 (for testing)
     /// </summary>
     public int MaxProfileUpdatesPerWeek { get; set; } = 100;
+    
+    /// <summary>
+    /// Maximum number of icon uploads allowed per day
+    /// Default: 1
+    /// </summary>
+    public int MaxIconUploadsPerDay { get; set; } = 1;
+    
+    /// <summary>
+    /// Maximum number of language switches allowed per day
+    /// Default: 1
+    /// </summary>
+    public int MaxLanguageSwitchesPerDay { get; set; } = 1;
 }
 
 /// <summary>
