@@ -124,6 +124,11 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Actions = actionsEvent.Actions;
                 state.UpdatedAt = actionsEvent.UpdatedAt;
                 break;
+            case IconUpdatedEvent iconEvent:
+                state.Icon = iconEvent.IconUrl;
+                state.UpdatedAt = iconEvent.UpdatedAt;
+                state.IconUploadHistory.Add(iconEvent.UploadTimestamp);
+                break;
             case UserProfileClearedEvent clearEvent:
                 // Clear all user profile data
                 state.UserId = string.Empty;
@@ -592,15 +597,17 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 };
             }
 
-            // Update icon URL
-            State.Icon = iconUrl;
-            State.UpdatedAt = now;
-            
-            // Record upload timestamp
-            State.IconUploadHistory.Add(now);
+            // Raise event to update icon
+            RaiseEvent(new IconUpdatedEvent
+            {
+                UserId = State.UserId,
+                IconUrl = iconUrl,
+                UpdatedAt = now,
+                UploadTimestamp = now
+            });
 
-            // Persist state changes
-            await WriteStateAsync();
+            // Confirm events to persist state changes
+            await ConfirmEvents();
 
             var remainingUploads = Math.Max(0, maxIconUploadsPerDay - State.IconUploadHistory.Count);
 
