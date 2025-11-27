@@ -1913,70 +1913,25 @@ FORMAT REQUIREMENT:
                     $"Start with 'Your Chinese Zodiac is {birthYearAnimalTranslated}...' and describe the 20-year symbolic cycle"
             };
 
-            // DYNAMIC DESCRIPTIONS (Lifetime - Localized & Relaxed)
+            // SIMPLIFIED DESCRIPTIONS (Lifetime - Relaxed constraints to avoid LLM refusal)
             bool isChinese = targetLanguage.StartsWith("zh");
             
-            // Pillars
-            var desc_pillars_id = isChinese ? "身份认同短语" : "[Short phrase addressing user]";
-            var desc_pillars_detail = isChinese ? $"基于{sunSign}的深度解读 (限60字)" : $"[Reflection using {sunSign}, max 60 words]";
-            var desc_trait = isChinese ? "象征特质" : "[Symbolic quality]";
+            // Use minimal placeholders - LLM knows what astrological content should be
+            var desc_simple = isChinese ? "[内容]" : "[content]";
+            var desc_title = isChinese ? "[标题]" : "[title]";
+            var desc_text = isChinese ? "[描述]" : "[description]";
             
-            // Whisper & Essence
-            var desc_whisper = isChinese ? $"以'{birthYearAnimalTranslated}'开头的灵魂低语 (限50字)" : $"[Short message starting '{birthYearAnimalTranslated} invites...', max 50 words]";
-            var desc_sun_tag = isChinese ? "诗意比喻 (你...)" : "You [poetic metaphor]";
-            var desc_arch_name = isChinese ? "原型名称" : "[Archetype name]";
-            var desc_sun_desc = isChinese ? "核心品质描述" : "[Core qualities]";
-            var desc_moon_desc = isChinese ? "情感景观描述" : "[Emotional landscape]";
-            var desc_rising_desc = isChinese ? "自我表达方式" : "[Expression style]";
-            var desc_essence = isChinese ? "本质总结 (限20字)" : "[Essence summary, max 20 words]";
+            // Only specify format for special fields
             var desc_combined_essence = targetLanguage switch
             {
-                "zh" => $"结合三个星座的陈述句，例如：你像{sunSignTranslated}一样思考，像{moonSignTranslated}一样感受，像{risingSignTranslated}一样行动 (使用提供的星座名称)",
-                "zh-tw" => $"結合三個星座的陳述句，例如：你像{sunSignTranslated}一樣思考，像{moonSignTranslated}一樣感受，像{risingSignTranslated}一樣行動 (使用提供的星座名稱)",
-                "es" => $"Declaración que combine los tres signos, ej. 'Piensas como {sunSignTranslated}, sientes como {moonSignTranslated}, y te mueves por el mundo como {risingSignTranslated}.' (usar nombres de signos proporcionados)",
-                _ => $"Statement combining all three signs, e.g. 'You think like a {sunSignTranslated}, feel like {moonSignTranslated}, and move through the world like a {risingSignTranslated}.' (use provided sign names)"
+                "zh" => $"如：你像{sunSignTranslated}一样思考，像{moonSignTranslated}一样感受，像{risingSignTranslated}一样行动",
+                "zh-tw" => $"如：你像{sunSignTranslated}一樣思考，像{moonSignTranslated}一樣感受，像{risingSignTranslated}一樣行動",
+                "es" => $"Ej: Piensas como {sunSignTranslated}, sientes como {moonSignTranslated}, te mueves como {risingSignTranslated}",
+                _ => $"E.g.: You think like {sunSignTranslated}, feel like {moonSignTranslated}, move like {risingSignTranslated}"
             };
             
-            // Strengths & Challenges
-            var desc_str_intro = isChinese ? "旅程与品质概述" : "[Journey overview]";
-            var desc_title = isChinese ? "标题" : "[Title]";
-            var desc_str_desc = isChinese ? "优势描述" : "[Strength description]";
-            var desc_chal_intro = isChinese ? "关于觉察的引导" : "[Awareness intro]";
-            var desc_chal_desc = isChinese ? "挑战描述 (邀请式语调)" : "[Challenge description (invitational)]";
-            
-            // Destiny
-            var desc_destiny_intro = isChinese ? "关于旅程的邀请 (限30字)" : "[Journey invitation, max 30 words]";
-            var desc_path_title = isChinese ? "原型角色" : "[Archetypal role]";
-            var desc_path_desc = isChinese ? "象征性表达" : "[Symbolic expression]";
-            
-            // Chinese Zodiac Essence
-            var desc_cn_essence = targetLanguage switch
-            {
-                "zh" => $"与{birthYearElement}共鸣的本质",
-                "zh-tw" => $"與{birthYearElement}共鳴的本質",
-                "es" => $"Esencia que resuena con {birthYearElement}",
-                _ => $"Essence resonating with {birthYearElement}"
-            };
-            
-            // Cycles
-            var desc_cycle_intro = isChinese ? $"周期概述 (限60字)" : $"[Cycle overview, max 60 words]";
-            var desc_cycle_pt = isChinese ? "象征主题" : "[Symbolic theme]";
-            var desc_ten_intro = isChinese ? "生命阶段能量概述 (限50字)" : "[Life phase energy, max 50 words]";
-            var desc_phase_summary = isChinese ? "阶段能量关键词" : "[Phase energy keyword]";
-            var desc_phase_detail_past = isChinese ? "过去能量模式 (限60字)" : "[Past energy pattern, max 60 words]";
-            var desc_phase_detail_curr = isChinese ? "当下探索邀请 (限60字)" : "[Current exploration, max 60 words]";
-            var desc_phase_detail_fut = isChinese ? "未来浮现主题 (限60字)" : "[Future emerging theme, max 60 words]";
-            
-            // Plot
-            var desc_plot_title = isChinese ? "诗意原型 (你体现了...)" : "You embody [poetic archetype]";
-            var desc_plot_chapter = isChinese ? $"致{displayName}的人生叙事 (限40字)" : $"[Narrative for {displayName}, max 40 words]";
-            var desc_plot_pt = isChinese ? "象征主题" : "[Symbolic theme]";
-            var desc_act_desc = isChinese ? "沉思与探索邀请" : "[Contemplation invitation]";
-            
-            // Mantra
-            var desc_mantra_pt1 = isChinese ? "探索宣言 (我探索...)" : "['I explore...' statement]";
-            var desc_mantra_pt2 = isChinese ? "探索性语言" : "[Exploratory language]";
-            var desc_mantra_pt3 = isChinese ? "最有力量的探索" : "[Empowering exploration]";
+            var desc_whisper = isChinese ? $"以'{birthYearAnimalTranslated}'开头的消息" : $"Message starting with '{birthYearAnimalTranslated}'";
+            var desc_cn_essence = isChinese ? $"与{birthYearElement}相关的本质" : $"Essence related to {birthYearElement}";
             
             // Dynamic cycle_name field based on target language
             // Always include cycle_name_zh (baseline)
@@ -1990,101 +1945,92 @@ FORMAT REQUIREMENT:
                 _ => "cycle_name_en\t[English name for cycle theme]" // Default to English for other languages
             };
             
-            prompt = singleLanguagePrefix + $@"Create a lifetime astrological narrative for self-reflection.
-User: {userInfoLine}
-Current Year: {currentYear}
+            prompt = singleLanguagePrefix + $@"Create lifetime astrological narrative.
+User: {userInfoLine}, Current Year: {currentYear}
 
-========== CONTEXT VALUES (Use EXACT translated values) ==========
-Sun Sign: {sunSignTranslated} | Moon Sign: {moonSignTranslated} | Rising Sign: {risingSignTranslated}
-Birth Year Zodiac: {birthYearZodiac} | Birth Year Animal: {birthYearAnimalTranslated} | Birth Year Element: {birthYearElement}
-Current Year ({currentYear}): {currentYearZodiac} | Current Year Stems: {currentYearStemsFormatted}
-Past Cycle: {pastCycle.AgeRange} · {pastCycle.Period}
-Current Cycle: {currentCycle.AgeRange} · {currentCycle.Period}
-Future Cycle: {futureCycle.AgeRange} · {futureCycle.Period}
+CONTEXT (Use these exact values):
+Sun: {sunSignTranslated} | Moon: {moonSignTranslated} | Rising: {risingSignTranslated}
+Birth Year: {birthYearZodiac} ({birthYearAnimalTranslated}, {birthYearElement})
+Current Year: {currentYearZodiac} ({currentYearStemsFormatted})
+Cycles: Past {pastCycle.AgeRange}, Current {currentCycle.AgeRange}, Future {futureCycle.AgeRange}
 
-Note: All Chinese Zodiac content should reference USER'S Birth Year Zodiac ({birthYearZodiac}).
-
-FORMAT (TSV - Tab-Separated Values):
-Each field on ONE line: key	value
-Use actual TAB character (not spaces) as separator.
-
-Output format (TSV):
-pillars_id	{desc_pillars_id}
-pillars_detail	{desc_pillars_detail}
-cn_trait1	{desc_trait}
-cn_trait2	{desc_trait}
-cn_trait3	{desc_trait}
-cn_trait4	{desc_trait}
+OUTPUT TSV (key	value):
+pillars_id	{desc_text}
+pillars_detail	{desc_text}
+cn_trait1	{desc_simple}
+cn_trait2	{desc_simple}
+cn_trait3	{desc_simple}
+cn_trait4	{desc_simple}
 whisper	{desc_whisper}
-sun_tag	{desc_sun_tag}
-sun_arch_name	{desc_arch_name}
-sun_desc	{desc_sun_desc}
-moon_arch_name	{desc_arch_name}
-moon_desc	{desc_moon_desc}
-rising_arch_name	{desc_arch_name}
-rising_desc	{desc_rising_desc}
-essence	{desc_essence}
+sun_tag	{desc_text}
+sun_arch_name	{desc_simple}
+sun_desc	{desc_text}
+moon_arch_name	{desc_simple}
+moon_desc	{desc_text}
+rising_arch_name	{desc_simple}
+rising_desc	{desc_text}
+essence	{desc_text}
 combined_essence	{desc_combined_essence}
-str_intro	{desc_str_intro}
+str_intro	{desc_text}
 str1_title	{desc_title}
-str1_desc	{desc_str_desc}
+str1_desc	{desc_text}
 str2_title	{desc_title}
-str2_desc	{desc_str_desc}
+str2_desc	{desc_text}
 str3_title	{desc_title}
-str3_desc	{desc_str_desc}
-chal_intro	{desc_chal_intro}
+str3_desc	{desc_text}
+chal_intro	{desc_text}
 chal1_title	{desc_title}
-chal1_desc	{desc_chal_desc}
+chal1_desc	{desc_text}
 chal2_title	{desc_title}
-chal2_desc	{desc_chal_desc}
+chal2_desc	{desc_text}
 chal3_title	{desc_title}
-chal3_desc	{desc_chal_desc}
-destiny_intro	{desc_destiny_intro}
-path1_title	{desc_path_title}
-path1_desc	{desc_path_desc}
-path2_title	{desc_path_title}
-path2_desc	{desc_path_desc}
-path3_title	{desc_path_title}
-path3_desc	{desc_path_desc}
+chal3_desc	{desc_text}
+destiny_intro	{desc_text}
+path1_title	{desc_title}
+path1_desc	{desc_text}
+path2_title	{desc_title}
+path2_desc	{desc_text}
+path3_title	{desc_title}
+path3_desc	{desc_text}
 cn_essence	{desc_cn_essence}
 cycle_year_range	YYYY-YYYY
-cycle_name_zh	[Simplified Chinese name for cycle theme]{(string.IsNullOrEmpty(additionalCycleNameField) ? "" : "\n" + additionalCycleNameField)}
-cycle_intro	{desc_cycle_intro}
-cycle_pt1	{desc_cycle_pt}
-cycle_pt2	{desc_cycle_pt}
-cycle_pt3	{desc_cycle_pt}
-cycle_pt4	{desc_cycle_pt}
-ten_intro	{desc_ten_intro}
-past_summary	{desc_phase_summary}
-past_detail	{desc_phase_detail_past}
-curr_summary	{desc_phase_summary}
-curr_detail	{desc_phase_detail_curr}
-future_summary	{desc_phase_summary}
-future_detail	{desc_phase_detail_fut}
-plot_title	{desc_plot_title}
-plot_chapter	{desc_plot_chapter}
-plot_pt1	{desc_plot_pt}
-plot_pt2	{desc_plot_pt}
-plot_pt3	{desc_plot_pt}
-plot_pt4	{desc_plot_pt}
+cycle_name_zh	{desc_simple}{(string.IsNullOrEmpty(additionalCycleNameField) ? "" : "\n" + additionalCycleNameField)}
+cycle_intro	{desc_text}
+cycle_pt1	{desc_simple}
+cycle_pt2	{desc_simple}
+cycle_pt3	{desc_simple}
+cycle_pt4	{desc_simple}
+ten_intro	{desc_text}
+past_summary	{desc_simple}
+past_detail	{desc_text}
+curr_summary	{desc_simple}
+curr_detail	{desc_text}
+future_summary	{desc_simple}
+future_detail	{desc_text}
+plot_title	{desc_text}
+plot_chapter	{desc_text}
+plot_pt1	{desc_simple}
+plot_pt2	{desc_simple}
+plot_pt3	{desc_simple}
+plot_pt4	{desc_simple}
 act1_title	{desc_title}
-act1_desc	{desc_act_desc}
+act1_desc	{desc_text}
 act2_title	{desc_title}
-act2_desc	{desc_act_desc}
+act2_desc	{desc_text}
 act3_title	{desc_title}
-act3_desc	{desc_act_desc}
+act3_desc	{desc_text}
 act4_title	{desc_title}
-act4_desc	{desc_act_desc}
+act4_desc	{desc_text}
 mantra_title	{desc_title}
-mantra_pt1	{desc_mantra_pt1}
-mantra_pt2	{desc_mantra_pt2}
-mantra_pt3	{desc_mantra_pt3}
+mantra_pt1	{desc_text}
+mantra_pt2	{desc_text}
+mantra_pt3	{desc_text}
 
-FORMAT REQUIREMENTS:
-- Return TSV format: one field per line with TAB between field name and value
-- Use actual tab character (\\t) as separator
-- Avoid line breaks within field values
-- Return only the data (no markdown wrappers)
+RULES:
+- TSV format only (tab-separated)
+- Natural, engaging astrological content
+- No length restrictions
+- Start output immediately with first field
 ";
         }
         else if (type == PredictionType.Yearly)
