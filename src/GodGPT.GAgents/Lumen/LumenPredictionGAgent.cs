@@ -2266,7 +2266,7 @@ Key	Value
 daily_theme_title	{desc_dayTitle}
 
 === 2. INSIGHTS ===
-# Tarot Symbolism (Select based on {sunSign}/{zodiacElement})
+# Tarot Symbolism (Select based on date {predictionDate:yyyy-MM-dd} and {sunSign}/{zodiacElement}, vary daily)
 tarot_card_name	{desc_card_name}
 tarot_card_essence	{desc_card_essence}
 tarot_card_orientation	{desc_card_orient}
@@ -2286,13 +2286,13 @@ reflection_wellbeing	{desc_wellness}
 daily_takeaway	{desc_takeaway}
 
 === 3. RESONANCE ===
-# Numerology
+# Numerology (Calculate based on date {predictionDate:yyyy-MM-dd}, vary daily)
 numerology_digit_word	{desc_lucky_num}
 numerology_digit	1-9
 numerology_meaning	{desc_num_meaning}
 numerology_formula	{desc_num_calc}
 
-# Crystal (Select for {zodiacElement} element)
+# Crystal (Select for {zodiacElement} element based on date {predictionDate:yyyy-MM-dd}, vary daily)
 crystal_stone_id	{desc_stone}
 crystal_power	{desc_stone_power}
 crystal_usage	{desc_stone_use}
