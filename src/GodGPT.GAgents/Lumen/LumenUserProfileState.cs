@@ -42,5 +42,9 @@ public class LumenUserProfileState : StateBase
     [Id(22)] public string CurrentLanguage { get; set; } = "en"; // Current active language
     [Id(23)] public DateOnly? LastLanguageSwitchDate { get; set; } // Last date when language was switched
     [Id(24)] public int TodayLanguageSwitchCount { get; set; } = 0; // Number of language switches today
+    
+    // LLM-inferred location (internal use, not exposed in profile API)
+    [Id(25)] public string? LatLongInferred { get; set; } // Optional - LLM inferred from BirthCity
+    [Id(26)] public string? InferredFromCity { get; set; } // Optional - City name that LatLongInferred was derived from
 }
 
