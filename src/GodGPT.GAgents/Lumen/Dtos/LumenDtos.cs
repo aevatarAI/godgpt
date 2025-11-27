@@ -524,7 +524,7 @@ public class SubmitFeedbackRequest
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
-    [Id(2)] public string? PredictionMethod { get; set; } // Profile: "fourPillars", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps"; Daily/Yearly: any section name
+    [Id(2)] public string? PredictionMethod { get; set; } // Profile: "fourPillars", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps"; Daily/Yearly: any section name; Settings: "settings"
     [Id(3)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
     [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(5)] public string? Comment { get; set; }
