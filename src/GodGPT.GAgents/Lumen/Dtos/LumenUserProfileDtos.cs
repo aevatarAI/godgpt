@@ -69,7 +69,7 @@ public class LumenUserProfileDto
     [Id(19)] public string? Interests { get; set; }
     [Id(20)] public string? Email { get; set; }
     [Id(21)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
-    [Id(22)] public PredictionFeedbackSummary? SettingsFeedback { get; set; } // User feedback for settings (if exists)
+    [Id(22)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks (e.g., "settings")
 }
 
 /// <summary>
