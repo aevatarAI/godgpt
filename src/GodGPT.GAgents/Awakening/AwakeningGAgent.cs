@@ -455,13 +455,8 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
                 var chatId = Guid.NewGuid().ToString();
                 //var sessionId = Guid.NewGuid(); // Create a new session for awakening generation
                 
-                var settings = new ExecutionPromptSettings
-                {
-                    Temperature = _options.CurrentValue.Temperature.ToString()
-                };
-                
-                // Call IGodChat.ChatWithHistory with our prompt
-                var response = await godChat.ChatWithoutHistoryAsync(userId, string.Empty, prompt, chatId, settings, true, region);
+                // Call IGodChat.ChatWithHistory with our prompt (pass null for promptSettings to avoid sending temperature/maxTokens)
+                var response = await godChat.ChatWithoutHistoryAsync(userId, string.Empty, prompt, chatId, null, true, region);
                 
                 string responseContent;
                 if (response.IsNullOrEmpty())
