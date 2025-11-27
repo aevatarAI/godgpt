@@ -42,6 +42,11 @@ public interface ILumenUserGAgent : IGAgent
     /// </summary>
     [ReadOnly]
     Task<GetLanguageInfoResult> GetLanguageInfoAsync();
+    
+    /// <summary>
+    /// Initialize user's language on registration (does not count as a switch)
+    /// </summary>
+    Task InitializeLanguageAsync(string initialLanguage);
 }
 
 [GAgent(nameof(LumenUserGAgent))]
@@ -588,6 +593,34 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
                 Success = false,
                 Message = "Internal error occurred"
             });
+        }
+    }
+
+    public async Task InitializeLanguageAsync(string initialLanguage)
+    {
+        try
+        {
+            _logger.LogInformation("[LumenUserGAgent][InitializeLanguageAsync] Initializing language for new user: {UserId}, Language: {Language}", 
+                State.UserId, initialLanguage);
+
+            // Simple event to set initial language without counting as a switch
+            RaiseEvent(new LanguageSwitchedEvent
+            {
+                UserId = State.UserId,
+                PreviousLanguage = string.Empty,
+                NewLanguage = initialLanguage,
+                SwitchedAt = DateTime.UtcNow,
+                SwitchDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                TodayCount = 0 // Does not count as a switch
+            });
+
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenUserGAgent][InitializeLanguageAsync] Language initialized: {Language}", initialLanguage);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserGAgent][InitializeLanguageAsync] Error initializing language");
         }
     }
 
