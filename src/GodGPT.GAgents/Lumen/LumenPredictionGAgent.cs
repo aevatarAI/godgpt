@@ -1140,14 +1140,14 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     _logger.LogInformation(
                         $"[Lumen] {userInfo.UserId} LLM inferred LatLong: {inferredLatLong} from BirthCity: {userInfo.BirthCity}");
                     
-                    // Save to UserGAgent (fire-and-forget)
+                    // Save to UserProfileGAgent (fire-and-forget)
                     _ = Task.Run(async () =>
                     {
                         try
                         {
                             var userGrainId = CommonHelper.StringToGuid(userInfo.UserId);
-                            var userGAgent = _clusterClient.GetGrain<ILumenUserGAgent>(userGrainId);
-                            await userGAgent.SaveInferredLatLongAsync(inferredLatLong, userInfo.BirthCity ?? "Unknown");
+                            var userProfileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(userGrainId);
+                            await userProfileGAgent.SaveInferredLatLongAsync(inferredLatLong, userInfo.BirthCity ?? "Unknown");
                         }
                         catch (Exception ex)
                         {

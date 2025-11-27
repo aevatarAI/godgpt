@@ -58,6 +58,11 @@ public interface ILumenUserProfileGAgent : IGAgent
     /// Initialize user's language on registration (does not count as a switch)
     /// </summary>
     Task InitializeLanguageAsync(string initialLanguage);
+    
+    /// <summary>
+    /// Save LLM-inferred LatLong from BirthCity (internal use only, not exposed in profile API)
+    /// </summary>
+    Task SaveInferredLatLongAsync(string latLongInferred, string birthCity);
 }
 
 [GAgent(nameof(LumenUserProfileGAgent))]
@@ -173,6 +178,10 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.LastLanguageSwitchDate = languageEvent.SwitchDate;
                 state.TodayLanguageSwitchCount = languageEvent.TodayCount;
                 state.UpdatedAt = languageEvent.SwitchedAt;
+                break;
+            case UserProfileLatLongInferredEvent latLongEvent:
+                state.LatLongInferred = latLongEvent.LatLongInferred;
+                state.InferredFromCity = latLongEvent.BirthCity;
                 break;
         }
     }
@@ -1516,6 +1525,50 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
         catch (Exception ex)
         {
             _logger.LogError(ex, "[LumenUserProfileGAgent][InitializeLanguageAsync] Error initializing language");
+        }
+    }
+    
+    public async Task SaveInferredLatLongAsync(string latLongInferred, string birthCity)
+    {
+        try
+        {
+            _logger.LogDebug("[LumenUserProfileGAgent][SaveInferredLatLongAsync] Saving inferred latlong for: {UserId}, City: {BirthCity}", 
+                State.UserId, birthCity);
+
+            // Check if user exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[LumenUserProfileGAgent][SaveInferredLatLongAsync] User not found");
+                return;
+            }
+
+            // Only save if not already exists
+            if (!string.IsNullOrEmpty(State.LatLongInferred))
+            {
+                _logger.LogDebug("[LumenUserProfileGAgent][SaveInferredLatLongAsync] LatLongInferred already exists, skipping");
+                return;
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Raise event to save inferred latlong
+            RaiseEvent(new UserProfileLatLongInferredEvent
+            {
+                UserId = State.UserId,
+                LatLongInferred = latLongInferred,
+                BirthCity = birthCity,
+                InferredAt = now
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenUserProfileGAgent][SaveInferredLatLongAsync] LatLongInferred saved successfully: {LatLong}", 
+                latLongInferred);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserProfileGAgent][SaveInferredLatLongAsync] Error saving inferred latlong");
         }
     }
     

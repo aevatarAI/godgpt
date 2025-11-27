@@ -312,6 +312,18 @@ public class UserProfileLanguageSwitchedEvent : LumenUserProfileEventLog
     [Id(5)] public int TodayCount { get; set; } // Count after this switch
 }
 
+/// <summary>
+/// LatLong inferred event (for UserProfile) - LLM inferred location from birth city
+/// </summary>
+[GenerateSerializer]
+public class UserProfileLatLongInferredEvent : LumenUserProfileEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string LatLongInferred { get; set; } = string.Empty; // Format: "latitude,longitude"
+    [Id(2)] public string BirthCity { get; set; } = string.Empty; // Source city
+    [Id(3)] public DateTime InferredAt { get; set; }
+}
+
 #endregion
 
 #region Prediction History Events
