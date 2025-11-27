@@ -2163,8 +2163,8 @@ FORMAT REQUIREMENTS:
             var desc_lucky_num = isChinese ? "中文数字 (阿拉伯数字) 如：八 (8)" : "Word (digit) e.g. Eight (8)";
             var desc_num_meaning = isChinese ? "15-20字，该数字对今日的象征意义" : "15-20 words symbolic significance";
             var desc_num_calc = isChinese 
-                ? $"完整计算公式。格式：今日数字能量 ({predictionDate:M-d-yyyy}): 然后将日期的每个数字相加，如 1-15-2025 → 1+1+5+2+0+2+5=16 → 1+6=7" 
-                : $"Full calculation formula. Format: 'Numerical Energy of the Day ({predictionDate:M-d-yyyy}):' then add each digit from the date, e.g. '1-15-2025 → 1+1+5+2+0+2+5=16 → 1+6=7'";
+                ? $"完整计算公式。格式：将用户出生日期 ({userInfo.BirthDate:M-d-yyyy}) 和今日日期 ({predictionDate:M-d-yyyy}) 的每个数字相加并简化。例：出生 5-15-1990 (5+1+5+1+9+9+0=30) + 今日 11-27-2025 (1+1+2+7+2+0+2+5=20) = 50 → 5+0=5" 
+                : $"Full calculation formula. Format: Add digits from user's birth date ({userInfo.BirthDate:M-d-yyyy}) and today ({predictionDate:M-d-yyyy}), then reduce. Example: Birth 5-15-1990 (5+1+5+1+9+9+0=30) + Today 11-27-2025 (1+1+2+7+2+0+2+5=20) = 50 → 5+0=5";
 
             var desc_stone = isChinese ? "[保留英文ID] (如 \"Amethyst\")" : "[Use ENGLISH Name as ID]";
             var desc_stone_power = isChinese ? "15-20字，水晶能量描述" : "15-20 words symbolic energy";
@@ -2236,11 +2236,14 @@ reflection_wellbeing	{desc_wellness}
 daily_takeaway	{desc_takeaway}
 
 === 3. RESONANCE ===
-# Numerology (Calculate based on date {predictionDate:yyyy-MM-dd}, vary daily)
+# Numerology (Calculate personalized lucky number using BOTH birth date AND today's date)
+# METHOD: Add all digits from user's birth date + today's date, then reduce to single digit (1-9)
+# EXAMPLE: Birth(1990-05-15) + Today(2025-11-27): (1+9+9+0+0+5+1+5) + (2+0+2+5+1+1+2+7) = 30+20=50 → 5+0=5
+# Result MUST be personalized (different users get different numbers on same day)
 numerology_digit_word	{desc_lucky_num}
-numerology_digit	1-9
+numerology_digit	1-9 (calculated from user birth date + {predictionDate:yyyy-MM-dd})
 numerology_meaning	{desc_num_meaning}
-numerology_formula	{desc_num_calc}
+numerology_formula	Show detailed calculation: user birth date digits + today digits = sum → reduce to single digit
 
 # Crystal (Select for {zodiacElement} element based on date {predictionDate:yyyy-MM-dd}, vary daily)
 crystal_stone_id	{desc_stone}
