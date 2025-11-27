@@ -2216,11 +2216,15 @@ FORMAT REQUIREMENTS:
             // Resonance
             var desc_lucky_num = isChinese ? "中文数字 (阿拉伯数字) 如：八 (8)" : "Word (digit) e.g. Eight (8)";
             var desc_num_meaning = isChinese ? "15-20字，该数字对今日的象征意义" : "15-20 words symbolic significance";
-            var desc_num_calc = isChinese ? "简单的加法象征公式" : "Symbolic formula";
+            var desc_num_calc = isChinese 
+                ? $"完整计算公式。格式：今日数字能量 ({predictionDate:M-d-yyyy}): 然后将日期的每个数字相加，如 1-15-2025 → 1+1+5+2+0+2+5=16 → 1+6=7" 
+                : $"Full calculation formula. Format: 'Numerical Energy of the Day ({predictionDate:M-d-yyyy}):' then add each digit from the date, e.g. '1-15-2025 → 1+1+5+2+0+2+5=16 → 1+6=7'";
 
             var desc_stone = isChinese ? "[保留英文ID] (如 \"Amethyst\")" : "[Use ENGLISH Name as ID]";
             var desc_stone_power = isChinese ? "15-20字，水晶能量描述" : "15-20 words symbolic energy";
-            var desc_stone_use = isChinese ? "15-20字，建议用法" : "15-20 words 'Contemplate:' or 'Explore:'";
+            var desc_stone_use = isChinese 
+                ? "20-30字，具体使用建议，如：随身携带、放在办公桌、冥想时握住、睡前放枕边等" 
+                : "20-30 words practical usage suggestion e.g. 'Carry with you', 'Place on your desk', 'Hold during meditation', 'Keep by your bedside', etc.";
 
             // Affirmation (Renamed from 'spell' to avoid filters)
             var desc_spell = isChinese ? "2个字的诗意短语" : "2 words poetic";
