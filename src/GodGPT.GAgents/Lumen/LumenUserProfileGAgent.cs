@@ -42,6 +42,22 @@ public interface ILumenUserProfileGAgent : IGAgent
     /// Update user icon (with daily upload limit)
     /// </summary>
     Task<UpdateIconResult> UpdateIconAsync(string iconUrl);
+    
+    /// <summary>
+    /// Set user's current language (triggers translation for today's predictions)
+    /// </summary>
+    Task<SetLanguageResult> SetLanguageAsync(string newLanguage);
+    
+    /// <summary>
+    /// Get user's language information (current language and remaining daily changes)
+    /// </summary>
+    [ReadOnly]
+    Task<GetLanguageInfoResult> GetLanguageInfoAsync();
+    
+    /// <summary>
+    /// Initialize user's language on registration (does not count as a switch)
+    /// </summary>
+    Task InitializeLanguageAsync(string initialLanguage);
 }
 
 [GAgent(nameof(LumenUserProfileGAgent))]
@@ -151,6 +167,12 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.UpdatedAt = clearEvent.ClearedAt;
                 state.UpdateHistory.Clear();
                 state.IsDeleted = true; // Mark as deleted to prevent auto-migration
+                break;
+            case UserProfileLanguageSwitchedEvent languageEvent:
+                state.CurrentLanguage = languageEvent.NewLanguage;
+                state.LastLanguageSwitchDate = languageEvent.SwitchDate;
+                state.TodayLanguageSwitchCount = languageEvent.TodayCount;
+                state.UpdatedAt = languageEvent.SwitchedAt;
                 break;
         }
     }
@@ -1312,6 +1334,208 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
         return trait;
     }
 
+    #endregion
+    
+    #region Language Management
+    
+    public async Task<SetLanguageResult> SetLanguageAsync(string newLanguage)
+    {
+        try
+        {
+            _logger.LogDebug("[LumenUserProfileGAgent][SetLanguageAsync] Setting language for: {UserId}, Language: {Language}", 
+                State.UserId, newLanguage);
+
+            // Check if user exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[LumenUserProfileGAgent][SetLanguageAsync] User not found");
+                return new SetLanguageResult
+                {
+                    Success = false,
+                    Message = "User not found"
+                };
+            }
+
+            // Validate language
+            if (string.IsNullOrWhiteSpace(newLanguage))
+            {
+                return new SetLanguageResult
+                {
+                    Success = false,
+                    Message = "Language cannot be empty"
+                };
+            }
+
+            // Check if language is the same as current
+            if (State.CurrentLanguage == newLanguage)
+            {
+                _logger.LogInformation("[LumenUserProfileGAgent][SetLanguageAsync] Language unchanged: {Language}", newLanguage);
+                var maxChanges = _options?.MaxLanguageSwitchesPerDay ?? 1;
+                var remaining = CalculateRemainingChanges(maxChanges);
+                return new SetLanguageResult
+                {
+                    Success = true,
+                    Message = "Language is already set to " + newLanguage,
+                    CurrentLanguage = State.CurrentLanguage,
+                    RemainingChanges = remaining,
+                    MaxChangesPerDay = maxChanges
+                };
+            }
+
+            var now = DateTime.UtcNow;
+            var today = DateOnly.FromDateTime(now);
+            var maxChangesPerDay = _options?.MaxLanguageSwitchesPerDay ?? 1;
+
+            // Check if we need to reset today's count
+            if (!State.LastLanguageSwitchDate.HasValue || State.LastLanguageSwitchDate.Value != today)
+            {
+                State.TodayLanguageSwitchCount = 0;
+            }
+
+            // Check if today's limit is reached
+            if (State.TodayLanguageSwitchCount >= maxChangesPerDay)
+            {
+                _logger.LogWarning("[LumenUserProfileGAgent][SetLanguageAsync] Daily language switch limit reached: {UserId}", 
+                    State.UserId);
+                return new SetLanguageResult
+                {
+                    Success = false,
+                    Message = $"Daily language switch limit reached ({maxChangesPerDay} per day)",
+                    CurrentLanguage = State.CurrentLanguage,
+                    RemainingChanges = 0,
+                    MaxChangesPerDay = maxChangesPerDay
+                };
+            }
+
+            var previousLanguage = State.CurrentLanguage;
+            var newCount = State.TodayLanguageSwitchCount + 1;
+
+            // Raise event to update state
+            RaiseEvent(new UserProfileLanguageSwitchedEvent
+            {
+                UserId = State.UserId,
+                PreviousLanguage = previousLanguage,
+                NewLanguage = newLanguage,
+                SwitchedAt = now,
+                SwitchDate = today,
+                TodayCount = newCount
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenUserProfileGAgent][SetLanguageAsync] Language switched from {OldLang} to {NewLang}, Count: {Count}", 
+                previousLanguage, newLanguage, newCount);
+
+            var remainingChanges = Math.Max(0, maxChangesPerDay - newCount);
+
+            return new SetLanguageResult
+            {
+                Success = true,
+                Message = "Language updated successfully",
+                CurrentLanguage = newLanguage,
+                RemainingChanges = remainingChanges,
+                MaxChangesPerDay = maxChangesPerDay
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserProfileGAgent][SetLanguageAsync] Error setting language");
+            return new SetLanguageResult
+            {
+                Success = false,
+                Message = "Internal error occurred"
+            };
+        }
+    }
+
+    public Task<GetLanguageInfoResult> GetLanguageInfoAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[LumenUserProfileGAgent][GetLanguageInfoAsync] Getting language info for: {UserId}", 
+                State.UserId);
+
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                return Task.FromResult(new GetLanguageInfoResult
+                {
+                    Success = false,
+                    Message = "User not found"
+                });
+            }
+
+            var maxChanges = _options?.MaxLanguageSwitchesPerDay ?? 1;
+            var remaining = CalculateRemainingChanges(maxChanges);
+
+            return Task.FromResult(new GetLanguageInfoResult
+            {
+                Success = true,
+                Message = string.Empty,
+                CurrentLanguage = State.CurrentLanguage,
+                RemainingChanges = remaining,
+                MaxChangesPerDay = maxChanges,
+                LastSwitchDate = State.LastLanguageSwitchDate.HasValue 
+                    ? State.LastLanguageSwitchDate.Value.ToDateTime(TimeOnly.MinValue) 
+                    : (DateTime?)null
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserProfileGAgent][GetLanguageInfoAsync] Error getting language info");
+            return Task.FromResult(new GetLanguageInfoResult
+            {
+                Success = false,
+                Message = "Internal error occurred"
+            });
+        }
+    }
+
+    public async Task InitializeLanguageAsync(string initialLanguage)
+    {
+        try
+        {
+            _logger.LogInformation("[LumenUserProfileGAgent][InitializeLanguageAsync] Initializing language for new user: {UserId}, Language: {Language}", 
+                State.UserId, initialLanguage);
+
+            // Simple event to set initial language without counting as a switch
+            RaiseEvent(new UserProfileLanguageSwitchedEvent
+            {
+                UserId = State.UserId,
+                PreviousLanguage = string.Empty,
+                NewLanguage = initialLanguage,
+                SwitchedAt = DateTime.UtcNow,
+                SwitchDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                TodayCount = 0 // Does not count as a switch
+            });
+
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenUserProfileGAgent][InitializeLanguageAsync] Language initialized: {Language}", initialLanguage);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserProfileGAgent][InitializeLanguageAsync] Error initializing language");
+        }
+    }
+    
+    /// <summary>
+    /// Calculate remaining language switches for today
+    /// </summary>
+    private int CalculateRemainingChanges(int maxChangesPerDay)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        
+        // If no switches yet, or last switch was not today, return max
+        if (!State.LastLanguageSwitchDate.HasValue || State.LastLanguageSwitchDate.Value != today)
+        {
+            return maxChangesPerDay;
+        }
+        
+        // Return remaining for today
+        return Math.Max(0, maxChangesPerDay - State.TodayLanguageSwitchCount);
+    }
+    
     #endregion
 }
 

@@ -37,5 +37,10 @@ public class LumenUserProfileState : StateBase
     
     // Icon upload history (timestamps) for daily rate limiting - only keeps today's records
     [Id(21)] public List<DateTime> IconUploadHistory { get; set; } = new();
+    
+    // Language settings for multi-language support
+    [Id(22)] public string CurrentLanguage { get; set; } = "en"; // Current active language
+    [Id(23)] public DateOnly? LastLanguageSwitchDate { get; set; } // Last date when language was switched
+    [Id(24)] public int TodayLanguageSwitchCount { get; set; } = 0; // Number of language switches today
 }
 
