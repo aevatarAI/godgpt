@@ -298,6 +298,20 @@ public class IconUpdatedEvent : LumenUserProfileEventLog
     [Id(3)] public DateTime UploadTimestamp { get; set; } // For daily limit tracking
 }
 
+/// <summary>
+/// Language switched event (for UserProfile)
+/// </summary>
+[GenerateSerializer]
+public class UserProfileLanguageSwitchedEvent : LumenUserProfileEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string PreviousLanguage { get; set; } = string.Empty;
+    [Id(2)] public string NewLanguage { get; set; } = string.Empty;
+    [Id(3)] public DateTime SwitchedAt { get; set; }
+    [Id(4)] public DateOnly SwitchDate { get; set; } // Date of the switch (for daily counting)
+    [Id(5)] public int TodayCount { get; set; } // Count after this switch
+}
+
 #endregion
 
 #region Prediction History Events

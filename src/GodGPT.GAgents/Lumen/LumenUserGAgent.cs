@@ -14,7 +14,10 @@ namespace Aevatar.Application.Grains.Lumen;
 
 /// <summary>
 /// Interface for Lumen User GAgent - manages user registration and info
+/// DEPRECATED: Use ILumenUserProfileGAgent instead. This agent is kept for backward compatibility only.
+/// All language management features have been migrated to LumenUserProfileGAgent.
 /// </summary>
+[Obsolete("This GAgent is deprecated. Use ILumenUserProfileGAgent for all user profile and language management operations. This will be removed in future versions.")]
 public interface ILumenUserGAgent : IGAgent
 {
     Task<UpdateUserInfoResult> UpdateUserInfoAsync(UpdateUserInfoRequest request);
@@ -35,7 +38,7 @@ public interface ILumenUserGAgent : IGAgent
     /// <summary>
     /// Set user's current language (triggers translation for today's predictions)
     /// </summary>
-    Task<SetLanguageResult> SetLanguageAsync(string newLanguage);
+    Task<SetLanguageResult> SetLanguageAsync(string newLanguage, string? userId = null);
     
     /// <summary>
     /// Get user's language information (current language and remaining daily changes)
@@ -46,11 +49,12 @@ public interface ILumenUserGAgent : IGAgent
     /// <summary>
     /// Initialize user's language on registration (does not count as a switch)
     /// </summary>
-    Task InitializeLanguageAsync(string initialLanguage);
+    Task InitializeLanguageAsync(string initialLanguage, string? userId = null);
 }
 
 [GAgent(nameof(LumenUserGAgent))]
 [Reentrant]
+[Obsolete("This GAgent is deprecated. Use LumenUserProfileGAgent for all user profile and language management operations. This will be removed in future versions.")]
 public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, ILumenUserGAgent
 {
     private readonly ILogger<LumenUserGAgent> _logger;
@@ -432,17 +436,35 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
         return (true, string.Empty);
     }
 
-    public async Task<SetLanguageResult> SetLanguageAsync(string newLanguage)
+    public async Task<SetLanguageResult> SetLanguageAsync(string newLanguage, string? userId = null)
     {
         try
         {
             _logger.LogDebug("[LumenUserGAgent][SetLanguageAsync] Setting language for: {UserId}, Language: {Language}", 
                 State.UserId, newLanguage);
 
+            // Auto-initialize if state is empty but userId is provided (for first-time language switch after registration)
+            if (string.IsNullOrEmpty(State.UserId) && !string.IsNullOrEmpty(userId))
+            {
+                _logger.LogInformation("[LumenUserGAgent][SetLanguageAsync] State not initialized, auto-initializing for user: {UserId}", 
+                    userId);
+                await InitializeLanguageAsync(newLanguage);
+                
+                var maxChanges = _profileOptions.Value.MaxLanguageSwitchesPerDay;
+                return new SetLanguageResult
+                {
+                    Success = true,
+                    Message = "Language initialized successfully",
+                    CurrentLanguage = newLanguage,
+                    RemainingChanges = maxChanges,
+                    MaxChangesPerDay = maxChanges
+                };
+            }
+
             // Check if user exists
             if (string.IsNullOrEmpty(State.UserId))
             {
-                _logger.LogWarning("[LumenUserGAgent][SetLanguageAsync] User not found");
+                _logger.LogWarning("[LumenUserGAgent][SetLanguageAsync] User not found and no userId provided for initialization");
                 return new SetLanguageResult
                 {
                     Success = false,
@@ -596,7 +618,7 @@ public class LumenUserGAgent : GAgentBase<LumenUserState, LumenUserEventLog>, IL
         }
     }
 
-    public async Task InitializeLanguageAsync(string initialLanguage)
+    public async Task InitializeLanguageAsync(string initialLanguage, string? userId = null)
     {
         try
         {
