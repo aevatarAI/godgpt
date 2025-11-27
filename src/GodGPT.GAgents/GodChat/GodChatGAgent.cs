@@ -679,9 +679,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 }
             }
 
-            var settings = promptSettings ?? new ExecutionPromptSettings();
-            settings.Temperature = "0.9";
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(enhancedMessage, State.ChatHistory, settings,
+            // Pass null to avoid sending any prompt settings (temperature, maxTokens, etc.)
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(enhancedMessage, State.ChatHistory, null,
                 context: aiChatContextDto, imageKeys: images);
             if (!result)
             {
@@ -1542,12 +1541,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             return new List<ChatMessage>();
         }
 
-        var settings = promptSettings ?? new ExecutionPromptSettings();
-        settings.Temperature = "0.9";
-
+        // Pass null to avoid sending any prompt settings (temperature, maxTokens, etc.)
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId,
             promptSettings, isHttpRequest, region);
-        var response = await aiAgentStatusProxy.ChatWithHistory(content, State.ChatHistory, settings, aiChatContextDto);
+        var response = await aiAgentStatusProxy.ChatWithHistory(content, State.ChatHistory, null, aiChatContextDto);
         sw.Stop();
         Logger.LogDebug(
             $"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
@@ -1572,11 +1569,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             return new List<ChatMessage>();
         }
 
-        var settings = promptSettings ?? new ExecutionPromptSettings();
-        settings.Temperature = "0.9";
-        
+        // Pass null to avoid sending any prompt settings (temperature, maxTokens, etc.)
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId, promptSettings, isHttpRequest, region);
-        var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
+        var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, null, aiChatContextDto);
         sw.Stop();
         Logger.LogDebug($"[GodChatGAgent][ChatWithUserId] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
         return response;
@@ -2113,10 +2108,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogDebug(
                 $"[GodChatGAgent][GodVoiceStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
             
-            // Set default temperature for voice chat
-            var settings = promptSettings ?? new ExecutionPromptSettings();
-            settings.Temperature = "0.9";
-            
             // Start streaming with voice context
             var promptMsg = message;
             switch (voiceLanguage)
@@ -2137,7 +2128,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             }
             Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] promptMsg: {promptMsg}");
 
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMsg, State.ChatHistory, settings,
+            // Pass null to avoid sending any prompt settings (temperature, maxTokens, etc.)
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMsg, State.ChatHistory, null,
                 context: aiChatContextDto);
             if (!result)
             {
