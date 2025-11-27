@@ -2266,7 +2266,8 @@ Key	Value
 daily_theme_title	{desc_dayTitle}
 
 === 2. INSIGHTS ===
-# Tarot Symbolism (Select based on {sunSign}/{zodiacElement})
+# Tarot Symbolism
+⚠️ IMPORTANT: Select a DIFFERENT tarot card for each day based on the DATE ({predictionDate:yyyy-MM-dd}) and user's {sunSign}/{zodiacElement}. Do NOT repeat the same card consecutively.
 tarot_card_name	{desc_card_name}
 tarot_card_essence	{desc_card_essence}
 tarot_card_orientation	{desc_card_orient}
@@ -2287,12 +2288,14 @@ daily_takeaway	{desc_takeaway}
 
 === 3. RESONANCE ===
 # Numerology
+⚠️ IMPORTANT: Calculate a unique number (1-9) based on the DATE ({predictionDate:yyyy-MM-dd}). Use different numbers each day.
 numerology_digit_word	{desc_lucky_num}
 numerology_digit	1-9
 numerology_meaning	{desc_num_meaning}
 numerology_formula	{desc_num_calc}
 
-# Crystal (Select for {zodiacElement} element)
+# Crystal
+⚠️ IMPORTANT: Select a DIFFERENT crystal for each day based on the DATE ({predictionDate:yyyy-MM-dd}) and user's {zodiacElement} element. Vary the selection daily.
 crystal_stone_id	{desc_stone}
 crystal_power	{desc_stone_power}
 crystal_usage	{desc_stone_use}
