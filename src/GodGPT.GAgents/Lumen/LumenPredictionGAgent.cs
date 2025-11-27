@@ -2217,8 +2217,8 @@ FORMAT REQUIREMENTS:
             var desc_lucky_num = isChinese ? "中文数字 (阿拉伯数字) 如：八 (8)" : "Word (digit) e.g. Eight (8)";
             var desc_num_meaning = isChinese ? "15-20字，该数字对今日的象征意义" : "15-20 words symbolic significance";
             var desc_num_calc = isChinese 
-                ? "30-50字，基于年月日的计算公式，如：2025 → 2+0+2+5=9, 1月 → 1, 15日 → 1+5=6, 9+1+6=16 → 1+6=7 (需包含年月日)" 
-                : "30-50 words calculation formula incorporating year, month, day e.g. '2025 → 2+0+2+5=9, Jan → 1, 15th → 1+5=6, then 9+1+6=16 → 1+6=7' (must include date breakdown)";
+                ? $"完整计算公式。格式：今日数字能量 ({predictionDate:M-d-yyyy}): 然后将日期的每个数字相加，如 1-15-2025 → 1+1+5+2+0+2+5=16 → 1+6=7" 
+                : $"Full calculation formula. Format: 'Numerical Energy of the Day ({predictionDate:M-d-yyyy}):' then add each digit from the date, e.g. '1-15-2025 → 1+1+5+2+0+2+5=16 → 1+6=7'";
 
             var desc_stone = isChinese ? "[保留英文ID] (如 \"Amethyst\")" : "[Use ENGLISH Name as ID]";
             var desc_stone_power = isChinese ? "15-20字，水晶能量描述" : "15-20 words symbolic energy";
