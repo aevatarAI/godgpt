@@ -1461,38 +1461,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
             }
             else if (type == PredictionType.Daily)
             {
-                // Construct dayTitle from path adjective (backend formats the full title)
-                if (parsedResults.TryGetValue("dayTitle", out var pathAdjective) && !string.IsNullOrWhiteSpace(pathAdjective))
-                {
-                    var formattedTitle = targetLanguage switch
-                    {
-                        "zh" => $"今日之路 - {pathAdjective}之路",
-                        "zh-tw" => $"今日之路 - {pathAdjective}之路",
-                        "es" => $"Tu Camino Hoy - Un Camino {pathAdjective}",
-                        _ => $"Your Path Today - A {pathAdjective} Path"
-                    };
-                    parsedResults["dayTitle"] = formattedTitle;
-                    
-                    // Inject into all multilingual versions
-                    if (multilingualResults != null)
-                    {
-                        foreach (var lang in multilingualResults.Keys)
-                        {
-                            if (multilingualResults[lang].TryGetValue("dayTitle", out var langAdjective) && !string.IsNullOrWhiteSpace(langAdjective))
-                            {
-                                var langFormattedTitle = lang switch
-                                {
-                                    "zh" => $"今日之路 - {langAdjective}之路",
-                                    "zh-tw" => $"今日之路 - {langAdjective}之路",
-                                    "es" => $"Tu Camino Hoy - Un Camino {langAdjective}",
-                                    _ => $"Your Path Today - A {langAdjective} Path"
-                                };
-                                multilingualResults[lang]["dayTitle"] = langFormattedTitle;
-                            }
-                        }
-                    }
-                }
-                
                 // Inject enum values for tarot card, lucky stone, and orientation
                 // These are parsed from LLM text output into enum integers
                 
@@ -1545,12 +1513,16 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     }
                 }
                 
-                // Construct path_title from path_type
-                if (parsedResults.TryGetValue("todaysReading_pathType", out var pathType))
+                // Construct todaysReading_pathTitle from path_adjective (backend formats the full title)
+                if (parsedResults.TryGetValue("todaysReading_pathType", out var pathAdjective) && !string.IsNullOrWhiteSpace(pathAdjective))
                 {
-                    var displayName =
-                        LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", targetLanguage);
-                    var pathTitle = BuildPathTitle(displayName, pathType, targetLanguage);
+                    var pathTitle = targetLanguage switch
+                    {
+                        "zh" => $"今日之路 - {pathAdjective}之路",
+                        "zh-tw" => $"今日之路 - {pathAdjective}之路",
+                        "es" => $"Tu Camino Hoy - Un Camino {pathAdjective}",
+                        _ => $"Your Path Today - A {pathAdjective} Path"
+                    };
                     parsedResults["todaysReading_pathTitle"] = pathTitle;
                     
                     // Inject into all multilingual versions
@@ -1558,11 +1530,15 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     {
                         foreach (var lang in multilingualResults.Keys)
                         {
-                            if (multilingualResults[lang].TryGetValue("todaysReading_pathType", out var langPathType))
+                            if (multilingualResults[lang].TryGetValue("todaysReading_pathType", out var langAdjective) && !string.IsNullOrWhiteSpace(langAdjective))
                             {
-                                var langDisplayName =
-                                    LumenCalculator.GetDisplayName($"{userInfo.FirstName} {userInfo.LastName}", lang);
-                                var langPathTitle = BuildPathTitle(langDisplayName, langPathType, lang);
+                                var langPathTitle = lang switch
+                                {
+                                    "zh" => $"今日之路 - {langAdjective}之路",
+                                    "zh-tw" => $"今日之路 - {langAdjective}之路",
+                                    "es" => $"Tu Camino Hoy - Un Camino {langAdjective}",
+                                    _ => $"Your Path Today - A {langAdjective} Path"
+                                };
                                 multilingualResults[lang]["todaysReading_pathTitle"] = langPathTitle;
                             }
                         }
@@ -2320,10 +2296,10 @@ FORMAT REQUIREMENTS:
             // Use language-specific placeholders to ensure correct output language
             var desc_dayTitle = targetLanguage switch
             {
-                "zh" => "1个形容词 (如：困难的)",
-                "zh-tw" => "1個形容詞 (如：困難的)",
-                "es" => "1 adjetivo (ej: Difícil)",
-                _ => "1 adjective (e.g. Difficult)"
+                "zh" => "今日主题 (如：水与深度之日)",
+                "zh-tw" => "今日主題 (如：水與深度之日)",
+                "es" => "El Día de [palabra1] y [palabra2] (ej: El Día de Agua y Profundidad)",
+                _ => "The Day of [word1] and [word2] (e.g. The Day of Water and Depth)"
             };
 
             // Tarot Section - Explicitly requesting ID to avoid translation issues
@@ -3352,17 +3328,17 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             }
             else if (type == PredictionType.Daily)
             {
-                // Construct dayTitle from path adjective (backend formats the full title)
-                if (targetDict.TryGetValue("dayTitle", out var pathAdjective) && !string.IsNullOrWhiteSpace(pathAdjective))
+                // Construct todaysReading_pathTitle from path adjective (backend formats the full title)
+                if (targetDict.TryGetValue("todaysReading_pathType", out var pathAdjective) && !string.IsNullOrWhiteSpace(pathAdjective))
                 {
-                    var formattedTitle = targetLanguage switch
+                    var pathTitle = targetLanguage switch
                     {
                         "zh" => $"今日之路 - {pathAdjective}之路",
                         "zh-tw" => $"今日之路 - {pathAdjective}之路",
                         "es" => $"Tu Camino Hoy - Un Camino {pathAdjective}",
                         _ => $"Your Path Today - A {pathAdjective} Path"
                     };
-                    targetDict["dayTitle"] = formattedTitle;
+                    targetDict["todaysReading_pathTitle"] = pathTitle;
                 }
                 
                 // For Daily, tarot/stone names are already translated by LLM
