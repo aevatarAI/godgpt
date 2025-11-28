@@ -83,7 +83,7 @@ public static class LuckyNumberService
     }
     
     /// <summary>
-    /// Build detailed calculation formula string
+    /// Build detailed calculation formula string with introductory text
     /// </summary>
     private static string BuildCalculationFormula(
         DateOnly birthDate, 
@@ -110,17 +110,24 @@ public static class LuckyNumberService
             reductionSteps = $" → {string.Join("+", totalSum.ToString().Select(c => c.ToString()))}={result}";
         }
         
+        // Build intro text + formula
         if (language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
         {
-            return $"出生日期 {birthDateStr} ({birthDigits}={birthSum}) + 今日日期 {predictionDateStr} ({predictionDigits}={predictionSum}) = {totalSum}{reductionSteps}";
+            var intro = "数字能量由你的出生日期与今日日期相加计算而来：";
+            var formula = $"出生日期 {birthDateStr} ({birthDigits}={birthSum}) + 今日日期 {predictionDateStr} ({predictionDigits}={predictionSum}) = {totalSum}{reductionSteps}";
+            return $"{intro}\n{formula}";
         }
         else if (language.StartsWith("es", StringComparison.OrdinalIgnoreCase))
         {
-            return $"Fecha de nacimiento {birthDateStr} ({birthDigits}={birthSum}) + Fecha de hoy {predictionDateStr} ({predictionDigits}={predictionSum}) = {totalSum}{reductionSteps}";
+            var intro = "La energía numérica se calcula sumando tu fecha de nacimiento y la fecha de hoy:";
+            var formula = $"Fecha de nacimiento {birthDateStr} ({birthDigits}={birthSum}) + Fecha de hoy {predictionDateStr} ({predictionDigits}={predictionSum}) = {totalSum}{reductionSteps}";
+            return $"{intro}\n{formula}";
         }
         else // English (default)
         {
-            return $"Birth date {birthDateStr} ({birthDigits}={birthSum}) + Today {predictionDateStr} ({predictionDigits}={predictionSum}) = {totalSum}{reductionSteps}";
+            var intro = "Numerical energy is calculated by adding your birth date and today's date:";
+            var formula = $"Birth date {birthDateStr} ({birthDigits}={birthSum}) + Today {predictionDateStr} ({predictionDigits}={predictionSum}) = {totalSum}{reductionSteps}";
+            return $"{intro}\n{formula}";
         }
     }
     
@@ -180,56 +187,89 @@ public static class LuckyNumberService
     }
     
     /// <summary>
-    /// Get description for each number in target language
+    /// Get 4 random keywords from the predefined pool for each number
     /// </summary>
     private static string GetNumberDescription(int digit, string language)
+    {
+        // Get keyword pool for this number and language
+        var keywords = GetNumberKeywords(digit, language);
+        
+        // Randomly select 4 keywords
+        var random = new Random(digit * 1000 + DateTime.UtcNow.DayOfYear); // Seed based on number + day of year for variation
+        var selectedKeywords = keywords.OrderBy(_ => random.Next()).Take(4).ToList();
+        
+        // Build description based on language
+        if (language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            // Chinese format: 今天承载着数字7的能量，内省、智慧、神秘和真理。
+            var keywordString = string.Join("、", selectedKeywords.Take(3)) + "和" + selectedKeywords.Last();
+            return $"今天承载着数字{digit}的能量，{keywordString}。";
+        }
+        else if (language.StartsWith("es", StringComparison.OrdinalIgnoreCase))
+        {
+            // Spanish format: Hoy lleva la energía del número 7, introspección, sabiduría, misterio y verdad.
+            var keywordString = string.Join(", ", selectedKeywords.Take(3)) + " y " + selectedKeywords.Last();
+            return $"Hoy lleva la energía del número {digit}, {keywordString}.";
+        }
+        else // English (default)
+        {
+            // English format: Today carries the energy of Number 7, introspection, wisdom, mystery, and truth.
+            var keywordString = string.Join(", ", selectedKeywords.Take(3)) + ", and " + selectedKeywords.Last();
+            return $"Today carries the energy of Number {digit}, {keywordString}.";
+        }
+    }
+    
+    /// <summary>
+    /// Get keyword pool for each number (10 keywords per number)
+    /// </summary>
+    private static List<string> GetNumberKeywords(int digit, string language)
     {
         if (language.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
         {
             return digit switch
             {
-                1 => "今天承载着数字1的能量，象征着新的开始、独立和领导力。勇敢地迈出第一步，相信自己的直觉。",
-                2 => "今天承载着数字2的能量，象征着平衡、合作和和谐。与他人建立联系，寻找共同点。",
-                3 => "今天承载着数字3的能量，象征着创造力、表达和喜悦。让你的想象力自由飞翔，分享你的天赋。",
-                4 => "今天承载着数字4的能量，象征着稳定、秩序和实用。专注于建立坚实的基础，脚踏实地。",
-                5 => "今天承载着数字5的能量，象征着变化、自由和冒险。拥抱新体验，保持灵活性。",
-                6 => "今天承载着数字6的能量，象征着爱、责任和养育。关心他人，创造和谐的环境。",
-                7 => "今天承载着数字7的能量，象征着内省、智慧和神秘。深入探索你的内心世界，寻求真理。",
-                8 => "今天承载着数字8的能量，象征着力量、成功和丰盛。专注于你的目标，展现你的能力。",
-                9 => "今天承载着数字9的能量，象征着完成、同情和普世之爱。放下旧事物，拥抱更高的视野。",
-                _ => "今天承载着数字1的能量，象征着新的开始、独立和领导力。"
+                1 => new List<string> { "新开始", "独立", "领导力", "勇气", "创新", "自信", "先锋", "主动", "决心", "突破" },
+                2 => new List<string> { "平衡", "合作", "和谐", "耐心", "直觉", "外交", "伙伴", "温柔", "理解", "同理心" },
+                3 => new List<string> { "创造力", "表达", "喜悦", "乐观", "沟通", "灵感", "社交", "热情", "艺术", "想象力" },
+                4 => new List<string> { "稳定", "秩序", "实用", "坚实", "纪律", "组织", "踏实", "可靠", "结构", "专注" },
+                5 => new List<string> { "变化", "自由", "冒险", "灵活", "好奇", "适应", "探索", "多样", "活力", "进步" },
+                6 => new List<string> { "爱", "责任", "养育", "和谐", "服务", "同情", "家庭", "治愈", "保护", "奉献" },
+                7 => new List<string> { "内省", "智慧", "神秘", "真理", "灵性", "分析", "洞察", "沉思", "觉知", "深度" },
+                8 => new List<string> { "力量", "成功", "丰盛", "成就", "权威", "物质", "效率", "野心", "掌控", "实现" },
+                9 => new List<string> { "完成", "同情", "普世之爱", "智慧", "放下", "人道", "觉悟", "宽容", "圆满", "升华" },
+                _ => new List<string> { "新开始", "独立", "领导力", "勇气" }
             };
         }
         else if (language.StartsWith("es", StringComparison.OrdinalIgnoreCase))
         {
             return digit switch
             {
-                1 => "Hoy lleva la energía del número 1, simbolizando nuevos comienzos, independencia y liderazgo. Da el primer paso con valentía y confía en tu intuición.",
-                2 => "Hoy lleva la energía del número 2, simbolizando equilibrio, cooperación y armonía. Conecta con los demás y busca puntos en común.",
-                3 => "Hoy lleva la energía del número 3, simbolizando creatividad, expresión y alegría. Deja volar tu imaginación y comparte tus dones.",
-                4 => "Hoy lleva la energía del número 4, simbolizando estabilidad, orden y practicidad. Enfócate en construir bases sólidas y mantente centrado.",
-                5 => "Hoy lleva la energía del número 5, simbolizando cambio, libertad y aventura. Abraza nuevas experiencias y mantén la flexibilidad.",
-                6 => "Hoy lleva la energía del número 6, simbolizando amor, responsabilidad y cuidado. Nutre a los demás y crea un ambiente armonioso.",
-                7 => "Hoy lleva la energía del número 7, simbolizando introspección, sabiduría y misterio. Explora profundamente tu mundo interior y busca la verdad.",
-                8 => "Hoy lleva la energía del número 8, simbolizando poder, éxito y abundancia. Concéntrate en tus metas y demuestra tu capacidad.",
-                9 => "Hoy lleva la energía del número 9, simbolizando culminación, compasión y amor universal. Suelta lo viejo y abraza una perspectiva más elevada.",
-                _ => "Hoy lleva la energía del número 1, simbolizando nuevos comienzos, independencia y liderazgo."
+                1 => new List<string> { "nuevos comienzos", "independencia", "liderazgo", "coraje", "innovación", "confianza", "pionero", "iniciativa", "determinación", "avance" },
+                2 => new List<string> { "equilibrio", "cooperación", "armonía", "paciencia", "intuición", "diplomacia", "compañerismo", "ternura", "comprensión", "empatía" },
+                3 => new List<string> { "creatividad", "expresión", "alegría", "optimismo", "comunicación", "inspiración", "sociabilidad", "entusiasmo", "arte", "imaginación" },
+                4 => new List<string> { "estabilidad", "orden", "practicidad", "solidez", "disciplina", "organización", "firmeza", "fiabilidad", "estructura", "enfoque" },
+                5 => new List<string> { "cambio", "libertad", "aventura", "flexibilidad", "curiosidad", "adaptación", "exploración", "diversidad", "vitalidad", "progreso" },
+                6 => new List<string> { "amor", "responsabilidad", "cuidado", "armonía", "servicio", "compasión", "familia", "sanación", "protección", "devoción" },
+                7 => new List<string> { "introspección", "sabiduría", "misterio", "verdad", "espiritualidad", "análisis", "percepción", "contemplación", "conciencia", "profundidad" },
+                8 => new List<string> { "poder", "éxito", "abundancia", "logro", "autoridad", "materialización", "eficiencia", "ambición", "control", "realización" },
+                9 => new List<string> { "culminación", "compasión", "amor universal", "sabiduría", "soltar", "humanitarismo", "iluminación", "tolerancia", "plenitud", "trascendencia" },
+                _ => new List<string> { "nuevos comienzos", "independencia", "liderazgo", "coraje" }
             };
         }
         else // English (default)
         {
             return digit switch
             {
-                1 => "Today carries the energy of Number 1, symbolizing new beginnings, independence, and leadership. Take the first step boldly and trust your instincts.",
-                2 => "Today carries the energy of Number 2, symbolizing balance, cooperation, and harmony. Connect with others and seek common ground.",
-                3 => "Today carries the energy of Number 3, symbolizing creativity, expression, and joy. Let your imagination soar and share your gifts.",
-                4 => "Today carries the energy of Number 4, symbolizing stability, order, and practicality. Focus on building solid foundations and stay grounded.",
-                5 => "Today carries the energy of Number 5, symbolizing change, freedom, and adventure. Embrace new experiences and stay flexible.",
-                6 => "Today carries the energy of Number 6, symbolizing love, responsibility, and nurturing. Care for others and create harmonious environments.",
-                7 => "Today carries the energy of Number 7, symbolizing introspection, wisdom, and mystery. Explore your inner world deeply and seek truth.",
-                8 => "Today carries the energy of Number 8, symbolizing power, success, and abundance. Focus on your goals and demonstrate your capability.",
-                9 => "Today carries the energy of Number 9, symbolizing completion, compassion, and universal love. Release the old and embrace a higher perspective.",
-                _ => "Today carries the energy of Number 1, symbolizing new beginnings, independence, and leadership."
+                1 => new List<string> { "new beginnings", "independence", "leadership", "courage", "innovation", "confidence", "pioneering", "initiative", "determination", "breakthrough" },
+                2 => new List<string> { "balance", "cooperation", "harmony", "patience", "intuition", "diplomacy", "partnership", "gentleness", "understanding", "empathy" },
+                3 => new List<string> { "creativity", "expression", "joy", "optimism", "communication", "inspiration", "sociability", "enthusiasm", "artistry", "imagination" },
+                4 => new List<string> { "stability", "order", "practicality", "foundation", "discipline", "organization", "grounding", "reliability", "structure", "focus" },
+                5 => new List<string> { "change", "freedom", "adventure", "flexibility", "curiosity", "adaptability", "exploration", "diversity", "vitality", "progress" },
+                6 => new List<string> { "love", "responsibility", "nurturing", "harmony", "service", "compassion", "family", "healing", "protection", "devotion" },
+                7 => new List<string> { "introspection", "wisdom", "mystery", "truth", "spirituality", "analysis", "insight", "contemplation", "awareness", "depth" },
+                8 => new List<string> { "power", "success", "abundance", "achievement", "authority", "manifestation", "efficiency", "ambition", "mastery", "accomplishment" },
+                9 => new List<string> { "completion", "compassion", "universal love", "wisdom", "release", "humanitarianism", "enlightenment", "tolerance", "fulfillment", "transcendence" },
+                _ => new List<string> { "new beginnings", "independence", "leadership", "courage" }
             };
         }
     }
