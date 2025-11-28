@@ -1461,6 +1461,38 @@ Your task is to create engaging, inspirational, and reflective content that invi
             }
             else if (type == PredictionType.Daily)
             {
+                // Construct dayTitle from path adjective (backend formats the full title)
+                if (parsedResults.TryGetValue("dayTitle", out var pathAdjective) && !string.IsNullOrWhiteSpace(pathAdjective))
+                {
+                    var formattedTitle = targetLanguage switch
+                    {
+                        "zh" => $"今日之路 - {pathAdjective}之路",
+                        "zh-tw" => $"今日之路 - {pathAdjective}之路",
+                        "es" => $"Tu Camino Hoy - Un Camino {pathAdjective}",
+                        _ => $"Your Path Today - A {pathAdjective} Path"
+                    };
+                    parsedResults["dayTitle"] = formattedTitle;
+                    
+                    // Inject into all multilingual versions
+                    if (multilingualResults != null)
+                    {
+                        foreach (var lang in multilingualResults.Keys)
+                        {
+                            if (multilingualResults[lang].TryGetValue("dayTitle", out var langAdjective) && !string.IsNullOrWhiteSpace(langAdjective))
+                            {
+                                var langFormattedTitle = lang switch
+                                {
+                                    "zh" => $"今日之路 - {langAdjective}之路",
+                                    "zh-tw" => $"今日之路 - {langAdjective}之路",
+                                    "es" => $"Tu Camino Hoy - Un Camino {langAdjective}",
+                                    _ => $"Your Path Today - A {langAdjective} Path"
+                                };
+                                multilingualResults[lang]["dayTitle"] = langFormattedTitle;
+                            }
+                        }
+                    }
+                }
+                
                 // Inject enum values for tarot card, lucky stone, and orientation
                 // These are parsed from LLM text output into enum integers
                 
@@ -2059,7 +2091,10 @@ Birth Year: {birthYearZodiac} ({birthYearAnimalTranslated}, {birthYearElement})
 Current Year: {currentYearZodiac} ({currentYearStemsFormatted})
 Cycles: Past {pastCycle.AgeRange}, Current {currentCycle.AgeRange}, Future {futureCycle.AgeRange}
 
-OUTPUT TSV (key	value):
+Generate meaningful astrological content in TSV format (tab-separated).
+Write naturally - quality over strict length. Be concise where appropriate.
+
+Required fields (one per line, format: key	value):
 pillars_id	{desc_text}
 pillars_detail	{desc_text}
 cn_trait1	{desc_simple}
@@ -2130,11 +2165,7 @@ mantra_pt1	{desc_text}
 mantra_pt2	{desc_text}
 mantra_pt3	{desc_text}
 
-RULES:
-- TSV format only (tab-separated)
-- Natural, engaging astrological content
-- No length restrictions
-- Start output immediately with first field
+Start output now with first field
 ";
         }
         else if (type == PredictionType.Yearly)
@@ -2289,10 +2320,10 @@ FORMAT REQUIREMENTS:
             // Use language-specific placeholders to ensure correct output language
             var desc_dayTitle = targetLanguage switch
             {
-                "zh" => "今日主题 (如：反思与和谐之日)",
-                "zh-tw" => "今日主題 (如：反思與和諧之日)",
-                "es" => "El Día de [palabra1] y [palabra2]",
-                _ => "The Day of [word1] and [word2]"
+                "zh" => "1个形容词 (如：困难的)",
+                "zh-tw" => "1個形容詞 (如：困難的)",
+                "es" => "1 adjetivo (ej: Difícil)",
+                _ => "1 adjective (e.g. Difficult)"
             };
 
             // Tarot Section - Explicitly requesting ID to avoid translation issues
@@ -2447,18 +2478,18 @@ FORMAT REQUIREMENTS:
             
             var desc_fortune_do = targetLanguage switch
             {
-                "zh" => "建议1|建议2|建议3 (竖线分隔)",
-                "zh-tw" => "建議1|建議2|建議3 (豎線分隔)",
-                "es" => "actividad1|actividad2|actividad3 (separado por |)",
-                _ => "activity1|activity2|activity3"
+                "zh" => "具体行动短语1|具体行动短语2|具体行动短语3 (如：散步片刻|写感恩日记|与朋友交流，竖线分隔)",
+                "zh-tw" => "具體行動短語1|具體行動短語2|具體行動短語3 (如：散步片刻|寫感恩日記|與朋友交流，豎線分隔)",
+                "es" => "frase de acción1|frase de acción2|frase de acción3 (ej: Dar un paseo|Escribir un diario|Hablar con amigos, separado por |)",
+                _ => "action phrase1|action phrase2|action phrase3 (e.g. Take a walk|Write a journal|Talk with friends, separated by |)"
             };
             
             var desc_fortune_avoid = targetLanguage switch
             {
-                "zh" => "注意1|注意2|注意3 (竖线分隔)",
-                "zh-tw" => "注意1|注意2|注意3 (豎線分隔)",
-                "es" => "evitar1|evitar2|evitar3 (separado por |)",
-                _ => "avoid1|avoid2|avoid3"
+                "zh" => "具体注意事项1|具体注意事项2|具体注意事项3 (如：过度承诺|匆忙决策|忽视内心，竖线分隔)",
+                "zh-tw" => "具體注意事項1|具體注意事項2|具體注意事項3 (如：過度承諾|匆忙決策|忽視內心，豎線分隔)",
+                "es" => "cosa a evitar1|cosa a evitar2|cosa a evitar3 (ej: Prometer demasiado|Decisiones apresuradas|Ignorar tu intuición, separado por |)",
+                _ => "thing to avoid1|thing to avoid2|thing to avoid3 (e.g. Over-committing|Rushing decisions|Ignoring intuition, separated by |)"
             };
             
             var desc_fortune_tip = targetLanguage switch
@@ -3321,6 +3352,19 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             }
             else if (type == PredictionType.Daily)
             {
+                // Construct dayTitle from path adjective (backend formats the full title)
+                if (targetDict.TryGetValue("dayTitle", out var pathAdjective) && !string.IsNullOrWhiteSpace(pathAdjective))
+                {
+                    var formattedTitle = targetLanguage switch
+                    {
+                        "zh" => $"今日之路 - {pathAdjective}之路",
+                        "zh-tw" => $"今日之路 - {pathAdjective}之路",
+                        "es" => $"Tu Camino Hoy - Un Camino {pathAdjective}",
+                        _ => $"Your Path Today - A {pathAdjective} Path"
+                    };
+                    targetDict["dayTitle"] = formattedTitle;
+                }
+                
                 // For Daily, tarot/stone names are already translated by LLM
                 // Only inject enum values if the text fields exist
                 if (targetDict.TryGetValue("todaysReading_tarotCard_name", out var tarotCardName))
