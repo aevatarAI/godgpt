@@ -2175,7 +2175,7 @@ FORMAT REQUIREMENTS:
             // Affirmation (Renamed from 'spell' to avoid filters)
             var desc_spell = isChinese ? "2个字的诗意短语" : "2 words poetic";
             var desc_spell_words =
-                isChinese ? "20-30字，鼓舞人心的肯定语 (用引号包裹)" : "20-30 words inspirational affirmation in quotes";
+                isChinese ? "20-30字，鼓舞人心的肯定语（用中文书名号「」包裹，不要用英文引号）" : "20-30 words inspirational affirmation in quotes";
             var desc_spell_intent = isChinese ? "10-12字，意图" : "10-12 words 'To explore...'";
 
             // Guidance (Renamed from 'fortune' to avoid filters in description)
