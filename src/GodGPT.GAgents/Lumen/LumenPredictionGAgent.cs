@@ -1273,6 +1273,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 parsedResults["westernOverview_risingSign"] = TranslateSunSign(risingSign, targetLanguage);
                 
                 // Replace sign names in combined essence statement with backend-calculated translations
+                // Then move the result to combinedEssence field (removing the redundant westernOverview_combinedEssenceStatement)
                 if (parsedResults.TryGetValue("westernOverview_combinedEssenceStatement", out var combinedEssenceStatement))
                 {
                     var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
@@ -1296,7 +1297,11 @@ Your task is to create engaging, inspirational, and reflective content that invi
                         );
                     }
                     
-                    parsedResults["westernOverview_combinedEssenceStatement"] = combinedEssenceStatement;
+                    // Override combinedEssence with the formatted statement
+                    parsedResults["combinedEssence"] = combinedEssenceStatement;
+                    
+                    // Remove the redundant westernOverview_combinedEssenceStatement field
+                    parsedResults.Remove("westernOverview_combinedEssenceStatement");
                 }
                 
                 parsedResults["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
@@ -2069,7 +2074,6 @@ moon_arch_name	{desc_simple}
 moon_desc	{desc_text}
 rising_arch_name	{desc_simple}
 rising_desc	{desc_text}
-essence	{desc_text}
 combined_essence	{desc_combined_essence}
 str_intro	{desc_text}
 str1_title	{desc_title}
@@ -3231,6 +3235,7 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                 targetDict["westernOverview_risingSign"] = TranslateSunSign(risingSign, targetLanguage);
                 
                 // Replace sign names in combined essence statement with backend-calculated translations
+                // Then move the result to combinedEssence field (removing the redundant westernOverview_combinedEssenceStatement)
                 if (targetDict.TryGetValue("westernOverview_combinedEssenceStatement", out var combinedEssenceStatement))
                 {
                     var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
@@ -3255,7 +3260,11 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                         );
                     }
                     
-                    targetDict["westernOverview_combinedEssenceStatement"] = combinedEssenceStatement;
+                    // Override combinedEssence with the formatted statement
+                    targetDict["combinedEssence"] = combinedEssenceStatement;
+                    
+                    // Remove the redundant westernOverview_combinedEssenceStatement field
+                    targetDict.Remove("westernOverview_combinedEssenceStatement");
                 }
                 
                 targetDict["chineseZodiac_animal"] = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
@@ -3704,8 +3713,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["moon_desc"] = "westernOverview_moonDescription",
             ["rising_arch_name"] = "westernOverview_risingArchetypeName", // Backend will construct rising_arch
             ["rising_desc"] = "westernOverview_risingDescription",
-            ["essence"] = "combinedEssence",
-            ["combined_essence"] = "westernOverview_combinedEssenceStatement", // LLM generates, backend replaces sign names
+            ["combined_essence"] = "westernOverview_combinedEssenceStatement", // LLM generates, backend replaces sign names and moves to combinedEssence
             ["str_intro"] = "strengths_overview",
             ["str1_title"] = "strengths_item1_title",
             ["str1_desc"] = "strengths_item1_description",
