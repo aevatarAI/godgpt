@@ -488,7 +488,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     // Language not available - return EMPTY Results (no fallback, no auto-translation)
                     localizedResults = new Dictionary<string, string>();
                     isFallback = true; // Indicates content is not available in requested language
-                    _logger.LogWarning(
+                        _logger.LogWarning(
                         $"[Lumen] {userInfo.UserId} Language '{userLanguage}' not available, returning empty Results with AvailableLanguages");
                 }
                 
@@ -508,6 +508,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 
                 // Convert array fields to JSON array strings before returning to frontend
                 localizedResults = ConvertArrayFieldsToJson(localizedResults);
+                
+                // Add quotes to affirmation text based on language
+                localizedResults = AddQuotesToAffirmation(localizedResults, returnedLanguage);
                 
                 var cachedDto = new PredictionResultDto
                 {
@@ -609,7 +612,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         Dictionary<string, string> localizedResults;
         string returnedLanguage = userLanguage;
         bool isFallback = false;
-        
+
         // Check if requested language is available
         if (State.MultilingualResults != null && State.MultilingualResults.ContainsKey(userLanguage))
         {
@@ -624,9 +627,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // Language not available - return EMPTY Results (no fallback)
             localizedResults = new Dictionary<string, string>();
             isFallback = true; // Indicates content is not available in requested language
-            _logger.LogWarning(
+                    _logger.LogWarning(
                 "[LumenPredictionGAgent][GetPredictionAsync] Language '{Language}' not available, returning empty Results with AvailableLanguages",
-                userLanguage);
+                        userLanguage);
         }
 
         // Get available languages from MultilingualResults (actual available languages)
@@ -1627,6 +1630,15 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     $"[Lumen] {userInfo.UserId} Constructed cn_year and arch fields for Lifetime prediction");
             }
 
+            // Add quotes to affirmation text for all languages
+            if (multilingualResults != null)
+            {
+                foreach (var lang in multilingualResults.Keys.ToList())
+                {
+                    multilingualResults[lang] = AddQuotesToAffirmation(multilingualResults[lang], lang);
+                }
+            }
+
             // Raise event to save prediction (unified structure)
             RaiseEvent(new PredictionGeneratedEvent
             {
@@ -1681,6 +1693,9 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     }
                 });
             }
+
+            // Add quotes to affirmation text based on language
+            parsedResults = AddQuotesToAffirmation(parsedResults, targetLanguage);
 
             // Build return DTO
             var newPredictionDto = new PredictionResultDto
@@ -2175,7 +2190,7 @@ FORMAT REQUIREMENTS:
             // Affirmation (Renamed from 'spell' to avoid filters)
             var desc_spell = isChinese ? "2个字的诗意短语" : "2 words poetic";
             var desc_spell_words =
-                isChinese ? "20-30字，鼓舞人心的肯定语（用中文书名号「」包裹，不要用英文引号）" : "20-30 words inspirational affirmation in quotes";
+                isChinese ? "20-30字，鼓舞人心的肯定语（不要带引号）" : "20-30 words inspirational affirmation (without quotes)";
             var desc_spell_intent = isChinese ? "10-12字，意图" : "10-12 words 'To explore...'";
 
             // Guidance (Renamed from 'fortune' to avoid filters in description)
@@ -2728,6 +2743,9 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             
                 _logger.LogInformation(
                     $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Merged {otherSkippedFields.Count} skipped fields, re-injected {backendCalculatedFields.Count} backend fields, Total: {contentDict.Count}");
+            
+            // Add quotes to affirmation text based on target language
+            contentDict = AddQuotesToAffirmation(contentDict, targetLanguage);
             
             // Raise event to update state with this language
             var translatedLanguages = new Dictionary<string, Dictionary<string, string>>
@@ -3294,6 +3312,35 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 result[fieldName] = JsonConvert.SerializeObject(items);
             }
         }
+        
+        return result;
+    }
+    
+    /// <summary>
+    /// Add quotes to affirmation text based on language
+    /// Chinese: 「」, Others: ""
+    /// </summary>
+    private Dictionary<string, string> AddQuotesToAffirmation(Dictionary<string, string> data, string language)
+    {
+        if (data == null || data.Count == 0)
+            return data;
+        
+        const string affirmationField = "luckyAlignments_luckySpell_description";
+        
+        if (!data.ContainsKey(affirmationField) || string.IsNullOrEmpty(data[affirmationField]))
+            return data;
+        
+        var result = new Dictionary<string, string>(data);
+        var affirmationText = result[affirmationField];
+        
+        // Remove existing quotes if any
+        affirmationText = affirmationText.Trim().Trim('"', '「', '」', '"', '"');
+        
+        // Add appropriate quotes based on language
+        bool isChinese = language.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
+        result[affirmationField] = isChinese 
+            ? $"「{affirmationText}」"  // Chinese quotes
+            : $"\"{affirmationText}\""; // English quotes
         
         return result;
     }
