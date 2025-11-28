@@ -2478,18 +2478,18 @@ FORMAT REQUIREMENTS:
             
             var desc_fortune_do = targetLanguage switch
             {
-                "zh" => "具体行动短语1|具体行动短语2|具体行动短语3 (如：散步片刻|写感恩日记|与朋友交流，竖线分隔)",
-                "zh-tw" => "具體行動短語1|具體行動短語2|具體行動短語3 (如：散步片刻|寫感恩日記|與朋友交流，豎線分隔)",
-                "es" => "frase de acción1|frase de acción2|frase de acción3 (ej: Dar un paseo|Escribir un diario|Hablar con amigos, separado por |)",
-                _ => "action phrase1|action phrase2|action phrase3 (e.g. Take a walk|Write a journal|Talk with friends, separated by |)"
+                "zh" => "5条具体行动短语 (如：散步片刻|写感恩日记|与朋友交流|冥想放松|整理空间，竖线分隔)",
+                "zh-tw" => "5條具體行動短語 (如：散步片刻|寫感恩日記|與朋友交流|冥想放鬆|整理空間，豎線分隔)",
+                "es" => "5 frases de acción concretas (ej: Dar un paseo|Escribir un diario|Hablar con amigos|Meditar|Organizar tu espacio, separado por |)",
+                _ => "5 specific action phrases (e.g. Take a walk|Write a journal|Talk with friends|Meditate|Organize your space, separated by |)"
             };
             
             var desc_fortune_avoid = targetLanguage switch
             {
-                "zh" => "具体注意事项1|具体注意事项2|具体注意事项3 (如：过度承诺|匆忙决策|忽视内心，竖线分隔)",
-                "zh-tw" => "具體注意事項1|具體注意事項2|具體注意事項3 (如：過度承諾|匆忙決策|忽視內心，豎線分隔)",
-                "es" => "cosa a evitar1|cosa a evitar2|cosa a evitar3 (ej: Prometer demasiado|Decisiones apresuradas|Ignorar tu intuición, separado por |)",
-                _ => "thing to avoid1|thing to avoid2|thing to avoid3 (e.g. Over-committing|Rushing decisions|Ignoring intuition, separated by |)"
+                "zh" => "5条具体注意事项 (如：过度承诺|匆忙决策|忽视内心|过度消费|忽略休息，竖线分隔)",
+                "zh-tw" => "5條具體注意事項 (如：過度承諾|匆忙決策|忽視內心|過度消費|忽略休息，豎線分隔)",
+                "es" => "5 cosas específicas a evitar (ej: Prometer demasiado|Decisiones apresuradas|Ignorar intuición|Gastar en exceso|Saltarte descansos, separado por |)",
+                _ => "5 specific things to avoid (e.g. Over-committing|Rushing decisions|Ignoring intuition|Overspending|Skipping rest, separated by |)"
             };
             
             var desc_fortune_tip = targetLanguage switch
