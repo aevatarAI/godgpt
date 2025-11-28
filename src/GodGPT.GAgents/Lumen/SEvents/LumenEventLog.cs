@@ -313,6 +313,17 @@ public class UserProfileLanguageSwitchedEvent : LumenUserProfileEventLog
 }
 
 /// <summary>
+/// Time zone updated event (for UserProfile) - does NOT count as profile update
+/// </summary>
+[GenerateSerializer]
+public class TimeZoneUpdatedEvent : LumenUserProfileEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string TimeZoneId { get; set; } = string.Empty; // IANA time zone ID (e.g., "America/New_York")
+    [Id(2)] public DateTime UpdatedAt { get; set; }
+}
+
+/// <summary>
 /// LatLong inferred event (for UserProfile) - LLM inferred location from birth city
 /// </summary>
 [GenerateSerializer]

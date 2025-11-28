@@ -54,6 +54,11 @@ public interface ILumenPredictionGAgent : IGAgent
     /// Trigger translation for this prediction to target language (fire-and-forget, triggered by language switch)
     /// </summary>
     Task TriggerTranslationAsync(LumenUserDto userInfo, string targetLanguage);
+    
+    /// <summary>
+    /// Update daily reminder with new timezone (triggered when user updates timezone)
+    /// </summary>
+    Task UpdateTimeZoneReminderAsync(string timeZoneId);
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -4864,55 +4869,74 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 return;
             }
             
+            // Get user's timezone to check if it's a new day in user's local time
+            var profileGrainId = CommonHelper.StringToGuid(State.UserId);
+            var profileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(profileGrainId);
+            var profileResult = await profileGAgent.GetRawStateAsync();
+            var userTimeZoneId = profileResult?.CurrentTimeZone ?? "UTC";
+            
+            // Calculate today in user's local timezone
+            DateOnly userToday;
+            try
+            {
+                var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(userTimeZoneId);
+                var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, userTimeZone);
+                userToday = DateOnly.FromDateTime(userNow);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                _logger.LogWarning($"[Lumen][DailyReminder] {State.UserId} Invalid timezone: {userTimeZoneId}, using UTC");
+                userToday = DateOnly.FromDateTime(DateTime.UtcNow);
+            }
+            
             // Check if already generated today (avoid duplicate generation)
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            if (State.LastGeneratedDate == today)
+            if (State.LastGeneratedDate == userToday)
             {
                 _logger.LogInformation(
-                    $"[Lumen][DailyReminder] {State.UserId} Daily prediction already generated today, skipping");
+                    $"[Lumen][DailyReminder] {State.UserId} Daily prediction already generated today ({userToday} in {userTimeZoneId}), skipping");
                 return;
             }
             
-            // Determine language: use first available language in MultilingualResults, or default to user's last used language
-            var targetLanguage = State.MultilingualResults?.Keys.FirstOrDefault() ?? "en";
-            
-            // Get user info to generate prediction
+            // Get user profile with language setting
             var userProfileGrainId = CommonHelper.StringToGuid(State.UserId);
             var userProfileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(userProfileGrainId);
-            var profileResult = await userProfileGAgent.GetUserProfileAsync(userProfileGrainId, targetLanguage);
+            var fullProfileResult = await userProfileGAgent.GetUserProfileAsync(userProfileGrainId, "en"); // Use en for API call
             
-            if (profileResult == null || !profileResult.Success || profileResult.UserProfile == null)
+            if (fullProfileResult == null || !fullProfileResult.Success || fullProfileResult.UserProfile == null)
             {
                 _logger.LogWarning(
                     $"[Lumen][DailyReminder] {State.UserId} User profile not found, cannot generate daily prediction");
                 return;
             }
             
+            // Use user's current language from profile
+            var targetLanguage = fullProfileResult.UserProfile.CurrentLanguage ?? "en";
+            
             _logger.LogInformation(
-                $"[Lumen][DailyReminder] {State.UserId} Generating daily prediction for language: {targetLanguage}");
+                $"[Lumen][DailyReminder] {State.UserId} Generating daily prediction for {userToday} (TimeZone: {userTimeZoneId}, Language: {targetLanguage})");
             
             // Convert LumenUserProfileDto to LumenUserDto
             var userDto = new LumenUserDto
             {
-                UserId = profileResult.UserProfile.UserId,
-                FirstName = profileResult.UserProfile.FullName.Split(' ').FirstOrDefault() ?? "",
-                LastName = profileResult.UserProfile.FullName.Contains(' ')
-                    ? string.Join(" ", profileResult.UserProfile.FullName.Split(' ').Skip(1))
+                UserId = fullProfileResult.UserProfile.UserId,
+                FirstName = fullProfileResult.UserProfile.FullName.Split(' ').FirstOrDefault() ?? "",
+                LastName = fullProfileResult.UserProfile.FullName.Contains(' ')
+                    ? string.Join(" ", fullProfileResult.UserProfile.FullName.Split(' ').Skip(1))
                     : "",
-                Gender = profileResult.UserProfile.Gender,
-                BirthDate = profileResult.UserProfile.BirthDate,
-                BirthTime = profileResult.UserProfile.BirthTime,
-                BirthCity = profileResult.UserProfile.BirthCity,
-                LatLong = profileResult.UserProfile.LatLong,
-                CalendarType = profileResult.UserProfile.CalendarType,
-                CreatedAt = profileResult.UserProfile.CreatedAt,
-                CurrentResidence = profileResult.UserProfile.CurrentResidence,
-                UpdatedAt = profileResult.UserProfile.UpdatedAt,
-                Occupation = profileResult.UserProfile.Occupation
+                Gender = fullProfileResult.UserProfile.Gender,
+                BirthDate = fullProfileResult.UserProfile.BirthDate,
+                BirthTime = fullProfileResult.UserProfile.BirthTime,
+                BirthCity = fullProfileResult.UserProfile.BirthCity,
+                LatLong = fullProfileResult.UserProfile.LatLong,
+                CalendarType = fullProfileResult.UserProfile.CalendarType,
+                CreatedAt = fullProfileResult.UserProfile.CreatedAt,
+                CurrentResidence = fullProfileResult.UserProfile.CurrentResidence,
+                UpdatedAt = fullProfileResult.UserProfile.UpdatedAt,
+                Occupation = fullProfileResult.UserProfile.Occupation
             };
             
             // Trigger generation (this will update LastGeneratedDate)
-            _ = GeneratePredictionInBackgroundAsync(userDto, today, PredictionType.Daily, targetLanguage);
+            _ = GeneratePredictionInBackgroundAsync(userDto, userToday, PredictionType.Daily, targetLanguage);
         }
         catch (Exception ex)
         {
@@ -4922,6 +4946,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Register daily reminder (called when user becomes active)
+    /// Uses user's timezone to calculate reminder time (default: 00:01 in user's local time)
     /// </summary>
     private async Task RegisterDailyReminderAsync()
     {
@@ -4945,14 +4970,18 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return;
         }
         
+        // Get user's timezone from profile
+        var profileGrainId = CommonHelper.StringToGuid(State.UserId);
+        var profileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(profileGrainId);
+        var profileResult = await profileGAgent.GetRawStateAsync();
+        var userTimeZoneId = profileResult?.CurrentTimeZone ?? "UTC";
+        
         // Record current TargetId for version control
         var currentReminderTargetId = _options?.ReminderTargetId ?? CURRENT_REMINDER_TARGET_ID;
         State.DailyReminderTargetId = currentReminderTargetId;
         
-        // Calculate next UTC 00:00
-        var now = DateTime.UtcNow;
-        var nextMidnight = now.Date.AddDays(1); // Tomorrow at 00:00 UTC
-        var dueTime = nextMidnight - now;
+        // Calculate next trigger time in user's timezone (00:01 local time)
+        var (dueTime, nextTriggerUtc) = CalculateNextReminderTime(userTimeZoneId);
         
         await this.RegisterOrUpdateReminder(
             DEFAULT_DAILY_REMINDER_NAME,
@@ -4962,7 +4991,94 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         
         State.IsDailyReminderEnabled = true;
         _logger.LogInformation(
-            $"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, next execution at {nextMidnight} UTC");
+            $"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, " +
+            $"TimeZone: {userTimeZoneId}, next execution at {nextTriggerUtc:yyyy-MM-dd HH:mm:ss} UTC (00:01 local time)");
+    }
+    
+    /// <summary>
+    /// Calculate next reminder trigger time based on user's timezone
+    /// Returns: (dueTime, nextTriggerUtc)
+    /// </summary>
+    private (TimeSpan dueTime, DateTime nextTriggerUtc) CalculateNextReminderTime(string timeZoneId)
+    {
+        try
+        {
+            var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            var nowUtc = DateTime.UtcNow;
+            var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, userTimeZone);
+            
+            // Calculate next 00:01 in user's local time
+            DateTime nextLocal0001;
+            if (nowLocal.TimeOfDay < new TimeSpan(0, 1, 0)) // Before 00:01 today
+            {
+                nextLocal0001 = nowLocal.Date.AddMinutes(1); // Today at 00:01
+            }
+            else // After 00:01 today
+            {
+                nextLocal0001 = nowLocal.Date.AddDays(1).AddMinutes(1); // Tomorrow at 00:01
+            }
+            
+            // Convert back to UTC
+            var nextTriggerUtc = TimeZoneInfo.ConvertTimeToUtc(nextLocal0001, userTimeZone);
+            var dueTime = nextTriggerUtc - nowUtc;
+            
+            // Ensure dueTime is positive
+            if (dueTime <= TimeSpan.Zero)
+            {
+                dueTime = TimeSpan.FromMinutes(1); // Fallback: trigger in 1 minute
+            }
+            
+            return (dueTime, nextTriggerUtc);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "[Lumen][DailyReminder] Invalid timezone ID: {TimeZoneId}, falling back to UTC", timeZoneId);
+            
+            // Fallback to UTC 00:01
+            var nowUtc = DateTime.UtcNow;
+            var nextMidnightUtc = nowUtc.Date.AddDays(1).AddMinutes(1); // Tomorrow 00:01 UTC
+            var dueTime = nextMidnightUtc - nowUtc;
+            
+            return (dueTime, nextMidnightUtc);
+        }
+    }
+    
+    /// <summary>
+    /// Update daily reminder with new timezone (triggered when user updates timezone)
+    /// </summary>
+    public async Task UpdateTimeZoneReminderAsync(string timeZoneId)
+    {
+        try
+        {
+            _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Updating timezone to: {timeZoneId}");
+            
+            // Only update for Daily predictions
+            if (State.Type != PredictionType.Daily)
+            {
+                _logger.LogDebug($"[Lumen][DailyReminder] {State.UserId} Not a Daily grain (Type: {State.Type}), skipping reminder update");
+                return;
+            }
+            
+            // Check if daily auto-generation is enabled
+            var enableAutoGeneration = _options?.EnableDailyAutoGeneration ?? false;
+            if (!enableAutoGeneration)
+            {
+                _logger.LogDebug($"[Lumen][DailyReminder] {State.UserId} Daily auto-generation is disabled, skipping reminder update");
+                return;
+            }
+            
+            // Unregister existing reminder
+            await UnregisterDailyReminderAsync();
+            
+            // Re-register with new timezone
+            await RegisterDailyReminderAsync();
+            
+            _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder updated successfully for timezone: {timeZoneId}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[Lumen][DailyReminder] {State.UserId} Error updating timezone reminder");
+        }
     }
     
     /// <summary>
