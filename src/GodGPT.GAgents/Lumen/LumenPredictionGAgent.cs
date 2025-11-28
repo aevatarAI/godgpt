@@ -1727,7 +1727,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     try
                     {
                         var yearlyHistoryGrainId = $"{userInfo.UserId}-{predictionDate.Year}";
-                        var yearlyHistoryGrain = _clusterClient.GetGrain<ILumenDailyYearlyHistoryGAgent>(yearlyHistoryGrainId);
+                        var yearlyHistoryGrain = GrainFactory.GetGrain<ILumenDailyYearlyHistoryGAgent>(yearlyHistoryGrainId);
                         
                         await yearlyHistoryGrain.AddOrUpdateDailyPredictionAsync(
                             predictionId,
