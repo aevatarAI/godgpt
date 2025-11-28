@@ -131,6 +131,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Email = updateEvent.Email;
                 state.Occupation = updateEvent.Occupation;
                 state.Icon = updateEvent.Icon;
+                state.CurrentTimeZone = updateEvent.CurrentTimeZone; // Set timezone (optional)
                 state.IsDeleted = false; // Clear deleted flag on profile update/registration
                 
                 // Record update timestamp for rate limiting (only for actual updates, not initial registration)
@@ -273,7 +274,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 CurrentResidence = request.CurrentResidence,
                 Email = request.Email,
                 Occupation = request.Occupation,
-                Icon = request.Icon
+                Icon = request.Icon,
+                CurrentTimeZone = request.CurrentTimeZone
             });
 
             // Confirm events to persist state changes

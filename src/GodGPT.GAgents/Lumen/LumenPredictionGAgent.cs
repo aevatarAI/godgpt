@@ -505,6 +505,21 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     localizedResults["currentPhase"] = currentPhase.ToString();
                 }
                 
+                // Add lucky number for Daily predictions (backend-calculated, not from LLM)
+                if (type == PredictionType.Daily && localizedResults.Count > 0)
+                {
+                    localizedResults = new Dictionary<string, string>(localizedResults);
+                    var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
+                        userInfo.BirthDate,
+                        State.PredictionDate,
+                        returnedLanguage);
+                    
+                    localizedResults["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
+                    localizedResults["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
+                    localizedResults["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
+                    localizedResults["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
+                }
+                
                 // Get available languages from MultilingualResults (actual available languages)
                 // If MultilingualResults is empty (but not null), fallback to GeneratedLanguages
                 var availableLanguages = (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
@@ -1644,6 +1659,40 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 }
             }
 
+            // Add lucky number calculation for Daily predictions (backend-calculated, not from LLM)
+            if (type == PredictionType.Daily)
+            {
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Adding backend-calculated lucky number fields");
+                
+                // Calculate lucky number for each language
+                if (multilingualResults != null)
+                {
+                    foreach (var lang in multilingualResults.Keys.ToList())
+                    {
+                        var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
+                            userInfo.BirthDate,
+                            predictionDate,
+                            lang);
+                        
+                        multilingualResults[lang]["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
+                        multilingualResults[lang]["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
+                        multilingualResults[lang]["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
+                        multilingualResults[lang]["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
+                    }
+                }
+                
+                // Also add to parsedResults (primary language)
+                var primaryLuckyNumber = Services.LuckyNumberService.CalculateLuckyNumber(
+                    userInfo.BirthDate,
+                    predictionDate,
+                    targetLanguage);
+                
+                parsedResults["luckyAlignments_luckyNumber_number"] = primaryLuckyNumber.NumberWord;
+                parsedResults["luckyAlignments_luckyNumber_digit"] = primaryLuckyNumber.Digit.ToString();
+                parsedResults["luckyAlignments_luckyNumber_description"] = primaryLuckyNumber.Description;
+                parsedResults["luckyAlignments_luckyNumber_calculation"] = primaryLuckyNumber.CalculationFormula;
+            }
+
             // Raise event to save prediction (unified structure)
             RaiseEvent(new PredictionGeneratedEvent
             {
@@ -2179,13 +2228,7 @@ FORMAT REQUIREMENTS:
             var desc_wellness = isChinese ? "10-15字，关于身心平衡的建议" : "10-15 words for reflection on wellbeing";
             var desc_takeaway = isChinese ? $"15-25字，{displayName}，你的..." : $"15-25 words '{displayName}, your...'";
 
-            // Resonance
-            var desc_lucky_num = isChinese ? "中文数字 (阿拉伯数字) 如：八 (8)" : "Word (digit) e.g. Eight (8)";
-            var desc_num_meaning = isChinese ? "15-20字，该数字对今日的象征意义" : "15-20 words symbolic significance";
-            var desc_num_calc = isChinese 
-                ? $"完整计算公式。格式：将用户出生日期 ({userInfo.BirthDate:M-d-yyyy}) 和今日日期 ({predictionDate:M-d-yyyy}) 的每个数字相加并简化。例：出生 5-15-1990 (5+1+5+1+9+9+0=30) + 今日 11-27-2025 (1+1+2+7+2+0+2+5=20) = 50 → 5+0=5" 
-                : $"Full calculation formula. Format: Add digits from user's birth date ({userInfo.BirthDate:M-d-yyyy}) and today ({predictionDate:M-d-yyyy}), then reduce. Example: Birth 5-15-1990 (5+1+5+1+9+9+0=30) + Today 11-27-2025 (1+1+2+7+2+0+2+5=20) = 50 → 5+0=5";
-
+            // Resonance (Lucky Number is now calculated by backend, removed from LLM prompt)
             var desc_stone = isChinese ? "[保留英文ID] (如 \"Amethyst\")" : "[Use ENGLISH Name as ID]";
             var desc_stone_power = isChinese ? "15-20字，水晶能量描述" : "15-20 words symbolic energy";
             var desc_stone_use = isChinese 
@@ -2256,15 +2299,6 @@ reflection_wellbeing	{desc_wellness}
 daily_takeaway	{desc_takeaway}
 
 === 3. RESONANCE ===
-# Numerology (Calculate personalized lucky number using BOTH birth date AND today's date)
-# METHOD: Add all digits from user's birth date + today's date, then reduce to single digit (1-9)
-# EXAMPLE: Birth(1990-05-15) + Today(2025-11-27): (1+9+9+0+0+5+1+5) + (2+0+2+5+1+1+2+7) = 30+20=50 → 5+0=5
-# Result MUST be personalized (different users get different numbers on same day)
-numerology_digit_word	{desc_lucky_num}
-numerology_digit	1-9 (calculated from user birth date + {predictionDate:yyyy-MM-dd})
-numerology_meaning	{desc_num_meaning}
-numerology_formula	Show detailed calculation: user birth date digits + today digits = sum → reduce to single digit
-
 # Crystal (Select for {zodiacElement} element based on date {predictionDate:yyyy-MM-dd}, vary daily)
 crystal_stone_id	{desc_stone}
 crystal_power	{desc_stone_power}
@@ -3080,7 +3114,18 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                     targetDict["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
                 }
                 
-                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Daily backend enum fields for {targetLanguage}");
+                // Add backend-calculated lucky number for target language
+                var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
+                    userInfo.BirthDate,
+                    predictionDate,
+                    targetLanguage);
+                
+                targetDict["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
+                targetDict["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
+                targetDict["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
+                targetDict["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
+                
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Daily backend enum fields and lucky number for {targetLanguage}");
             }
         }
         catch (Exception ex)
@@ -3379,11 +3424,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Takeaway
                 ["daily_takeaway"] = "todaysTakeaway",
 
-                // Lucky Number (numerology_*)
-                ["numerology_digit_word"] = "luckyAlignments_luckyNumber_number",
-                ["numerology_digit"] = "luckyAlignments_luckyNumber_digit",
-                ["numerology_meaning"] = "luckyAlignments_luckyNumber_description",
-                ["numerology_formula"] = "luckyAlignments_luckyNumber_calculation",
+                // Lucky Number: Now calculated by backend (removed from LLM)
+                // See GetCalculatedValuesAsync() for backend calculation
 
                 // Lucky Stone (crystal_*)
                 ["crystal_stone_id"] = "luckyAlignments_luckyStone",
@@ -5335,6 +5377,18 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var fourPillars = LumenCalculator.CalculateFourPillars(calcBirthDate, calcBirthTime);
             // Use same detailed structure as Lifetime prediction
             InjectFourPillarsData(results, fourPillars, userLanguage);
+            
+            // ========== LUCKY NUMBER (NUMEROLOGY) ==========
+            // Calculate using backend service (no LLM involved)
+            var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
+                userInfo.BirthDate, 
+                today, 
+                userLanguage);
+            
+            results["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
+            results["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
+            results["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
+            results["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
             
             _logger.LogInformation(
                 $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");
