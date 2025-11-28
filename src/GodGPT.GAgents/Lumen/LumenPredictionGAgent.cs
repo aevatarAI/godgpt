@@ -1983,12 +1983,30 @@ FORMAT REQUIREMENT:
             };
 
             // SIMPLIFIED DESCRIPTIONS (Lifetime - Relaxed constraints to avoid LLM refusal)
-            bool isChinese = targetLanguage.StartsWith("zh");
+            // Use language-specific placeholders to avoid LLM confusion
+            var desc_simple = targetLanguage switch
+            {
+                "zh" => "[内容]",
+                "zh-tw" => "[內容]",
+                "es" => "[contenido]",
+                _ => "[content]"
+            };
             
-            // Use minimal placeholders - LLM knows what astrological content should be
-            var desc_simple = isChinese ? "[内容]" : "[content]";
-            var desc_title = isChinese ? "[标题]" : "[title]";
-            var desc_text = isChinese ? "[描述]" : "[description]";
+            var desc_title = targetLanguage switch
+            {
+                "zh" => "[标题]",
+                "zh-tw" => "[標題]",
+                "es" => "[título]",
+                _ => "[title]"
+            };
+            
+            var desc_text = targetLanguage switch
+            {
+                "zh" => "[描述]",
+                "zh-tw" => "[描述]",
+                "es" => "[descripción]",
+                _ => "[description]"
+            };
             
             // Only specify format for special fields
             var desc_combined_essence = targetLanguage switch
@@ -1999,8 +2017,21 @@ FORMAT REQUIREMENT:
                 _ => $"E.g.: You think like {sunSignTranslated}, feel like {moonSignTranslated}, move like {risingSignTranslated}"
             };
             
-            var desc_whisper = isChinese ? $"以'{birthYearAnimalTranslated}'开头的消息" : $"Message starting with '{birthYearAnimalTranslated}'";
-            var desc_cn_essence = isChinese ? $"与{birthYearElement}相关的本质" : $"Essence related to {birthYearElement}";
+            var desc_whisper = targetLanguage switch
+            {
+                "zh" => $"以'{birthYearAnimalTranslated}'开头的消息",
+                "zh-tw" => $"以'{birthYearAnimalTranslated}'開頭的訊息",
+                "es" => $"Mensaje que comienza con '{birthYearAnimalTranslated}'",
+                _ => $"Message starting with '{birthYearAnimalTranslated}'"
+            };
+            
+            var desc_cn_essence = targetLanguage switch
+            {
+                "zh" => $"与{birthYearElement}相关的本质",
+                "zh-tw" => $"與{birthYearElement}相關的本質",
+                "es" => $"Esencia relacionada con {birthYearElement}",
+                _ => $"Essence related to {birthYearElement}"
+            };
             
             // Dynamic cycle_name field based on target language
             // Always include cycle_name_zh (baseline)
@@ -2114,22 +2145,69 @@ RULES:
             var yearlyTaishuiTranslated = TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
             
             // DYNAMIC DESCRIPTIONS BASED ON LANGUAGE (Yearly)
-            bool isChinese = targetLanguage.StartsWith("zh");
+            var desc_theme_title = targetLanguage switch
+            {
+                "zh" => "4-7字，年度主题 (使用'之'字结构)",
+                "zh-tw" => "4-7字，年度主題 (使用'之'字結構)",
+                "es" => "4-7 palabras, tema anual (usando estructura 'de')",
+                _ => "[VARIED: 4-7 words using 'of' structure]"
+            };
+            
+            var desc_theme_glance = targetLanguage switch
+            {
+                "zh" => "15-20字，年度运势综述",
+                "zh-tw" => "15-20字，年度運勢綜述",
+                "es" => "15-20 palabras, resumen anual",
+                _ => "[VARIED: 15-20 words on what both systems suggest]"
+            };
+            
+            var desc_theme_detail = targetLanguage switch
+            {
+                "zh" => "60-80字，分三部分：1.能量模式 2.探索邀请 3.年度定义",
+                "zh-tw" => "60-80字，分三部分：1.能量模式 2.探索邀請 3.年度定義",
+                "es" => "60-80 palabras en 3 partes: patrón energético, invitación, definición anual",
+                _ => "[VARIED: 60-80 words in 3 parts]"
+            };
 
-            var desc_theme_title = isChinese ? "4-7字，年度主题 (使用'之'字结构)" : "[VARIED: 4-7 words using 'of' structure]";
-            var desc_theme_glance = isChinese ? "15-20字，年度运势综述" : "[VARIED: 15-20 words on what both systems suggest]";
-            var desc_theme_detail = isChinese ? "60-80字，分三部分：1.能量模式 2.探索邀请 3.年度定义" : "[VARIED: 60-80 words in 3 parts]";
+            var desc_tag = targetLanguage switch
+            {
+                "zh" => "10-15字，反思性标语",
+                "zh-tw" => "10-15字，反思性標語",
+                "es" => "10-15 palabras, lema reflexivo",
+                _ => "[10-15 words invitational tagline]"
+            };
+            
+            var desc_do = targetLanguage switch
+            {
+                "zh" => "建议1|建议2|建议3 (竖线分隔)",
+                "zh-tw" => "建議1|建議2|建議3 (豎線分隔)",
+                "es" => "item1|item2 (áreas a explorar, separado por |)",
+                _ => "item1|item2 (areas to explore)"
+            };
+            
+            var desc_avoid = targetLanguage switch
+            {
+                "zh" => "注意1|注意2|注意3 (竖线分隔)",
+                "zh-tw" => "注意1|注意2|注意3 (豎線分隔)",
+                "es" => "item1|item2 (patrones a tener en cuenta, separado por |)",
+                _ => "item1|item2 (patterns to be mindful of)"
+            };
+            
+            var desc_detail = targetLanguage switch
+            {
+                "zh" => "50-70字，分三部分：象征模式，能量质量，反思意义",
+                "zh-tw" => "50-70字，分三部分：象徵模式，能量質量，反思意義",
+                "es" => "50-70 palabras en 3 partes: patrón simbólico, calidad energética, significado reflexivo",
+                _ => "[50-70 words in 3 parts: symbolic pattern, energy quality, reflective meaning]"
+            };
 
-            var desc_tag = isChinese ? "10-15字，反思性标语" : "[10-15 words invitational tagline]";
-            var desc_do = isChinese ? "建议1|建议2|建议3 (竖线分隔)" : "item1|item2 (areas to explore)";
-            var desc_avoid = isChinese ? "注意1|注意2|注意3 (竖线分隔)" : "item1|item2 (patterns to be mindful of)";
-            var desc_detail = isChinese
-                ? "50-70字，分三部分：象征模式，能量质量，反思意义"
-                : "[50-70 words in 3 parts: symbolic pattern, energy quality, reflective meaning]";
-
-            var desc_mantra = isChinese
-                ? "18-25字，第一人称年度真言 ('我探索...' 或 '我沉思...')"
-                : "[18-25 words using first-person 'I explore...' or 'I contemplate...']";
+            var desc_mantra = targetLanguage switch
+            {
+                "zh" => "18-25字，第一人称年度真言 ('我探索...' 或 '我沉思...')",
+                "zh-tw" => "18-25字，第一人稱年度真言 ('我探索...' 或 '我沉思...')",
+                "es" => "18-25 palabras en primera persona ('Exploro...' o 'Contemplo...')",
+                _ => "[18-25 words using first-person 'I explore...' or 'I contemplate...']"
+            };
 
             prompt = singleLanguagePrefix +
                      $@"Create a yearly astrological insight for {yearlyYear} to support self-reflection.
@@ -2204,48 +2282,188 @@ FORMAT REQUIREMENTS:
             };
             
             // DYNAMIC DESCRIPTIONS BASED ON LANGUAGE
-            // This "primes" the LLM to output in the target language naturally
-            bool isChinese = targetLanguage.StartsWith("zh");
-
-            var desc_dayTitle = isChinese ? "今日主题 (如：反思与和谐之日)" : "The Day of [word1] and [word2]";
+            // Use language-specific placeholders to ensure correct output language
+            var desc_dayTitle = targetLanguage switch
+            {
+                "zh" => "今日主题 (如：反思与和谐之日)",
+                "zh-tw" => "今日主題 (如：反思與和諧之日)",
+                "es" => "El Día de [palabra1] y [palabra2]",
+                _ => "The Day of [word1] and [word2]"
+            };
 
             // Tarot Section - Explicitly requesting ID to avoid translation issues
-            var desc_card_name = isChinese ? "[保留英文原名] (如 \"The Fool\")" : "[Use ENGLISH Name e.g. \"The Fool\"]";
-            var desc_card_orient = isChinese
-                ? "[保留英文枚举] (\"Upright\" 或 \"Reversed\")"
-                : "[Use ENGLISH: \"Upright\" or \"Reversed\"]";
-            var desc_card_essence = isChinese ? "1-2个中文关键词" : "1-2 words essence";
+            var desc_card_name = targetLanguage switch
+            {
+                "zh" => "[保留英文原名] (如 \"The Fool\")",
+                "zh-tw" => "[保留英文原名] (如 \"The Fool\")",
+                "es" => "[Usar nombre en INGLÉS, ej. \"The Fool\"]",
+                _ => "[Use ENGLISH Name e.g. \"The Fool\"]"
+            };
+            
+            var desc_card_orient = targetLanguage switch
+            {
+                "zh" => "[保留英文枚举] (\"Upright\" 或 \"Reversed\")",
+                "zh-tw" => "[保留英文列舉] (\"Upright\" 或 \"Reversed\")",
+                "es" => "[Usar INGLÉS: \"Upright\" o \"Reversed\"]",
+                _ => "[Use ENGLISH: \"Upright\" or \"Reversed\"]"
+            };
+            
+            var desc_card_essence = targetLanguage switch
+            {
+                "zh" => "1-2个中文关键词",
+                "zh-tw" => "1-2個中文關鍵詞",
+                "es" => "1-2 palabras clave",
+                _ => "1-2 words essence"
+            };
 
             // Path Section
-            var desc_path_type = isChinese ? "1个形容词 (如：勇敢的)" : "1 adjective describing today's path";
-            var desc_path_intro = isChinese ? $"你好 {displayName} (15-25字)" : $"15-25 words starting 'Hi {displayName}'";
-            var desc_path_detail = isChinese ? "30-40字，基于今日星象的深刻反思与智慧指引" : "30-40 words of reflective wisdom";
+            var desc_path_type = targetLanguage switch
+            {
+                "zh" => "1个形容词 (如：勇敢的)",
+                "zh-tw" => "1個形容詞 (如：勇敢的)",
+                "es" => "1 adjetivo (ej: valiente)",
+                _ => "1 adjective describing today's path"
+            };
+            
+            var desc_path_intro = targetLanguage switch
+            {
+                "zh" => $"你好 {displayName} (15-25字)",
+                "zh-tw" => $"你好 {displayName} (15-25字)",
+                "es" => $"Hola {displayName} (15-25 palabras)",
+                _ => $"15-25 words starting 'Hi {displayName}'"
+            };
+            
+            var desc_path_detail = targetLanguage switch
+            {
+                "zh" => "30-40字，基于今日星象的深刻反思与智慧指引",
+                "zh-tw" => "30-40字，基於今日星象的深刻反思與智慧指引",
+                "es" => "30-40 palabras de sabiduría reflexiva",
+                _ => "30-40 words of reflective wisdom"
+            };
 
             // Life Areas
-            var desc_career = isChinese ? "10-20字，关于工作的反思" : "10-20 words for reflection on work energy";
-            var desc_love = isChinese ? "10-20字，关于关系的内省" : "10-20 words for reflection on relationships";
-            var desc_prosperity = isChinese ? "10-20字，关于财富观念的思考" : "10-20 words for reflection on abundance";
-            var desc_wellness = isChinese ? "10-15字，关于身心平衡的建议" : "10-15 words for reflection on wellbeing";
-            var desc_takeaway = isChinese ? $"15-25字，{displayName}，你的..." : $"15-25 words '{displayName}, your...'";
+            var desc_career = targetLanguage switch
+            {
+                "zh" => "10-20字，关于工作的反思",
+                "zh-tw" => "10-20字，關於工作的反思",
+                "es" => "10-20 palabras sobre el trabajo",
+                _ => "10-20 words for reflection on work energy"
+            };
+            
+            var desc_love = targetLanguage switch
+            {
+                "zh" => "10-20字，关于关系的内省",
+                "zh-tw" => "10-20字，關於關係的內省",
+                "es" => "10-20 palabras sobre relaciones",
+                _ => "10-20 words for reflection on relationships"
+            };
+            
+            var desc_prosperity = targetLanguage switch
+            {
+                "zh" => "10-20字，关于财富观念的思考",
+                "zh-tw" => "10-20字，關於財富觀念的思考",
+                "es" => "10-20 palabras sobre abundancia",
+                _ => "10-20 words for reflection on abundance"
+            };
+            
+            var desc_wellness = targetLanguage switch
+            {
+                "zh" => "10-15字，关于身心平衡的建议",
+                "zh-tw" => "10-15字，關於身心平衡的建議",
+                "es" => "10-15 palabras sobre bienestar",
+                _ => "10-15 words for reflection on wellbeing"
+            };
+            
+            var desc_takeaway = targetLanguage switch
+            {
+                "zh" => $"15-25字，{displayName}，你的...",
+                "zh-tw" => $"15-25字，{displayName}，你的...",
+                "es" => $"15-25 palabras '{displayName}, tu...'",
+                _ => $"15-25 words '{displayName}, your...'"
+            };
 
             // Resonance (Lucky Number is now calculated by backend, removed from LLM prompt)
-            var desc_stone = isChinese ? "[保留英文ID] (如 \"Amethyst\")" : "[Use ENGLISH Name as ID]";
-            var desc_stone_power = isChinese ? "15-20字，水晶能量描述" : "15-20 words symbolic energy";
-            var desc_stone_use = isChinese 
-                ? "20-30字，具体使用建议，如：随身携带、放在办公桌、冥想时握住、睡前放枕边等" 
-                : "20-30 words practical usage suggestion e.g. 'Carry with you', 'Place on your desk', 'Hold during meditation', 'Keep by your bedside', etc.";
+            var desc_stone = targetLanguage switch
+            {
+                "zh" => "[保留英文ID] (如 \"Amethyst\")",
+                "zh-tw" => "[保留英文ID] (如 \"Amethyst\")",
+                "es" => "[Usar nombre en INGLÉS, ej. \"Amethyst\"]",
+                _ => "[Use ENGLISH Name as ID]"
+            };
+            
+            var desc_stone_power = targetLanguage switch
+            {
+                "zh" => "15-20字，水晶能量描述",
+                "zh-tw" => "15-20字，水晶能量描述",
+                "es" => "15-20 palabras describiendo energía",
+                _ => "15-20 words symbolic energy"
+            };
+            
+            var desc_stone_use = targetLanguage switch
+            {
+                "zh" => "20-30字，具体使用建议，如：随身携带、放在办公桌、冥想时握住、睡前放枕边等",
+                "zh-tw" => "20-30字，具體使用建議，如：隨身攜帶、放在辦公桌、冥想時握住、睡前放枕邊等",
+                "es" => "20-30 palabras de sugerencia práctica, ej: 'Llévalo contigo', 'Colócalo en tu escritorio', etc.",
+                _ => "20-30 words practical usage suggestion e.g. 'Carry with you', 'Place on your desk', 'Hold during meditation', 'Keep by your bedside', etc."
+            };
 
             // Affirmation (Renamed from 'spell' to avoid filters)
-            var desc_spell = isChinese ? "2个字的诗意短语" : "2 words poetic";
-            var desc_spell_words =
-                isChinese ? "20-30字，鼓舞人心的肯定语（不要带引号）" : "20-30 words inspirational affirmation (without quotes)";
-            var desc_spell_intent = isChinese ? "10-12字，意图" : "10-12 words 'To explore...'";
+            var desc_spell = targetLanguage switch
+            {
+                "zh" => "2个字的诗意短语",
+                "zh-tw" => "2個字的詩意短語",
+                "es" => "2 palabras poéticas",
+                _ => "2 words poetic"
+            };
+            
+            var desc_spell_words = targetLanguage switch
+            {
+                "zh" => "20-30字，鼓舞人心的肯定语（不要带引号）",
+                "zh-tw" => "20-30字，鼓舞人心的肯定語（不要帶引號）",
+                "es" => "20-30 palabras inspiradoras (sin comillas)",
+                _ => "20-30 words inspirational affirmation (without quotes)"
+            };
+            
+            var desc_spell_intent = targetLanguage switch
+            {
+                "zh" => "10-12字，意图",
+                "zh-tw" => "10-12字，意圖",
+                "es" => "10-12 palabras, intención",
+                _ => "10-12 words 'To explore...'"
+            };
 
             // Guidance (Renamed from 'fortune' to avoid filters in description)
-            var desc_fortune_title = isChinese ? "4-8字，诗意隐喻" : "4-8 words poetic metaphor";
-            var desc_fortune_do = isChinese ? "建议1|建议2|建议3 (竖线分隔)" : "activity1|activity2|activity3";
-            var desc_fortune_avoid = isChinese ? "注意1|注意2|注意3 (竖线分隔)" : "avoid1|avoid2|avoid3";
-            var desc_fortune_tip = isChinese ? "10-15字，今日反思贴士" : "10-15 words 'Today's reflection invites...'";
+            var desc_fortune_title = targetLanguage switch
+            {
+                "zh" => "4-8字，诗意隐喻",
+                "zh-tw" => "4-8字，詩意隱喻",
+                "es" => "4-8 palabras metafóricas",
+                _ => "4-8 words poetic metaphor"
+            };
+            
+            var desc_fortune_do = targetLanguage switch
+            {
+                "zh" => "建议1|建议2|建议3 (竖线分隔)",
+                "zh-tw" => "建議1|建議2|建議3 (豎線分隔)",
+                "es" => "actividad1|actividad2|actividad3 (separado por |)",
+                _ => "activity1|activity2|activity3"
+            };
+            
+            var desc_fortune_avoid = targetLanguage switch
+            {
+                "zh" => "注意1|注意2|注意3 (竖线分隔)",
+                "zh-tw" => "注意1|注意2|注意3 (豎線分隔)",
+                "es" => "evitar1|evitar2|evitar3 (separado por |)",
+                _ => "avoid1|avoid2|avoid3"
+            };
+            
+            var desc_fortune_tip = targetLanguage switch
+            {
+                "zh" => "10-15字，今日反思贴士",
+                "zh-tw" => "10-15字，今日反思貼士",
+                "es" => "10-15 palabras, consejo reflexivo",
+                _ => "10-15 words 'Today's reflection invites...'"
+            };
 
             // Check if we need to request LatLong inference from LLM
             var needLatLongInference = !string.IsNullOrWhiteSpace(userInfo.BirthCity) 
