@@ -4749,9 +4749,13 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// <summary>
     /// Build archetype string for lifetime predictions with localized template
     /// Example: "Sun in Cancer - The Nurturing Protector" (en) or "巨蟹座太阳 - 心灵守护者" (zh)
+    /// Removes duplicate articles ("The", "El", etc.) if LLM already included them
     /// </summary>
     private string BuildArchetypeString(string celestialBody, string zodiacSign, string archetypeName, string language)
     {
+        // Clean archetype name: remove leading articles if LLM already added them
+        var cleanArchName = archetypeName.Trim();
+        
         if (language == "zh" || language == "zh-tw")
         {
             var bodyName = celestialBody switch
@@ -4761,7 +4765,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 "Rising" => "上升",
                 _ => celestialBody
             };
-            return $"{zodiacSign}{bodyName} - {archetypeName}";
+            return $"{zodiacSign}{bodyName} - {cleanArchName}";
         }
         else if (language == "es")
         {
@@ -4772,11 +4776,21 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 "Rising" => "Ascendente",
                 _ => celestialBody
             };
-            return $"{bodyName} en {zodiacSign} - El {archetypeName}";
+            // Remove "El " or "el " if already present
+            if (cleanArchName.StartsWith("El ", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanArchName = cleanArchName.Substring(3).Trim();
+            }
+            return $"{bodyName} en {zodiacSign} - El {cleanArchName}";
         }
         else
         {
-            return $"{celestialBody} in {zodiacSign} - The {archetypeName}";
+            // Remove "The " or "the " if already present
+            if (cleanArchName.StartsWith("The ", StringComparison.OrdinalIgnoreCase))
+            {
+                cleanArchName = cleanArchName.Substring(4).Trim();
+            }
+            return $"{celestialBody} in {zodiacSign} - The {cleanArchName}";
         }
     }
     
