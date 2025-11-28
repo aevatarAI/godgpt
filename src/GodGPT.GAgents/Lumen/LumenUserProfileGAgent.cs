@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Application.Grains.Lumen.Options;
 using Aevatar.Application.Grains.Lumen.SEvents;
@@ -376,7 +377,9 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
                     Email = State.Email,
-                    Icon = State.Icon
+                    Icon = State.Icon,
+                    CurrentTimeZone = State.CurrentTimeZone,
+                    CurrentLanguage = State.CurrentLanguage
                 }
             };
         }
@@ -427,7 +430,9 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 RelationshipStatus = State.RelationshipStatus,
                 Interests = State.Interests,
                 Email = State.Email,
-                Icon = State.Icon
+                Icon = State.Icon,
+                CurrentTimeZone = State.CurrentTimeZone,
+                CurrentLanguage = State.CurrentLanguage
             };
 
             return Task.FromResult<LumenUserProfileDto?>(profileDto);

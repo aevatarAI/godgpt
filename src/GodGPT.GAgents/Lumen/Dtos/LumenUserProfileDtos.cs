@@ -72,6 +72,7 @@ public class LumenUserProfileDto
     [Id(21)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
     [Id(22)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks (e.g., "settings")
     [Id(23)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID (e.g., "America/New_York"), defaults to UTC
+    [Id(24)] public string CurrentLanguage { get; set; } = "en"; // Current active language (en, zh, zh-tw, es)
 }
 
 /// <summary>
