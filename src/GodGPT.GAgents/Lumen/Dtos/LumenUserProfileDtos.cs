@@ -23,6 +23,7 @@ public class UpdateUserProfileRequest
     [Id(12)] public string? Email { get; set; } // Optional
     [Id(13)] public string? Occupation { get; set; } // Optional
     [Id(14)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
+    [Id(15)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID (e.g., "America/New_York")
 }
 
 /// <summary>
@@ -70,6 +71,8 @@ public class LumenUserProfileDto
     [Id(20)] public string? Email { get; set; }
     [Id(21)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
     [Id(22)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks (e.g., "settings")
+    [Id(23)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID (e.g., "America/New_York"), defaults to UTC
+    [Id(24)] public string CurrentLanguage { get; set; } = "en"; // Current active language (en, zh, zh-tw, es)
 }
 
 /// <summary>
@@ -108,4 +111,25 @@ public class GetRemainingUpdatesResult
     [Id(2)] public int MaxCount { get; set; }
     [Id(3)] public int RemainingCount { get; set; }
     [Id(4)] public DateTime? NextAvailableAt { get; set; } // When next update will be available if limit is reached
+}
+
+/// <summary>
+/// Update time zone request (does NOT count as profile update)
+/// </summary>
+[GenerateSerializer]
+public class UpdateTimeZoneRequest
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string TimeZoneId { get; set; } = string.Empty; // IANA time zone ID (e.g., "America/New_York", "Asia/Shanghai")
+}
+
+/// <summary>
+/// Update time zone result
+/// </summary>
+[GenerateSerializer]
+public class UpdateTimeZoneResult
+{
+    [Id(0)] public bool Success { get; set; }
+    [Id(1)] public string Message { get; set; } = string.Empty;
+    [Id(2)] public string? TimeZoneId { get; set; } // The updated time zone ID
 }

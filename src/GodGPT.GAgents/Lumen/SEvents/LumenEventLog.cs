@@ -264,6 +264,7 @@ public class UserProfileUpdatedEvent : LumenUserProfileEventLog
     [Id(13)] public string? Email { get; set; }
     [Id(14)] public string? Occupation { get; set; } // Optional
     [Id(15)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
+    [Id(16)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID
 }
 
 /// <summary>
@@ -310,6 +311,17 @@ public class UserProfileLanguageSwitchedEvent : LumenUserProfileEventLog
     [Id(3)] public DateTime SwitchedAt { get; set; }
     [Id(4)] public DateOnly SwitchDate { get; set; } // Date of the switch (for daily counting)
     [Id(5)] public int TodayCount { get; set; } // Count after this switch
+}
+
+/// <summary>
+/// Time zone updated event (for UserProfile) - does NOT count as profile update
+/// </summary>
+[GenerateSerializer]
+public class TimeZoneUpdatedEvent : LumenUserProfileEventLog
+{
+    [Id(0)] public string UserId { get; set; } = string.Empty;
+    [Id(1)] public string TimeZoneId { get; set; } = string.Empty; // IANA time zone ID (e.g., "America/New_York")
+    [Id(2)] public DateTime UpdatedAt { get; set; }
 }
 
 /// <summary>

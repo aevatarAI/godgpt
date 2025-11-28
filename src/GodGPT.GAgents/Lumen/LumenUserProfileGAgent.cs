@@ -1,3 +1,4 @@
+using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Application.Grains.Lumen.Options;
 using Aevatar.Application.Grains.Lumen.SEvents;
@@ -63,6 +64,11 @@ public interface ILumenUserProfileGAgent : IGAgent
     /// Save LLM-inferred LatLong from BirthCity (internal use only, not exposed in profile API)
     /// </summary>
     Task SaveInferredLatLongAsync(string latLongInferred, string birthCity);
+    
+    /// <summary>
+    /// Update user's time zone (does NOT count as profile update, only updates reminder)
+    /// </summary>
+    Task<UpdateTimeZoneResult> UpdateTimeZoneAsync(UpdateTimeZoneRequest request);
 }
 
 [GAgent(nameof(LumenUserProfileGAgent))]
@@ -126,6 +132,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.Email = updateEvent.Email;
                 state.Occupation = updateEvent.Occupation;
                 state.Icon = updateEvent.Icon;
+                state.CurrentTimeZone = updateEvent.CurrentTimeZone; // Set timezone (optional)
                 state.IsDeleted = false; // Clear deleted flag on profile update/registration
                 
                 // Record update timestamp for rate limiting (only for actual updates, not initial registration)
@@ -182,6 +189,11 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
             case UserProfileLatLongInferredEvent latLongEvent:
                 state.LatLongInferred = latLongEvent.LatLongInferred;
                 state.InferredFromCity = latLongEvent.BirthCity;
+                break;
+            case TimeZoneUpdatedEvent timeZoneEvent:
+                state.CurrentTimeZone = timeZoneEvent.TimeZoneId;
+                state.UpdatedAt = timeZoneEvent.UpdatedAt;
+                // Note: Does NOT add to UpdateHistory (not counted as profile update)
                 break;
         }
     }
@@ -263,7 +275,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 CurrentResidence = request.CurrentResidence,
                 Email = request.Email,
                 Occupation = request.Occupation,
-                Icon = request.Icon
+                Icon = request.Icon,
+                CurrentTimeZone = request.CurrentTimeZone
             });
 
             // Confirm events to persist state changes
@@ -364,7 +377,9 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
                     Email = State.Email,
-                    Icon = State.Icon
+                    Icon = State.Icon,
+                    CurrentTimeZone = State.CurrentTimeZone,
+                    CurrentLanguage = State.CurrentLanguage
                 }
             };
         }
@@ -415,7 +430,9 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 RelationshipStatus = State.RelationshipStatus,
                 Interests = State.Interests,
                 Email = State.Email,
-                Icon = State.Icon
+                Icon = State.Icon,
+                CurrentTimeZone = State.CurrentTimeZone,
+                CurrentLanguage = State.CurrentLanguage
             };
 
             return Task.FromResult<LumenUserProfileDto?>(profileDto);
@@ -1528,6 +1545,91 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
         }
     }
     
+    public async Task<UpdateTimeZoneResult> UpdateTimeZoneAsync(UpdateTimeZoneRequest request)
+    {
+        try
+        {
+            _logger.LogDebug("[LumenUserProfileGAgent][UpdateTimeZoneAsync] Start - UserId: {UserId}, TimeZone: {TimeZoneId}", 
+                request.UserId, request.TimeZoneId);
+
+            // Check if user exists
+            if (string.IsNullOrEmpty(State.UserId))
+            {
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateTimeZoneAsync] User not found: {UserId}", request.UserId);
+                return new UpdateTimeZoneResult
+                {
+                    Success = false,
+                    Message = "User not found"
+                };
+            }
+
+            // Validate user ID matches
+            if (State.UserId != request.UserId)
+            {
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateTimeZoneAsync] User ID mismatch: {UserId}", request.UserId);
+                return new UpdateTimeZoneResult
+                {
+                    Success = false,
+                    Message = "User ID mismatch"
+                };
+            }
+
+            // Validate timezone ID (IANA format)
+            try
+            {
+                var timeZoneInfo = TimeZoneInfo.FindSystemTimeZoneById(request.TimeZoneId);
+                _logger.LogDebug("[LumenUserProfileGAgent][UpdateTimeZoneAsync] Validated timezone: {TimeZoneId}, DisplayName: {DisplayName}", 
+                    request.TimeZoneId, timeZoneInfo.DisplayName);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                _logger.LogWarning("[LumenUserProfileGAgent][UpdateTimeZoneAsync] Invalid timezone ID: {TimeZoneId}", request.TimeZoneId);
+                return new UpdateTimeZoneResult
+                {
+                    Success = false,
+                    Message = $"Invalid time zone ID: {request.TimeZoneId}. Please use IANA time zone format (e.g., 'America/New_York', 'Asia/Shanghai')"
+                };
+            }
+
+            var now = DateTime.UtcNow;
+
+            // Raise event to update timezone (does NOT count as profile update)
+            RaiseEvent(new TimeZoneUpdatedEvent
+            {
+                UserId = request.UserId,
+                TimeZoneId = request.TimeZoneId,
+                UpdatedAt = now
+            });
+
+            // Confirm events to persist state changes
+            await ConfirmEvents();
+
+            _logger.LogInformation("[LumenUserProfileGAgent][UpdateTimeZoneAsync] Timezone updated successfully: {UserId}, TimeZone: {TimeZoneId}", 
+                request.UserId, request.TimeZoneId);
+
+            // Trigger daily prediction grain to re-register reminder with new timezone
+            var predictionGrainId = CommonHelper.StringToGuid($"{request.UserId}_daily");
+            var predictionGAgent = GrainFactory.GetGrain<ILumenPredictionGAgent>(predictionGrainId);
+            _ = predictionGAgent.UpdateTimeZoneReminderAsync(request.TimeZoneId); // Fire and forget
+
+            return new UpdateTimeZoneResult
+            {
+                Success = true,
+                Message = string.Empty,
+                TimeZoneId = request.TimeZoneId
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[LumenUserProfileGAgent][UpdateTimeZoneAsync] Error updating timezone: {UserId}", request.UserId);
+            return new UpdateTimeZoneResult
+            {
+                Success = false,
+                Message = $"Failed to update timezone: {ex.Message}"
+            };
+        }
+    }
+
     public async Task SaveInferredLatLongAsync(string latLongInferred, string birthCity)
     {
         try

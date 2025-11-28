@@ -54,6 +54,11 @@ public interface ILumenPredictionGAgent : IGAgent
     /// Trigger translation for this prediction to target language (fire-and-forget, triggered by language switch)
     /// </summary>
     Task TriggerTranslationAsync(LumenUserDto userInfo, string targetLanguage);
+    
+    /// <summary>
+    /// Update daily reminder with new timezone (triggered when user updates timezone)
+    /// </summary>
+    Task UpdateTimeZoneReminderAsync(string timeZoneId);
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -488,7 +493,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     // Language not available - return EMPTY Results (no fallback, no auto-translation)
                     localizedResults = new Dictionary<string, string>();
                     isFallback = true; // Indicates content is not available in requested language
-                    _logger.LogWarning(
+                        _logger.LogWarning(
                         $"[Lumen] {userInfo.UserId} Language '{userLanguage}' not available, returning empty Results with AvailableLanguages");
                 }
                 
@@ -500,6 +505,21 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     localizedResults["currentPhase"] = currentPhase.ToString();
                 }
                 
+                // Add lucky number for Daily predictions (backend-calculated, not from LLM)
+                if (type == PredictionType.Daily && localizedResults.Count > 0)
+                {
+                    localizedResults = new Dictionary<string, string>(localizedResults);
+                    var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
+                        userInfo.BirthDate,
+                        State.PredictionDate,
+                        returnedLanguage);
+                    
+                    localizedResults["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
+                    localizedResults["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
+                    localizedResults["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
+                    localizedResults["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
+                }
+                
                 // Get available languages from MultilingualResults (actual available languages)
                 // If MultilingualResults is empty (but not null), fallback to GeneratedLanguages
                 var availableLanguages = (State.MultilingualResults != null && State.MultilingualResults.Count > 0)
@@ -508,6 +528,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 
                 // Convert array fields to JSON array strings before returning to frontend
                 localizedResults = ConvertArrayFieldsToJson(localizedResults);
+                
+                // Add quotes to affirmation text based on language
+                localizedResults = AddQuotesToAffirmation(localizedResults, returnedLanguage);
                 
                 var cachedDto = new PredictionResultDto
                 {
@@ -609,7 +632,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         Dictionary<string, string> localizedResults;
         string returnedLanguage = userLanguage;
         bool isFallback = false;
-        
+
         // Check if requested language is available
         if (State.MultilingualResults != null && State.MultilingualResults.ContainsKey(userLanguage))
         {
@@ -624,9 +647,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // Language not available - return EMPTY Results (no fallback)
             localizedResults = new Dictionary<string, string>();
             isFallback = true; // Indicates content is not available in requested language
-            _logger.LogWarning(
+                    _logger.LogWarning(
                 "[LumenPredictionGAgent][GetPredictionAsync] Language '{Language}' not available, returning empty Results with AvailableLanguages",
-                userLanguage);
+                        userLanguage);
         }
 
         // Get available languages from MultilingualResults (actual available languages)
@@ -1627,6 +1650,49 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     $"[Lumen] {userInfo.UserId} Constructed cn_year and arch fields for Lifetime prediction");
             }
 
+            // Add quotes to affirmation text for all languages
+            if (multilingualResults != null)
+            {
+                foreach (var lang in multilingualResults.Keys.ToList())
+                {
+                    multilingualResults[lang] = AddQuotesToAffirmation(multilingualResults[lang], lang);
+                }
+            }
+
+            // Add lucky number calculation for Daily predictions (backend-calculated, not from LLM)
+            if (type == PredictionType.Daily)
+            {
+                _logger.LogInformation($"[Lumen] {userInfo.UserId} Adding backend-calculated lucky number fields");
+                
+                // Calculate lucky number for each language
+                if (multilingualResults != null)
+                {
+                    foreach (var lang in multilingualResults.Keys.ToList())
+                    {
+                        var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
+                            userInfo.BirthDate,
+                            predictionDate,
+                            lang);
+                        
+                        multilingualResults[lang]["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
+                        multilingualResults[lang]["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
+                        multilingualResults[lang]["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
+                        multilingualResults[lang]["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
+                    }
+                }
+                
+                // Also add to parsedResults (primary language)
+                var primaryLuckyNumber = Services.LuckyNumberService.CalculateLuckyNumber(
+                    userInfo.BirthDate,
+                    predictionDate,
+                    targetLanguage);
+                
+                parsedResults["luckyAlignments_luckyNumber_number"] = primaryLuckyNumber.NumberWord;
+                parsedResults["luckyAlignments_luckyNumber_digit"] = primaryLuckyNumber.Digit.ToString();
+                parsedResults["luckyAlignments_luckyNumber_description"] = primaryLuckyNumber.Description;
+                parsedResults["luckyAlignments_luckyNumber_calculation"] = primaryLuckyNumber.CalculationFormula;
+            }
+
             // Raise event to save prediction (unified structure)
             RaiseEvent(new PredictionGeneratedEvent
             {
@@ -1681,6 +1747,9 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     }
                 });
             }
+
+            // Add quotes to affirmation text based on language
+            parsedResults = AddQuotesToAffirmation(parsedResults, targetLanguage);
 
             // Build return DTO
             var newPredictionDto = new PredictionResultDto
@@ -2159,13 +2228,7 @@ FORMAT REQUIREMENTS:
             var desc_wellness = isChinese ? "10-15字，关于身心平衡的建议" : "10-15 words for reflection on wellbeing";
             var desc_takeaway = isChinese ? $"15-25字，{displayName}，你的..." : $"15-25 words '{displayName}, your...'";
 
-            // Resonance
-            var desc_lucky_num = isChinese ? "中文数字 (阿拉伯数字) 如：八 (8)" : "Word (digit) e.g. Eight (8)";
-            var desc_num_meaning = isChinese ? "15-20字，该数字对今日的象征意义" : "15-20 words symbolic significance";
-            var desc_num_calc = isChinese 
-                ? $"完整计算公式。格式：将用户出生日期 ({userInfo.BirthDate:M-d-yyyy}) 和今日日期 ({predictionDate:M-d-yyyy}) 的每个数字相加并简化。例：出生 5-15-1990 (5+1+5+1+9+9+0=30) + 今日 11-27-2025 (1+1+2+7+2+0+2+5=20) = 50 → 5+0=5" 
-                : $"Full calculation formula. Format: Add digits from user's birth date ({userInfo.BirthDate:M-d-yyyy}) and today ({predictionDate:M-d-yyyy}), then reduce. Example: Birth 5-15-1990 (5+1+5+1+9+9+0=30) + Today 11-27-2025 (1+1+2+7+2+0+2+5=20) = 50 → 5+0=5";
-
+            // Resonance (Lucky Number is now calculated by backend, removed from LLM prompt)
             var desc_stone = isChinese ? "[保留英文ID] (如 \"Amethyst\")" : "[Use ENGLISH Name as ID]";
             var desc_stone_power = isChinese ? "15-20字，水晶能量描述" : "15-20 words symbolic energy";
             var desc_stone_use = isChinese 
@@ -2175,7 +2238,7 @@ FORMAT REQUIREMENTS:
             // Affirmation (Renamed from 'spell' to avoid filters)
             var desc_spell = isChinese ? "2个字的诗意短语" : "2 words poetic";
             var desc_spell_words =
-                isChinese ? "20-30字，鼓舞人心的肯定语 (用引号包裹)" : "20-30 words inspirational affirmation in quotes";
+                isChinese ? "20-30字，鼓舞人心的肯定语（不要带引号）" : "20-30 words inspirational affirmation (without quotes)";
             var desc_spell_intent = isChinese ? "10-12字，意图" : "10-12 words 'To explore...'";
 
             // Guidance (Renamed from 'fortune' to avoid filters in description)
@@ -2236,15 +2299,6 @@ reflection_wellbeing	{desc_wellness}
 daily_takeaway	{desc_takeaway}
 
 === 3. RESONANCE ===
-# Numerology (Calculate personalized lucky number using BOTH birth date AND today's date)
-# METHOD: Add all digits from user's birth date + today's date, then reduce to single digit (1-9)
-# EXAMPLE: Birth(1990-05-15) + Today(2025-11-27): (1+9+9+0+0+5+1+5) + (2+0+2+5+1+1+2+7) = 30+20=50 → 5+0=5
-# Result MUST be personalized (different users get different numbers on same day)
-numerology_digit_word	{desc_lucky_num}
-numerology_digit	1-9 (calculated from user birth date + {predictionDate:yyyy-MM-dd})
-numerology_meaning	{desc_num_meaning}
-numerology_formula	Show detailed calculation: user birth date digits + today digits = sum → reduce to single digit
-
 # Crystal (Select for {zodiacElement} element based on date {predictionDate:yyyy-MM-dd}, vary daily)
 crystal_stone_id	{desc_stone}
 crystal_power	{desc_stone_power}
@@ -2729,6 +2783,9 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                 _logger.LogInformation(
                     $"[Lumen][OnDemandTranslation] {userInfo.UserId} {targetLanguage} Merged {otherSkippedFields.Count} skipped fields, re-injected {backendCalculatedFields.Count} backend fields, Total: {contentDict.Count}");
             
+            // Add quotes to affirmation text based on target language
+            contentDict = AddQuotesToAffirmation(contentDict, targetLanguage);
+            
             // Raise event to update state with this language
             var translatedLanguages = new Dictionary<string, Dictionary<string, string>>
             {
@@ -3057,7 +3114,18 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                     targetDict["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
                 }
                 
-                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Daily backend enum fields for {targetLanguage}");
+                // Add backend-calculated lucky number for target language
+                var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
+                    userInfo.BirthDate,
+                    predictionDate,
+                    targetLanguage);
+                
+                targetDict["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
+                targetDict["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
+                targetDict["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
+                targetDict["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
+                
+                _logger.LogDebug($"[Lumen][OnDemandTranslation] Re-injected Daily backend enum fields and lucky number for {targetLanguage}");
             }
         }
         catch (Exception ex)
@@ -3299,6 +3367,35 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     }
     
     /// <summary>
+    /// Add quotes to affirmation text based on language
+    /// Chinese: 「」, Others: ""
+    /// </summary>
+    private Dictionary<string, string> AddQuotesToAffirmation(Dictionary<string, string> data, string language)
+    {
+        if (data == null || data.Count == 0)
+            return data;
+        
+        const string affirmationField = "luckyAlignments_luckySpell_description";
+        
+        if (!data.ContainsKey(affirmationField) || string.IsNullOrEmpty(data[affirmationField]))
+            return data;
+        
+        var result = new Dictionary<string, string>(data);
+        var affirmationText = result[affirmationField];
+        
+        // Remove existing quotes if any
+        affirmationText = affirmationText.Trim().Trim('"', '「', '」', '"', '"');
+        
+        // Add appropriate quotes based on language
+        bool isChinese = language.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
+        result[affirmationField] = isChinese 
+            ? $"「{affirmationText}」"  // Chinese quotes
+            : $"\"{affirmationText}\""; // English quotes
+        
+        return result;
+    }
+    
+    /// <summary>
     /// Map shortened TSV keys to full field names expected by frontend
     /// </summary>
     private Dictionary<string, string> MapShortKeysToFullKeys(Dictionary<string, string> shortKeyData)
@@ -3327,11 +3424,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             // Takeaway
                 ["daily_takeaway"] = "todaysTakeaway",
 
-                // Lucky Number (numerology_*)
-                ["numerology_digit_word"] = "luckyAlignments_luckyNumber_number",
-                ["numerology_digit"] = "luckyAlignments_luckyNumber_digit",
-                ["numerology_meaning"] = "luckyAlignments_luckyNumber_description",
-                ["numerology_formula"] = "luckyAlignments_luckyNumber_calculation",
+                // Lucky Number: Now calculated by backend (removed from LLM)
+                // See GetCalculatedValuesAsync() for backend calculation
 
                 // Lucky Stone (crystal_*)
                 ["crystal_stone_id"] = "luckyAlignments_luckyStone",
@@ -4817,55 +4911,74 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 return;
             }
             
+            // Get user's timezone to check if it's a new day in user's local time
+            var profileGrainId = CommonHelper.StringToGuid(State.UserId);
+            var profileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(profileGrainId);
+            var profileResult = await profileGAgent.GetRawStateAsync();
+            var userTimeZoneId = profileResult?.CurrentTimeZone ?? "UTC";
+            
+            // Calculate today in user's local timezone
+            DateOnly userToday;
+            try
+            {
+                var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(userTimeZoneId);
+                var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, userTimeZone);
+                userToday = DateOnly.FromDateTime(userNow);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                _logger.LogWarning($"[Lumen][DailyReminder] {State.UserId} Invalid timezone: {userTimeZoneId}, using UTC");
+                userToday = DateOnly.FromDateTime(DateTime.UtcNow);
+            }
+            
             // Check if already generated today (avoid duplicate generation)
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            if (State.LastGeneratedDate == today)
+            if (State.LastGeneratedDate == userToday)
             {
                 _logger.LogInformation(
-                    $"[Lumen][DailyReminder] {State.UserId} Daily prediction already generated today, skipping");
+                    $"[Lumen][DailyReminder] {State.UserId} Daily prediction already generated today ({userToday} in {userTimeZoneId}), skipping");
                 return;
             }
             
-            // Determine language: use first available language in MultilingualResults, or default to user's last used language
-            var targetLanguage = State.MultilingualResults?.Keys.FirstOrDefault() ?? "en";
-            
-            // Get user info to generate prediction
+            // Get user profile with language setting
             var userProfileGrainId = CommonHelper.StringToGuid(State.UserId);
             var userProfileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(userProfileGrainId);
-            var profileResult = await userProfileGAgent.GetUserProfileAsync(userProfileGrainId, targetLanguage);
+            var fullProfileResult = await userProfileGAgent.GetUserProfileAsync(userProfileGrainId, "en"); // Use en for API call
             
-            if (profileResult == null || !profileResult.Success || profileResult.UserProfile == null)
+            if (fullProfileResult == null || !fullProfileResult.Success || fullProfileResult.UserProfile == null)
             {
                 _logger.LogWarning(
                     $"[Lumen][DailyReminder] {State.UserId} User profile not found, cannot generate daily prediction");
                 return;
             }
             
+            // Use user's current language from profile
+            var targetLanguage = fullProfileResult.UserProfile.CurrentLanguage ?? "en";
+            
             _logger.LogInformation(
-                $"[Lumen][DailyReminder] {State.UserId} Generating daily prediction for language: {targetLanguage}");
+                $"[Lumen][DailyReminder] {State.UserId} Generating daily prediction for {userToday} (TimeZone: {userTimeZoneId}, Language: {targetLanguage})");
             
             // Convert LumenUserProfileDto to LumenUserDto
             var userDto = new LumenUserDto
             {
-                UserId = profileResult.UserProfile.UserId,
-                FirstName = profileResult.UserProfile.FullName.Split(' ').FirstOrDefault() ?? "",
-                LastName = profileResult.UserProfile.FullName.Contains(' ')
-                    ? string.Join(" ", profileResult.UserProfile.FullName.Split(' ').Skip(1))
+                UserId = fullProfileResult.UserProfile.UserId,
+                FirstName = fullProfileResult.UserProfile.FullName.Split(' ').FirstOrDefault() ?? "",
+                LastName = fullProfileResult.UserProfile.FullName.Contains(' ')
+                    ? string.Join(" ", fullProfileResult.UserProfile.FullName.Split(' ').Skip(1))
                     : "",
-                Gender = profileResult.UserProfile.Gender,
-                BirthDate = profileResult.UserProfile.BirthDate,
-                BirthTime = profileResult.UserProfile.BirthTime,
-                BirthCity = profileResult.UserProfile.BirthCity,
-                LatLong = profileResult.UserProfile.LatLong,
-                CalendarType = profileResult.UserProfile.CalendarType,
-                CreatedAt = profileResult.UserProfile.CreatedAt,
-                CurrentResidence = profileResult.UserProfile.CurrentResidence,
-                UpdatedAt = profileResult.UserProfile.UpdatedAt,
-                Occupation = profileResult.UserProfile.Occupation
+                Gender = fullProfileResult.UserProfile.Gender,
+                BirthDate = fullProfileResult.UserProfile.BirthDate,
+                BirthTime = fullProfileResult.UserProfile.BirthTime,
+                BirthCity = fullProfileResult.UserProfile.BirthCity,
+                LatLong = fullProfileResult.UserProfile.LatLong,
+                CalendarType = fullProfileResult.UserProfile.CalendarType,
+                CreatedAt = fullProfileResult.UserProfile.CreatedAt,
+                CurrentResidence = fullProfileResult.UserProfile.CurrentResidence,
+                UpdatedAt = fullProfileResult.UserProfile.UpdatedAt,
+                Occupation = fullProfileResult.UserProfile.Occupation
             };
             
             // Trigger generation (this will update LastGeneratedDate)
-            _ = GeneratePredictionInBackgroundAsync(userDto, today, PredictionType.Daily, targetLanguage);
+            _ = GeneratePredictionInBackgroundAsync(userDto, userToday, PredictionType.Daily, targetLanguage);
         }
         catch (Exception ex)
         {
@@ -4875,6 +4988,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Register daily reminder (called when user becomes active)
+    /// Uses user's timezone to calculate reminder time (default: 00:01 in user's local time)
     /// </summary>
     private async Task RegisterDailyReminderAsync()
     {
@@ -4898,14 +5012,18 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return;
         }
         
+        // Get user's timezone from profile
+        var profileGrainId = CommonHelper.StringToGuid(State.UserId);
+        var profileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(profileGrainId);
+        var profileResult = await profileGAgent.GetRawStateAsync();
+        var userTimeZoneId = profileResult?.CurrentTimeZone ?? "UTC";
+        
         // Record current TargetId for version control
         var currentReminderTargetId = _options?.ReminderTargetId ?? CURRENT_REMINDER_TARGET_ID;
         State.DailyReminderTargetId = currentReminderTargetId;
         
-        // Calculate next UTC 00:00
-        var now = DateTime.UtcNow;
-        var nextMidnight = now.Date.AddDays(1); // Tomorrow at 00:00 UTC
-        var dueTime = nextMidnight - now;
+        // Calculate next trigger time in user's timezone (00:01 local time)
+        var (dueTime, nextTriggerUtc) = CalculateNextReminderTime(userTimeZoneId);
         
         await this.RegisterOrUpdateReminder(
             DEFAULT_DAILY_REMINDER_NAME,
@@ -4915,7 +5033,94 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         
         State.IsDailyReminderEnabled = true;
         _logger.LogInformation(
-            $"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, next execution at {nextMidnight} UTC");
+            $"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, " +
+            $"TimeZone: {userTimeZoneId}, next execution at {nextTriggerUtc:yyyy-MM-dd HH:mm:ss} UTC (00:01 local time)");
+    }
+    
+    /// <summary>
+    /// Calculate next reminder trigger time based on user's timezone
+    /// Returns: (dueTime, nextTriggerUtc)
+    /// </summary>
+    private (TimeSpan dueTime, DateTime nextTriggerUtc) CalculateNextReminderTime(string timeZoneId)
+    {
+        try
+        {
+            var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            var nowUtc = DateTime.UtcNow;
+            var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, userTimeZone);
+            
+            // Calculate next 00:01 in user's local time
+            DateTime nextLocal0001;
+            if (nowLocal.TimeOfDay < new TimeSpan(0, 1, 0)) // Before 00:01 today
+            {
+                nextLocal0001 = nowLocal.Date.AddMinutes(1); // Today at 00:01
+            }
+            else // After 00:01 today
+            {
+                nextLocal0001 = nowLocal.Date.AddDays(1).AddMinutes(1); // Tomorrow at 00:01
+            }
+            
+            // Convert back to UTC
+            var nextTriggerUtc = TimeZoneInfo.ConvertTimeToUtc(nextLocal0001, userTimeZone);
+            var dueTime = nextTriggerUtc - nowUtc;
+            
+            // Ensure dueTime is positive
+            if (dueTime <= TimeSpan.Zero)
+            {
+                dueTime = TimeSpan.FromMinutes(1); // Fallback: trigger in 1 minute
+            }
+            
+            return (dueTime, nextTriggerUtc);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "[Lumen][DailyReminder] Invalid timezone ID: {TimeZoneId}, falling back to UTC", timeZoneId);
+            
+            // Fallback to UTC 00:01
+            var nowUtc = DateTime.UtcNow;
+            var nextMidnightUtc = nowUtc.Date.AddDays(1).AddMinutes(1); // Tomorrow 00:01 UTC
+            var dueTime = nextMidnightUtc - nowUtc;
+            
+            return (dueTime, nextMidnightUtc);
+        }
+    }
+    
+    /// <summary>
+    /// Update daily reminder with new timezone (triggered when user updates timezone)
+    /// </summary>
+    public async Task UpdateTimeZoneReminderAsync(string timeZoneId)
+    {
+        try
+        {
+            _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Updating timezone to: {timeZoneId}");
+            
+            // Only update for Daily predictions
+            if (State.Type != PredictionType.Daily)
+            {
+                _logger.LogDebug($"[Lumen][DailyReminder] {State.UserId} Not a Daily grain (Type: {State.Type}), skipping reminder update");
+                return;
+            }
+            
+            // Check if daily auto-generation is enabled
+            var enableAutoGeneration = _options?.EnableDailyAutoGeneration ?? false;
+            if (!enableAutoGeneration)
+            {
+                _logger.LogDebug($"[Lumen][DailyReminder] {State.UserId} Daily auto-generation is disabled, skipping reminder update");
+                return;
+            }
+            
+            // Unregister existing reminder
+            await UnregisterDailyReminderAsync();
+            
+            // Re-register with new timezone
+            await RegisterDailyReminderAsync();
+            
+            _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder updated successfully for timezone: {timeZoneId}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"[Lumen][DailyReminder] {State.UserId} Error updating timezone reminder");
+        }
     }
     
     /// <summary>
@@ -5172,6 +5377,18 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var fourPillars = LumenCalculator.CalculateFourPillars(calcBirthDate, calcBirthTime);
             // Use same detailed structure as Lifetime prediction
             InjectFourPillarsData(results, fourPillars, userLanguage);
+            
+            // ========== LUCKY NUMBER (NUMEROLOGY) ==========
+            // Calculate using backend service (no LLM involved)
+            var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
+                userInfo.BirthDate, 
+                today, 
+                userLanguage);
+            
+            results["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
+            results["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
+            results["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
+            results["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
             
             _logger.LogInformation(
                 $"[LumenPredictionGAgent][GetCalculatedValuesAsync] Successfully calculated {results.Count} values for user {userInfo.UserId}");

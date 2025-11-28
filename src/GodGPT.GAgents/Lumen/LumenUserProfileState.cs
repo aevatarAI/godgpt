@@ -46,5 +46,8 @@ public class LumenUserProfileState : StateBase
     // LLM-inferred location (internal use, not exposed in profile API)
     [Id(25)] public string? LatLongInferred { get; set; } // Optional - LLM inferred from BirthCity
     [Id(26)] public string? InferredFromCity { get; set; } // Optional - City name that LatLongInferred was derived from
+    
+    // User's current time zone (IANA format, e.g., "America/New_York", "Asia/Shanghai")
+    [Id(27)] public string? CurrentTimeZone { get; set; } // Optional - defaults to UTC if not set
 }
 
