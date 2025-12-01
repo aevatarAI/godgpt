@@ -2491,6 +2491,12 @@ Birth City: {userInfo.BirthCity}
 location_latlong	latitude,longitude (format: ""34.0522,-118.2437"")
 ⚠️ If the city name is ambiguous or you cannot determine coordinates, you may SKIP this field entirely."
                 : string.Empty;
+            
+            // Calculate today's numerology energy as a date seed for variation
+            var dailyEnergyNumber = Services.LuckyNumberService.CalculateLuckyNumber(
+                userInfo.BirthDate,
+                predictionDate,
+                targetLanguage);
 
             prompt = singleLanguagePrefix + $@"Generate a daily reflection entry.
 Date: {predictionDate:yyyy-MM-dd}
@@ -2500,7 +2506,8 @@ User: {userInfoLine}
 Display Name: {displayName}
 Sun Sign: {sunSign}
 Element: {zodiacElement}
-Birth Year Zodiac: {birthYearZodiac}{latLongInferenceSection}
+Birth Year Zodiac: {birthYearZodiac}
+Today's Numerology Energy: {dailyEnergyNumber.Digit} (Use this as a seed for daily variation){latLongInferenceSection}
 
 ========== OUTPUT FORMAT (TSV) ==========
 Key	Value
@@ -2509,7 +2516,7 @@ Key	Value
 daily_theme_title	{desc_dayTitle}
 
 === 2. INSIGHTS ===
-# Tarot Symbolism (Select based on date {predictionDate:yyyy-MM-dd} and {sunSign}/{zodiacElement}, vary daily)
+# Tarot Symbolism (Select based on numerology energy {dailyEnergyNumber.Digit}, {sunSign}/{zodiacElement}, and date {predictionDate:yyyy-MM-dd} - ensure daily variation)
 tarot_card_name	{desc_card_name}
 tarot_card_essence	{desc_card_essence}
 tarot_card_orientation	{desc_card_orient}
@@ -2529,7 +2536,7 @@ reflection_wellbeing	{desc_wellness}
 daily_takeaway	{desc_takeaway}
 
 === 3. RESONANCE ===
-# Crystal (Select for {zodiacElement} element based on date {predictionDate:yyyy-MM-dd}, vary daily)
+# Crystal (Select for {zodiacElement} element based on numerology energy {dailyEnergyNumber.Digit} and date {predictionDate:yyyy-MM-dd} - ensure daily variation)
 crystal_stone_id	{desc_stone}
 crystal_power	{desc_stone_power}
 crystal_usage	{desc_stone_use}
