@@ -1733,32 +1733,33 @@ Your task is to create engaging, inspirational, and reflective content that invi
             var availableLanguages = multilingualResults?.Keys.ToList() ?? new List<string> { targetLanguage };
             
             // Archive Daily predictions to yearly history (fire-and-forget)
+            // Note: Must get grain reference BEFORE Task.Run to preserve Orleans context
             if (type == PredictionType.Daily && multilingualResults != null)
             {
-                _ = Task.Run(async () =>
-                {
-                    try
+                var yearlyHistoryGrainId = $"{userInfo.UserId}-{predictionDate.Year}";
+                var yearlyHistoryGrain = GrainFactory.GetGrain<ILumenDailyYearlyHistoryGAgent>(yearlyHistoryGrainId);
+                
+                // Fire-and-forget: Call the grain method and handle completion asynchronously
+                _ = yearlyHistoryGrain.AddOrUpdateDailyPredictionAsync(
+                        predictionId,
+                        predictionDate,
+                        multilingualResults,
+                        availableLanguages)
+                    .ContinueWith(task =>
                     {
-                        var yearlyHistoryGrainId = $"{userInfo.UserId}-{predictionDate.Year}";
-                        var yearlyHistoryGrain = GrainFactory.GetGrain<ILumenDailyYearlyHistoryGAgent>(yearlyHistoryGrainId);
-                        
-                        await yearlyHistoryGrain.AddOrUpdateDailyPredictionAsync(
-                            predictionId,
-                            predictionDate,
-                            multilingualResults,
-                            availableLanguages);
-                        
-                        _logger.LogDebug(
-                            "[Lumen][YearlyHistory] Daily prediction archived - UserId: {UserId}, Date: {Date}",
-                            userInfo.UserId, predictionDate);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex,
-                            "[Lumen][YearlyHistory] Failed to archive daily prediction - UserId: {UserId}, Date: {Date}",
-                            userInfo.UserId, predictionDate);
-                    }
-                });
+                        if (task.IsFaulted)
+                        {
+                            _logger.LogError(task.Exception,
+                                "[Lumen][YearlyHistory] Failed to archive daily prediction - UserId: {UserId}, Date: {Date}",
+                                userInfo.UserId, predictionDate);
+                        }
+                        else
+                        {
+                            _logger.LogDebug(
+                                "[Lumen][YearlyHistory] Daily prediction archived - UserId: {UserId}, Date: {Date}",
+                                userInfo.UserId, predictionDate);
+                        }
+                    }, TaskScheduler.Default);
             }
 
             // Add quotes to affirmation text based on language
