@@ -116,7 +116,8 @@ public class LumenFeedbackGAgent : GAgentBase<LumenFeedbackState, LumenFeedbackE
                 "destiny",          // Destiny Direction
                 "zodiacCycle",      // Zodiac Cycle Influence
                 "lifePlot",         // Life Plot
-                "activationSteps"   // Activation Steps
+                "activationSteps",  // Activation Steps
+                "cyclesInLife"      // Cycles In Life
                 };
 
                 if (!validMethods.Contains(request.PredictionMethod))
@@ -409,7 +410,7 @@ public class LumenFeedbackGAgent : GAgentBase<LumenFeedbackState, LumenFeedbackE
             // Yearly prediction sections
             "yearlyTheme", "divineInfluence",
             // Profile (Lifetime) sections
-            "fourPillars", "chineseAstrology", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps"
+            "fourPillars", "chineseAstrology", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps", "cyclesInLife"
             };
 
             if (!validMethods.Contains(request.PredictionMethod))

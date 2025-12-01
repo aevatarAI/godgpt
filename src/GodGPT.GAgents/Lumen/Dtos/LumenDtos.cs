@@ -67,6 +67,21 @@ public enum CalendarTypeEnum
 }
 
 /// <summary>
+/// User interest categories enumeration
+/// </summary>
+[GenerateSerializer]
+public enum InterestEnum
+{
+    [Id(0)] Career = 0,
+    [Id(1)] Love = 1,
+    [Id(2)] Sex = 2,
+    [Id(3)] Wealth = 3,
+    [Id(4)] Health = 4,
+    [Id(5)] SocialRelationships = 5,
+    [Id(6)] Learning = 6
+}
+
+/// <summary>
 /// Feedback type enumeration
 /// </summary>
 [GenerateSerializer]
@@ -299,6 +314,7 @@ public class UpdateUserInfoRequest
     [Id(13)] public string? Email { get; set; } // Optional
     [Id(14)] public string? Occupation { get; set; } // Optional
     [Id(15)] public string InitialLanguage { get; set; } = "en"; // Initial language from Accept-Language header (only used for new registrations)
+    [Id(16)] public List<InterestEnum>? InterestsList { get; set; } // Optional - V2: Interests as enum list
 }
 
 /// <summary>
@@ -340,6 +356,7 @@ public class LumenUserDto
     [Id(18)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
     [Id(19)] public string? LatLongInferred { get; set; } // Internal - LLM inferred from BirthCity (not exposed in profile API)
     [Id(20)] public string CurrentLanguage { get; set; } = "en"; // Current active language
+    [Id(21)] public List<InterestEnum>? InterestsList { get; set; } // Optional - V2: Interests as enum list
 }
 
 /// <summary>
@@ -524,7 +541,7 @@ public class SubmitFeedbackRequest
 {
     [Id(0)] public string UserId { get; set; } = string.Empty;
     [Id(1)] public Guid PredictionId { get; set; }
-    [Id(2)] public string? PredictionMethod { get; set; } // Profile: "fourPillars", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps"; Daily/Yearly: any section name; Settings: "settings"
+    [Id(2)] public string? PredictionMethod { get; set; } // Profile: "fourPillars", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps", "cyclesInLife"; Daily/Yearly: any section name; Settings: "settings"
     [Id(3)] public int Rating { get; set; } // 0 or 1 (0=dislike, 1=like)
     [Id(4)] public List<string> FeedbackTypes { get; set; } = new();
     [Id(5)] public string? Comment { get; set; }

@@ -24,6 +24,7 @@ public class UpdateUserProfileRequest
     [Id(13)] public string? Occupation { get; set; } // Optional
     [Id(14)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
     [Id(15)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID (e.g., "America/New_York")
+    [Id(16)] public List<InterestEnum>? InterestsList { get; set; } // Optional - V2: Interests as enum list
 }
 
 /// <summary>
@@ -73,6 +74,7 @@ public class LumenUserProfileDto
     [Id(22)] public Dictionary<string, PredictionFeedbackSummary>? Feedbacks { get; set; } // User feedbacks (e.g., "settings")
     [Id(23)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID (e.g., "America/New_York"), defaults to UTC
     [Id(24)] public string CurrentLanguage { get; set; } = "en"; // Current active language (en, zh, zh-tw, es)
+    [Id(25)] public List<InterestEnum>? InterestsList { get; set; } // Optional - V2: Interests as enum list
 }
 
 /// <summary>

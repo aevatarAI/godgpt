@@ -36,6 +36,7 @@ public class UserRegisteredEvent : LumenUserEventLog
     [Id(13)] public string? CurrentResidence { get; set; } // Optional
     [Id(14)] public string? Email { get; set; } // Optional
     [Id(15)] public string InitialLanguage { get; set; } = "en"; // Initial language from Accept-Language header
+    [Id(16)] public List<InterestEnum>? InterestsList { get; set; } // Optional - V2: Interests as enum list
 }
 
 /// <summary>
@@ -265,6 +266,7 @@ public class UserProfileUpdatedEvent : LumenUserProfileEventLog
     [Id(14)] public string? Occupation { get; set; } // Optional
     [Id(15)] public string? Icon { get; set; } // Optional - User avatar/icon URL from blob storage
     [Id(16)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID
+    [Id(17)] public List<InterestEnum>? InterestsList { get; set; } // Optional - V2: Interests as enum list
 }
 
 /// <summary>

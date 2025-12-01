@@ -22,11 +22,11 @@ public static class LuckyNumberService
         // Step 3: Add both sums
         var totalSum = birthSum + predictionSum;
         
-        // Step 4: Reduce to single digit (1-9)
-        var luckyDigit = ReduceToSingleDigit(totalSum);
+        // Step 4: Reduce to single digit (1-9) and get all reduction steps
+        var (luckyDigit, reductionSteps) = ReduceToSingleDigitWithSteps(totalSum);
         
         // Step 5: Build calculation formula
-        var formula = BuildCalculationFormula(birthDate, birthSum, predictionDate, predictionSum, totalSum, luckyDigit, language);
+        var formula = BuildCalculationFormula(birthDate, birthSum, predictionDate, predictionSum, totalSum, luckyDigit, reductionSteps, language);
         
         // Step 6: Get description for this number
         var description = GetNumberDescription(luckyDigit, language);
@@ -83,6 +83,44 @@ public static class LuckyNumberService
     }
     
     /// <summary>
+    /// Reduce a number to single digit (1-9) and track all intermediate steps
+    /// Returns: (final digit, list of reduction steps)
+    /// </summary>
+    private static (int, List<(int from, int to)>) ReduceToSingleDigitWithSteps(int number)
+    {
+        var steps = new List<(int from, int to)>();
+        
+        while (number > 9)
+        {
+            var originalNumber = number;
+            var sum = 0;
+            while (number > 0)
+            {
+                sum += number % 10;
+                number /= 10;
+            }
+            number = sum;
+            
+            // Record this reduction step
+            steps.Add((originalNumber, number));
+        }
+        
+        // If result is 0, return 9 (in numerology, 0 is treated as 9)
+        if (number == 0)
+        {
+            if (steps.Count > 0)
+            {
+                // Update last step to show final result is 9
+                var lastStep = steps[^1];
+                steps[^1] = (lastStep.from, 9);
+            }
+            return (9, steps);
+        }
+        
+        return (number, steps);
+    }
+    
+    /// <summary>
     /// Build detailed calculation formula string with introductory text
     /// </summary>
     private static string BuildCalculationFormula(
@@ -92,6 +130,7 @@ public static class LuckyNumberService
         int predictionSum,
         int totalSum,
         int result,
+        List<(int from, int to)> reductionStepsList,
         string language)
     {
         var birthDateStr = birthDate.ToString("M-d-yyyy");
@@ -103,11 +142,16 @@ public static class LuckyNumberService
         // Build prediction date digits breakdown
         var predictionDigits = string.Join("+", predictionDate.ToString("yyyyMMdd").Select(c => c.ToString()));
         
-        // Build reduction steps if needed
+        // Build ALL reduction steps if needed
         var reductionSteps = "";
-        if (totalSum > 9)
+        if (reductionStepsList.Count > 0)
         {
-            reductionSteps = $" → {string.Join("+", totalSum.ToString().Select(c => c.ToString()))}={result}";
+            var stepsString = string.Join("", reductionStepsList.Select(step =>
+            {
+                var digits = string.Join("+", step.from.ToString().Select(c => c.ToString()));
+                return $" → {digits}={step.to}";
+            }));
+            reductionSteps = stepsString;
         }
         
         // Build intro text + formula

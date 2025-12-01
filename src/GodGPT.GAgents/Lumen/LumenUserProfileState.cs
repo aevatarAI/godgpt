@@ -49,5 +49,8 @@ public class LumenUserProfileState : StateBase
     
     // User's current time zone (IANA format, e.g., "America/New_York", "Asia/Shanghai")
     [Id(27)] public string? CurrentTimeZone { get; set; } // Optional - defaults to UTC if not set
+    
+    // V2: Interests as enum list (replaces string-based Interests field)
+    [Id(28)] public List<InterestEnum>? InterestsList { get; set; } // Optional - user's interests as enums
 }
 
