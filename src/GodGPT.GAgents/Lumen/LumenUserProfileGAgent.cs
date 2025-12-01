@@ -126,6 +126,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.MbtiType = updateEvent.MbtiType;
                 state.RelationshipStatus = updateEvent.RelationshipStatus;
                 state.Interests = updateEvent.Interests;
+                state.InterestsList = updateEvent.InterestsList;
                 state.CalendarType = updateEvent.CalendarType;
                 state.UpdatedAt = updateEvent.UpdatedAt;
                 state.CurrentResidence = updateEvent.CurrentResidence;
@@ -169,6 +170,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 state.MbtiType = null;
                 state.RelationshipStatus = null;
                 state.Interests = null;
+                state.InterestsList = null;
                 state.CalendarType = null;
                 state.CurrentResidence = null;
                 state.Email = null;
@@ -276,7 +278,8 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 Email = request.Email,
                 Occupation = request.Occupation,
                 Icon = request.Icon,
-                CurrentTimeZone = request.CurrentTimeZone
+                CurrentTimeZone = request.CurrentTimeZone,
+                InterestsList = request.InterestsList
             });
 
             // Confirm events to persist state changes
@@ -376,6 +379,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     MbtiType = State.MbtiType,
                     RelationshipStatus = State.RelationshipStatus,
                     Interests = State.Interests,
+                    InterestsList = State.InterestsList,
                     Email = State.Email,
                     Icon = State.Icon,
                     CurrentTimeZone = State.CurrentTimeZone,
@@ -429,6 +433,7 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 MbtiType = State.MbtiType,
                 RelationshipStatus = State.RelationshipStatus,
                 Interests = State.Interests,
+                InterestsList = State.InterestsList,
                 Email = State.Email,
                 Icon = State.Icon,
                 CurrentTimeZone = State.CurrentTimeZone,
