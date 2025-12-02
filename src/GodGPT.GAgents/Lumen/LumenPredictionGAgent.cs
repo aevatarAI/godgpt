@@ -1736,7 +1736,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
             // Note: Must get grain reference BEFORE Task.Run to preserve Orleans context
             if (type == PredictionType.Daily && multilingualResults != null)
             {
-                var yearlyHistoryGrainId = $"{userInfo.UserId}-{predictionDate.Year}";
+                var yearlyHistoryGrainId = CommonHelper.StringToGuid($"{userInfo.UserId}-{predictionDate.Year}");
                 var yearlyHistoryGrain = GrainFactory.GetGrain<ILumenDailyYearlyHistoryGAgent>(yearlyHistoryGrainId);
                 
                 // Fire-and-forget: Call the grain method and handle completion asynchronously
