@@ -11,9 +11,9 @@ namespace Aevatar.Application.Grains.Lumen;
 /// <summary>
 /// Interface for Lumen daily yearly history GAgent
 /// Manages yearly archive of daily predictions
-/// GrainId format: {UserId}-{YYYY}
+/// GrainId format: Guid derived from {UserId}-{YYYY}
 /// </summary>
-public interface ILumenDailyYearlyHistoryGAgent : IGrainWithStringKey
+public interface ILumenDailyYearlyHistoryGAgent : IGrainWithGuidKey
 {
     /// <summary>
     /// Add or update a daily prediction in yearly history
