@@ -19,6 +19,7 @@ public interface ILumenDailyYearlyHistoryGAgent : IGrainWithGuidKey
     /// Add or update a daily prediction in yearly history
     /// </summary>
     Task AddOrUpdateDailyPredictionAsync(
+        string userId,
         Guid predictionId,
         DateOnly date,
         Dictionary<string, Dictionary<string, string>> multilingualResults,
@@ -89,6 +90,7 @@ public class LumenDailyYearlyHistoryGAgent :
     }
     
     public async Task AddOrUpdateDailyPredictionAsync(
+        string userId,
         Guid predictionId,
         DateOnly date,
         Dictionary<string, Dictionary<string, string>> multilingualResults,
@@ -96,17 +98,8 @@ public class LumenDailyYearlyHistoryGAgent :
     {
         try
         {
-            // Parse UserId and Year from GrainId
-            var grainKey = this.GetPrimaryKeyString();
-            var parts = grainKey.Split('-');
-            if (parts.Length < 2)
-            {
-                _logger.LogError("[LumenDailyYearlyHistory] Invalid GrainId format: {GrainKey}", grainKey);
-                return;
-            }
-            
-            var userId = string.Join("-", parts.Take(parts.Length - 1));
-            var year = int.Parse(parts[^1]);
+            // Extract year from date
+            var year = date.Year;
             
             // Validate date year matches grain year
             if (date.Year != year)
