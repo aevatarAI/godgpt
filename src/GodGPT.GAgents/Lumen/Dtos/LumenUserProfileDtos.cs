@@ -75,6 +75,8 @@ public class LumenUserProfileDto
     [Id(23)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID (e.g., "America/New_York"), defaults to UTC
     [Id(24)] public string CurrentLanguage { get; set; } = "en"; // Current active language (en, zh, zh-tw, es)
     [Id(25)] public List<InterestEnum>? InterestsList { get; set; } // Optional - V2: Interests as enum list
+    [Id(26)] public string? LatLongInferred { get; set; } // Optional - LLM-inferred coordinates from BirthCity
+    [Id(27)] public string? InferredFromCity { get; set; } // Optional - City name that LatLongInferred was derived from
 }
 
 /// <summary>

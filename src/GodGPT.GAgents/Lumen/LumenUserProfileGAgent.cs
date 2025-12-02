@@ -383,7 +383,9 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                     Email = State.Email,
                     Icon = State.Icon,
                     CurrentTimeZone = State.CurrentTimeZone,
-                    CurrentLanguage = State.CurrentLanguage
+                    CurrentLanguage = State.CurrentLanguage,
+                    LatLongInferred = State.LatLongInferred,
+                    InferredFromCity = State.InferredFromCity
                 }
             };
         }
@@ -437,7 +439,9 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 Email = State.Email,
                 Icon = State.Icon,
                 CurrentTimeZone = State.CurrentTimeZone,
-                CurrentLanguage = State.CurrentLanguage
+                CurrentLanguage = State.CurrentLanguage,
+                LatLongInferred = State.LatLongInferred,
+                InferredFromCity = State.InferredFromCity
             };
 
             return Task.FromResult<LumenUserProfileDto?>(profileDto);
