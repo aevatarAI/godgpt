@@ -1741,6 +1741,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 
                 // Fire-and-forget: Call the grain method and handle completion asynchronously
                 _ = yearlyHistoryGrain.AddOrUpdateDailyPredictionAsync(
+                        userInfo.UserId,
                         predictionId,
                         predictionDate,
                         multilingualResults,
