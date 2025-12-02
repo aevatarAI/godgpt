@@ -971,67 +971,76 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 }
             }
             
-            // Pre-calculate Moon and Rising signs if birth time and latlong are available
+            // Pre-calculate Moon and Rising signs ONLY for Lifetime predictions (requires birth time and latlong)
+            // Daily/Yearly predictions don't use these values in their prompts
             string? moonSign = null;
             string? risingSign = null;
             
-            // Determine effective LatLong: prioritize user-provided, fallback to LLM-inferred
-            var effectiveLatLong = !string.IsNullOrWhiteSpace(userInfo.LatLong) 
-                ? userInfo.LatLong 
-                : userInfo.LatLongInferred;
-            
-            var latLongSource = !string.IsNullOrWhiteSpace(userInfo.LatLong) ? "user-provided" : 
-                               !string.IsNullOrWhiteSpace(userInfo.LatLongInferred) ? "LLM-inferred" : "none";
-            
-            // Diagnostic logging
-            _logger.LogInformation(
-                $"[LumenPredictionGAgent] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLongInferred: '{userInfo.LatLongInferred}', Effective: '{effectiveLatLong}', Source: {latLongSource}");
-            
-            if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(effectiveLatLong))
+            if (type == PredictionType.Lifetime)
             {
-                try
+                // Determine effective LatLong: prioritize user-provided, fallback to LLM-inferred
+                var effectiveLatLong = !string.IsNullOrWhiteSpace(userInfo.LatLong) 
+                    ? userInfo.LatLong 
+                    : userInfo.LatLongInferred;
+                
+                var latLongSource = !string.IsNullOrWhiteSpace(userInfo.LatLong) ? "user-provided" : 
+                                   !string.IsNullOrWhiteSpace(userInfo.LatLongInferred) ? "LLM-inferred" : "none";
+                
+                // Diagnostic logging
+                _logger.LogInformation(
+                    $"[LumenPredictionGAgent][Lifetime] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLongInferred: '{userInfo.LatLongInferred}', Effective: '{effectiveLatLong}', Source: {latLongSource}");
+                
+                if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(effectiveLatLong))
                 {
-                    // Parse latitude and longitude from "lat, long" format
-                    var parts = effectiveLatLong.Split(',', StringSplitOptions.TrimEntries);
-                    _logger.LogInformation(
-                        $"[LumenPredictionGAgent] Parsing LatLong ({latLongSource}) - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
-                    
-                    if (parts.Length == 2 && 
-                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture,
-                            out double latitude) &&
-                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture,
-                            out double longitude))
+                    try
                     {
+                        // Parse latitude and longitude from "lat, long" format
+                        var parts = effectiveLatLong.Split(',', StringSplitOptions.TrimEntries);
                         _logger.LogInformation(
-                            $"[LumenPredictionGAgent] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}] using Corrected UTC: {calcBirthDate} {calcBirthTime}");
-                        var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
-                            calcBirthDate,
-                            calcBirthTime.Value,
-                            latitude,
-                            longitude);
+                            $"[LumenPredictionGAgent][Lifetime] Parsing LatLong ({latLongSource}) - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
                         
-                        moonSign = calculatedMoonSign;
-                        risingSign = calculatedRisingSign;
-                        
-                        _logger.LogInformation(
-                            $"[LumenPredictionGAgent] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}]");
+                        if (parts.Length == 2 && 
+                            double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture,
+                                out double latitude) &&
+                            double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture,
+                                out double longitude))
+                        {
+                            _logger.LogInformation(
+                                $"[LumenPredictionGAgent][Lifetime] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}] using Corrected UTC: {calcBirthDate} {calcBirthTime}");
+                            var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
+                                calcBirthDate,
+                                calcBirthTime.Value,
+                                latitude,
+                                longitude);
+                            
+                            moonSign = calculatedMoonSign;
+                            risingSign = calculatedRisingSign;
+                            
+                            _logger.LogInformation(
+                                $"[LumenPredictionGAgent][Lifetime] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}]");
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                $"[LumenPredictionGAgent][Lifetime] Invalid latlong format or parse failed ({latLongSource}): '{effectiveLatLong}'");
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        _logger.LogWarning(
-                            $"[LumenPredictionGAgent] Invalid latlong format or parse failed ({latLongSource}): '{effectiveLatLong}'");
+                        _logger.LogWarning(ex,
+                            $"[LumenPredictionGAgent][Lifetime] Failed to calculate Moon/Rising signs for user {userInfo.UserId}, will use Sun sign as fallback");
                     }
                 }
-                catch (Exception ex)
+                else
                 {
-                    _logger.LogWarning(ex,
-                        $"[LumenPredictionGAgent] Failed to calculate Moon/Rising signs for user {userInfo.UserId}, will use Sun sign as fallback");
+                    _logger.LogInformation(
+                        $"[LumenPredictionGAgent][Lifetime] Skipping Moon/Rising calculation - BirthTime: {calcBirthTime.HasValue}, LatLong available: {!string.IsNullOrWhiteSpace(effectiveLatLong)}");
                 }
             }
             else
             {
-                _logger.LogInformation(
-                    $"[LumenPredictionGAgent] Skipping Moon/Rising calculation - BirthTime: {calcBirthTime.HasValue}, LatLong available: {!string.IsNullOrWhiteSpace(effectiveLatLong)}");
+                _logger.LogDebug(
+                    $"[LumenPredictionGAgent] Skipping Moon/Rising calculation for {type} type (only needed for Lifetime)");
             }
             
             // Get language name for system prompt (use native language names)
@@ -1155,14 +1164,15 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 };
             }
             
-            // Extract and save inferred LatLong if provided by LLM (for Daily predictions only)
-            if (type == PredictionType.Daily && parsedResults.ContainsKey("location_latlong"))
+            // Extract and save inferred LatLong if provided by LLM (for Lifetime predictions only)
+            // Note: Daily predictions no longer request LatLong inference to reduce LLM costs
+            if (type == PredictionType.Lifetime && parsedResults.ContainsKey("location_latlong"))
             {
                 var inferredLatLong = parsedResults["location_latlong"];
                 if (!string.IsNullOrWhiteSpace(inferredLatLong))
                 {
                     _logger.LogInformation(
-                        $"[Lumen] {userInfo.UserId} LLM inferred LatLong: {inferredLatLong} from BirthCity: {userInfo.BirthCity}");
+                        $"[Lumen][Lifetime] {userInfo.UserId} LLM inferred LatLong: {inferredLatLong} from BirthCity: {userInfo.BirthCity}");
                     
                     // Save to UserProfileGAgent (fire-and-forget)
                     _ = Task.Run(async () =>
@@ -1175,7 +1185,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex, $"[Lumen] {userInfo.UserId} Failed to save inferred LatLong");
+                            _logger.LogError(ex, $"[Lumen][Lifetime] {userInfo.UserId} Failed to save inferred LatLong");
                         }
                     });
                 }
@@ -1995,6 +2005,21 @@ FORMAT REQUIREMENT:
             var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
             var birthYearAnimalTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
             
+            // Check if we need to request LatLong inference from LLM (for calculating Moon/Rising signs)
+            var needLatLongInference = !string.IsNullOrWhiteSpace(userInfo.BirthCity) 
+                && string.IsNullOrWhiteSpace(userInfo.LatLong) 
+                && string.IsNullOrWhiteSpace(userInfo.LatLongInferred);
+            
+            var lifetimeLatLongSection = needLatLongInference
+                ? $@"
+
+========== OPTIONAL: LOCATION INFERENCE ==========
+Birth City: {userInfo.BirthCity}
+⚠️ INSTRUCTION: If you can identify the latitude and longitude for the birth city above, please add this field to the output:
+location_latlong	latitude,longitude (format: ""34.0522,-118.2437"")
+⚠️ If the city name is ambiguous or you cannot determine coordinates, you may SKIP this field entirely."
+                : string.Empty;
+            
             // Note: cycleTitlePrefix is no longer used in prompt - backend will inject the localized prefix
             // LLM only needs to return the year range (e.g. "1984-2004")
             
@@ -2077,7 +2102,7 @@ CONTEXT (Use these exact values):
 Sun: {sunSignTranslated} | Moon: {moonSignTranslated} | Rising: {risingSignTranslated}
 Birth Year: {birthYearZodiac} ({birthYearAnimalTranslated}, {birthYearElement})
 Current Year: {currentYearZodiac} ({currentYearStemsFormatted})
-Cycles: Past {pastCycle.AgeRange}, Current {currentCycle.AgeRange}, Future {futureCycle.AgeRange}
+Cycles: Past {pastCycle.AgeRange}, Current {currentCycle.AgeRange}, Future {futureCycle.AgeRange}{lifetimeLatLongSection}
 
 Generate meaningful astrological content in TSV format (tab-separated).
 Write naturally - quality over strict length. Be concise where appropriate.
@@ -2489,20 +2514,9 @@ FORMAT REQUIREMENTS:
                 _ => "10-15 words 'Today's reflection invites...'"
             };
 
-            // Check if we need to request LatLong inference from LLM
-            var needLatLongInference = !string.IsNullOrWhiteSpace(userInfo.BirthCity) 
-                && string.IsNullOrWhiteSpace(userInfo.LatLong) 
-                && string.IsNullOrWhiteSpace(userInfo.LatLongInferred);
-            
-            var latLongInferenceSection = needLatLongInference
-                ? $@"
-
-========== OPTIONAL: LOCATION INFERENCE ==========
-Birth City: {userInfo.BirthCity}
-⚠️ INSTRUCTION: If you can identify the latitude and longitude for the birth city above, please add this field to the output:
-location_latlong	latitude,longitude (format: ""34.0522,-118.2437"")
-⚠️ If the city name is ambiguous or you cannot determine coordinates, you may SKIP this field entirely."
-                : string.Empty;
+            // Note: LatLong inference is NOT needed for Daily predictions anymore
+            // It's only useful for Lifetime predictions to calculate Moon/Rising signs
+            var latLongInferenceSection = string.Empty;
             
             // Calculate today's numerology energy as a date seed for variation
             var dailyEnergyNumber = Services.LuckyNumberService.CalculateLuckyNumber(
