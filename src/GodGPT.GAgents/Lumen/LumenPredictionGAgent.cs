@@ -111,6 +111,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// Version 26: Changed zodiacCycle_title to be backend-constructed - LLM returns only year range (cycle_year_range), backend injects localized prefix
     /// Version 27: Dynamic cycle_name fields - always request cycle_name_zh plus one language-specific field (en/zh-tw/es) based on targetLanguage
     /// Version 28: Simplified Chinese (zh) only requests cycle_name_zh, which is copied to both zodiacCycle_cycleName and zodiacCycle_cycleNameChinese
+    /// Version 29: Simplified cycle_name fields - unified cycle_name field for current language + cycle_name_zh for Chinese baseline (removed language-specific suffixes)
     /// </summary>
     [Obsolete("Use _options.PromptVersion instead. This constant is kept as fallback only.")]
     private const int CURRENT_PROMPT_VERSION = 28;
@@ -1328,12 +1329,17 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     parsedResults["zodiacCycle_title"] = $"{cycleTitlePrefix} ({yearRange})";
                 }
                 
-                // For simplified Chinese (zh), copy cycle_name_zh to both fields
-                if (targetLanguage == "zh" && 
-                    parsedResults.TryGetValue("zodiacCycle_cycleNameChinese", out var zhCycleName) && 
-                    !string.IsNullOrWhiteSpace(zhCycleName))
+                // Fallback: if zodiacCycle_cycleName is missing, use zodiacCycle_cycleNameChinese
+                // This handles cases where LLM didn't return cycle_name properly
+                if ((!parsedResults.ContainsKey("zodiacCycle_cycleName") || 
+                     string.IsNullOrWhiteSpace(parsedResults["zodiacCycle_cycleName"])) &&
+                    parsedResults.TryGetValue("zodiacCycle_cycleNameChinese", out var fallbackCycleName) && 
+                    !string.IsNullOrWhiteSpace(fallbackCycleName))
                 {
-                    parsedResults["zodiacCycle_cycleName"] = zhCycleName;
+                    parsedResults["zodiacCycle_cycleName"] = fallbackCycleName;
+                    _logger.LogWarning(
+                        "[Lumen][Lifetime] zodiacCycle_cycleName missing for language {Language}, using Chinese fallback",
+                        targetLanguage);
                 }
                 
                 // Inject Four Pillars data
@@ -1390,12 +1396,16 @@ Your task is to create engaging, inspirational, and reflective content that invi
                             multilingualResults[lang]["zodiacCycle_title"] = $"{langCycleTitlePrefix} ({langYearRange})";
                         }
                         
-                        // For simplified Chinese (zh), copy cycle_name_zh to both fields
-                        if (lang == "zh" && 
-                            multilingualResults[lang].TryGetValue("zodiacCycle_cycleNameChinese", out var langZhCycleName) && 
-                            !string.IsNullOrWhiteSpace(langZhCycleName))
+                        // Fallback: if zodiacCycle_cycleName is missing, use zodiacCycle_cycleNameChinese
+                        if ((!multilingualResults[lang].ContainsKey("zodiacCycle_cycleName") || 
+                             string.IsNullOrWhiteSpace(multilingualResults[lang]["zodiacCycle_cycleName"])) &&
+                            multilingualResults[lang].TryGetValue("zodiacCycle_cycleNameChinese", out var langFallbackCycleName) && 
+                            !string.IsNullOrWhiteSpace(langFallbackCycleName))
                         {
-                            multilingualResults[lang]["zodiacCycle_cycleName"] = langZhCycleName;
+                            multilingualResults[lang]["zodiacCycle_cycleName"] = langFallbackCycleName;
+                            _logger.LogWarning(
+                                "[Lumen][Lifetime][Multilingual] zodiacCycle_cycleName missing for language {Language}, using Chinese fallback",
+                                lang);
                         }
                         
                         // Inject Four Pillars data with language-specific formatting
@@ -2048,16 +2058,16 @@ FORMAT REQUIREMENT:
                 _ => $"Essence related to {birthYearElement}"
             };
             
-            // Dynamic cycle_name field based on target language
-            // Always include cycle_name_zh (baseline)
-            // For zh: only cycle_name_zh (will be mapped to both fields)
-            // For other languages: add language-specific field
-            var additionalCycleNameField = targetLanguage switch
+            // Cycle name fields:
+            // - cycle_name_zh: Always required (simplified Chinese) → zodiacCycle_cycleNameChinese
+            // - cycle_name: Current language version → zodiacCycle_cycleName
+            // For simplified Chinese: cycle_name is same as cycle_name_zh
+            var cycleNameDesc = targetLanguage switch
             {
-                "zh" => "", // Simplified Chinese only needs cycle_name_zh
-                "zh-tw" => "cycle_name_zh-tw\t[Traditional Chinese name for cycle theme]",
-                "es" => "cycle_name_es\t[Spanish name for cycle theme]",
-                _ => "cycle_name_en\t[English name for cycle theme]" // Default to English for other languages
+                "zh" => "[Simplified Chinese name for cycle theme (same as cycle_name_zh)]",
+                "zh-tw" => "[Traditional Chinese name for cycle theme]",
+                "es" => "[Spanish name for cycle theme]",
+                _ => "[English name for cycle theme]"
             };
             
             prompt = singleLanguagePrefix + $@"Create lifetime astrological narrative.
@@ -2111,7 +2121,8 @@ path3_title	{desc_title}
 path3_desc	{desc_text}
 cn_essence	{desc_cn_essence}
 cycle_year_range	YYYY-YYYY
-cycle_name_zh	{desc_simple}{(string.IsNullOrEmpty(additionalCycleNameField) ? "" : "\n" + additionalCycleNameField)}
+cycle_name_zh	[Simplified Chinese name for cycle theme (always required)]
+cycle_name	{cycleNameDesc}
 cycle_intro	{desc_text}
 cycle_pt1	{desc_simple}
 cycle_pt2	{desc_simple}
@@ -3306,10 +3317,16 @@ All content is for entertainment, self-exploration, and contemplative purposes o
                     targetDict["zodiacCycle_title"] = $"{cycleTitlePrefix} ({yearRange})";
                 }
                 
-                // For zh, copy cycle_name_zh
-                if (targetLanguage == "zh" && targetDict.TryGetValue("zodiacCycle_cycleNameChinese", out var zhCycleName) && !string.IsNullOrWhiteSpace(zhCycleName))
+                // Fallback: if zodiacCycle_cycleName is missing, use zodiacCycle_cycleNameChinese
+                if ((!targetDict.ContainsKey("zodiacCycle_cycleName") || 
+                     string.IsNullOrWhiteSpace(targetDict["zodiacCycle_cycleName"])) &&
+                    targetDict.TryGetValue("zodiacCycle_cycleNameChinese", out var translationFallbackCycleName) && 
+                    !string.IsNullOrWhiteSpace(translationFallbackCycleName))
                 {
-                    targetDict["zodiacCycle_cycleName"] = zhCycleName;
+                    targetDict["zodiacCycle_cycleName"] = translationFallbackCycleName;
+                    _logger.LogWarning(
+                        "[Lumen][OnDemandTranslation] zodiacCycle_cycleName missing for language {Language}, using Chinese fallback",
+                        targetLanguage);
                 }
                 
                 InjectFourPillarsData(targetDict, fourPillars, targetLanguage);
@@ -3767,9 +3784,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             ["cn_essence"] = "chineseZodiac_essence",
             ["cycle_year_range"] = "zodiacCycle_yearRange",
             ["cycle_name_zh"] = "zodiacCycle_cycleNameChinese",
-            ["cycle_name_en"] = "zodiacCycle_cycleName",
-            ["cycle_name_zh-tw"] = "zodiacCycle_cycleName", // Traditional Chinese -> same field
-            ["cycle_name_es"] = "zodiacCycle_cycleName", // Spanish -> same field
+            ["cycle_name"] = "zodiacCycle_cycleName", // Current language version
             ["cycle_intro"] = "zodiacCycle_overview",
             ["cycle_pt1"] = "zodiacCycle_dayMasterPoint1",
             ["cycle_pt2"] = "zodiacCycle_dayMasterPoint2",
