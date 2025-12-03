@@ -1,4 +1,6 @@
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
+using Aevatar.Application.Grains.Lumen;
+using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using Aevatar.Application.Grains.UserInfo.Dtos;
@@ -6,6 +8,7 @@ using Aevatar.Application.Grains.UserInfo.Enums;
 using Aevatar.Application.Grains.UserInfo.SEvents;
 using Aevatar.Application.Grains.UserInfo.Helpers;
 using Microsoft.Extensions.Logging;
+using Orleans.Concurrency;
 
 namespace Aevatar.Application.Grains.UserInfo;
 
@@ -22,8 +25,15 @@ public interface IUserInfoCollectionGAgent : IGAgent
     Task<UserInfoCollectionDto> GetUserInfoCollectionAsync();
     
     /// <summary>
+    /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
+    /// </summary>
+    [ReadOnly]
+    Task<UserInfoCollectionDto?> GetRawStateAsync();
+    
+    /// <summary>
     /// Get user info display data for confirmation
     /// </summary>
+    [ReadOnly]
     Task<UserInfoDisplayDto> GetUserInfoDisplayAsync();
     
     /// <summary>
@@ -43,6 +53,7 @@ public interface IUserInfoCollectionGAgent : IGAgent
 }
 
 [GAgent(nameof(UserInfoCollectionGAgent))]
+[Reentrant]
 public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState, UserInfoCollectionLogEvent>, IUserInfoCollectionGAgent
 {
     private readonly ILogger<UserInfoCollectionGAgent> _logger;
@@ -119,7 +130,7 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             
             // Validate date range
             if (updateDto.BirthDateInfo.Day.Value > 31 || updateDto.BirthDateInfo.Month.Value > 12 || 
-                updateDto.BirthDateInfo.Year.Value < 1900 || updateDto.BirthDateInfo.Year.Value > DateTime.Now.Year)
+                updateDto.BirthDateInfo.Year.Value < 1800 || updateDto.BirthDateInfo.Year.Value > DateTime.Now.Year)
             {
                 return new UserInfoCollectionResponseDto
                 {
@@ -264,15 +275,157 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
 
     public async Task<UserInfoCollectionDto> GetUserInfoCollectionAsync()
     {
-        _logger.LogInformation("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Getting user info collection");
+        _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Getting user {UserId} info collection", this.GetPrimaryKey().ToString());
         
         if (!State.IsInitialized)
         {
             _logger.LogWarning("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] User info collection not initialized");
+            // Use GetRawStateAsync to prevent circular dependency
+            await TryToMigrateDataFromLumenUserProfileAsync();
+        }
+
+        if (!State.IsInitialized)
+        {
             return null;
         }
+
+        var userInfoCollectionDto = ConvertStateToDto();
+        _logger.LogDebug("[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] result: userId {UserId}, initialized {Initialized}", 
+            this.GetPrimaryKey().ToString(), userInfoCollectionDto.IsInitialized);
         
-        return ConvertStateToDto();
+        return userInfoCollectionDto;
+    }
+
+    private async Task TryToMigrateDataFromLumenUserProfileAsync()
+    {
+        var userGrainId = CommonHelper.StringToGuid(this.GetPrimaryKey().ToString());
+        var lumenUserProfileGAgent = GrainFactory.GetGrain<ILumenUserProfileGAgent>(userGrainId);
+        var profile = await lumenUserProfileGAgent.GetRawStateAsync();
+        if (profile != null && !profile.FullName.IsNullOrWhiteSpace())
+        {
+            _logger.LogInformation(
+                "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Migrating data from LumenUserProfile to UserInfoCollection, userId {UserId}",
+                this.GetPrimaryKey().ToString());
+
+            var now = DateTime.UtcNow;
+
+            // Prepare migration event - bypass validation for data migration scenario
+            string firstName = null;
+            string lastName = null;
+            int? gender = null;
+
+            // Migrate FullName (split into FirstName and LastName)
+            var nameParts = profile.FullName.Trim().Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
+            firstName = nameParts.Length > 0 ? nameParts[0] : profile.FullName.Trim();
+            lastName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
+
+            // Map Gender: GenderEnum.Male(0)->1, GenderEnum.Female(1)->2, skip Other
+            if (profile.Gender == GenderEnum.Male)
+            {
+                gender = 1;
+            }
+            else if (profile.Gender == GenderEnum.Female)
+            {
+                gender = 2;
+            }
+
+            // Prepare birth date components
+            int? day = null;
+            int? month = null;
+            int? year = null;
+            if (profile.BirthDate != default)
+            {
+                day = profile.BirthDate.Day;
+                month = profile.BirthDate.Month;
+                year = profile.BirthDate.Year;
+            }
+
+            // Prepare birth time components (optional)
+            int? hour = null;
+            int? minute = null;
+            if (profile.BirthTime != default)
+            {
+                hour = profile.BirthTime.Hour;
+                minute = profile.BirthTime.Minute;
+            }
+
+            // Prepare location - allow partial data (city only)
+            string country = null; // BirthCountry is no longer used
+            string city = !string.IsNullOrWhiteSpace(profile.BirthCity) ? profile.BirthCity : null;
+
+            // Check if we have any data to migrate
+            bool hasDataToMigrate = !string.IsNullOrWhiteSpace(firstName) ||
+                                    day.HasValue ||
+                                    !string.IsNullOrWhiteSpace(country) ||
+                                    !string.IsNullOrWhiteSpace(city);
+
+            if (hasDataToMigrate)
+            {
+                _logger.LogInformation(
+                    "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Saving migrated data for userId {UserId}, " +
+                    "firstName: {FirstName}, gender: {Gender}, birthDate: {Year}-{Month}-{Day}, country: {Country}, city: {City}",
+                    this.GetPrimaryKey().ToString(), firstName, gender, year, month, day, country, city);
+
+                // Directly raise event to bypass validation - migration is internal data sync
+                RaiseEvent(new UpdateUserInfoCollectionLogEvent
+                {
+                    UserId = this.GetPrimaryKey(),
+                    Gender = gender,
+                    FirstName = firstName,
+                    LastName = lastName,
+                    Country = country,
+                    City = city,
+                    Day = day,
+                    Month = month,
+                    Year = year,
+                    Hour = hour,
+                    Minute = minute,
+                    SeekingInterests = null,
+                    SourceChannels = null,
+                    SeekingInterestsCode = null,
+                    SourceChannelsCode = null,
+                    UpdatedAt = now
+                });
+
+                await ConfirmEvents();
+
+                _logger.LogInformation(
+                    "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Successfully migrated data from LumenUserProfile {UserId}",
+                    this.GetPrimaryKey().ToString());
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "[UserInfoCollectionGAgent][GetUserInfoCollectionAsync] Lumen profile exists but no data available for migration");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Get raw state data directly without any migration logic - used for migration checks to prevent circular dependency
+    /// </summary>
+    public Task<UserInfoCollectionDto?> GetRawStateAsync()
+    {
+        try
+        {
+            _logger.LogDebug("[UserInfoCollectionGAgent][GetRawStateAsync] Getting raw state for user {UserId}", 
+                this.GetPrimaryKey().ToString());
+
+            // If not initialized, return null immediately without any migration logic
+            if (!State.IsInitialized)
+            {
+                return Task.FromResult<UserInfoCollectionDto?>(null);
+            }
+
+            // Return raw state data without any processing or migration
+            var dto = ConvertStateToDto();
+            return Task.FromResult<UserInfoCollectionDto?>(dto);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[UserInfoCollectionGAgent][GetRawStateAsync] Error getting raw state");
+            return Task.FromResult<UserInfoCollectionDto?>(null);
+        }
     }
 
     public async Task<UserInfoDisplayDto> GetUserInfoDisplayAsync()
@@ -332,38 +485,55 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
     public async Task<Tuple<string, string>> GenerateUserInfoPromptAsync(DateTime? userLocalTime = null)
     {
         _logger.LogInformation("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generating user info prompt");
-        
+
         if (!State.IsInitialized)
         {
             _logger.LogWarning("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] User info collection not initialized");
-            return new Tuple<string, string>(string.Empty, string.Empty);
+            
+            var userGrainId = CommonHelper.StringToGuid(this.GetPrimaryKey().ToString());
+            var lumenUserProfileGAgent = GrainFactory.GetGrain<ILumenUserProfileGAgent>(userGrainId);
+            var profileResult = await lumenUserProfileGAgent.GetUserProfileAsync(userGrainId);
+
+            if (!profileResult.Success || profileResult.UserProfile == null || profileResult.UserProfile.UserId.IsNullOrWhiteSpace())
+            {
+                _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] query lumen user profile, userId {UserId} not exist.", 
+                    this.GetPrimaryKey().ToString());
+                return new Tuple<string, string>(string.Empty, string.Empty);
+            }
+
+            return await GenerateUserInfoPromptWithLumenUserProfileAsync(userLocalTime, profileResult.UserProfile);
         }
 
+        return await GenerateUserInfoPromptWithUserProfileAsync(userLocalTime);
+    }
+
+    private async Task<Tuple<string, string>> GenerateUserInfoPromptWithUserProfileAsync(DateTime? userLocalTime)
+    {
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
         var currentTime = userLocalTime ?? DateTime.UtcNow;
-        
+
         // Generate full name
         var fullName = $"{State.FirstName} {State.LastName}".Trim();
         if (string.IsNullOrWhiteSpace(fullName))
         {
             fullName = "Unknown";
         }
-        
+
         // Generate location
         var location = $"{State.City}, {State.Country}".Trim(' ', ',');
         if (string.IsNullOrWhiteSpace(location))
         {
             location = "Unknown";
         }
-        
+
         // Generate gender text
         var genderText = State.Gender switch
         {
             1 => "Male",
-            2 => "Female", 
+            2 => "Female",
             _ => "Unknown"
         };
-        
+
         // Calculate age from birth date
         var age = "Unknown";
         if (State.Year > 0 && State.Month > 0 && State.Day > 0)
@@ -376,15 +546,18 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
                 {
                     calculatedAge--;
                 }
+
                 age = calculatedAge.ToString();
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Invalid birth date: {Year}-{Month}-{Day}", State.Year, State.Month, State.Day);
+                _logger.LogWarning(ex,
+                    "[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Invalid birth date: {Year}-{Month}-{Day}",
+                    State.Year, State.Month, State.Day);
                 age = "Unknown";
             }
         }
-        
+
         // Generate language text
         var languageText = language switch
         {
@@ -394,12 +567,13 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
             GodGPTLanguage.CN => "Chinese",
             _ => "English"
         };
-        
+
         // Format current time
         var timeText = currentTime.ToString("yyyy-MM-dd HH:mm:ss");
-        
+
         // Generate the prompt template
-        var prompt = $@"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.
+        var prompt =
+            $@"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.
 User Name: {fullName}
 User Location: {location}
 User Message Time: {timeText}
@@ -407,8 +581,92 @@ User Gender: {genderText}
 User Age: {age}
 User Language: {languageText}";
 
-        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generated prompt for user {UserId}", State.UserId);
+        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptAsync] Generated prompt for user {UserId}",
+            State.UserId);
+
+        return new Tuple<string, string>(fullName, prompt);
+    }
+    
+    
+    private async Task<Tuple<string, string>> GenerateUserInfoPromptWithLumenUserProfileAsync(DateTime? userLocalTime,
+        LumenUserProfileDto userProfile)
+    {
+        var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
+        var currentTime = userLocalTime ?? DateTime.UtcNow;
+
+        // Generate full name
         
+        var fullName = userProfile.FullName.Trim();
+        if (string.IsNullOrWhiteSpace(fullName))
+        {
+            fullName = "Unknown";
+        }
+
+        // Generate location (BirthCity only, BirthCountry is no longer used)
+        var location = userProfile.BirthCity ?? "";
+        if (string.IsNullOrWhiteSpace(location))
+        {
+            location = "Unknown";
+        }
+
+        // Generate gender text
+        var genderText = userProfile.Gender switch
+        {
+            GenderEnum.Male => "Male",
+            GenderEnum.Female => "Female",
+            _ => "Other"
+        };
+
+        // Calculate age from birth date
+        var age = "Unknown";
+        if (userProfile.BirthDate != default)
+        {
+            try
+            {
+                var birthDate = userProfile.BirthDate.ToDateTime(userProfile.BirthTime);
+                var calculatedAge = currentTime.Year - userProfile.BirthDate.Year;
+                if (currentTime < birthDate.AddYears(calculatedAge))
+                {
+                    calculatedAge--;
+                }
+
+                age = calculatedAge.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[UserInfoCollectionGAgent][GenerateUserInfoPromptWithLumenUserProfileAsync] Invalid birth date: {Year}-{Month}-{Day}",
+                    State.Year, State.Month, State.Day);
+                age = "Unknown";
+            }
+        }
+
+        // Generate language text
+        var languageText = language switch
+        {
+            GodGPTLanguage.English => "English",
+            GodGPTLanguage.TraditionalChinese => "Traditional Chinese",
+            GodGPTLanguage.Spanish => "Spanish",
+            GodGPTLanguage.CN => "Chinese",
+            _ => "English"
+        };
+
+        // Format current time
+        var timeText = currentTime.ToString("yyyy-MM-dd HH:mm:ss");
+
+        // Generate the prompt template
+        var prompt =
+            $@"Generate a personalized ""Today's Dos and Don'ts"" for the user based on their information and cosmological theories.
+User Name: {fullName}
+User Location: {location}
+User Message Time: {timeText}
+User Gender: {genderText}
+User Age: {age}
+User Language: {languageText}";
+
+        _logger.LogDebug("[UserInfoCollectionGAgent][GenerateUserInfoPromptWithLumenUserProfileAsync] Generated prompt for user {UserId}",
+            this.GetPrimaryKey().ToString());
+
         return new Tuple<string, string>(fullName, prompt);
     }
 

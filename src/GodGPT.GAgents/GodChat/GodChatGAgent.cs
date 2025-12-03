@@ -204,7 +204,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             chatMessages.Add(new ChatMessage
             {
                 ChatRole = ChatRole.User,
-                Content = content,
+                Content = content, // Store original content (context stored separately)
                 ImageKeys = images
             });
             chatMessages.Add(new ChatMessage
@@ -217,9 +217,20 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 ChatList = chatMessages
             });
             
+            // Create meta with context for user message
+            var userMessageMeta = new ChatMessageMeta
+            {
+                IsVoiceMessage = false,
+                VoiceLanguage = VoiceLanguageEnum.English,
+                VoiceParseSuccess = true,
+                VoiceParseErrorMessage = null,
+                VoiceDurationSeconds = 0.0,
+                Context = context  // Store context if provided
+            };
+            
             RaiseEvent(new AddChatMessageMetasLogEvent
             {
-                ChatMessageMetas = new List<ChatMessageMeta>()
+                ChatMessageMetas = new List<ChatMessageMeta>() { userMessageMeta }
             });
             
             await ConfirmEvents();
@@ -252,10 +263,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         await SetSessionTitleAsync(sessionId, content);
         var configuration = GetConfiguration();
+        // Pass original content and context separately, merge will happen in GodStreamChatAsync
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
             content, chatId, promptSettings, isHttpRequest, region, images: images, 
-            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId);
+            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context);
         
         totalStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
@@ -263,7 +275,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
-        List<string>? images = null)
+        List<string>? images = null, string? context = null)
     {
         Logger.LogDebug($"[GodChatGAgent][StreamChatWithSessionAsync] start: {sessionId.ToString()}");
         await StartStreamChatAsync(new StartStreamChatInput
@@ -275,7 +287,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             PromptSettings = promptSettings,
             IsHttpRequest = isHttpRequest,
             region = region,
-            images = images
+            images = images,
+            Context = context
         });
     }
 
@@ -596,14 +609,22 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
         string? region = null, bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null,
-        string? userTimeZoneId = null)
+        string? userTimeZoneId = null, string? context = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug(
-            $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}");
+            $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}, hasContext:{!string.IsNullOrEmpty(context)}");
+        
+        // Merge context and content for LLM call
+        var enhancedMessage = message;
+        if (!string.IsNullOrEmpty(context))
+        {
+            enhancedMessage = $"[User's reference]: {context}\n\n[User's message]: {message}";
+            Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] Context merged. Original length: {message.Length}, Enhanced length: {enhancedMessage.Length}");
+        }
         
         var aiChatContextDto =
-            CreateAIChatContext(sessionId, llm, streamingModeEnabled, message, chatId, promptSettings, isHttpRequest,
+            CreateAIChatContext(sessionId, llm, streamingModeEnabled, enhancedMessage, chatId, promptSettings, isHttpRequest,
                 region, images);
 
         var aiAgentStatusProxy = await GetProxyByRegionAsync(region);
@@ -634,8 +655,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 }
             }
 
-            // User message without additional prefixes (timestamp now in system prompt)
-            string enhancedMessage = message;
+            // Add conversation suggestions prompt for text chat only
             if (!isPromptVoiceChat)
             {
                 var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
@@ -650,15 +670,17 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
                     Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
                 }
-                
-                enhancedMessage = enhancedMessage + ChatPrompts.ConversationSuggestionsPrompt;
-                Logger.LogDebug(
-                    $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
+                else
+                {
+                    // Only add conversation suggestions if not special prompt
+                    enhancedMessage = enhancedMessage + ChatPrompts.ConversationSuggestionsPrompt;
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][GodStreamChatAsync] {sessionId} Added conversation suggestions prompt for text chat");
+                }
             }
 
-            var settings = promptSettings ?? new ExecutionPromptSettings();
-            settings.Temperature = "1.0";
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(enhancedMessage, State.ChatHistory, settings,
+            // Pass null to avoid sending any prompt settings (temperature, maxTokens, etc.)
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(enhancedMessage, State.ChatHistory, null,
                 context: aiChatContextDto, imageKeys: images);
             if (!result)
             {
@@ -668,6 +690,17 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             if (addToHistory)
             {
                 var historyStopwatch = Stopwatch.StartNew();
+                // Create meta with context for user message
+                var userMessageMeta = new ChatMessageMeta
+                {
+                    IsVoiceMessage = false,
+                    VoiceLanguage = VoiceLanguageEnum.English,
+                    VoiceParseSuccess = true,
+                    VoiceParseErrorMessage = null,
+                    VoiceDurationSeconds = 0.0,
+                    Context = context  // Store context if provided
+                };
+                
                 // Optimize: Use combined event to reduce RaiseEvent calls from 3 to 1
                 RaiseEvent(new GodStreamChatCombinedEventLog
                 {
@@ -676,12 +709,12 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                         new ChatMessage
                         {
                             ChatRole = ChatRole.User,
-                            Content = message,
+                            Content = message,  // Store original content (context stored separately in meta)
                             ImageKeys = images
                         }
                     },
                     ChatTime = DateTime.UtcNow,
-                    ChatMessageMetas = new List<ChatMessageMeta>()
+                    ChatMessageMetas = new List<ChatMessageMeta>() { userMessageMeta }
                 });
 
                 historyStopwatch.Stop();
@@ -1512,12 +1545,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             return new List<ChatMessage>();
         }
 
-        var settings = promptSettings ?? new ExecutionPromptSettings();
-        settings.Temperature = "1.0";
-
+        // Pass null to avoid sending any prompt settings (temperature, maxTokens, etc.)
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId,
             promptSettings, isHttpRequest, region);
-        var response = await aiAgentStatusProxy.ChatWithHistory(content, State.ChatHistory, settings, aiChatContextDto);
+        var response = await aiAgentStatusProxy.ChatWithHistory(content, State.ChatHistory, null, aiChatContextDto);
         sw.Stop();
         Logger.LogDebug(
             $"[GodChatGAgent][ChatWithHistory] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
@@ -1542,11 +1573,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             return new List<ChatMessage>();
         }
 
-        var settings = promptSettings ?? new ExecutionPromptSettings();
-        settings.Temperature = "1.0";
-        
+        // Pass null to avoid sending any prompt settings (temperature, maxTokens, etc.)
         var aiChatContextDto = CreateAIChatContext(sessionId, llm, streamingModeEnabled, content, chatId, promptSettings, isHttpRequest, region);
-        var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, settings, aiChatContextDto);
+        var response = await aiAgentStatusProxy.ChatWithHistory(content,  State.ChatHistory, null, aiChatContextDto);
         sw.Stop();
         Logger.LogDebug($"[GodChatGAgent][ChatWithUserId] {sessionId.ToString()}, response:{JsonConvert.SerializeObject(response)} - step4,time use:{sw.ElapsedMilliseconds}");
         return response;
@@ -2084,11 +2113,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             Logger.LogDebug(
                 $"[GodChatGAgent][GodVoiceStreamChatAsync] agent {aiAgentStatusProxy.GetPrimaryKey().ToString()}, session {sessionId.ToString()}, chat {chatId}");
             
-            // Set default temperature for voice chat
-            var settings = promptSettings ?? new ExecutionPromptSettings();
-            settings.Temperature = "1.0";
-            
-            // Start streaming with voice context (timestamp now in system prompt)
+            // Start streaming with voice context
             var promptMsg = message;
             switch (voiceLanguage)
             {
@@ -2108,7 +2133,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             }
             Logger.LogDebug($"[GodChatGAgent][GodVoiceStreamChatAsync] promptMsg: {promptMsg}");
 
-            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMsg, State.ChatHistory, settings,
+            // Pass null to avoid sending any prompt settings (temperature, maxTokens, etc.)
+            var result = await aiAgentStatusProxy.PromptWithStreamAsync(promptMsg, State.ChatHistory, null,
                 context: aiChatContextDto);
             if (!result)
             {
@@ -2309,7 +2335,53 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         // Generate daily recommendations based on subscription status and calendar events
         var languageEnglishName = GodGPTLanguageHelper.GetLanguageEnglishName(language);
-        prompt = $"Use  {languageEnglishName} to respond including titles like DO, DON'T \n {prompt}";
+        
+        // Select divination system based on user language
+        var divinationSystemInstruction = language == GodGPTLanguage.CN || language == GodGPTLanguage.TraditionalChinese
+            ? @"DIVINATION SYSTEM: Chinese Huangli (Yellow Calendar) and Five Elements Theory (五行学说)
+
+METHODOLOGY EXPLANATION (MUST include in your response to user):
+- Start your response by briefly explaining that this analysis is based on traditional Chinese Huangli (Yellow Calendar) combined with Five Elements theory (Metal金, Wood木, Water水, Fire火, Earth土)
+- Mention that the predictions consider the user's birth date, current date, location, and the interaction of Five Elements
+- Use phrases like: ""根据中国传统黄历和五行理论..."", ""今日五行属性..."", ""结合您的八字...""
+
+ELEMENT EXPLANATION REQUIREMENT:
+- For EACH DO/DON'T recommendation, explain which element (五行) or Huangli principle supports it
+- Example: ""宜：签署合同 - 今日为黄道吉日，五行金旺，利于商业决策""
+- Example: ""忌：搬家 - 今日冲煞方位与您的本命相克，五行土弱""
+- Make the user understand WHY by referencing specific elements related to them
+
+TONE: Mystical yet authoritative, as if consulting ancient wisdom. Use traditional Chinese fortune-telling language."
+            : @"DIVINATION SYSTEM: Western Astrology and Planetary Transits
+
+METHODOLOGY EXPLANATION (MUST include in your response to user):
+- Start your response by briefly explaining that this analysis is based on Western astrological principles, examining current planetary positions and their aspects
+- Mention that the predictions consider the user's birth chart (zodiac sign, planetary placements) and today's celestial transits
+- Use phrases like: ""Based on astrological analysis..."", ""Today's planetary alignment reveals..."", ""According to your birth chart...""
+
+ASTROLOGICAL ELEMENT EXPLANATION REQUIREMENT:
+- For EACH DO/DON'T recommendation, explain which astrological factor supports it
+- Reference specific elements: planets (Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn), aspects (conjunction, trine, square, opposition), houses (1st-12th)
+- Example: ""DO: Start new projects - Mars trine your natal Sun empowers bold action and initiative""
+- Example: ""DON'T: Make major financial decisions - Mercury retrograde creates confusion in communication and contracts""
+- Example: ""DO: Social networking - Venus in your 11th house (friendships) brings harmonious connections""
+- Make the user understand WHY by connecting to their personal astrological profile
+
+TONE: Mystical yet authoritative, as if consulting celestial wisdom. Use astrological terminology that sounds both ancient and scientific.";
+
+        prompt = $@"Use {languageEnglishName} to respond.
+
+{divinationSystemInstruction}
+
+CRITICAL REQUIREMENTS:
+1. In your response, FIRST explain to the user what divination method you're using and why they should trust it
+2. Reference specific elements (Five Elements for Chinese, Planetary aspects for Western) throughout your recommendations
+3. For EVERY DO and DON'T item, provide the underlying divination reasoning
+4. Make the user feel this is personalized for THEM by connecting to their birth date, location, and time
+5. Use mystical and authoritative language to add credibility
+
+{prompt}";
+        
         return GenerateDailyRecommendationsAsync(prompt, isSubscribed, googleCalendarListDto, languageEnglishName);
     }
 
@@ -2402,7 +2474,7 @@ xxxxx (A brief one-sentence summary, under 20 words)";
     private string GenerateUserWithoutEventsRecommendations(string language)
     {
         var prompt = $@"Use the following format for the output:
-Based on your name, gender, age, location, and local time, here are your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
+Hi, {{user_name}}, based on your name, gender, age, location, and local time, here are your exclusive Dos and Don'ts for today (which may cover health, work, relationships, life, etc.), as follows:
 DO
 - Xxxx
 - xxxxx
