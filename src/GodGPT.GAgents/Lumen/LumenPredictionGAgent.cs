@@ -1608,6 +1608,15 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 parsedResults["luckyAlignments_luckyNumber_digit"] = primaryLuckyNumber.Digit.ToString();
                 parsedResults["luckyAlignments_luckyNumber_description"] = primaryLuckyNumber.Description;
                 parsedResults["luckyAlignments_luckyNumber_calculation"] = primaryLuckyNumber.CalculationFormula;
+                
+                // CRITICAL: Also update multilingualResults to keep them in sync
+                if (multilingualResults != null && multilingualResults.ContainsKey(targetLanguage))
+                {
+                    multilingualResults[targetLanguage]["luckyAlignments_luckyNumber_number"] = primaryLuckyNumber.NumberWord;
+                    multilingualResults[targetLanguage]["luckyAlignments_luckyNumber_digit"] = primaryLuckyNumber.Digit.ToString();
+                    multilingualResults[targetLanguage]["luckyAlignments_luckyNumber_description"] = primaryLuckyNumber.Description;
+                    multilingualResults[targetLanguage]["luckyAlignments_luckyNumber_calculation"] = primaryLuckyNumber.CalculationFormula;
+                }
             }
 
             // Raise event to save prediction (unified structure)
