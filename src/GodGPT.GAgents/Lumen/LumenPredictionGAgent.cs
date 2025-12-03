@@ -1104,6 +1104,82 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _logger.LogInformation(
                     "[LumenPredictionGAgent][GeneratePredictionAsync] Batched generation completed with {FieldCount} fields",
                     parsedResults.Count);
+                
+                // ========== POST-BATCH: Extract location_latlong and recalculate Moon/Rising if needed ==========
+                if (parsedResults.ContainsKey("location_latlong"))
+                {
+                    var inferredLatLong = parsedResults["location_latlong"];
+                    if (!string.IsNullOrWhiteSpace(inferredLatLong))
+                    {
+                        _logger.LogInformation(
+                            $"[Lumen][Lifetime][Batched] {userInfo.UserId} LLM inferred LatLong: {inferredLatLong} from BirthCity: {userInfo.BirthCity}");
+                        
+                        // Save to UserProfileGAgent (fire-and-forget)
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                var userGrainId = CommonHelper.StringToGuid(userInfo.UserId);
+                                var userProfileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(userGrainId);
+                                await userProfileGAgent.SaveInferredLatLongAsync(inferredLatLong, userInfo.BirthCity ?? "Unknown");
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, $"[Lumen][Lifetime][Batched] {userInfo.UserId} Failed to save inferred LatLong");
+                            }
+                        });
+                        
+                        // ========== RECALCULATE Moon/Rising signs with newly inferred LatLong ==========
+                        if (calcBirthTime.HasValue)
+                        {
+                            try
+                            {
+                                var parts = inferredLatLong.Split(',', StringSplitOptions.TrimEntries);
+                                if (parts.Length == 2 && 
+                                    double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double latitude) &&
+                                    double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double longitude))
+                                {
+                                    _logger.LogInformation(
+                                        $"[Lumen][Lifetime][Batched] {userInfo.UserId} RECALCULATING Moon/Rising signs with newly inferred LatLong: ({latitude}, {longitude})");
+                                    
+                                    var (_, recalcMoonSign, recalcRisingSign) = CalculateSigns(
+                                        calcBirthDate,
+                                        calcBirthTime.Value,
+                                        latitude,
+                                        longitude);
+                                    
+                                    moonSign = recalcMoonSign;
+                                    risingSign = recalcRisingSign;
+                                    
+                                    _logger.LogInformation(
+                                        $"[Lumen][Lifetime][Batched] {userInfo.UserId} RECALCULATED Moon: {moonSign}, Rising: {risingSign}");
+                                    
+                                    // Update parsedResults with recalculated signs (will be injected into backend fields later)
+                                    // Note: The actual westernOverview_moonSign and westernOverview_risingSign will be set
+                                    // by the backend injection logic below (line ~1400)
+                                }
+                                else
+                                {
+                                    _logger.LogWarning(
+                                        $"[Lumen][Lifetime][Batched] {userInfo.UserId} Invalid inferred LatLong format: '{inferredLatLong}'");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex,
+                                    $"[Lumen][Lifetime][Batched] {userInfo.UserId} Failed to recalculate Moon/Rising with inferred LatLong");
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogInformation(
+                                $"[Lumen][Lifetime][Batched] {userInfo.UserId} Cannot recalculate Moon/Rising - BirthTime not available");
+                        }
+                    }
+                    
+                    // Remove from parsed results (not needed in prediction output)
+                    parsedResults.Remove("location_latlong");
+                }
             }
             // ========== DAILY/YEARLY: Use single LLM call (smaller prompts, less risk of refusal) ==========
             else
@@ -6081,7 +6157,17 @@ FORMAT:
             _ => $"Start with '{ctx.BirthYearAnimalTranslated}' and offer specific advice or insights for the user. Be specific and targeted, avoid vague mystical language. (40-60 words)"
         };
 
+        var languageReminder = targetLanguage switch
+        {
+            "zh" => "⚠️ 重要：所有字段内容必须使用简体中文，不要出现英文！",
+            "zh-tw" => "⚠️ 重要：所有欄位內容必須使用繁體中文，不要出現英文！",
+            "es" => "⚠️ IMPORTANTE: Todo el contenido debe estar en español, ¡sin inglés!",
+            _ => "⚠️ IMPORTANT: All field content must be in English only!"
+        };
+        
         return $@"Generate Western Astrology content for lifetime prediction.
+
+{languageReminder}
 
 USER CONTEXT:
 - Sun Sign: {sunSignTranslated}
@@ -6106,6 +6192,7 @@ Start output now:";
 
     /// <summary>
     /// Batch 2: Chinese Astrology - Four Pillars, Chinese traits, zodiac cycle
+    /// Also handles location_latlong inference if needed
     /// </summary>
     private string BuildChineseAstrologyBatchPrompt(
         LumenUserDto userInfo,
@@ -6120,13 +6207,38 @@ Start output now:";
             _ => $"Start with \"Your Chinese Zodiac is {ctx.BirthYearAnimalTranslated}...\" and describe how your 20-year symbolic cycle affects life stages"
         };
 
+        // Check if we need to request LatLong inference from LLM (for calculating Moon/Rising signs)
+        var needLatLongInference = !string.IsNullOrWhiteSpace(userInfo.BirthCity) 
+            && string.IsNullOrWhiteSpace(userInfo.LatLong) 
+            && string.IsNullOrWhiteSpace(userInfo.LatLongInferred);
+        
+        var latLongSection = needLatLongInference
+            ? $@"
+
+========== OPTIONAL: LOCATION INFERENCE ==========
+Birth City: {userInfo.BirthCity}
+⚠️ INSTRUCTION: If you can identify the latitude and longitude for the birth city above, please add this field to the output:
+location_latlong	latitude,longitude (format: ""34.0522,-118.2437"")
+⚠️ If the city name is ambiguous or you cannot determine coordinates, you may SKIP this field entirely."
+            : string.Empty;
+
+        var languageReminder = targetLanguage switch
+        {
+            "zh" => "⚠️ 重要：所有字段内容必须使用简体中文，不要出现英文！",
+            "zh-tw" => "⚠️ 重要：所有欄位內容必須使用繁體中文，不要出現英文！",
+            "es" => "⚠️ IMPORTANTE: Todo el contenido debe estar en español, ¡sin inglés!",
+            _ => "⚠️ IMPORTANT: All field content must be in English only!"
+        };
+        
         return $@"Generate Chinese Astrology content for lifetime prediction.
+
+{languageReminder}
 
 USER CONTEXT:
 - Birth Year: {ctx.BirthYear} ({ctx.BirthYearZodiac})
 - Chinese Zodiac Animal: {ctx.BirthYearAnimalTranslated}
 - Element: {ctx.BirthYearElement}
-- Birth Year Stems: {ctx.BirthYearStems}
+- Birth Year Stems: {ctx.BirthYearStems}{latLongSection}
 
 REQUIRED FIELDS (TSV format):
 
@@ -6157,7 +6269,17 @@ Start output now:";
         string targetLanguage,
         LifetimeBatchContext ctx)
     {
+        var languageReminder = targetLanguage switch
+        {
+            "zh" => "⚠️ 重要：所有字段内容必须使用简体中文，不要出现英文！",
+            "zh-tw" => "⚠️ 重要：所有欄位內容必須使用繁體中文，不要出現英文！",
+            "es" => "⚠️ IMPORTANTE: Todo el contenido debe estar en español, ¡sin inglés!",
+            _ => "⚠️ IMPORTANT: All field content must be in English only!"
+        };
+        
         return $@"Generate Life Traits content for lifetime prediction.
+
+{languageReminder}
 
 USER CONTEXT:
 - Sun Sign: {ctx.SunSignTranslated}
@@ -6216,7 +6338,17 @@ Start output now:";
             _ => "Title MUST include \"Your\" to address the user directly, e.g. \"Your Hero's Journey\", \"Your Epic of Transformation\""
         };
 
+        var languageReminder = targetLanguage switch
+        {
+            "zh" => "⚠️ 重要：所有字段内容必须使用简体中文，不要出现英文！",
+            "zh-tw" => "⚠️ 重要：所有欄位內容必須使用繁體中文，不要出現英文！",
+            "es" => "⚠️ IMPORTANTE: Todo el contenido debe estar en español, ¡sin inglés!",
+            _ => "⚠️ IMPORTANT: All field content must be in English only!"
+        };
+        
         return $@"Generate Timeline & Life Plot content for lifetime prediction.
+
+{languageReminder}
 
 USER CONTEXT:
 - Birth Year: {ctx.BirthYear}
@@ -6243,7 +6375,7 @@ curr_detail	[DETAILED description of current cycle: main opportunities, challeng
 future_summary	[Theme/title for future cycle ({ctx.FutureCycleAgeRange}), 5-8 words]
 future_detail	[DETAILED description of future cycle: what to expect, how to prepare, and specific actions to take NOW to maximize this future period. 60-80 words]
 plot_title	[{plotTitleDesc}, 4-6 words total]
-plot_chapter	[The current chapter name in user's life story, describing where they are NOW, 4-6 words]
+plot_chapter	[A complete sentence describing the current chapter in user's life story. Address the user directly (e.g., ""You are..."", ""You're...""). Must be a full sentence, not just a title. 10-15 words]
 plot_pt1	[First key plot point: a defining characteristic or theme in user's life narrative, 15-25 words]
 plot_pt2	[Second key plot point with specific details, 15-25 words]
 plot_pt3	[Third key plot point with specific details, 15-25 words]
