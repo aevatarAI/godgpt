@@ -91,7 +91,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 
     // Default fallback values if options are not configured
     private const string DEFAULT_DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
-    private const int DEFAULT_PROMPT_VERSION = 28;
+    private const int DEFAULT_PROMPT_VERSION = 1;
     private const int DEFAULT_MAX_RETRY_COUNT = 3;
     
     /// <summary>
@@ -3308,26 +3308,7 @@ All content is for entertainment, self-exploration, and contemplative purposes o
     /// <summary>
     /// Get fallback language based on priority: en > zh > zh-tw > es
     /// </summary>
-    private string GetFallbackLanguage(Dictionary<string, Dictionary<string, string>> multilingualResults)
-    {
-        // Priority order
-        var priorityOrder = new[] { "en", "zh", "zh-tw", "es" };
-        
-        foreach (var lang in priorityOrder)
-        {
-            if (multilingualResults.ContainsKey(lang) && 
-                multilingualResults[lang] != null && 
-                multilingualResults[lang].Count > 0)
-            {
-                return lang;
-            }
-        }
-        
-        // If none of the priority languages exist, return first available
-        return multilingualResults.Keys.FirstOrDefault() ?? "en";
-    }
-
-        private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
+    private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
             string sourceLanguage, string targetLanguage, PredictionType type)
     {
         // Validate source content (should not happen as callers check, but defensive)
@@ -3424,73 +3405,6 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         return "phase3";
     }
 
-    /// <summary>
-    /// Parse Lifetime & Weekly AI response
-    /// </summary>
-        private (Dictionary<string, string>?, Dictionary<string, string>?) ParseLifetimeWeeklyResponse(
-            string aiResponse)
-    {
-        try
-        {
-            var jsonStart = aiResponse.IndexOf('{');
-            var jsonEnd = aiResponse.LastIndexOf('}');
-
-            if (jsonStart >= 0 && jsonEnd > jsonStart)
-            {
-                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                var response = JsonConvert.DeserializeObject<dynamic>(jsonString);
-                
-                if (response == null)
-                {
-                    return (null, null);
-                }
-
-                // Parse Lifetime
-                var lifetimeDict = new Dictionary<string, string>();
-                if (response.lifetime != null)
-                {
-                    lifetimeDict["title"] = response.lifetime.title?.ToString() ?? "";
-                    lifetimeDict["description"] = response.lifetime.description?.ToString() ?? "";
-                    
-                    // Serialize complex objects to JSON strings
-                    if (response.lifetime.traits != null)
-                    {
-                        lifetimeDict["traits"] = JsonConvert.SerializeObject(response.lifetime.traits);
-                    }
-
-                    if (response.lifetime.phases != null)
-                    {
-                        lifetimeDict["phases"] = JsonConvert.SerializeObject(response.lifetime.phases);
-                    }
-                }
-
-                // Parse Weekly
-                var weeklyDict = new Dictionary<string, string>();
-                if (response.weekly != null)
-                {
-                    weeklyDict["health"] = response.weekly.health?.ToString() ?? "0";
-                    weeklyDict["money"] = response.weekly.money?.ToString() ?? "0";
-                    weeklyDict["career"] = response.weekly.career?.ToString() ?? "0";
-                    weeklyDict["romance"] = response.weekly.romance?.ToString() ?? "0";
-                    weeklyDict["focus"] = response.weekly.focus?.ToString() ?? "0";
-                }
-
-                return (lifetimeDict, weeklyDict);
-            }
-
-            return (null, null);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeWeeklyResponse] Failed to parse");
-            return (null, null);
-        }
-    }
-
-    /// <summary>
-    /// Parse Daily AI response (6 dimensions)
-    /// </summary>
-    
     /// <summary>
     /// Convert array fields from pipe-separated strings to JSON array strings for frontend
     /// </summary>
