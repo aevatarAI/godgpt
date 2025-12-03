@@ -1295,10 +1295,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
                         targetLanguage, string.Join(", ", originalLanguages));
                 }
             }
-            
-            parseStopwatch.Stop();
-            _logger.LogInformation(
-                $"[PERF][Lumen] {userInfo.UserId} Parse_Response: {parseStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
             // ========== INJECT BACKEND-CALCULATED FIELDS ==========
             // Pre-calculate values once (using timezone-corrected calcBirthDate from method start)
