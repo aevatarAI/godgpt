@@ -2801,6 +2801,50 @@ Generate translations for: {targetLangNames}
                 _logger.LogInformation(
                     $"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
             
+            // ========== LIFETIME: Use batched translation to reduce token count and improve reliability ==========
+            if (type == PredictionType.Lifetime)
+            {
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} Using BATCHED translation for Lifetime {sourceLanguage} → {targetLanguage}");
+                
+                var lifetimeTranslatedDict = await TranslateLifetimeBatchedAsync(userInfo, predictionDate, sourceLanguage, sourceContent, targetLanguage);
+                
+                if (lifetimeTranslatedDict == null || lifetimeTranslatedDict.Count == 0)
+                {
+                    _logger.LogError(
+                        $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} Batched translation failed for {targetLanguage}");
+                    return;
+                }
+                
+                // Add quotes to affirmation text based on target language
+                lifetimeTranslatedDict = AddQuotesToAffirmation(lifetimeTranslatedDict, targetLanguage);
+                
+                // Raise event to update state with this language
+                var lifetimeTranslatedLanguages = new Dictionary<string, Dictionary<string, string>>
+                {
+                    { targetLanguage, lifetimeTranslatedDict }
+                };
+                
+                var lifetimeUpdatedLanguages = (State.GeneratedLanguages ?? new List<string>()).Union(new[] { targetLanguage }).ToList();
+                var lifetimeLastGenDate = DateOnly.FromDateTime(DateTime.UtcNow);
+                
+                RaiseEvent(new LanguagesTranslatedEvent
+                {
+                    Type = type,
+                    PredictionDate = predictionDate,
+                    TranslatedLanguages = lifetimeTranslatedLanguages,
+                    AllGeneratedLanguages = lifetimeUpdatedLanguages,
+                    LastGeneratedDate = lifetimeLastGenDate
+                });
+                
+                await ConfirmEvents();
+                
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} {targetLanguage} COMPLETED - Total fields: {lifetimeTranslatedDict.Count}");
+                return;
+            }
+            
+            // ========== DAILY/YEARLY: Use single LLM call (smaller prompts) ==========
             // Filter fields that don't need translation
             var filteredForTranslation = FilterFieldsForTranslation(sourceContent);
             var skippedFields = sourceContent.Where(kvp => !filteredForTranslation.ContainsKey(kvp.Key))
@@ -2972,6 +3016,315 @@ All content is for entertainment, self-exploration, and contemplative purposes o
     }
 
     /// <summary>
+    /// Translate Lifetime prediction using batched parallel LLM calls (reduces token count and improves reliability)
+    /// </summary>
+    private async Task<Dictionary<string, string>?> TranslateLifetimeBatchedAsync(
+        LumenUserDto userInfo,
+        DateOnly predictionDate,
+        string sourceLanguage,
+        Dictionary<string, string> sourceContent,
+        string targetLanguage)
+    {
+        var totalStopwatch = Stopwatch.StartNew();
+        _logger.LogInformation(
+            "[Lumen][OnDemandTranslation][Batched] Starting parallel batch translation for user {UserId}, {SourceLang} → {TargetLang}",
+            userInfo.UserId, sourceLanguage, targetLanguage);
+
+        try
+        {
+            // Filter fields that don't need translation
+            var filteredForTranslation = FilterFieldsForTranslation(sourceContent);
+            var skippedFields = sourceContent.Where(kvp => !filteredForTranslation.ContainsKey(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            _logger.LogInformation(
+                $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} Filtered {skippedFields.Count} fields, {filteredForTranslation.Count} to translate");
+            
+            // Split filtered fields into 4 batches based on field name prefixes (matching generation batches)
+            var batch1Fields = filteredForTranslation.Where(kvp => 
+                kvp.Key.StartsWith("westernOverview_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("sun_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("moon_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("rising_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.Equals("combined_essence", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.Equals("whisper", StringComparison.OrdinalIgnoreCase)
+            ).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            var batch2Fields = filteredForTranslation.Where(kvp => 
+                kvp.Key.StartsWith("pillars_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("cn_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("cycle_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chineseAstrology_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("zodiacCycle_", StringComparison.OrdinalIgnoreCase)
+            ).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            var batch3Fields = filteredForTranslation.Where(kvp => 
+                kvp.Key.StartsWith("str_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("str1_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("str2_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("str3_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chal_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chal1_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chal2_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chal3_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("destiny_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("path1_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("path2_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("path3_", StringComparison.OrdinalIgnoreCase)
+            ).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            var batch4Fields = filteredForTranslation.Where(kvp => 
+                kvp.Key.StartsWith("ten_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("past_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("curr_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("future_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("plot_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("act1_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("act2_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("act3_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("act4_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("mantra_", StringComparison.OrdinalIgnoreCase)
+            ).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            _logger.LogInformation(
+                $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} Split into batches: B1={batch1Fields.Count}, B2={batch2Fields.Count}, B3={batch3Fields.Count}, B4={batch4Fields.Count}");
+            
+            // Create batch tasks for parallel execution
+            var batchTasks = new List<Task<Dictionary<string, string>?>>();
+            
+            if (batch1Fields.Count > 0)
+                batchTasks.Add(TranslateLifetimeBatchAsync(userInfo, sourceLanguage, batch1Fields, targetLanguage, "Western Astrology"));
+            if (batch2Fields.Count > 0)
+                batchTasks.Add(TranslateLifetimeBatchAsync(userInfo, sourceLanguage, batch2Fields, targetLanguage, "Chinese Astrology"));
+            if (batch3Fields.Count > 0)
+                batchTasks.Add(TranslateLifetimeBatchAsync(userInfo, sourceLanguage, batch3Fields, targetLanguage, "Life Traits"));
+            if (batch4Fields.Count > 0)
+                batchTasks.Add(TranslateLifetimeBatchAsync(userInfo, sourceLanguage, batch4Fields, targetLanguage, "Timeline & Plot"));
+            
+            // Wait for all batches to complete
+            await Task.WhenAll(batchTasks);
+            
+            totalStopwatch.Stop();
+            _logger.LogInformation(
+                "[PERF][Lumen][OnDemandTranslation][Batched] {UserId} All_Translation_Batches: {ElapsedMs}ms",
+                userInfo.UserId, totalStopwatch.ElapsedMilliseconds);
+            
+            // Merge results from all batches
+            var mergedResults = new Dictionary<string, string>();
+            var successCount = 0;
+            
+            foreach (var task in batchTasks)
+            {
+                var batchResult = await task;
+                if (batchResult != null && batchResult.Count > 0)
+                {
+                    foreach (var (key, value) in batchResult)
+                    {
+                        mergedResults[key] = value;
+                    }
+                    successCount++;
+                }
+            }
+            
+            // Merge back skipped fields (enums, numbers, backend-calculated)
+            var backendCalculatedFields = new Dictionary<string, string>();
+            var otherSkippedFields = new Dictionary<string, string>();
+            
+            var backendCalculatedPatterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "sunSign_name", "westernOverview_sunSign", "westernOverview_moonSign", "westernOverview_risingSign",
+                "westernOverview_sunArchetype", "westernOverview_moonArchetype", "westernOverview_risingArchetype",
+                "chineseZodiac_animal", "chineseZodiac_title",
+                "chineseAstrology_currentYearStem", "chineseAstrology_currentYearStemPinyin",
+                "chineseAstrology_currentYearBranch", "chineseAstrology_currentYearBranchPinyin",
+                "chineseAstrology_taishuiRelationship", "chineseAstrology_currentYear",
+                "pastCycle_ageRange", "pastCycle_period", "currentCycle_ageRange", "currentCycle_period",
+                "futureCycle_ageRange", "futureCycle_period", "zodiacCycle_title", "zodiacCycle_cycleName",
+                "zodiacInfluence", "currentPhase"
+            };
+            
+            foreach (var skipped in skippedFields)
+            {
+                if (backendCalculatedPatterns.Contains(skipped.Key) || 
+                    skipped.Key.StartsWith("fourPillars_year", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_month", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_day", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_hour", StringComparison.OrdinalIgnoreCase))
+                {
+                    backendCalculatedFields[skipped.Key] = skipped.Value;
+                }
+                else
+                {
+                    otherSkippedFields[skipped.Key] = skipped.Value;
+                }
+            }
+            
+            // Merge back non-backend-calculated skipped fields
+            foreach (var skipped in otherSkippedFields)
+            {
+                mergedResults[skipped.Key] = skipped.Value;
+            }
+            
+            // Re-inject backend-calculated fields for target language
+            await InjectBackendFieldsForLanguageAsync(mergedResults, userInfo, predictionDate, PredictionType.Lifetime, targetLanguage);
+            
+            _logger.LogInformation(
+                "[Lumen][OnDemandTranslation][Batched] {UserId} {TargetLang} Successfully merged {FieldCount} translated fields + {SkippedCount} skipped + {BackendCount} backend = {TotalCount} total",
+                userInfo.UserId, targetLanguage, mergedResults.Count - otherSkippedFields.Count - backendCalculatedFields.Count, 
+                otherSkippedFields.Count, backendCalculatedFields.Count, mergedResults.Count);
+            
+            return mergedResults;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[Lumen][OnDemandTranslation][Batched] Error during batch translation for user {UserId} {SourceLang} → {TargetLang}",
+                userInfo.UserId, sourceLanguage, targetLanguage);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Translate a single batch of Lifetime fields
+    /// </summary>
+    private async Task<Dictionary<string, string>?> TranslateLifetimeBatchAsync(
+        LumenUserDto userInfo,
+        string sourceLanguage,
+        Dictionary<string, string> batchFields,
+        string targetLanguage,
+        string batchName)
+    {
+        var batchStopwatch = Stopwatch.StartNew();
+        
+        try
+        {
+            _logger.LogInformation(
+                "[Lumen][OnDemandTranslation][Batch:{BatchName}] {UserId} Translating {Count} fields {SourceLang} → {TargetLang}",
+                batchName, userInfo.UserId, batchFields.Count, sourceLanguage, targetLanguage);
+            
+            // Build translation prompt for this batch
+            var translationPrompt = BuildLifetimeTranslationBatchPrompt(batchFields, sourceLanguage, targetLanguage, batchName);
+            var promptTokens = TokenHelper.EstimateTokenCount(translationPrompt);
+            
+            _logger.LogInformation(
+                $"[PERF][Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} Prompt_Length: {translationPrompt.Length} chars, Tokens: ~{promptTokens}");
+            
+            // Call LLM for translation
+            var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
+            var translationGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_lifetime_translation_{batchName}");
+            var godChat = _clusterClient.GetGrain<IGodChat>(translationGrainKey);
+            var chatId = Guid.NewGuid().ToString();
+            
+            var systemPrompt = @"You are a professional translator for astrological and philosophical reflection content.
+All content is for entertainment, self-exploration, and contemplative purposes only.";
+            
+            var response = await godChat.ChatWithoutHistoryAsync(
+                userGuid,
+                systemPrompt,
+                translationPrompt,
+                chatId,
+                null,
+                true,
+                "LUMEN");
+            
+            batchStopwatch.Stop();
+            _logger.LogInformation(
+                $"[PERF][Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} LLM_Call: {batchStopwatch.ElapsedMilliseconds}ms");
+            
+            if (response == null || response.Count() == 0)
+            {
+                _logger.LogWarning(
+                    $"[Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} No response from LLM");
+                return null;
+            }
+            
+            var aiResponse = response[0].Content;
+            
+            // Parse TSV response
+            var contentDict = ParseTsvResponse(aiResponse);
+            if (contentDict == null || contentDict.Count == 0)
+            {
+                _logger.LogError(
+                    $"[Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} TSV parse failed. Response:\n{aiResponse}");
+                return null;
+            }
+            
+            _logger.LogInformation(
+                $"[Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} COMPLETED - {contentDict.Count} fields translated in {batchStopwatch.ElapsedMilliseconds}ms");
+            
+            return contentDict;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[Lumen][OnDemandTranslation][Batch:{BatchName}] Error for user {UserId}",
+                batchName, userInfo.UserId);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Build translation prompt for a single Lifetime batch
+    /// </summary>
+    private string BuildLifetimeTranslationBatchPrompt(
+        Dictionary<string, string> batchFields,
+        string sourceLanguage,
+        string targetLanguage,
+        string batchName)
+    {
+        var languageMap = new Dictionary<string, string>
+        {
+            { "en", "English" },
+            { "zh-tw", "繁體中文" },
+            { "zh", "简体中文" },
+            { "es", "Español" }
+        };
+        
+        var sourceLangName = languageMap.GetValueOrDefault(sourceLanguage, "English");
+        var targetLangName = languageMap.GetValueOrDefault(targetLanguage, targetLanguage);
+        
+        // Convert batch fields to TSV format
+        var sourceTsv = new StringBuilder();
+        foreach (var kvp in batchFields)
+        {
+            sourceTsv.AppendLine($"{kvp.Key}\t{kvp.Value}");
+        }
+        
+        var languageReminder = targetLanguage switch
+        {
+            "zh" => "⚠️ 重要：请使用简体中文翻译所有内容，避免混入英文！",
+            "zh-tw" => "⚠️ 重要：請使用繁體中文翻譯所有內容，避免混入英文！",
+            "es" => "⚠️ IMPORTANTE: Por favor traduce todo el contenido al español, ¡evita mezclar inglés!",
+            _ => "⚠️ IMPORTANT: Please translate all content to English only!"
+        };
+        
+        return $@"TASK: Translate the following Lifetime prediction content ({batchName} section) from {sourceLangName} into {targetLangName}.
+
+{languageReminder}
+
+TRANSLATION GUIDELINES:
+1. Translate content while keeping the exact same meaning and structure.
+2. Keep user names unchanged (e.g., ""Sean"" stays ""Sean"")
+3. Maintain natural, fluent expression in {targetLangName}.
+4. Keep all field names unchanged.
+5. Preserve numbers, dates, and proper nouns.
+6. For Chinese translations: Adapt English grammar naturally
+   - Remove or adapt articles (""The/A"") as needed
+   - Adjust to natural Chinese word order
+
+OUTPUT FORMAT (TSV - Tab-Separated Values):
+- Each field on ONE line: fieldName	translatedValue
+- Use TAB character (\\t) as separator
+- Avoid line breaks within field values
+- Return TSV format only, no markdown or extra text
+
+SOURCE CONTENT ({sourceLangName} - TSV Format):
+{sourceTsv}
+
+Start translation now:";
+    }
+
+    /// <summary>
     /// Build single-language translation prompt (for on-demand translation)
     /// </summary>
     /// <summary>
@@ -3025,7 +3378,13 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             "todaysReading_tarotCard_name",
             "todaysReading_tarotCard_orientation",
             "luckyAlignments_luckyStone",
-            "todaysReading_pathTitle"  // Constructed by backend
+            "todaysReading_pathTitle",  // Constructed by backend
+            
+            // Lucky Number (backend-calculated, not from LLM)
+            "luckyAlignments_luckyNumber_number",
+            "luckyAlignments_luckyNumber_digit",
+            "luckyAlignments_luckyNumber_description",
+            "luckyAlignments_luckyNumber_calculation"
         };
         
         // Backend-calculated field prefixes (Four Pillars fields)
