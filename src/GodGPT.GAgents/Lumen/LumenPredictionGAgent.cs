@@ -32,6 +32,24 @@ public enum PredictionType
 }
 
 /// <summary>
+/// Lifetime prediction batch type for parallel LLM calls
+/// </summary>
+public enum LifetimeBatchType
+{
+    /// <summary>Western Astrology: Sun/Moon/Rising archetypes, combined essence, zodiac whisper</summary>
+    WesternAstrology = 0,
+    
+    /// <summary>Chinese Astrology: Four Pillars, Chinese traits, zodiac cycle</summary>
+    ChineseAstrology = 1,
+    
+    /// <summary>Life Traits: Strengths, challenges, destiny paths</summary>
+    LifeTraits = 2,
+    
+    /// <summary>Timeline & Plot: 10-year luck cycles, life plot narrative, mantras</summary>
+    TimelinePlot = 3
+}
+
+/// <summary>
 /// Interface for Lumen Prediction GAgent - manages lumen prediction generation
 /// </summary>
 public interface ILumenPredictionGAgent : IGAgent
@@ -1053,32 +1071,69 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             };
             var languageName = languageMap.GetValueOrDefault(targetLanguage, "English");
             
-            // Build prompt
-            var promptStopwatch = Stopwatch.StartNew();
-            var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage, moonSign, risingSign);
-            promptStopwatch.Stop();
-            var promptTokens = TokenHelper.EstimateTokenCount(prompt);
-            _logger.LogInformation(
-                $"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}, Type: {type}, TargetLanguage: {targetLanguage}");
+            // Unified flat results structure (all types use same format now)
+            Dictionary<string, string>? parsedResults = null;
+            Dictionary<string, Dictionary<string, string>>? multilingualResults = null;
             
-            var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
-            
-            // Use deterministic grain key based on userId + predictionType
-            // This enables concurrent LLM calls for different prediction types (daily/yearly/lifetime)
-            // while keeping grain count minimal (3 grains per user)
-            // Format: userId_daily, userId_yearly, userId_lifetime
-            var predictionGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}");
-            var godChat = _clusterClient.GetGrain<IGodChat>(predictionGrainKey);
-            var chatId = Guid.NewGuid().ToString();
-
-            var settings = new ExecutionPromptSettings
+            // ========== LIFETIME: Use parallel batched generation for better quality and lower refusal rate ==========
+            if (type == PredictionType.Lifetime)
             {
-                Temperature = "0.7"
-            };
+                _logger.LogInformation(
+                    "[LumenPredictionGAgent][GeneratePredictionAsync] Using BATCHED generation for Lifetime prediction - User: {UserId}",
+                    userInfo.UserId);
+                
+                // Create batch context with pre-calculated values
+                var batchContext = CreateLifetimeBatchContext(userInfo, predictionDate, targetLanguage);
+                
+                // Generate using parallel batches
+                (parsedResults, multilingualResults) = await GenerateLifetimeBatchedAsync(
+                    userInfo, predictionDate, targetLanguage, moonSign, risingSign, batchContext);
+                
+                if (parsedResults == null)
+                {
+                    _logger.LogError(
+                        "[LumenPredictionGAgent][GeneratePredictionAsync] Batched generation failed for user {UserId}",
+                        userInfo.UserId);
+                    return new GetTodayPredictionResult
+                    {
+                        Success = false,
+                        Message = "AI service failed to generate prediction"
+                    };
+                }
+                
+                _logger.LogInformation(
+                    "[LumenPredictionGAgent][GeneratePredictionAsync] Batched generation completed with {FieldCount} fields",
+                    parsedResults.Count);
+            }
+            // ========== DAILY/YEARLY: Use single LLM call (smaller prompts, less risk of refusal) ==========
+            else
+            {
+                // Build prompt
+                var promptStopwatch = Stopwatch.StartNew();
+                var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage, moonSign, risingSign);
+                promptStopwatch.Stop();
+                var promptTokens = TokenHelper.EstimateTokenCount(prompt);
+                _logger.LogInformation(
+                    $"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}, Type: {type}, TargetLanguage: {targetLanguage}");
+                
+                var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
+                
+                // Use deterministic grain key based on userId + predictionType
+                // This enables concurrent LLM calls for different prediction types (daily/yearly/lifetime)
+                // while keeping grain count minimal (3 grains per user)
+                // Format: userId_daily, userId_yearly, userId_lifetime
+                var predictionGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}");
+                var godChat = _clusterClient.GetGrain<IGodChat>(predictionGrainKey);
+                var chatId = Guid.NewGuid().ToString();
 
-            // System prompt with clear field value language requirement
-            var systemPrompt =
-                $@"You are a creative astrology guide helping users explore self-reflection through symbolic and thematic narratives.
+                var settings = new ExecutionPromptSettings
+                {
+                    Temperature = "0.7"
+                };
+
+                // System prompt with clear field value language requirement
+                var systemPrompt =
+                    $@"You are a creative astrology guide helping users explore self-reflection through symbolic and thematic narratives.
 
 ===== LANGUAGE REQUIREMENT (CRITICAL) =====
 Target Language: {languageName}
@@ -1110,58 +1165,55 @@ CONTENT GUIDELINES:
 
 Your task is to create engaging, inspirational, and reflective content that invites users to contemplate their unique path and potential.";
 
-            // Use "LUMEN" region for LLM calls
-            var llmStopwatch = Stopwatch.StartNew();
-            var response = await godChat.ChatWithoutHistoryAsync(
-                userGuid, 
-                systemPrompt, 
-                prompt, 
-                chatId, 
-                settings, 
-                true, 
-                "LUMEN");
-            llmStopwatch.Stop();
-            _logger.LogInformation(
-                $"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+                // Use "LUMEN" region for LLM calls
+                var llmStopwatch = Stopwatch.StartNew();
+                var response = await godChat.ChatWithoutHistoryAsync(
+                    userGuid, 
+                    systemPrompt, 
+                    prompt, 
+                    chatId, 
+                    settings, 
+                    true, 
+                    "LUMEN");
+                llmStopwatch.Stop();
+                _logger.LogInformation(
+                    $"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
 
-            if (response == null || response.Count() == 0)
-            {
-                _logger.LogWarning(
-                    "[LumenPredictionGAgent][GeneratePredictionAsync] No response from AI for user {UserId}",
-                    userInfo.UserId);
-                return new GetTodayPredictionResult
+                if (response == null || response.Count() == 0)
                 {
-                    Success = false,
-                    Message = "AI service returned no response"
-                };
-            }
+                    _logger.LogWarning(
+                        "[LumenPredictionGAgent][GeneratePredictionAsync] No response from AI for user {UserId}",
+                        userInfo.UserId);
+                    return new GetTodayPredictionResult
+                    {
+                        Success = false,
+                        Message = "AI service returned no response"
+                    };
+                }
 
-            var aiResponse = response[0].Content;
-            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Response: {aiResponse.Length} chars");
+                var aiResponse = response[0].Content;
+                _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Response: {aiResponse.Length} chars");
 
-            // Unified flat results structure (all types use same format now)
-            Dictionary<string, string>? parsedResults = null;
-            Dictionary<string, Dictionary<string, string>>? multilingualResults = null;
-
-            // Parse AI response based on type (returns flattened structure)
-            var parseStopwatch = Stopwatch.StartNew();
-            (parsedResults, multilingualResults) = type switch
-            {
-                PredictionType.Lifetime => ParseLifetimeResponse(aiResponse),
-                PredictionType.Yearly => ParseLifetimeResponse(aiResponse), // Yearly uses same parser
-                PredictionType.Daily => ParseDailyResponse(aiResponse),
-                _ => throw new ArgumentException($"Unsupported prediction type: {type}")
-            };
-            
-            if (parsedResults == null)
-            {
-                _logger.LogError("[LumenPredictionGAgent][GeneratePredictionAsync] Failed to parse {Type} response",
-                    type);
-                return new GetTodayPredictionResult
+                // Parse AI response based on type (returns flattened structure)
+                var parseStopwatch = Stopwatch.StartNew();
+                (parsedResults, multilingualResults) = type switch
                 {
-                    Success = false,
-                    Message = "Failed to parse AI response"
+                    PredictionType.Yearly => ParseLifetimeResponse(aiResponse), // Yearly uses same parser
+                    PredictionType.Daily => ParseDailyResponse(aiResponse),
+                    _ => throw new ArgumentException($"Unsupported prediction type: {type}")
                 };
+                parseStopwatch.Stop();
+                
+                if (parsedResults == null)
+                {
+                    _logger.LogError("[LumenPredictionGAgent][GeneratePredictionAsync] Failed to parse {Type} response",
+                        type);
+                    return new GetTodayPredictionResult
+                    {
+                        Success = false,
+                        Message = "Failed to parse AI response"
+                    };
+                }
             }
             
             // Extract and save inferred LatLong if provided by LLM (for Lifetime predictions only)
@@ -5969,5 +6021,549 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
     }
     
+    #endregion
+    
+    #region Lifetime Batched Generation
+    
+    /// <summary>
+    /// Generate Lifetime prediction using parallel batched LLM calls (reduces refusal rate)
+    /// </summary>
+    private async Task<(Dictionary<string, string>? Results, Dictionary<string, Dictionary<string, string>>? MultilingualResults)> 
+        GenerateLifetimeBatchedAsync(
+            LumenUserDto userInfo, 
+            DateOnly predictionDate,
+            string targetLanguage,
+            string? moonSign,
+            string? risingSign,
+            LifetimeBatchContext context)
+    {
+        var totalStopwatch = Stopwatch.StartNew();
+        _logger.LogInformation(
+            "[LumenPredictionGAgent][GenerateLifetimeBatched] Starting parallel batch generation for user {UserId}, Language: {Language}",
+            userInfo.UserId, targetLanguage);
+
+        try
+        {
+            // Create batch tasks for parallel execution
+            var batchTasks = new Dictionary<LifetimeBatchType, Task<Dictionary<string, string>?>>
+            {
+                [LifetimeBatchType.WesternAstrology] = GenerateLifetimeBatchAsync(
+                    userInfo, predictionDate, targetLanguage, moonSign, risingSign, 
+                    LifetimeBatchType.WesternAstrology, context),
+                    
+                [LifetimeBatchType.ChineseAstrology] = GenerateLifetimeBatchAsync(
+                    userInfo, predictionDate, targetLanguage, moonSign, risingSign,
+                    LifetimeBatchType.ChineseAstrology, context),
+                    
+                [LifetimeBatchType.LifeTraits] = GenerateLifetimeBatchAsync(
+                    userInfo, predictionDate, targetLanguage, moonSign, risingSign,
+                    LifetimeBatchType.LifeTraits, context),
+                    
+                [LifetimeBatchType.TimelinePlot] = GenerateLifetimeBatchAsync(
+                    userInfo, predictionDate, targetLanguage, moonSign, risingSign,
+                    LifetimeBatchType.TimelinePlot, context)
+            };
+
+            // Wait for all batches to complete
+            await Task.WhenAll(batchTasks.Values);
+            
+            totalStopwatch.Stop();
+            _logger.LogInformation(
+                "[PERF][Lumen][Batched] {UserId} All_Batches: {ElapsedMs}ms",
+                userInfo.UserId, totalStopwatch.ElapsedMilliseconds);
+
+            // Merge results from all batches
+            var mergedResults = new Dictionary<string, string>();
+            var successCount = 0;
+            var failedBatches = new List<LifetimeBatchType>();
+
+            foreach (var (batchType, task) in batchTasks)
+            {
+                var batchResult = await task;
+                if (batchResult != null && batchResult.Count > 0)
+                {
+                    foreach (var (key, value) in batchResult)
+                    {
+                        mergedResults[key] = value;
+                    }
+                    successCount++;
+                    _logger.LogDebug(
+                        "[LumenPredictionGAgent][GenerateLifetimeBatched] Batch {BatchType} returned {Count} fields",
+                        batchType, batchResult.Count);
+                }
+                else
+                {
+                    failedBatches.Add(batchType);
+                    _logger.LogWarning(
+                        "[LumenPredictionGAgent][GenerateLifetimeBatched] Batch {BatchType} failed or returned empty",
+                        batchType);
+                }
+            }
+
+            // Check if enough batches succeeded (at least 3 of 4)
+            if (successCount < 3)
+            {
+                _logger.LogError(
+                    "[LumenPredictionGAgent][GenerateLifetimeBatched] Too many batches failed ({FailedCount}/4): {FailedBatches}",
+                    failedBatches.Count, string.Join(", ", failedBatches));
+                return (null, null);
+            }
+
+            _logger.LogInformation(
+                "[LumenPredictionGAgent][GenerateLifetimeBatched] Successfully merged {FieldCount} fields from {SuccessCount}/4 batches",
+                mergedResults.Count, successCount);
+
+            // Build multilingual results
+            var multilingualResults = new Dictionary<string, Dictionary<string, string>>
+            {
+                [targetLanguage] = mergedResults
+            };
+
+            return (mergedResults, multilingualResults);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[LumenPredictionGAgent][GenerateLifetimeBatched] Error during batch generation for user {UserId}",
+                userInfo.UserId);
+            return (null, null);
+        }
+    }
+
+    /// <summary>
+    /// Generate a single batch of Lifetime prediction fields
+    /// </summary>
+    private async Task<Dictionary<string, string>?> GenerateLifetimeBatchAsync(
+        LumenUserDto userInfo,
+        DateOnly predictionDate,
+        string targetLanguage,
+        string? moonSign,
+        string? risingSign,
+        LifetimeBatchType batchType,
+        LifetimeBatchContext context)
+    {
+        var batchStopwatch = Stopwatch.StartNew();
+        var batchName = batchType.ToString();
+        
+        try
+        {
+            // Build batch-specific prompt
+            var prompt = BuildLifetimeBatchPrompt(userInfo, predictionDate, targetLanguage, moonSign, risingSign, batchType, context);
+            var promptTokens = TokenHelper.EstimateTokenCount(prompt);
+            
+            _logger.LogDebug(
+                "[LumenPredictionGAgent][GenerateLifetimeBatch] {BatchType} prompt: {Length} chars, ~{Tokens} tokens",
+                batchType, prompt.Length, promptTokens);
+
+            // Use unique grain key for each batch to enable true parallelism
+            var batchGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_lifetime_batch_{(int)batchType}");
+            var godChat = _clusterClient.GetGrain<IGodChat>(batchGrainKey);
+            var chatId = Guid.NewGuid().ToString();
+
+            var settings = new ExecutionPromptSettings
+            {
+                Temperature = "0.7"
+            };
+
+            // Build system prompt for this batch
+            var systemPrompt = BuildLifetimeBatchSystemPrompt(targetLanguage, batchType);
+
+            // Make LLM call
+            var llmStopwatch = Stopwatch.StartNew();
+            var response = await godChat.ChatWithoutHistoryAsync(
+                CommonHelper.StringToGuid(userInfo.UserId),
+                systemPrompt,
+                prompt,
+                chatId,
+                settings,
+                true,
+                "LUMEN");
+            llmStopwatch.Stop();
+
+            if (response == null || !response.Any())
+            {
+                _logger.LogWarning(
+                    "[LumenPredictionGAgent][GenerateLifetimeBatch] {BatchType} - No response from LLM",
+                    batchType);
+                return null;
+            }
+
+            var aiResponse = response[0].Content;
+            _logger.LogInformation(
+                "[PERF][Lumen][Batch] {UserId} {BatchType}: {ElapsedMs}ms, {ResponseLength} chars",
+                userInfo.UserId, batchType, llmStopwatch.ElapsedMilliseconds, aiResponse.Length);
+
+            // Parse TSV response
+            var parsedResults = ParseTsvResponse(aiResponse);
+            
+            if (parsedResults == null || parsedResults.Count == 0)
+            {
+                _logger.LogWarning(
+                    "[LumenPredictionGAgent][GenerateLifetimeBatch] {BatchType} - Failed to parse response",
+                    batchType);
+                return null;
+            }
+
+            batchStopwatch.Stop();
+            _logger.LogDebug(
+                "[LumenPredictionGAgent][GenerateLifetimeBatch] {BatchType} completed: {FieldCount} fields in {ElapsedMs}ms",
+                batchType, parsedResults.Count, batchStopwatch.ElapsedMilliseconds);
+
+            return parsedResults;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[LumenPredictionGAgent][GenerateLifetimeBatch] {BatchType} failed for user {UserId}",
+                batchType, userInfo.UserId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Build system prompt for a Lifetime batch
+    /// </summary>
+    private string BuildLifetimeBatchSystemPrompt(string targetLanguage, LifetimeBatchType batchType)
+    {
+        var languageMap = new Dictionary<string, string>
+        {
+            { "en", "English" },
+            { "zh-tw", "繁體中文" },
+            { "zh", "简体中文" },
+            { "es", "Español" }
+        };
+        var languageName = languageMap.GetValueOrDefault(targetLanguage, "English");
+
+        var batchFocus = batchType switch
+        {
+            LifetimeBatchType.WesternAstrology => "Western Astrology archetypes, zodiac insights, and combined essence",
+            LifetimeBatchType.ChineseAstrology => "Chinese Astrology, Four Pillars (BaZi), and zodiac cycles",
+            LifetimeBatchType.LifeTraits => "Personal strengths, challenges, and destiny paths",
+            LifetimeBatchType.TimelinePlot => "Life timeline, 10-year luck cycles, and narrative plot",
+            _ => "astrological content"
+        };
+
+        return $@"You are a creative astrology guide creating {batchFocus} content.
+
+===== LANGUAGE REQUIREMENT (CRITICAL) =====
+Target Language: {languageName}
+
+RULES:
+1. Write ALL field values in {languageName} ONLY
+2. Field names remain in English (lowercase with underscores)
+3. Do NOT mix languages in field values
+4. If {languageName} is not English, translate ALL descriptive text
+============================================
+
+CONTENT STYLE:
+- Be SPECIFIC and DESCRIPTIVE - avoid vague, mystical language
+- Provide ACTIONABLE insights users can apply
+- Create PERSONALIZED content that addresses the user directly
+- Write naturally with quality over strict length requirements
+- Focus on empowerment, awareness, and personal growth
+
+FORMAT:
+- Return raw TSV (Tab-Separated Values)
+- Use ACTUAL TAB CHARACTER between field name and value
+- NO JSON, NO markdown, NO extra text
+- Start immediately with the first field";
+    }
+
+    /// <summary>
+    /// Build prompt for a specific Lifetime batch
+    /// </summary>
+    private string BuildLifetimeBatchPrompt(
+        LumenUserDto userInfo,
+        DateOnly predictionDate,
+        string targetLanguage,
+        string? moonSign,
+        string? risingSign,
+        LifetimeBatchType batchType,
+        LifetimeBatchContext ctx)
+    {
+        return batchType switch
+        {
+            LifetimeBatchType.WesternAstrology => BuildWesternAstrologyBatchPrompt(userInfo, targetLanguage, moonSign, risingSign, ctx),
+            LifetimeBatchType.ChineseAstrology => BuildChineseAstrologyBatchPrompt(userInfo, targetLanguage, ctx),
+            LifetimeBatchType.LifeTraits => BuildLifeTraitsBatchPrompt(userInfo, targetLanguage, ctx),
+            LifetimeBatchType.TimelinePlot => BuildTimelinePlotBatchPrompt(userInfo, targetLanguage, ctx),
+            _ => throw new ArgumentException($"Unknown batch type: {batchType}")
+        };
+    }
+
+    /// <summary>
+    /// Batch 1: Western Astrology - Sun/Moon/Rising archetypes, combined essence, zodiac whisper
+    /// </summary>
+    private string BuildWesternAstrologyBatchPrompt(
+        LumenUserDto userInfo,
+        string targetLanguage,
+        string? moonSign,
+        string? risingSign,
+        LifetimeBatchContext ctx)
+    {
+        var sunSign = ctx.SunSign;
+        moonSign ??= sunSign;
+        risingSign ??= sunSign;
+        
+        var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
+        var moonSignTranslated = TranslateSunSign(moonSign, targetLanguage);
+        var risingSignTranslated = TranslateSunSign(risingSign, targetLanguage);
+
+        var desc_combined = targetLanguage switch
+        {
+            "zh" => "描述你的太阳、月亮、上升星座如何共同塑造你独特的人格。深入分析这三重能量如何在你的思维、情感和外在表现中相互作用。(60-80字)",
+            "zh-tw" => "描述你的太陽、月亮、上升星座如何共同塑造你獨特的人格。深入分析這三重能量如何在你的思維、情感和外在表現中相互作用。(60-80字)",
+            "es" => "Describe cómo tu Sol, Luna y Ascendente trabajan juntos para crear tu personalidad única. Analiza cómo estas tres energías interactúan en tu pensamiento, emociones y expresión externa. (60-80 palabras)",
+            _ => "Describe how your Sun, Moon, and Rising signs work together to create your unique personality. Analyze how these three energies interact in your thinking, emotions, and external expression. (60-80 words)"
+        };
+
+        var desc_whisper = targetLanguage switch
+        {
+            "zh" => $"以'{ctx.BirthYearAnimalTranslated}'开头，给出针对用户的具体建议或洞见。要具体、有针对性，避免模糊的神秘语言。(40-60字)",
+            "zh-tw" => $"以'{ctx.BirthYearAnimalTranslated}'開頭，給出針對用戶的具體建議或洞見。要具體、有針對性，避免模糊的神秘語言。(40-60字)",
+            "es" => $"Comienza con '{ctx.BirthYearAnimalTranslated}' y ofrece consejos específicos o perspectivas para el usuario. Sé específico y directo, evita lenguaje místico vago. (40-60 palabras)",
+            _ => $"Start with '{ctx.BirthYearAnimalTranslated}' and offer specific advice or insights for the user. Be specific and targeted, avoid vague mystical language. (40-60 words)"
+        };
+
+        return $@"Generate Western Astrology content for lifetime prediction.
+
+USER CONTEXT:
+- Sun Sign: {sunSignTranslated}
+- Moon Sign: {moonSignTranslated}  
+- Rising Sign: {risingSignTranslated}
+- Chinese Zodiac: {ctx.BirthYearAnimalTranslated} ({ctx.BirthYearElement})
+
+REQUIRED FIELDS (TSV format - field name TAB value):
+
+sun_tag	[2-4 word tagline capturing the essence of {sunSignTranslated}]
+sun_arch_name	[Archetype name for {sunSignTranslated}, e.g. ""The Pioneer"", ""The Nurturer""]
+sun_desc	[35-50 words describing how {sunSignTranslated} shapes thinking patterns, decision-making, and core identity]
+moon_arch_name	[Archetype name for {moonSignTranslated}]
+moon_desc	[35-50 words describing how {moonSignTranslated} influences emotional responses, inner needs, and intuition]
+rising_arch_name	[Archetype name for {risingSignTranslated}]
+rising_desc	[35-50 words describing how {risingSignTranslated} affects first impressions, social approach, and outer persona]
+combined_essence	{desc_combined}
+whisper	{desc_whisper}
+
+Start output now:";
+    }
+
+    /// <summary>
+    /// Batch 2: Chinese Astrology - Four Pillars, Chinese traits, zodiac cycle
+    /// </summary>
+    private string BuildChineseAstrologyBatchPrompt(
+        LumenUserDto userInfo,
+        string targetLanguage,
+        LifetimeBatchContext ctx)
+    {
+        var cycleIntro = targetLanguage switch
+        {
+            "zh" => $"以\"你的生肖是{ctx.BirthYearAnimalTranslated}…\"开头，描述你的20年象征周期如何影响人生阶段",
+            "zh-tw" => $"以\"你的生肖是{ctx.BirthYearAnimalTranslated}…\"開頭，描述你的20年象徵週期如何影響人生階段",
+            "es" => $"Comienza con \"Tu zodiaco chino es {ctx.BirthYearAnimalTranslated}...\" y describe cómo tu ciclo simbólico de 20 años afecta las etapas de vida",
+            _ => $"Start with \"Your Chinese Zodiac is {ctx.BirthYearAnimalTranslated}...\" and describe how your 20-year symbolic cycle affects life stages"
+        };
+
+        return $@"Generate Chinese Astrology content for lifetime prediction.
+
+USER CONTEXT:
+- Birth Year: {ctx.BirthYear} ({ctx.BirthYearZodiac})
+- Chinese Zodiac Animal: {ctx.BirthYearAnimalTranslated}
+- Element: {ctx.BirthYearElement}
+- Birth Year Stems: {ctx.BirthYearStems}
+
+REQUIRED FIELDS (TSV format):
+
+pillars_id	[Personalized BaZi identity statement, 20-30 words]
+pillars_detail	[Detailed explanation of the Four Pillars influence, 40-60 words]
+cn_trait1	[Core trait from Chinese zodiac, 10-15 words]
+cn_trait2	[Second key trait, 10-15 words]
+cn_trait3	[Third key trait, 10-15 words]
+cn_trait4	[Fourth key trait, 10-15 words]
+cn_essence	[Essential quality related to {ctx.BirthYearElement} element, 25-35 words]
+cycle_year_range	[20-year range, format: YYYY-YYYY]
+cycle_name_zh	[Simplified Chinese name for cycle theme]
+cycle_name	[Cycle theme name in target language]
+cycle_intro	{cycleIntro} (40-60 words)
+cycle_pt1	[First key point of this zodiac cycle, 15-20 words]
+cycle_pt2	[Second key point, 15-20 words]
+cycle_pt3	[Third key point, 15-20 words]
+cycle_pt4	[Fourth key point, 15-20 words]
+
+Start output now:";
+    }
+
+    /// <summary>
+    /// Batch 3: Life Traits - Strengths, challenges, destiny paths
+    /// </summary>
+    private string BuildLifeTraitsBatchPrompt(
+        LumenUserDto userInfo,
+        string targetLanguage,
+        LifetimeBatchContext ctx)
+    {
+        return $@"Generate Life Traits content for lifetime prediction.
+
+USER CONTEXT:
+- Sun Sign: {ctx.SunSignTranslated}
+- Chinese Zodiac: {ctx.BirthYearAnimalTranslated} ({ctx.BirthYearElement})
+- Current Age: {ctx.CurrentAge}
+
+REQUIRED FIELDS (TSV format):
+
+str_intro	[Introduction to user's natural strengths based on astrological profile, 25-35 words]
+str1_title	[First strength title, 3-5 words]
+str1_desc	[Detailed description with specific examples of how this strength manifests, 35-50 words]
+str2_title	[Second strength title, 3-5 words]
+str2_desc	[Detailed description with specific examples, 35-50 words]
+str3_title	[Third strength title, 3-5 words]
+str3_desc	[Detailed description with specific examples, 35-50 words]
+chal_intro	[Introduction to growth areas and challenges, 25-35 words]
+chal1_title	[First challenge title, 3-5 words]
+chal1_desc	[Description with actionable advice on how to address this challenge, 35-50 words]
+chal2_title	[Second challenge title, 3-5 words]
+chal2_desc	[Description with actionable advice, 35-50 words]
+chal3_title	[Third challenge title, 3-5 words]
+chal3_desc	[Description with actionable advice, 35-50 words]
+destiny_intro	[Introduction to destiny paths and life purpose, 25-35 words]
+path1_title	[First destiny path title, 3-5 words]
+path1_desc	[Description of this path with guidance on how to pursue it, 35-50 words]
+path2_title	[Second destiny path title, 3-5 words]
+path2_desc	[Description with guidance, 35-50 words]
+path3_title	[Third destiny path title, 3-5 words]
+path3_desc	[Description with guidance, 35-50 words]
+
+Start output now:";
+    }
+
+    /// <summary>
+    /// Batch 4: Timeline & Plot - 10-year luck cycles, life plot narrative, mantras
+    /// Enhanced with more descriptive and actionable content
+    /// </summary>
+    private string BuildTimelinePlotBatchPrompt(
+        LumenUserDto userInfo,
+        string targetLanguage,
+        LifetimeBatchContext ctx)
+    {
+        var tenYearDesc = targetLanguage switch
+        {
+            "zh" => "每个周期描述要具体：说明这个时期的主要挑战、机遇和用户可以采取的具体行动。避免笼统的描述。",
+            "zh-tw" => "每個週期描述要具體：說明這個時期的主要挑戰、機遇和用戶可以採取的具體行動。避免籠統的描述。",
+            "es" => "Cada descripción de ciclo debe ser específica: explica los principales desafíos, oportunidades y acciones concretas que el usuario puede tomar. Evita descripciones genéricas.",
+            _ => "Each cycle description should be specific: explain the main challenges, opportunities, and concrete actions the user can take. Avoid generic descriptions."
+        };
+
+        var plotTitleDesc = targetLanguage switch
+        {
+            "zh" => "标题必须包含\"你的\"来直接称呼用户，例如\"你的英雄之旅\"、\"你的蜕变史诗\"",
+            "zh-tw" => "標題必須包含\"你的\"來直接稱呼用戶，例如\"你的英雄之旅\"、\"你的蛻變史詩\"",
+            "es" => "El título debe incluir \"Tu\" para dirigirse directamente al usuario, por ejemplo \"Tu Viaje Heroico\", \"Tu Épica de Transformación\"",
+            _ => "Title MUST include \"Your\" to address the user directly, e.g. \"Your Hero's Journey\", \"Your Epic of Transformation\""
+        };
+
+        return $@"Generate Timeline & Life Plot content for lifetime prediction.
+
+USER CONTEXT:
+- Birth Year: {ctx.BirthYear}
+- Current Age: {ctx.CurrentAge}
+- Sun Sign: {ctx.SunSignTranslated}
+- Chinese Zodiac: {ctx.BirthYearAnimalTranslated}
+- Past Cycle: {ctx.PastCycleAgeRange}
+- Current Cycle: {ctx.CurrentCycleAgeRange}  
+- Future Cycle: {ctx.FutureCycleAgeRange}
+
+IMPORTANT - 10-YEAR LUCK CYCLES:
+{tenYearDesc}
+
+IMPORTANT - LIFE PLOT TITLE:
+{plotTitleDesc}
+
+REQUIRED FIELDS (TSV format):
+
+ten_intro	[Introduction to the 10-year luck cycle concept and its significance for the user, 30-40 words]
+past_summary	[Theme/title for past cycle ({ctx.PastCycleAgeRange}), 5-8 words]
+past_detail	[DETAILED description of past cycle: what challenges were faced, lessons learned, and how they shaped the user. Include specific advice on how to apply these lessons. 60-80 words]
+curr_summary	[Theme/title for current cycle ({ctx.CurrentCycleAgeRange}), 5-8 words]
+curr_detail	[DETAILED description of current cycle: main opportunities, challenges to watch for, and 2-3 SPECIFIC ACTIONABLE STEPS the user should take during this period. 60-80 words]
+future_summary	[Theme/title for future cycle ({ctx.FutureCycleAgeRange}), 5-8 words]
+future_detail	[DETAILED description of future cycle: what to expect, how to prepare, and specific actions to take NOW to maximize this future period. 60-80 words]
+plot_title	[{plotTitleDesc}, 4-6 words total]
+plot_chapter	[The current chapter name in user's life story, describing where they are NOW, 4-6 words]
+plot_pt1	[First key plot point: a defining characteristic or theme in user's life narrative, 15-25 words]
+plot_pt2	[Second key plot point with specific details, 15-25 words]
+plot_pt3	[Third key plot point with specific details, 15-25 words]
+plot_pt4	[Fourth key plot point with specific details, 15-25 words]
+act1_title	[First life act title (e.g. ""The Awakening""), 2-4 words]
+act1_desc	[Description of first life act with directions for the user, 30-45 words]
+act2_title	[Second life act title, 2-4 words]
+act2_desc	[Description with directions for the user, 30-45 words]
+act3_title	[Third life act title, 2-4 words]
+act3_desc	[Description with directions for the user, 30-45 words]
+act4_title	[Fourth life act title, 2-4 words]
+act4_desc	[Description with directions for the user, 30-45 words]
+mantra_title	[Personal mantra title, 2-4 words]
+mantra_pt1	[First mantra line - an affirmation for the user, 10-15 words]
+mantra_pt2	[Second mantra line, 10-15 words]
+mantra_pt3	[Third mantra line, 10-15 words]
+
+Start output now:";
+    }
+
+    /// <summary>
+    /// Context data for Lifetime batch generation (pre-calculated values shared across batches)
+    /// </summary>
+    public class LifetimeBatchContext
+    {
+        public string SunSign { get; set; } = string.Empty;
+        public string SunSignTranslated { get; set; } = string.Empty;
+        public int BirthYear { get; set; }
+        public string BirthYearZodiac { get; set; } = string.Empty;
+        public string BirthYearAnimal { get; set; } = string.Empty;
+        public string BirthYearAnimalTranslated { get; set; } = string.Empty;
+        public string BirthYearElement { get; set; } = string.Empty;
+        public string BirthYearStems { get; set; } = string.Empty;
+        public int CurrentAge { get; set; }
+        public string PastCycleAgeRange { get; set; } = string.Empty;
+        public string CurrentCycleAgeRange { get; set; } = string.Empty;
+        public string FutureCycleAgeRange { get; set; } = string.Empty;
+        public string CurrentYearStemsFormatted { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Create batch context with pre-calculated values
+    /// </summary>
+    private LifetimeBatchContext CreateLifetimeBatchContext(
+        LumenUserDto userInfo, 
+        DateOnly predictionDate,
+        string targetLanguage)
+    {
+        var birthYear = userInfo.BirthDate.Year;
+        var currentYear = predictionDate.Year;
+        var sunSign = LumenCalculator.CalculateZodiacSign(userInfo.BirthDate);
+        var birthYearZodiac = LumenCalculator.GetChineseZodiacWithElement(birthYear);
+        var birthYearAnimal = LumenCalculator.CalculateChineseZodiac(birthYear);
+        var birthYearElement = LumenCalculator.CalculateChineseElement(birthYear);
+        
+        var pastCycle = LumenCalculator.CalculateTenYearCycle(birthYear, -1);
+        var currentCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 0);
+        var futureCycle = LumenCalculator.CalculateTenYearCycle(birthYear, 1);
+
+        return new LifetimeBatchContext
+        {
+            SunSign = sunSign,
+            SunSignTranslated = TranslateSunSign(sunSign, targetLanguage),
+            BirthYear = birthYear,
+            BirthYearZodiac = birthYearZodiac,
+            BirthYearAnimal = birthYearAnimal,
+            BirthYearAnimalTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage),
+            BirthYearElement = birthYearElement,
+            BirthYearStems = LumenCalculator.CalculateStemsAndBranches(birthYear),
+            CurrentAge = LumenCalculator.CalculateAge(userInfo.BirthDate),
+            PastCycleAgeRange = pastCycle.AgeRange,
+            CurrentCycleAgeRange = currentCycle.AgeRange,
+            FutureCycleAgeRange = futureCycle.AgeRange,
+            CurrentYearStemsFormatted = LumenCalculator.CalculateStemsAndBranches(currentYear)
+        };
+    }
+
     #endregion
 }
