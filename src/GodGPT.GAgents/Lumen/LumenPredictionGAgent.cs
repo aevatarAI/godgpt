@@ -4742,6 +4742,31 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return result;
         }
         
+        // Fallback: Try contains-based matching for composite stone names (e.g., "Blue Lace Agate" → Agate)
+        // This handles cases where LLM returns descriptive stone names like:
+        // - "Blue Lace Agate" → Agate
+        // - "Moss Agate" → Agate
+        // - "Green Aventurine" → Aventurine
+        // - "Black Onyx" → Onyx
+        // Sort enum names by length (descending) to match longest/most specific names first
+        // This prevents "SmokyQuartz" being matched as "Quartz" if both exist
+        var enumNames = Enum.GetNames<CrystalStoneEnum>()
+            .Where(name => name != "Unknown")
+            .OrderByDescending(name => name.Length)
+            .ToArray();
+            
+        foreach (var enumName in enumNames)
+        {
+            // Check if normalized stone name contains the enum name (case-insensitive)
+            if (normalized.Contains(enumName, StringComparison.OrdinalIgnoreCase))
+            {
+                var containsResult = Enum.Parse<CrystalStoneEnum>(enumName, true);
+                _logger.LogInformation(
+                    $"[LumenPredictionGAgent][ParseCrystalStone] Matched '{stoneName}' to '{enumName}' via contains");
+                return containsResult;
+            }
+        }
+        
         _logger.LogWarning($"[LumenPredictionGAgent][ParseCrystalStone] Unknown crystal stone: {stoneName}");
         return CrystalStoneEnum.Unknown;
     }
