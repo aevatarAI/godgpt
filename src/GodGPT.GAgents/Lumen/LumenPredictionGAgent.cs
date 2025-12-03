@@ -1407,74 +1407,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 // Inject Four Pillars data
                 InjectFourPillarsData(parsedResults, fourPillars, targetLanguage);
                 
-                // Inject into all multilingual versions
-                if (multilingualResults != null)
-                {
-                    foreach (var lang in multilingualResults.Keys)
-                    {
-                        // NOTE: Use birth year stems (年柱) to match BaZi year pillar
-                        multilingualResults[lang]["chineseAstrology_currentYearStem"] =
-                            birthYearStemsComponents.stemChinese;
-                        multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
-                            birthYearStemsComponents.stemPinyin;
-                        multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
-                            birthYearStemsComponents.branchChinese;
-                        multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
-                            birthYearStemsComponents.branchPinyin;
-                        multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
-                        multilingualResults[lang]["sunSign_enum"] =
-                            ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
-                        multilingualResults[lang]["westernOverview_sunSign"] = TranslateSunSign(sunSign, lang);
-                        multilingualResults[lang]["westernOverview_moonSign"] = TranslateSunSign(moonSign, lang);
-                        multilingualResults[lang]["westernOverview_risingSign"] = TranslateSunSign(risingSign, lang);
-                        multilingualResults[lang]["chineseZodiac_animal"] =
-                            TranslateChineseZodiacAnimal(birthYearZodiac, lang);
-                        multilingualResults[lang]["chineseZodiac_enum"] =
-                            ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
-                        multilingualResults[lang]["chineseZodiac_title"] = TranslateZodiacTitle(birthYearAnimal, lang);
-                        multilingualResults[lang]["pastCycle_ageRange"] =
-                            TranslateCycleAgeRange(pastCycle.AgeRange, lang);
-                        multilingualResults[lang]["pastCycle_period"] = TranslateCyclePeriod(pastCycle.Period, lang);
-                        multilingualResults[lang]["currentCycle_ageRange"] =
-                            TranslateCycleAgeRange(currentCycle.AgeRange, lang);
-                        multilingualResults[lang]["currentCycle_period"] =
-                            TranslateCyclePeriod(currentCycle.Period, lang);
-                        multilingualResults[lang]["futureCycle_ageRange"] =
-                            TranslateCycleAgeRange(futureCycle.AgeRange, lang);
-                        multilingualResults[lang]["futureCycle_period"] =
-                            TranslateCyclePeriod(futureCycle.Period, lang);
-                        
-                        // Construct zodiacCycle_title for each language
-                        if (multilingualResults[lang].TryGetValue("zodiacCycle_yearRange", out var langYearRange) && 
-                            !string.IsNullOrWhiteSpace(langYearRange))
-                        {
-                            var langCycleTitlePrefix = lang switch
-                            {
-                                "zh" => "生肖周期影响",
-                                "zh-tw" => "生肖週期影響",
-                                "es" => "Influencia del Ciclo Zodiacal",
-                                _ => "Zodiac Cycle Influence"
-                            };
-                            multilingualResults[lang]["zodiacCycle_title"] = $"{langCycleTitlePrefix} ({langYearRange})";
-                        }
-                        
-                        // Fallback: if zodiacCycle_cycleName is missing, use zodiacCycle_cycleNameChinese
-                        if ((!multilingualResults[lang].ContainsKey("zodiacCycle_cycleName") || 
-                             string.IsNullOrWhiteSpace(multilingualResults[lang]["zodiacCycle_cycleName"])) &&
-                            multilingualResults[lang].TryGetValue("zodiacCycle_cycleNameChinese", out var langFallbackCycleName) && 
-                            !string.IsNullOrWhiteSpace(langFallbackCycleName))
-                        {
-                            multilingualResults[lang]["zodiacCycle_cycleName"] = langFallbackCycleName;
-                            _logger.LogWarning(
-                                "[Lumen][Lifetime][Multilingual] zodiacCycle_cycleName missing for language {Language}, using Chinese fallback",
-                                lang);
-                        }
-                        
-                        // Inject Four Pillars data with language-specific formatting
-                        InjectFourPillarsData(multilingualResults[lang], fourPillars, lang);
-                    }
-                }
-                
                 _logger.LogInformation(
                     $"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Lifetime prediction");
             }
@@ -1500,33 +1432,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     TranslateTaishuiRelationship(yearlyTaishui, targetLanguage);
                 parsedResults["zodiacInfluence"] =
                     BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, targetLanguage);
-                
-                // Inject into all multilingual versions
-                if (multilingualResults != null)
-                {
-                    foreach (var lang in multilingualResults.Keys)
-                    {
-                        multilingualResults[lang]["sunSign_name"] = TranslateSunSign(sunSign, lang);
-                        multilingualResults[lang]["sunSign_enum"] =
-                            ((int)LumenCalculator.ParseZodiacSignEnum(sunSign)).ToString();
-                        multilingualResults[lang]["chineseZodiac_animal"] =
-                            TranslateChineseZodiacAnimal(birthYearZodiac, lang);
-                        multilingualResults[lang]["chineseZodiac_enum"] =
-                            ((int)LumenCalculator.ParseChineseZodiacEnum(birthYearAnimal)).ToString();
-                        multilingualResults[lang]["chineseAstrology_currentYearStem"] =
-                            birthYearStemsComponents.stemChinese;
-                        multilingualResults[lang]["chineseAstrology_currentYearStemPinyin"] =
-                            birthYearStemsComponents.stemPinyin;
-                        multilingualResults[lang]["chineseAstrology_currentYearBranch"] =
-                            birthYearStemsComponents.branchChinese;
-                        multilingualResults[lang]["chineseAstrology_currentYearBranchPinyin"] =
-                            birthYearStemsComponents.branchPinyin;
-                        multilingualResults[lang]["chineseAstrology_taishuiRelationship"] =
-                            TranslateTaishuiRelationship(yearlyTaishui, lang);
-                        multilingualResults[lang]["zodiacInfluence"] =
-                            BuildZodiacInfluence(birthYearZodiac, yearlyYearZodiac, yearlyTaishui, lang);
-                    }
-                }
 
                 _logger.LogInformation(
                     $"[Lumen] {userInfo.UserId} Injected backend-calculated fields into Yearly prediction");
@@ -1541,15 +1446,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     var tarotCardEnum = ParseTarotCard(tarotCardName);
                     parsedResults["todaysReading_tarotCard_enum"] = ((int)tarotCardEnum).ToString();
-                    
-                    // Inject into all multilingual versions
-                    if (multilingualResults != null)
-                    {
-                        foreach (var lang in multilingualResults.Keys)
-                        {
-                            multilingualResults[lang]["todaysReading_tarotCard_enum"] = ((int)tarotCardEnum).ToString();
-                        }
-                    }
                 }
                 
                 // Parse and inject tarot orientation enum
@@ -1557,16 +1453,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     var orientationEnum = ParseTarotOrientation(orientation);
                     parsedResults["todaysReading_tarotCard_orientation_enum"] = ((int)orientationEnum).ToString();
-                    
-                    // Inject into all multilingual versions
-                    if (multilingualResults != null)
-                    {
-                        foreach (var lang in multilingualResults.Keys)
-                        {
-                            multilingualResults[lang]["todaysReading_tarotCard_orientation_enum"] =
-                                ((int)orientationEnum).ToString();
-                        }
-                    }
                 }
                 
                 // Parse and inject lucky stone enum
@@ -1574,15 +1460,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     var stoneEnum = ParseCrystalStone(luckyStone);
                     parsedResults["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
-                    
-                    // Inject into all multilingual versions
-                    if (multilingualResults != null)
-                    {
-                        foreach (var lang in multilingualResults.Keys)
-                        {
-                            multilingualResults[lang]["luckyAlignments_luckyStone_enum"] = ((int)stoneEnum).ToString();
-                        }
-                    }
                 }
                 
                 // Construct todaysReading_pathTitle from path_adjective (backend formats the full title)
@@ -1596,45 +1473,13 @@ Your task is to create engaging, inspirational, and reflective content that invi
                         _ => $"Your Path Today - A {pathAdjective} Path"
                     };
                     parsedResults["todaysReading_pathTitle"] = pathTitle;
-                    
-                    // Inject into all multilingual versions
-                    if (multilingualResults != null)
-                    {
-                        foreach (var lang in multilingualResults.Keys)
-                        {
-                            if (multilingualResults[lang].TryGetValue("todaysReading_pathType", out var langAdjective) && !string.IsNullOrWhiteSpace(langAdjective))
-                            {
-                                var langPathTitle = lang switch
-                                {
-                                    "zh" => $"今日之路 - {langAdjective}之路",
-                                    "zh-tw" => $"今日之路 - {langAdjective}之路",
-                                    "es" => $"Tu Camino Hoy - Un Camino {langAdjective}",
-                                    _ => $"Your Path Today - A {langAdjective} Path"
-                                };
-                                multilingualResults[lang]["todaysReading_pathTitle"] = langPathTitle;
-                            }
-                        }
-                    }
                 }
                 
                 _logger.LogInformation(
                     $"[Lumen] {userInfo.UserId} Injected enum fields and constructed path_title for Daily prediction");
                 
                 // Add Chinese translations for English-only fields (if user language is Chinese)
-                _logger.LogInformation(
-                    $"[Lumen] {userInfo.UserId} Calling AddChineseTranslations for targetLanguage: {targetLanguage}");
                 AddChineseTranslations(parsedResults, targetLanguage);
-                
-                // Also add translations to all multilingual versions
-                if (multilingualResults != null)
-                {
-                    foreach (var lang in multilingualResults.Keys)
-                    {
-                        _logger.LogInformation(
-                            $"[Lumen] {userInfo.UserId} Calling AddChineseTranslations for multilingual language: {lang}");
-                        AddChineseTranslations(multilingualResults[lang], lang);
-                    }
-                }
             }
 
             var predictionId = Guid.NewGuid();
@@ -1646,26 +1491,9 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
                 parsedResults["currentPhase"] = currentPhase.ToString();
                 
-                if (multilingualResults != null)
-                {
-                    foreach (var lang in multilingualResults.Keys)
-                    {
-                        multilingualResults[lang]["currentPhase"] = currentPhase.ToString();
-                    }
-                }
-                
                 // Construct cn_year from birthYearAnimal (backend-generated, not from LLM)
                 var cnYearTranslated = TranslateChineseZodiacAnimal(birthYearZodiac, targetLanguage);
                 parsedResults["chineseAstrology_currentYear"] = cnYearTranslated;
-                
-                if (multilingualResults != null)
-                {
-                    foreach (var lang in multilingualResults.Keys)
-                    {
-                        var langCnYear = TranslateChineseZodiacAnimal(birthYearZodiac, lang);
-                        multilingualResults[lang]["chineseAstrology_currentYear"] = langCnYear;
-                    }
-                }
                 
                 // Construct sun_arch, moon_arch, rising_arch from arch_name fields
                 if (parsedResults.TryGetValue("westernOverview_sunArchetypeName", out var sunArchName))
@@ -1673,20 +1501,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     var sunSignTranslated = TranslateSunSign(sunSign, targetLanguage);
                     parsedResults["westernOverview_sunArchetype"] =
                         BuildArchetypeString("Sun", sunSignTranslated, sunArchName, targetLanguage);
-                    
-                    if (multilingualResults != null)
-                    {
-                        foreach (var lang in multilingualResults.Keys)
-                        {
-                            if (multilingualResults[lang].TryGetValue("westernOverview_sunArchetypeName",
-                                    out var langSunArchName))
-                            {
-                                var langSunSign = TranslateSunSign(sunSign, lang);
-                                multilingualResults[lang]["westernOverview_sunArchetype"] =
-                                    BuildArchetypeString("Sun", langSunSign, langSunArchName, lang);
-                            }
-                        }
-                    }
                 }
                 
                 if (parsedResults.TryGetValue("westernOverview_moonArchetypeName", out var moonArchName))
@@ -1694,20 +1508,6 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     var moonSignTranslated = TranslateSunSign(moonSign ?? sunSign, targetLanguage);
                     parsedResults["westernOverview_moonArchetype"] =
                         BuildArchetypeString("Moon", moonSignTranslated, moonArchName, targetLanguage);
-                    
-                    if (multilingualResults != null)
-                    {
-                        foreach (var lang in multilingualResults.Keys)
-                        {
-                            if (multilingualResults[lang].TryGetValue("westernOverview_moonArchetypeName",
-                                    out var langMoonArchName))
-                            {
-                                var langMoonSign = TranslateSunSign(moonSign ?? sunSign, lang);
-                                multilingualResults[lang]["westernOverview_moonArchetype"] =
-                                    BuildArchetypeString("Moon", langMoonSign, langMoonArchName, lang);
-                            }
-                        }
-                    }
                 }
                 
                 if (parsedResults.TryGetValue("westernOverview_risingArchetypeName", out var risingArchName))
@@ -1715,58 +1515,18 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     var risingSignTranslated = TranslateSunSign(risingSign ?? sunSign, targetLanguage);
                     parsedResults["westernOverview_risingArchetype"] = BuildArchetypeString("Rising",
                         risingSignTranslated, risingArchName, targetLanguage);
-                    
-                    if (multilingualResults != null)
-                    {
-                        foreach (var lang in multilingualResults.Keys)
-                        {
-                            if (multilingualResults[lang].TryGetValue("westernOverview_risingArchetypeName",
-                                    out var langRisingArchName))
-                            {
-                                var langRisingSign = TranslateSunSign(risingSign ?? sunSign, lang);
-                                multilingualResults[lang]["westernOverview_risingArchetype"] =
-                                    BuildArchetypeString("Rising", langRisingSign, langRisingArchName, lang);
-                            }
-                        }
-                    }
                 }
                 
                 _logger.LogInformation(
                     $"[Lumen] {userInfo.UserId} Constructed cn_year and arch fields for Lifetime prediction");
             }
 
-            // Add quotes to affirmation text for all languages
-            if (multilingualResults != null)
-            {
-                foreach (var lang in multilingualResults.Keys.ToList())
-                {
-                    multilingualResults[lang] = AddQuotesToAffirmation(multilingualResults[lang], lang);
-                }
-            }
+            // Add quotes to affirmation text
+            parsedResults = AddQuotesToAffirmation(parsedResults, targetLanguage);
 
             // Add lucky number calculation for Daily predictions (backend-calculated, not from LLM)
             if (type == PredictionType.Daily)
             {
-                _logger.LogInformation($"[Lumen] {userInfo.UserId} Adding backend-calculated lucky number fields");
-                
-                // Calculate lucky number for each language
-                if (multilingualResults != null)
-                {
-                    foreach (var lang in multilingualResults.Keys.ToList())
-                    {
-                        var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
-                            userInfo.BirthDate,
-                            predictionDate,
-                            lang);
-                        
-                        multilingualResults[lang]["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
-                        multilingualResults[lang]["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
-                        multilingualResults[lang]["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
-                        multilingualResults[lang]["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
-                    }
-                }
-                
-                // Also add to parsedResults (primary language)
                 var primaryLuckyNumber = Services.LuckyNumberService.CalculateLuckyNumber(
                     userInfo.BirthDate,
                     predictionDate,
