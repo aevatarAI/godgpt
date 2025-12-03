@@ -175,9 +175,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         bool isHttpRequest = input.IsHttpRequest;
         string? region = input.region;
         List<string>? images = input.images;
+        string? context = input.Context;
         
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region}");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region} hasContext:{!string.IsNullOrEmpty(context)}");
 
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
