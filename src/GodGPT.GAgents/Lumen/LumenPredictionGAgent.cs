@@ -5564,6 +5564,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Update user activity and ensure reminder is registered
+    /// Optimized: Only update LastActiveDate once per day to reduce State writes
     /// </summary>
     private async Task UpdateActivityAndEnsureReminderAsync()
     {
@@ -5572,9 +5573,20 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return;
             
         var now = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(now);
+        var lastActiveDay = DateOnly.FromDateTime(State.LastActiveDate);
+        
         var wasInactive = (now - State.LastActiveDate).TotalDays > 3;
         
-        State.LastActiveDate = now;
+        // Optimization: Only update LastActiveDate if it's a different day
+        // This prevents unnecessary State writes when user accesses prediction multiple times same day
+        if (today > lastActiveDay)
+        {
+            State.LastActiveDate = now;
+            _logger.LogDebug(
+                "[Lumen][Activity] {UserId} Updated LastActiveDate to {Date} (previous: {PreviousDate})",
+                State.UserId, today, lastActiveDay);
+        }
         
         // If user was inactive and is now active again, register reminder
         if (wasInactive || !State.IsDailyReminderEnabled)
