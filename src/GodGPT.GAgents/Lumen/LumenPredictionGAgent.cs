@@ -1086,8 +1086,16 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 var batchContext = CreateLifetimeBatchContext(userInfo, predictionDate, targetLanguage);
                 
                 // Generate using parallel batches
-                (parsedResults, multilingualResults) = await GenerateLifetimeBatchedAsync(
+                // Note: GenerateLifetimeBatchedAsync may update moonSign/risingSign if LatLong is inferred during pre-batch
+                (parsedResults, multilingualResults, var updatedMoonSign, var updatedRisingSign) = await GenerateLifetimeBatchedAsync(
                     userInfo, predictionDate, targetLanguage, moonSign, risingSign, batchContext);
+                
+                // Use the updated signs for backend field injection
+                moonSign = updatedMoonSign ?? moonSign;
+                risingSign = updatedRisingSign ?? risingSign;
+                
+                _logger.LogInformation(
+                    $"[LumenPredictionGAgent][Lifetime] Final signs for backend injection - Moon: {moonSign}, Rising: {risingSign}");
                 
                 if (parsedResults == null)
                 {
@@ -5564,6 +5572,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     
     /// <summary>
     /// Update user activity and ensure reminder is registered
+    /// Optimized: Only update LastActiveDate once per day to reduce State writes
     /// </summary>
     private async Task UpdateActivityAndEnsureReminderAsync()
     {
@@ -5572,9 +5581,20 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return;
             
         var now = DateTime.UtcNow;
+        var today = DateOnly.FromDateTime(now);
+        var lastActiveDay = DateOnly.FromDateTime(State.LastActiveDate);
+        
         var wasInactive = (now - State.LastActiveDate).TotalDays > 3;
         
-        State.LastActiveDate = now;
+        // Optimization: Only update LastActiveDate if it's a different day
+        // This prevents unnecessary State writes when user accesses prediction multiple times same day
+        if (today > lastActiveDay)
+        {
+            State.LastActiveDate = now;
+            _logger.LogDebug(
+                "[Lumen][Activity] {UserId} Updated LastActiveDate to {Date} (previous: {PreviousDate})",
+                State.UserId, today, lastActiveDay);
+        }
         
         // If user was inactive and is now active again, register reminder
         if (wasInactive || !State.IsDailyReminderEnabled)
@@ -6201,8 +6221,9 @@ location_latlong	UNKNOWN";
     
     /// <summary>
     /// Generate Lifetime prediction using parallel batched LLM calls (reduces refusal rate)
+    /// Returns updated moonSign/risingSign if recalculated during pre-batch LatLong inference
     /// </summary>
-    private async Task<(Dictionary<string, string>? Results, Dictionary<string, Dictionary<string, string>>? MultilingualResults)> 
+    private async Task<(Dictionary<string, string>? Results, Dictionary<string, Dictionary<string, string>>? MultilingualResults, string? MoonSign, string? RisingSign)> 
         GenerateLifetimeBatchedAsync(
             LumenUserDto userInfo, 
             DateOnly predictionDate,
@@ -6357,7 +6378,7 @@ location_latlong	UNKNOWN";
                 _logger.LogError(
                     "[LumenPredictionGAgent][GenerateLifetimeBatched] Too many batches failed ({FailedCount}/4): {FailedBatches}",
                     failedBatches.Count, string.Join(", ", failedBatches));
-                return (null, null);
+                return (null, null, moonSign, risingSign);
             }
 
             _logger.LogInformation(
@@ -6370,14 +6391,14 @@ location_latlong	UNKNOWN";
                 [targetLanguage] = mergedResults
             };
 
-            return (mergedResults, multilingualResults);
+            return (mergedResults, multilingualResults, moonSign, risingSign);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
                 "[LumenPredictionGAgent][GenerateLifetimeBatched] Error during batch generation for user {UserId}",
                 userInfo.UserId);
-            return (null, null);
+            return (null, null, moonSign, risingSign);
         }
     }
 
