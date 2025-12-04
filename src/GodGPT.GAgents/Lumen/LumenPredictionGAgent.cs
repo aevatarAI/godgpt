@@ -91,7 +91,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
 
     // Default fallback values if options are not configured
     private const string DEFAULT_DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
-    private const int DEFAULT_PROMPT_VERSION = 28;
+    private const int DEFAULT_PROMPT_VERSION = 1;
     private const int DEFAULT_MAX_RETRY_COUNT = 3;
     
     /// <summary>
@@ -1104,82 +1104,6 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 _logger.LogInformation(
                     "[LumenPredictionGAgent][GeneratePredictionAsync] Batched generation completed with {FieldCount} fields",
                     parsedResults.Count);
-                
-                // ========== POST-BATCH: Extract location_latlong and recalculate Moon/Rising if needed ==========
-                if (parsedResults.ContainsKey("location_latlong"))
-                {
-                    var inferredLatLong = parsedResults["location_latlong"];
-                    if (!string.IsNullOrWhiteSpace(inferredLatLong))
-                    {
-                        _logger.LogInformation(
-                            $"[Lumen][Lifetime][Batched] {userInfo.UserId} LLM inferred LatLong: {inferredLatLong} from BirthCity: {userInfo.BirthCity}");
-                        
-                        // Save to UserProfileGAgent (fire-and-forget)
-                        _ = Task.Run(async () =>
-                        {
-                            try
-                            {
-                                var userGrainId = CommonHelper.StringToGuid(userInfo.UserId);
-                                var userProfileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(userGrainId);
-                                await userProfileGAgent.SaveInferredLatLongAsync(inferredLatLong, userInfo.BirthCity ?? "Unknown");
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogError(ex, $"[Lumen][Lifetime][Batched] {userInfo.UserId} Failed to save inferred LatLong");
-                            }
-                        });
-                        
-                        // ========== RECALCULATE Moon/Rising signs with newly inferred LatLong ==========
-                        if (calcBirthTime.HasValue)
-                        {
-                            try
-                            {
-                                var parts = inferredLatLong.Split(',', StringSplitOptions.TrimEntries);
-                                if (parts.Length == 2 && 
-                                    double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double latitude) &&
-                                    double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double longitude))
-                                {
-                                    _logger.LogInformation(
-                                        $"[Lumen][Lifetime][Batched] {userInfo.UserId} RECALCULATING Moon/Rising signs with newly inferred LatLong: ({latitude}, {longitude})");
-                                    
-                                    var (_, recalcMoonSign, recalcRisingSign) = CalculateSigns(
-                                        calcBirthDate,
-                                        calcBirthTime.Value,
-                                        latitude,
-                                        longitude);
-                                    
-                                    moonSign = recalcMoonSign;
-                                    risingSign = recalcRisingSign;
-                                    
-                                    _logger.LogInformation(
-                                        $"[Lumen][Lifetime][Batched] {userInfo.UserId} RECALCULATED Moon: {moonSign}, Rising: {risingSign}");
-                                    
-                                    // Update parsedResults with recalculated signs (will be injected into backend fields later)
-                                    // Note: The actual westernOverview_moonSign and westernOverview_risingSign will be set
-                                    // by the backend injection logic below (line ~1400)
-                                }
-                                else
-                                {
-                                    _logger.LogWarning(
-                                        $"[Lumen][Lifetime][Batched] {userInfo.UserId} Invalid inferred LatLong format: '{inferredLatLong}'");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.LogWarning(ex,
-                                    $"[Lumen][Lifetime][Batched] {userInfo.UserId} Failed to recalculate Moon/Rising with inferred LatLong");
-                            }
-                        }
-                        else
-                        {
-                            _logger.LogInformation(
-                                $"[Lumen][Lifetime][Batched] {userInfo.UserId} Cannot recalculate Moon/Rising - BirthTime not available");
-                        }
-                    }
-                    
-                    // Remove from parsed results (not needed in prediction output)
-                    parsedResults.Remove("location_latlong");
-                }
             }
             // ========== DAILY/YEARLY: Use single LLM call (smaller prompts, less risk of refusal) ==========
             else
@@ -1463,17 +1387,28 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     parsedResults["zodiacCycle_title"] = $"{cycleTitlePrefix} ({yearRange})";
                 }
                 
-                // Fallback: if zodiacCycle_cycleName is missing, use zodiacCycle_cycleNameChinese
-                // This handles cases where LLM didn't return cycle_name properly
-                if ((!parsedResults.ContainsKey("zodiacCycle_cycleName") || 
-                     string.IsNullOrWhiteSpace(parsedResults["zodiacCycle_cycleName"])) &&
-                    parsedResults.TryGetValue("zodiacCycle_cycleNameChinese", out var fallbackCycleName) && 
-                    !string.IsNullOrWhiteSpace(fallbackCycleName))
+                // For Simplified Chinese (zh): Always use cycleNameChinese as cycleName
+                // For other languages: Fallback to cycleNameChinese if cycleName is missing
+                if (parsedResults.TryGetValue("zodiacCycle_cycleNameChinese", out var cycleNameChinese) && 
+                    !string.IsNullOrWhiteSpace(cycleNameChinese))
                 {
-                    parsedResults["zodiacCycle_cycleName"] = fallbackCycleName;
-                    _logger.LogWarning(
-                        "[Lumen][Lifetime] zodiacCycle_cycleName missing for language {Language}, using Chinese fallback",
-                        targetLanguage);
+                    if (targetLanguage == "zh")
+                    {
+                        // Simplified Chinese: Always use Chinese name
+                        parsedResults["zodiacCycle_cycleName"] = cycleNameChinese;
+                        _logger.LogDebug(
+                            "[Lumen][Lifetime] Language is zh, using cycleNameChinese for cycleName: {CycleName}",
+                            cycleNameChinese);
+                    }
+                    else if (!parsedResults.ContainsKey("zodiacCycle_cycleName") || 
+                             string.IsNullOrWhiteSpace(parsedResults["zodiacCycle_cycleName"]))
+                    {
+                        // Other languages: Fallback to Chinese name if missing
+                        parsedResults["zodiacCycle_cycleName"] = cycleNameChinese;
+                        _logger.LogWarning(
+                            "[Lumen][Lifetime] zodiacCycle_cycleName missing for language {Language}, using Chinese fallback",
+                            targetLanguage);
+                    }
                 }
                 
                 // Inject Four Pillars data
@@ -1608,6 +1543,15 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 parsedResults["luckyAlignments_luckyNumber_digit"] = primaryLuckyNumber.Digit.ToString();
                 parsedResults["luckyAlignments_luckyNumber_description"] = primaryLuckyNumber.Description;
                 parsedResults["luckyAlignments_luckyNumber_calculation"] = primaryLuckyNumber.CalculationFormula;
+                
+                // CRITICAL: Also update multilingualResults to keep them in sync
+                if (multilingualResults != null && multilingualResults.ContainsKey(targetLanguage))
+                {
+                    multilingualResults[targetLanguage]["luckyAlignments_luckyNumber_number"] = primaryLuckyNumber.NumberWord;
+                    multilingualResults[targetLanguage]["luckyAlignments_luckyNumber_digit"] = primaryLuckyNumber.Digit.ToString();
+                    multilingualResults[targetLanguage]["luckyAlignments_luckyNumber_description"] = primaryLuckyNumber.Description;
+                    multilingualResults[targetLanguage]["luckyAlignments_luckyNumber_calculation"] = primaryLuckyNumber.CalculationFormula;
+                }
             }
 
             // Raise event to save prediction (unified structure)
@@ -2801,6 +2745,50 @@ Generate translations for: {targetLangNames}
                 _logger.LogInformation(
                     $"[Lumen][OnDemandTranslation] {userInfo.UserId} Translating {sourceLanguage} → {targetLanguage} for {type}, source fields: {sourceContent.Count}");
             
+            // ========== LIFETIME: Use batched translation to reduce token count and improve reliability ==========
+            if (type == PredictionType.Lifetime)
+            {
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} Using BATCHED translation for Lifetime {sourceLanguage} → {targetLanguage}");
+                
+                var lifetimeTranslatedDict = await TranslateLifetimeBatchedAsync(userInfo, predictionDate, sourceLanguage, sourceContent, targetLanguage);
+                
+                if (lifetimeTranslatedDict == null || lifetimeTranslatedDict.Count == 0)
+                {
+                    _logger.LogError(
+                        $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} Batched translation failed for {targetLanguage}");
+                    return;
+                }
+                
+                // Add quotes to affirmation text based on target language
+                lifetimeTranslatedDict = AddQuotesToAffirmation(lifetimeTranslatedDict, targetLanguage);
+                
+                // Raise event to update state with this language
+                var lifetimeTranslatedLanguages = new Dictionary<string, Dictionary<string, string>>
+                {
+                    { targetLanguage, lifetimeTranslatedDict }
+                };
+                
+                var lifetimeUpdatedLanguages = (State.GeneratedLanguages ?? new List<string>()).Union(new[] { targetLanguage }).ToList();
+                var lifetimeLastGenDate = DateOnly.FromDateTime(DateTime.UtcNow);
+                
+                RaiseEvent(new LanguagesTranslatedEvent
+                {
+                    Type = type,
+                    PredictionDate = predictionDate,
+                    TranslatedLanguages = lifetimeTranslatedLanguages,
+                    AllGeneratedLanguages = lifetimeUpdatedLanguages,
+                    LastGeneratedDate = lifetimeLastGenDate
+                });
+                
+                await ConfirmEvents();
+                
+                _logger.LogInformation(
+                    $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} {targetLanguage} COMPLETED - Total fields: {lifetimeTranslatedDict.Count}");
+                return;
+            }
+            
+            // ========== DAILY/YEARLY: Use single LLM call (smaller prompts) ==========
             // Filter fields that don't need translation
             var filteredForTranslation = FilterFieldsForTranslation(sourceContent);
             var skippedFields = sourceContent.Where(kvp => !filteredForTranslation.ContainsKey(kvp.Key))
@@ -2972,6 +2960,315 @@ All content is for entertainment, self-exploration, and contemplative purposes o
     }
 
     /// <summary>
+    /// Translate Lifetime prediction using batched parallel LLM calls (reduces token count and improves reliability)
+    /// </summary>
+    private async Task<Dictionary<string, string>?> TranslateLifetimeBatchedAsync(
+        LumenUserDto userInfo,
+        DateOnly predictionDate,
+        string sourceLanguage,
+        Dictionary<string, string> sourceContent,
+        string targetLanguage)
+    {
+        var totalStopwatch = Stopwatch.StartNew();
+        _logger.LogInformation(
+            "[Lumen][OnDemandTranslation][Batched] Starting parallel batch translation for user {UserId}, {SourceLang} → {TargetLang}",
+            userInfo.UserId, sourceLanguage, targetLanguage);
+
+        try
+        {
+            // Filter fields that don't need translation
+            var filteredForTranslation = FilterFieldsForTranslation(sourceContent);
+            var skippedFields = sourceContent.Where(kvp => !filteredForTranslation.ContainsKey(kvp.Key))
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            _logger.LogInformation(
+                $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} Filtered {skippedFields.Count} fields, {filteredForTranslation.Count} to translate");
+            
+            // Split filtered fields into 4 batches based on field name prefixes (matching generation batches)
+            var batch1Fields = filteredForTranslation.Where(kvp => 
+                kvp.Key.StartsWith("westernOverview_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("sun_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("moon_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("rising_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.Equals("combined_essence", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.Equals("whisper", StringComparison.OrdinalIgnoreCase)
+            ).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            var batch2Fields = filteredForTranslation.Where(kvp => 
+                kvp.Key.StartsWith("pillars_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("cn_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("cycle_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chineseAstrology_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("zodiacCycle_", StringComparison.OrdinalIgnoreCase)
+            ).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            var batch3Fields = filteredForTranslation.Where(kvp => 
+                kvp.Key.StartsWith("str_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("str1_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("str2_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("str3_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chal_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chal1_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chal2_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("chal3_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("destiny_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("path1_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("path2_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("path3_", StringComparison.OrdinalIgnoreCase)
+            ).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            var batch4Fields = filteredForTranslation.Where(kvp => 
+                kvp.Key.StartsWith("ten_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("past_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("curr_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("future_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("plot_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("act1_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("act2_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("act3_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("act4_", StringComparison.OrdinalIgnoreCase) ||
+                kvp.Key.StartsWith("mantra_", StringComparison.OrdinalIgnoreCase)
+            ).ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            
+            _logger.LogInformation(
+                $"[Lumen][OnDemandTranslation][Batched] {userInfo.UserId} Split into batches: B1={batch1Fields.Count}, B2={batch2Fields.Count}, B3={batch3Fields.Count}, B4={batch4Fields.Count}");
+            
+            // Create batch tasks for parallel execution
+            var batchTasks = new List<Task<Dictionary<string, string>?>>();
+            
+            if (batch1Fields.Count > 0)
+                batchTasks.Add(TranslateLifetimeBatchAsync(userInfo, sourceLanguage, batch1Fields, targetLanguage, "Western Astrology"));
+            if (batch2Fields.Count > 0)
+                batchTasks.Add(TranslateLifetimeBatchAsync(userInfo, sourceLanguage, batch2Fields, targetLanguage, "Chinese Astrology"));
+            if (batch3Fields.Count > 0)
+                batchTasks.Add(TranslateLifetimeBatchAsync(userInfo, sourceLanguage, batch3Fields, targetLanguage, "Life Traits"));
+            if (batch4Fields.Count > 0)
+                batchTasks.Add(TranslateLifetimeBatchAsync(userInfo, sourceLanguage, batch4Fields, targetLanguage, "Timeline & Plot"));
+            
+            // Wait for all batches to complete
+            await Task.WhenAll(batchTasks);
+            
+            totalStopwatch.Stop();
+            _logger.LogInformation(
+                "[PERF][Lumen][OnDemandTranslation][Batched] {UserId} All_Translation_Batches: {ElapsedMs}ms",
+                userInfo.UserId, totalStopwatch.ElapsedMilliseconds);
+            
+            // Merge results from all batches
+            var mergedResults = new Dictionary<string, string>();
+            var successCount = 0;
+            
+            foreach (var task in batchTasks)
+            {
+                var batchResult = await task;
+                if (batchResult != null && batchResult.Count > 0)
+                {
+                    foreach (var (key, value) in batchResult)
+                    {
+                        mergedResults[key] = value;
+                    }
+                    successCount++;
+                }
+            }
+            
+            // Merge back skipped fields (enums, numbers, backend-calculated)
+            var backendCalculatedFields = new Dictionary<string, string>();
+            var otherSkippedFields = new Dictionary<string, string>();
+            
+            var backendCalculatedPatterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "sunSign_name", "westernOverview_sunSign", "westernOverview_moonSign", "westernOverview_risingSign",
+                "westernOverview_sunArchetype", "westernOverview_moonArchetype", "westernOverview_risingArchetype",
+                "chineseZodiac_animal", "chineseZodiac_title",
+                "chineseAstrology_currentYearStem", "chineseAstrology_currentYearStemPinyin",
+                "chineseAstrology_currentYearBranch", "chineseAstrology_currentYearBranchPinyin",
+                "chineseAstrology_taishuiRelationship", "chineseAstrology_currentYear",
+                "pastCycle_ageRange", "pastCycle_period", "currentCycle_ageRange", "currentCycle_period",
+                "futureCycle_ageRange", "futureCycle_period", "zodiacCycle_title", "zodiacCycle_cycleName",
+                "zodiacInfluence", "currentPhase"
+            };
+            
+            foreach (var skipped in skippedFields)
+            {
+                if (backendCalculatedPatterns.Contains(skipped.Key) || 
+                    skipped.Key.StartsWith("fourPillars_year", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_month", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_day", StringComparison.OrdinalIgnoreCase) ||
+                    skipped.Key.StartsWith("fourPillars_hour", StringComparison.OrdinalIgnoreCase))
+                {
+                    backendCalculatedFields[skipped.Key] = skipped.Value;
+                }
+                else
+                {
+                    otherSkippedFields[skipped.Key] = skipped.Value;
+                }
+            }
+            
+            // Merge back non-backend-calculated skipped fields
+            foreach (var skipped in otherSkippedFields)
+            {
+                mergedResults[skipped.Key] = skipped.Value;
+            }
+            
+            // Re-inject backend-calculated fields for target language
+            await InjectBackendFieldsForLanguageAsync(mergedResults, userInfo, predictionDate, PredictionType.Lifetime, targetLanguage);
+            
+            _logger.LogInformation(
+                "[Lumen][OnDemandTranslation][Batched] {UserId} {TargetLang} Successfully merged {FieldCount} translated fields + {SkippedCount} skipped + {BackendCount} backend = {TotalCount} total",
+                userInfo.UserId, targetLanguage, mergedResults.Count - otherSkippedFields.Count - backendCalculatedFields.Count, 
+                otherSkippedFields.Count, backendCalculatedFields.Count, mergedResults.Count);
+            
+            return mergedResults;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[Lumen][OnDemandTranslation][Batched] Error during batch translation for user {UserId} {SourceLang} → {TargetLang}",
+                userInfo.UserId, sourceLanguage, targetLanguage);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Translate a single batch of Lifetime fields
+    /// </summary>
+    private async Task<Dictionary<string, string>?> TranslateLifetimeBatchAsync(
+        LumenUserDto userInfo,
+        string sourceLanguage,
+        Dictionary<string, string> batchFields,
+        string targetLanguage,
+        string batchName)
+    {
+        var batchStopwatch = Stopwatch.StartNew();
+        
+        try
+        {
+            _logger.LogInformation(
+                "[Lumen][OnDemandTranslation][Batch:{BatchName}] {UserId} Translating {Count} fields {SourceLang} → {TargetLang}",
+                batchName, userInfo.UserId, batchFields.Count, sourceLanguage, targetLanguage);
+            
+            // Build translation prompt for this batch
+            var translationPrompt = BuildLifetimeTranslationBatchPrompt(batchFields, sourceLanguage, targetLanguage, batchName);
+            var promptTokens = TokenHelper.EstimateTokenCount(translationPrompt);
+            
+            _logger.LogInformation(
+                $"[PERF][Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} Prompt_Length: {translationPrompt.Length} chars, Tokens: ~{promptTokens}");
+            
+            // Call LLM for translation
+            var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
+            var translationGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_lifetime_translation_{batchName}");
+            var godChat = _clusterClient.GetGrain<IGodChat>(translationGrainKey);
+            var chatId = Guid.NewGuid().ToString();
+            
+            var systemPrompt = @"You are a professional translator for astrological and philosophical reflection content.
+All content is for entertainment, self-exploration, and contemplative purposes only.";
+            
+            var response = await godChat.ChatWithoutHistoryAsync(
+                userGuid,
+                systemPrompt,
+                translationPrompt,
+                chatId,
+                null,
+                true,
+                "LUMEN");
+            
+            batchStopwatch.Stop();
+            _logger.LogInformation(
+                $"[PERF][Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} LLM_Call: {batchStopwatch.ElapsedMilliseconds}ms");
+            
+            if (response == null || response.Count() == 0)
+            {
+                _logger.LogWarning(
+                    $"[Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} No response from LLM");
+                return null;
+            }
+            
+            var aiResponse = response[0].Content;
+            
+            // Parse TSV response
+            var contentDict = ParseTsvResponse(aiResponse);
+            if (contentDict == null || contentDict.Count == 0)
+            {
+                _logger.LogError(
+                    $"[Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} TSV parse failed. Response:\n{aiResponse}");
+                return null;
+            }
+            
+            _logger.LogInformation(
+                $"[Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} COMPLETED - {contentDict.Count} fields translated in {batchStopwatch.ElapsedMilliseconds}ms");
+            
+            return contentDict;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "[Lumen][OnDemandTranslation][Batch:{BatchName}] Error for user {UserId}",
+                batchName, userInfo.UserId);
+            return null;
+        }
+    }
+    
+    /// <summary>
+    /// Build translation prompt for a single Lifetime batch
+    /// </summary>
+    private string BuildLifetimeTranslationBatchPrompt(
+        Dictionary<string, string> batchFields,
+        string sourceLanguage,
+        string targetLanguage,
+        string batchName)
+    {
+        var languageMap = new Dictionary<string, string>
+        {
+            { "en", "English" },
+            { "zh-tw", "繁體中文" },
+            { "zh", "简体中文" },
+            { "es", "Español" }
+        };
+        
+        var sourceLangName = languageMap.GetValueOrDefault(sourceLanguage, "English");
+        var targetLangName = languageMap.GetValueOrDefault(targetLanguage, targetLanguage);
+        
+        // Convert batch fields to TSV format
+        var sourceTsv = new StringBuilder();
+        foreach (var kvp in batchFields)
+        {
+            sourceTsv.AppendLine($"{kvp.Key}\t{kvp.Value}");
+        }
+        
+        var languageReminder = targetLanguage switch
+        {
+            "zh" => "⚠️ 重要：请使用简体中文翻译所有内容，避免混入英文！",
+            "zh-tw" => "⚠️ 重要：請使用繁體中文翻譯所有內容，避免混入英文！",
+            "es" => "⚠️ IMPORTANTE: Por favor traduce todo el contenido al español, ¡evita mezclar inglés!",
+            _ => "⚠️ IMPORTANT: Please translate all content to English only!"
+        };
+        
+        return $@"TASK: Translate the following Lifetime prediction content ({batchName} section) from {sourceLangName} into {targetLangName}.
+
+{languageReminder}
+
+TRANSLATION GUIDELINES:
+1. Translate content while keeping the exact same meaning and structure.
+2. Keep user names unchanged (e.g., ""Sean"" stays ""Sean"")
+3. Maintain natural, fluent expression in {targetLangName}.
+4. Keep all field names unchanged.
+5. Preserve numbers, dates, and proper nouns.
+6. For Chinese translations: Adapt English grammar naturally
+   - Remove or adapt articles (""The/A"") as needed
+   - Adjust to natural Chinese word order
+
+OUTPUT FORMAT (TSV - Tab-Separated Values):
+- Each field on ONE line: fieldName	translatedValue
+- Use TAB character (\\t) as separator
+- Avoid line breaks within field values
+- Return TSV format only, no markdown or extra text
+
+SOURCE CONTENT ({sourceLangName} - TSV Format):
+{sourceTsv}
+
+Start translation now:";
+    }
+
+    /// <summary>
     /// Build single-language translation prompt (for on-demand translation)
     /// </summary>
     /// <summary>
@@ -3025,7 +3322,13 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             "todaysReading_tarotCard_name",
             "todaysReading_tarotCard_orientation",
             "luckyAlignments_luckyStone",
-            "todaysReading_pathTitle"  // Constructed by backend
+            "todaysReading_pathTitle",  // Constructed by backend
+            
+            // Lucky Number (backend-calculated, not from LLM)
+            "luckyAlignments_luckyNumber_number",
+            "luckyAlignments_luckyNumber_digit",
+            "luckyAlignments_luckyNumber_description",
+            "luckyAlignments_luckyNumber_calculation"
         };
         
         // Backend-calculated field prefixes (Four Pillars fields)
@@ -3308,26 +3611,7 @@ All content is for entertainment, self-exploration, and contemplative purposes o
     /// <summary>
     /// Get fallback language based on priority: en > zh > zh-tw > es
     /// </summary>
-    private string GetFallbackLanguage(Dictionary<string, Dictionary<string, string>> multilingualResults)
-    {
-        // Priority order
-        var priorityOrder = new[] { "en", "zh", "zh-tw", "es" };
-        
-        foreach (var lang in priorityOrder)
-        {
-            if (multilingualResults.ContainsKey(lang) && 
-                multilingualResults[lang] != null && 
-                multilingualResults[lang].Count > 0)
-            {
-                return lang;
-            }
-        }
-        
-        // If none of the priority languages exist, return first available
-        return multilingualResults.Keys.FirstOrDefault() ?? "en";
-    }
-
-        private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
+    private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
             string sourceLanguage, string targetLanguage, PredictionType type)
     {
         // Validate source content (should not happen as callers check, but defensive)
@@ -3424,73 +3708,6 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         return "phase3";
     }
 
-    /// <summary>
-    /// Parse Lifetime & Weekly AI response
-    /// </summary>
-        private (Dictionary<string, string>?, Dictionary<string, string>?) ParseLifetimeWeeklyResponse(
-            string aiResponse)
-    {
-        try
-        {
-            var jsonStart = aiResponse.IndexOf('{');
-            var jsonEnd = aiResponse.LastIndexOf('}');
-
-            if (jsonStart >= 0 && jsonEnd > jsonStart)
-            {
-                var jsonString = aiResponse.Substring(jsonStart, jsonEnd - jsonStart + 1);
-                var response = JsonConvert.DeserializeObject<dynamic>(jsonString);
-                
-                if (response == null)
-                {
-                    return (null, null);
-                }
-
-                // Parse Lifetime
-                var lifetimeDict = new Dictionary<string, string>();
-                if (response.lifetime != null)
-                {
-                    lifetimeDict["title"] = response.lifetime.title?.ToString() ?? "";
-                    lifetimeDict["description"] = response.lifetime.description?.ToString() ?? "";
-                    
-                    // Serialize complex objects to JSON strings
-                    if (response.lifetime.traits != null)
-                    {
-                        lifetimeDict["traits"] = JsonConvert.SerializeObject(response.lifetime.traits);
-                    }
-
-                    if (response.lifetime.phases != null)
-                    {
-                        lifetimeDict["phases"] = JsonConvert.SerializeObject(response.lifetime.phases);
-                    }
-                }
-
-                // Parse Weekly
-                var weeklyDict = new Dictionary<string, string>();
-                if (response.weekly != null)
-                {
-                    weeklyDict["health"] = response.weekly.health?.ToString() ?? "0";
-                    weeklyDict["money"] = response.weekly.money?.ToString() ?? "0";
-                    weeklyDict["career"] = response.weekly.career?.ToString() ?? "0";
-                    weeklyDict["romance"] = response.weekly.romance?.ToString() ?? "0";
-                    weeklyDict["focus"] = response.weekly.focus?.ToString() ?? "0";
-                }
-
-                return (lifetimeDict, weeklyDict);
-            }
-
-            return (null, null);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[LumenPredictionGAgent][ParseLifetimeWeeklyResponse] Failed to parse");
-            return (null, null);
-        }
-    }
-
-    /// <summary>
-    /// Parse Daily AI response (6 dimensions)
-    /// </summary>
-    
     /// <summary>
     /// Convert array fields from pipe-separated strings to JSON array strings for frontend
     /// </summary>
@@ -4458,6 +4675,31 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         if (Enum.TryParse<CrystalStoneEnum>(normalized, true, out var result))
         {
             return result;
+        }
+        
+        // Fallback: Try contains-based matching for composite stone names (e.g., "Blue Lace Agate" → Agate)
+        // This handles cases where LLM returns descriptive stone names like:
+        // - "Blue Lace Agate" → Agate
+        // - "Moss Agate" → Agate
+        // - "Green Aventurine" → Aventurine
+        // - "Black Onyx" → Onyx
+        // Sort enum names by length (descending) to match longest/most specific names first
+        // This prevents "SmokyQuartz" being matched as "Quartz" if both exist
+        var enumNames = Enum.GetNames<CrystalStoneEnum>()
+            .Where(name => name != "Unknown")
+            .OrderByDescending(name => name.Length)
+            .ToArray();
+            
+        foreach (var enumName in enumNames)
+        {
+            // Check if normalized stone name contains the enum name (case-insensitive)
+            if (normalized.Contains(enumName, StringComparison.OrdinalIgnoreCase))
+            {
+                var containsResult = Enum.Parse<CrystalStoneEnum>(enumName, true);
+                _logger.LogInformation(
+                    $"[LumenPredictionGAgent][ParseCrystalStone] Matched '{stoneName}' to '{enumName}' via contains");
+                return containsResult;
+            }
         }
         
         _logger.LogWarning($"[LumenPredictionGAgent][ParseCrystalStone] Unknown crystal stone: {stoneName}");
@@ -5858,6 +6100,106 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     #region Lifetime Batched Generation
     
     /// <summary>
+    /// Infer latitude/longitude from birth city (standalone LLM call for Lifetime predictions)
+    /// </summary>
+    /// <summary>
+    /// Infer latitude/longitude from birth city using LLM
+    /// Falls back gracefully if unable to infer (returns null without throwing)
+    /// </summary>
+    private async Task<string?> InferLatLongAsync(LumenUserDto userInfo, DateOnly predictionDate, string targetLanguage)
+    {
+        try
+        {
+            // Relaxed prompt - prioritizes best-effort inference over strict validation
+            var prompt = $@"Task: Provide the approximate latitude and longitude for the following location.
+
+Location: {userInfo.BirthCity}
+
+Instructions:
+- If you recognize the location, provide its approximate coordinates
+- For ambiguous names (e.g., ""Springfield""), choose the most well-known one
+- If you're uncertain but have a reasonable guess, provide it
+- Only return UNKNOWN if the location is completely unrecognizable or nonsensical
+- Format: latitude,longitude (decimal degrees, e.g., 34.0522,-118.2437)
+
+Output format (TSV):
+location_latlong	latitude,longitude
+
+Examples:
+location_latlong	34.0522,-118.2437
+location_latlong	UNKNOWN";
+            
+            var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
+            var grainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_latlong_inference");
+            var godChat = _clusterClient.GetGrain<IGodChat>(grainKey);
+            var chatId = Guid.NewGuid().ToString();
+            
+            var systemPrompt = @"You are a helpful geography assistant. Make your best effort to provide coordinates, even if uncertain. Only refuse if the location is completely unrecognizable.";
+            
+            var llmStopwatch = Stopwatch.StartNew();
+            var response = await godChat.ChatWithoutHistoryAsync(
+                userGuid,
+                systemPrompt,
+                prompt,
+                chatId,
+                null,
+                true,
+                "LUMEN");
+            llmStopwatch.Stop();
+            
+            if (response == null || response.Count() == 0)
+            {
+                _logger.LogWarning(
+                    "[Lumen][LatLongInference] {UserId} No response from LLM for city: {BirthCity} - using fallback (no latlong)",
+                    userInfo.UserId, userInfo.BirthCity);
+                return null;
+            }
+            
+            var aiResponse = response[0].Content;
+            _logger.LogInformation(
+                $"[PERF][Lumen][LatLongInference] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms, City: {userInfo.BirthCity}, Response: {aiResponse}");
+            
+            // Parse TSV response
+            var tsvResult = ParseTsvResponse(aiResponse);
+            if (tsvResult != null && tsvResult.TryGetValue("location_latlong", out var latLong) && 
+                !string.IsNullOrWhiteSpace(latLong) && latLong.ToUpper() != "UNKNOWN")
+            {
+                // Validate format (basic check for lat,lon pattern)
+                var parts = latLong.Split(',', StringSplitOptions.TrimEntries);
+                if (parts.Length == 2 && 
+                    double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out _) &&
+                    double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                {
+                    _logger.LogInformation(
+                        "[Lumen][LatLongInference] {UserId} Successfully inferred LatLong: {LatLong} from city: {BirthCity}",
+                        userInfo.UserId, latLong, userInfo.BirthCity);
+                    return latLong;
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "[Lumen][LatLongInference] {UserId} Invalid LatLong format: {LatLong} - using fallback",
+                        userInfo.UserId, latLong);
+                    return null;
+                }
+            }
+            
+            _logger.LogInformation(
+                "[Lumen][LatLongInference] {UserId} LLM returned UNKNOWN or empty for city: {BirthCity} - using fallback (no latlong)",
+                userInfo.UserId, userInfo.BirthCity);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            // Graceful degradation: log error but don't propagate exception
+            _logger.LogWarning(ex, 
+                "[Lumen][LatLongInference] Error inferring LatLong for user {UserId}, city: {BirthCity} - using fallback (no latlong)",
+                userInfo.UserId, userInfo.BirthCity);
+            return null;
+        }
+    }
+    
+    /// <summary>
     /// Generate Lifetime prediction using parallel batched LLM calls (reduces refusal rate)
     /// </summary>
     private async Task<(Dictionary<string, string>? Results, Dictionary<string, Dictionary<string, string>>? MultilingualResults)> 
@@ -5876,6 +6218,83 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
 
         try
         {
+            // ========== PRE-BATCH: Infer LatLong first if needed (to calculate accurate Moon/Rising signs) ==========
+            // This ensures combined_essence and other Western Astrology content uses correct signs
+            var needLatLongInference = !string.IsNullOrWhiteSpace(userInfo.BirthCity) 
+                && string.IsNullOrWhiteSpace(userInfo.LatLong) 
+                && string.IsNullOrWhiteSpace(userInfo.LatLongInferred);
+            
+            if (needLatLongInference && userInfo.BirthTime.HasValue)
+            {
+                _logger.LogInformation(
+                    "[LumenPredictionGAgent][GenerateLifetimeBatched] {UserId} Inferring LatLong BEFORE batch generation to calculate accurate signs",
+                    userInfo.UserId);
+                
+                var latLongInferred = await InferLatLongAsync(userInfo, predictionDate, targetLanguage);
+                
+                if (!string.IsNullOrWhiteSpace(latLongInferred))
+                {
+                    _logger.LogInformation(
+                        $"[Lumen][Lifetime][PreBatch] {userInfo.UserId} Successfully inferred LatLong: {latLongInferred}");
+                    
+                    // Save to UserProfileGAgent (fire-and-forget)
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var userGrainId = CommonHelper.StringToGuid(userInfo.UserId);
+                            var userProfileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(userGrainId);
+                            await userProfileGAgent.SaveInferredLatLongAsync(latLongInferred, userInfo.BirthCity ?? "Unknown");
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, $"[Lumen][Lifetime][PreBatch] {userInfo.UserId} Failed to save inferred LatLong");
+                        }
+                    });
+                    
+                    // Recalculate Moon/Rising signs with newly inferred LatLong
+                    try
+                    {
+                        var parts = latLongInferred.Split(',', StringSplitOptions.TrimEntries);
+                        if (parts.Length == 2 && 
+                            double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double latitude) &&
+                            double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double longitude))
+                        {
+                            var calcBirthDate = userInfo.BirthDate;
+                            var calcBirthTime = userInfo.BirthTime!.Value;
+                            
+                            _logger.LogInformation(
+                                $"[Lumen][Lifetime][PreBatch] {userInfo.UserId} Calculating accurate signs with inferred LatLong: ({latitude}, {longitude})");
+                            
+                            var (_, recalcMoonSign, recalcRisingSign) = CalculateSigns(
+                                calcBirthDate,
+                                calcBirthTime,
+                                latitude,
+                                longitude);
+                            
+                            // Update moonSign and risingSign for batch generation
+                            moonSign = recalcMoonSign;
+                            risingSign = recalcRisingSign;
+                            
+                            _logger.LogInformation(
+                                $"[Lumen][Lifetime][PreBatch] {userInfo.UserId} UPDATED signs for batch generation - Moon: {moonSign}, Rising: {risingSign}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex,
+                            $"[Lumen][Lifetime][PreBatch] {userInfo.UserId} Failed to calculate signs with inferred LatLong");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "[Lumen][Lifetime][PreBatch] {UserId} Failed to infer LatLong, will use fallback signs",
+                        userInfo.UserId);
+                }
+            }
+            
+
             // Create batch tasks for parallel execution
             var batchTasks = new Dictionary<LifetimeBatchType, Task<Dictionary<string, string>?>>
             {
@@ -6192,7 +6611,7 @@ Start output now:";
 
     /// <summary>
     /// Batch 2: Chinese Astrology - Four Pillars, Chinese traits, zodiac cycle
-    /// Also handles location_latlong inference if needed
+    /// Note: location_latlong inference is now handled in pre-batch step (not in this batch)
     /// </summary>
     private string BuildChineseAstrologyBatchPrompt(
         LumenUserDto userInfo,
@@ -6206,21 +6625,6 @@ Start output now:";
             "es" => $"Comienza con \"Tu zodiaco chino es {ctx.BirthYearAnimalTranslated}...\" y describe cómo tu ciclo simbólico de 20 años afecta las etapas de vida",
             _ => $"Start with \"Your Chinese Zodiac is {ctx.BirthYearAnimalTranslated}...\" and describe how your 20-year symbolic cycle affects life stages"
         };
-
-        // Check if we need to request LatLong inference from LLM (for calculating Moon/Rising signs)
-        var needLatLongInference = !string.IsNullOrWhiteSpace(userInfo.BirthCity) 
-            && string.IsNullOrWhiteSpace(userInfo.LatLong) 
-            && string.IsNullOrWhiteSpace(userInfo.LatLongInferred);
-        
-        var latLongSection = needLatLongInference
-            ? $@"
-
-========== OPTIONAL: LOCATION INFERENCE ==========
-Birth City: {userInfo.BirthCity}
-⚠️ INSTRUCTION: If you can identify the latitude and longitude for the birth city above, please add this field to the output:
-location_latlong	latitude,longitude (format: ""34.0522,-118.2437"")
-⚠️ If the city name is ambiguous or you cannot determine coordinates, you may SKIP this field entirely."
-            : string.Empty;
 
         var languageReminder = targetLanguage switch
         {
@@ -6238,7 +6642,7 @@ USER CONTEXT:
 - Birth Year: {ctx.BirthYear} ({ctx.BirthYearZodiac})
 - Chinese Zodiac Animal: {ctx.BirthYearAnimalTranslated}
 - Element: {ctx.BirthYearElement}
-- Birth Year Stems: {ctx.BirthYearStems}{latLongSection}
+- Birth Year Stems: {ctx.BirthYearStems}
 
 REQUIRED FIELDS (TSV format):
 
