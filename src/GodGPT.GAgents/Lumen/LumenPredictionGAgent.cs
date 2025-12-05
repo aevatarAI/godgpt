@@ -2311,8 +2311,8 @@ FORMAT REQUIREMENTS:
             {
                 "zh" => "4-8字，诗意隐喻",
                 "zh-tw" => "4-8字，詩意隱喻",
-                "es" => "4-8 palabras metafóricas",
-                _ => "4-8 words poetic metaphor"
+                "es" => "4-8 palabras metafóricas (Title Case: cada palabra con mayúscula inicial, ej: Día De Reflexión)",
+                _ => "4-8 words poetic metaphor (Title Case: capitalize first letter of each word, e.g. Day Of Reflection)"
             };
             
             var desc_fortune_do = targetLanguage switch
