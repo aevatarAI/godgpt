@@ -418,7 +418,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 $"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {targetDate}, Language: {userLanguage}");
             
             // Update user activity and ensure daily reminder is registered (for Daily predictions only)
-            await UpdateActivityAndEnsureReminderAsync();
+            await UpdateActivityAndEnsureReminderAsync(userInfo.CurrentTimeZone);
             
             // ========== IDEMPOTENCY CHECK: Prevent concurrent generation for this type ==========
             if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
@@ -5441,7 +5441,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// Register daily reminder (called when user becomes active)
     /// Uses user's timezone to calculate reminder time (default: 00:01 in user's local time)
     /// </summary>
-    private async Task RegisterDailyReminderAsync()
+    private async Task RegisterDailyReminderAsync(string? userTimeZone = null)
     {
         // Only register for Daily predictions
         if (State.Type != PredictionType.Daily)
@@ -5463,20 +5463,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return;
         }
         
-        // Get user's timezone from profile
-        // CRITICAL: Use Grain's PrimaryKey instead of State.UserId for first-time registration
-        // State.UserId may be empty before PredictionGeneratedEvent is raised
-        var userIdForQuery = !string.IsNullOrEmpty(State.UserId) 
-            ? State.UserId 
-            : this.GetPrimaryKeyString().Replace("_daily", ""); // Extract userId from grain key
-        
-        var profileGrainId = CommonHelper.StringToGuid(userIdForQuery);
-        var profileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(profileGrainId);
-        var profileResult = await profileGAgent.GetRawStateAsync();
-        var userTimeZoneId = profileResult?.CurrentTimeZone ?? "UTC";
-        
-        _logger.LogDebug(
-            $"[Lumen][DailyReminder] {userIdForQuery} Fetched timezone from profile: {userTimeZoneId} (State.UserId: '{State.UserId}')");
+        // Use provided timezone or fallback to UTC
+        var userTimeZoneId = userTimeZone ?? "UTC";
         
         // Record current TargetId for version control
         var currentReminderTargetId = _options?.ReminderTargetId ?? CURRENT_REMINDER_TARGET_ID;
@@ -5493,7 +5481,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         
         State.IsDailyReminderEnabled = true;
         _logger.LogInformation(
-            $"[Lumen][DailyReminder] {userIdForQuery} Reminder registered with TargetId: {State.DailyReminderTargetId}, " +
+            $"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, " +
             $"TimeZone: {userTimeZoneId}, next execution at {nextTriggerUtc:yyyy-MM-dd HH:mm:ss} UTC (00:01 local time)");
     }
     
@@ -5573,7 +5561,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             await UnregisterDailyReminderAsync();
             
             // Re-register with new timezone
-            await RegisterDailyReminderAsync();
+            await RegisterDailyReminderAsync(timeZoneId);
             
             _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder updated successfully for timezone: {timeZoneId}");
         }
@@ -5602,7 +5590,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// Update user activity and ensure reminder is registered
     /// Optimized: Only update LastActiveDate once per day to reduce State writes
     /// </summary>
-    private async Task UpdateActivityAndEnsureReminderAsync()
+    private async Task UpdateActivityAndEnsureReminderAsync(string? userTimeZone = null)
     {
         // Only for Daily predictions
         if (State.Type != PredictionType.Daily)
@@ -5618,7 +5606,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         // This prevents unnecessary State writes when user accesses prediction multiple times same day
         if (today > lastActiveDay)
         {
-        State.LastActiveDate = now;
+            State.LastActiveDate = now;
             _logger.LogDebug(
                 "[Lumen][Activity] {UserId} Updated LastActiveDate to {Date} (previous: {PreviousDate})",
                 State.UserId, today, lastActiveDay);
@@ -5627,7 +5615,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         // If user was inactive and is now active again, register reminder
         if (wasInactive || !State.IsDailyReminderEnabled)
         {
-            await RegisterDailyReminderAsync();
+            await RegisterDailyReminderAsync(userTimeZone);
         }
     }
     
