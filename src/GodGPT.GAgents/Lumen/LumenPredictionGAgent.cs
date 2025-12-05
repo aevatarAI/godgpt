@@ -61,7 +61,7 @@ public interface ILumenPredictionGAgent : IGAgent
     Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en");
     
     [ReadOnly]
-    Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null);
+    Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null, string? userTimeZone = null);
     
     Task ClearCurrentPredictionAsync();
     
@@ -403,9 +403,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         var totalStopwatch = Stopwatch.StartNew();
         try
         {
-            // Use provided date or default to today
-            var targetDate = predictionDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            // Use provided date or default to today (in user's local timezone for Daily predictions)
+            var today = GetUserLocalDate(userInfo.CurrentTimeZone);
+            var targetDate = predictionDate ?? today;
             var currentYear = today.Year;
             
             // Note: Location warning is generated in GeneratePredictionAsync method
@@ -519,7 +519,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 // Add currentPhase for Lifetime predictions (runtime calculation, not cached)
                 if (type == PredictionType.Lifetime)
                 {
-                    var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                    var currentPhase = CalculateCurrentPhase(userInfo.BirthDate, userInfo.CurrentTimeZone);
                     localizedResults = new Dictionary<string, string>(localizedResults);
                     localizedResults["currentPhase"] = currentPhase.ToString();
                 }
@@ -689,7 +689,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// <summary>
     /// Get prediction generation status
     /// </summary>
-    public async Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null)
+    public async Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null, string? userTimeZone = null)
     {
         // Determine the actual prediction type from GenerationLocks (since State.Type defaults to 0)
         // Each grain only handles one type, so use the first (and only) key if available
@@ -782,10 +782,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                                 profileUpdatedAt.Value > State.ProfileUpdatedAt.Value;
         }
 
-        // For Daily predictions, also check if prediction is for today
+        // For Daily predictions, also check if prediction is for today (in user's local timezone)
         if (State.Type == PredictionType.Daily)
         {
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var today = GetUserLocalDate(userTimeZone);
             if (State.PredictionDate != today)
             {
                 needsRegeneration = true;
@@ -1492,7 +1492,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
             // Add currentPhase for lifetime predictions
             if (type == PredictionType.Lifetime)
             {
-                var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                var currentPhase = CalculateCurrentPhase(userInfo.BirthDate, userInfo.CurrentTimeZone);
                 parsedResults["currentPhase"] = currentPhase.ToString();
                 
                 // Construct cn_year from birthYearAnimal (backend-generated, not from LLM)
@@ -2523,15 +2523,15 @@ Generate translations for: {targetLangNames}
         {
             // Check if data needs regeneration (date expired, profile updated, or prompt version changed)
             var needsRegeneration = false;
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            var currentYear = DateTime.UtcNow.Year;
+            var today = GetUserLocalDate(userInfo.CurrentTimeZone);
+            var currentYear = today.Year;
             
-            // Check expiration based on type
+            // Check expiration based on type (using user's local date for Daily predictions)
             bool dataExpired = type switch
             {
                 PredictionType.Lifetime => false, // Lifetime never expires by date
                 PredictionType.Yearly => State.PredictionDate.Year != currentYear, // Yearly expires after 1 year
-                PredictionType.Daily => State.PredictionDate != today, // Daily expires every day
+                PredictionType.Daily => State.PredictionDate != today, // Daily expires every day (in user's timezone)
                 _ => false
             };
             
@@ -2767,7 +2767,7 @@ Generate translations for: {targetLangNames}
                 };
                 
                 var lifetimeUpdatedLanguages = (State.GeneratedLanguages ?? new List<string>()).Union(new[] { targetLanguage }).ToList();
-                var lifetimeLastGenDate = DateOnly.FromDateTime(DateTime.UtcNow);
+                var lifetimeLastGenDate = GetUserLocalDate(userInfo.CurrentTimeZone);
                 
                 RaiseEvent(new LanguagesTranslatedEvent
                 {
@@ -2932,7 +2932,7 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             // For Yearly/Lifetime: LastGeneratedDate = today (to prevent duplicate translations on the same day)
             var lastGenDate = type == PredictionType.Daily 
                 ? predictionDate 
-                : DateOnly.FromDateTime(DateTime.UtcNow);
+                : GetUserLocalDate(userInfo.CurrentTimeZone);
             
             RaiseEvent(new LanguagesTranslatedEvent
             {
@@ -3687,11 +3687,35 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     }
 
     /// <summary>
+    /// Get user's local date based on their timezone (for Daily prediction date calculation)
+    /// </summary>
+    private DateOnly GetUserLocalDate(string? timeZoneId)
+    {
+        if (string.IsNullOrEmpty(timeZoneId))
+        {
+            // Fallback to UTC if timezone not provided (backward compatibility)
+            return DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+
+        try
+        {
+            var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, userTimeZone);
+            return DateOnly.FromDateTime(userNow);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "[Lumen] Invalid timezone: {TimeZoneId}, falling back to UTC", timeZoneId);
+            return DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+    }
+
+    /// <summary>
     /// Calculate current life phase based on birth date
     /// </summary>
-    private string CalculateCurrentPhase(DateOnly birthDate)
+    private string CalculateCurrentPhase(DateOnly birthDate, string? timeZoneId = null)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = GetUserLocalDate(timeZoneId);
         var age = today.Year - birthDate.Year;
         
         // Adjust if birthday hasn't occurred this year
@@ -5637,10 +5661,10 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             var results = new Dictionary<string, string>();
             
-            // Calculate current date/time values
-            var currentYear = DateTime.UtcNow.Year;
+            // Calculate current date/time values (using user's local timezone for accurate age/date calculations)
+            var today = GetUserLocalDate(userInfo.CurrentTimeZone);
+            var currentYear = today.Year;
             var birthYear = userInfo.BirthDate.Year;
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
             // TIMEZONE HANDLING
             // IMPORTANT: Chinese Four Pillars (BaZi) MUST use LOCAL time, not UTC!
@@ -5803,7 +5827,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             results["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, userLanguage);
             
             // Current Phase (for Lifetime)
-            var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+            var currentPhase = CalculateCurrentPhase(userInfo.BirthDate, userInfo.CurrentTimeZone);
             results["currentPhase"] = currentPhase.ToString();
             
             // ========== FOUR PILLARS (BA ZI) ==========

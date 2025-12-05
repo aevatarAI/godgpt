@@ -357,6 +357,7 @@ public class LumenUserDto
     [Id(19)] public string? LatLongInferred { get; set; } // Internal - LLM inferred from BirthCity (not exposed in profile API)
     [Id(20)] public string CurrentLanguage { get; set; } = "en"; // Current active language
     [Id(21)] public List<InterestEnum>? InterestsList { get; set; } // Optional - V2: Interests as enum list
+    [Id(22)] public string? CurrentTimeZone { get; set; } // Optional - IANA time zone ID (e.g., "America/New_York")
 }
 
 /// <summary>
