@@ -5464,10 +5464,19 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         }
         
         // Get user's timezone from profile
-        var profileGrainId = CommonHelper.StringToGuid(State.UserId);
+        // CRITICAL: Use Grain's PrimaryKey instead of State.UserId for first-time registration
+        // State.UserId may be empty before PredictionGeneratedEvent is raised
+        var userIdForQuery = !string.IsNullOrEmpty(State.UserId) 
+            ? State.UserId 
+            : this.GetPrimaryKeyString().Replace("_daily", ""); // Extract userId from grain key
+        
+        var profileGrainId = CommonHelper.StringToGuid(userIdForQuery);
         var profileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(profileGrainId);
         var profileResult = await profileGAgent.GetRawStateAsync();
         var userTimeZoneId = profileResult?.CurrentTimeZone ?? "UTC";
+        
+        _logger.LogDebug(
+            $"[Lumen][DailyReminder] {userIdForQuery} Fetched timezone from profile: {userTimeZoneId} (State.UserId: '{State.UserId}')");
         
         // Record current TargetId for version control
         var currentReminderTargetId = _options?.ReminderTargetId ?? CURRENT_REMINDER_TARGET_ID;
@@ -5484,7 +5493,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         
         State.IsDailyReminderEnabled = true;
         _logger.LogInformation(
-            $"[Lumen][DailyReminder] {State.UserId} Reminder registered with TargetId: {State.DailyReminderTargetId}, " +
+            $"[Lumen][DailyReminder] {userIdForQuery} Reminder registered with TargetId: {State.DailyReminderTargetId}, " +
             $"TimeZone: {userTimeZoneId}, next execution at {nextTriggerUtc:yyyy-MM-dd HH:mm:ss} UTC (00:01 local time)");
     }
     
