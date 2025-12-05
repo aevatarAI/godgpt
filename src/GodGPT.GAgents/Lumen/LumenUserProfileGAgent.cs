@@ -41,8 +41,9 @@ public interface ILumenUserProfileGAgent : IGAgent
     
     /// <summary>
     /// Update user icon (with daily upload limit)
+    /// Pass null to remove/clear the icon
     /// </summary>
-    Task<UpdateIconResult> UpdateIconAsync(string iconUrl);
+    Task<UpdateIconResult> UpdateIconAsync(string? iconUrl);
     
     /// <summary>
     /// Set user's current language (triggers translation for today's predictions)
@@ -607,12 +608,13 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
         }
     }
     
-    public async Task<UpdateIconResult> UpdateIconAsync(string iconUrl)
+    public async Task<UpdateIconResult> UpdateIconAsync(string? iconUrl)
     {
         try
         {
-            _logger.LogDebug("[LumenUserProfileGAgent][UpdateIconAsync] Start - UserId: {UserId}, IconUrl: {IconUrl}", 
-                State.UserId, iconUrl);
+            var action = string.IsNullOrWhiteSpace(iconUrl) ? "Removing" : "Updating";
+            _logger.LogDebug("[LumenUserProfileGAgent][UpdateIconAsync] {Action} icon - UserId: {UserId}, IconUrl: {IconUrl}", 
+                action, State.UserId, iconUrl);
 
             // Check if user profile exists
             if (string.IsNullOrEmpty(State.UserId))
@@ -673,10 +675,14 @@ public class LumenUserProfileGAgent : GAgentBase<LumenUserProfileState, LumenUse
                 "Remaining uploads today: {Remaining}/{Max}",
                 State.UserId, remainingUploads, maxIconUploadsPerDay);
 
+            var successMessage = string.IsNullOrWhiteSpace(iconUrl) 
+                ? "Icon removed successfully" 
+                : "Icon updated successfully";
+            
             return new UpdateIconResult
             {
                 Success = true,
-                Message = "Icon updated successfully",
+                Message = successMessage,
                 IconUrl = iconUrl,
                 RemainingUploads = remainingUploads
             };
