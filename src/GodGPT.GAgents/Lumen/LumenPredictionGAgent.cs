@@ -5419,7 +5419,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 CreatedAt = fullProfileResult.UserProfile.CreatedAt,
                 CurrentResidence = fullProfileResult.UserProfile.CurrentResidence,
                 UpdatedAt = fullProfileResult.UserProfile.UpdatedAt,
-                Occupation = fullProfileResult.UserProfile.Occupation
+                Occupation = fullProfileResult.UserProfile.Occupation,
+                CurrentTimeZone = fullProfileResult.UserProfile.CurrentTimeZone, // CRITICAL: Include timezone for local date calculations
+                CurrentLanguage = targetLanguage
             };
             
             // Trigger generation (this will update LastGeneratedDate)
