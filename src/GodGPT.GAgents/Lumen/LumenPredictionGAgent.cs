@@ -516,7 +516,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         $"[Lumen] {userInfo.UserId} Language '{userLanguage}' not available, returning empty Results with AvailableLanguages");
                 }
                 
-                // Add currentPhase for Lifetime predictions
+                // Add currentPhase for Lifetime predictions (runtime calculation, not cached)
                 if (type == PredictionType.Lifetime)
                 {
                     var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
@@ -524,20 +524,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                     localizedResults["currentPhase"] = currentPhase.ToString();
                 }
                 
-                // Add lucky number for Daily predictions (backend-calculated, not from LLM)
-                if (type == PredictionType.Daily && localizedResults.Count > 0)
-                {
-                    localizedResults = new Dictionary<string, string>(localizedResults);
-                    var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
-                        userInfo.BirthDate,
-                        State.PredictionDate,
-                        returnedLanguage);
-                    
-                    localizedResults["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
-                    localizedResults["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
-                    localizedResults["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
-                    localizedResults["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
-                }
+                // NOTE: Lucky number for Daily predictions is already in cached multilingualResults
+                // It was calculated and stored during initial generation (see line 1545-1562)
+                // No need to recalculate here - just return cached value to ensure consistency
                 
                 // Get available languages from MultilingualResults (actual available languages)
                 // If MultilingualResults is empty (but not null), fallback to GeneratedLanguages
@@ -2064,18 +2053,18 @@ Start output now with first field
             
             var desc_do = targetLanguage switch
             {
-                "zh" => "建议1|建议2|建议3 (竖线分隔)",
-                "zh-tw" => "建議1|建議2|建議3 (豎線分隔)",
-                "es" => "item1|item2 (áreas a explorar, separado por |)",
-                _ => "item1|item2 (areas to explore)"
+                "zh" => "2条完整的行动短句，每条必须是完整的句子而非短语 (如：在重要项目上主动展现你的专业能力|与导师或前辈建立更深层的连接关系，竖线分隔)",
+                "zh-tw" => "2條完整的行動短句，每條必須是完整的句子而非短語 (如：在重要項目上主動展現你的專業能力|與導師或前輩建立更深層的連接關係，豎線分隔)",
+                "es" => "2 oraciones completas de acción, cada una debe ser una oración completa no una frase (ej: Demuestra proactivamente tu experiencia profesional en proyectos clave|Construye conexiones más profundas con mentores y personas con experiencia, separado por |)",
+                _ => "2 complete action sentences, each MUST be a full sentence not a phrase (e.g. Proactively demonstrate your professional expertise on key projects|Build deeper connections with mentors and experienced people, separated by |)"
             };
             
             var desc_avoid = targetLanguage switch
             {
-                "zh" => "注意1|注意2|注意3 (竖线分隔)",
-                "zh-tw" => "注意1|注意2|注意3 (豎線分隔)",
-                "es" => "item1|item2 (patrones a tener en cuenta, separado por |)",
-                _ => "item1|item2 (patterns to be mindful of)"
+                "zh" => "2条完整的注意事项短句，每条必须是完整的句子而非短语 (如：避免在没有充分准备的情况下做出重大职业决策|不要忽略内心真实的价值观去追随外界期待，竖线分隔)",
+                "zh-tw" => "2條完整的注意事項短句，每條必須是完整的句子而非短語 (如：避免在沒有充分準備的情況下做出重大職業決策|不要忽略內心真實的價值觀去追隨外界期待，豎線分隔)",
+                "es" => "2 oraciones completas de precaución, cada una debe ser una oración completa no una frase (ej: Evita tomar decisiones profesionales importantes sin preparación adecuada|No ignores tus valores internos reales para seguir expectativas externas, separado por |)",
+                _ => "2 complete caution sentences, each MUST be a full sentence not a phrase (e.g. Avoid making major career decisions without adequate preparation|Don't ignore your true inner values to follow external expectations, separated by |)"
             };
             
             var desc_detail = targetLanguage switch
