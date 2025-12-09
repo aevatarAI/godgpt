@@ -49,7 +49,7 @@ public static class UserInfoLocalizationHelper
             SeekingInterestEnum.SelfDiscovery => "Self-discovery",
             SeekingInterestEnum.SpiritualGrowth => "Spiritual growth",
             SeekingInterestEnum.LoveAndRelationships => "Love & relationships",
-            SeekingInterestEnum.DailyFortuneTelling => "Daily fortune telling",
+            SeekingInterestEnum.DailyFortune => "Daily lumen prediction",
             SeekingInterestEnum.CareerGuidance => "Career guidance",
             _ => "Unknown"
         };
@@ -63,7 +63,7 @@ public static class UserInfoLocalizationHelper
             SeekingInterestEnum.SelfDiscovery => "自我发现",
             SeekingInterestEnum.SpiritualGrowth => "灵性成长",
             SeekingInterestEnum.LoveAndRelationships => "爱情与关系",
-            SeekingInterestEnum.DailyFortuneTelling => "每日占卜",
+            SeekingInterestEnum.DailyFortune => "每日流明預測",
             SeekingInterestEnum.CareerGuidance => "职业指导",
             _ => "其他"
         };
@@ -111,7 +111,7 @@ public static class UserInfoLocalizationHelper
             SeekingInterestEnum.SelfDiscovery => "自我探索",
             SeekingInterestEnum.SpiritualGrowth => "靈性成長",
             SeekingInterestEnum.LoveAndRelationships => "愛情與人際",
-            SeekingInterestEnum.DailyFortuneTelling => "每日運勢占卜",
+            SeekingInterestEnum.DailyFortune => "每日流明運勢",
             SeekingInterestEnum.CareerGuidance => "職涯指引",
             _ => "未知"
         };
@@ -144,7 +144,7 @@ public static class UserInfoLocalizationHelper
             SeekingInterestEnum.SelfDiscovery => "Autodescubrimiento",
             SeekingInterestEnum.SpiritualGrowth => "Crecimiento espiritual",
             SeekingInterestEnum.LoveAndRelationships => "Amor y relaciones",
-            SeekingInterestEnum.DailyFortuneTelling => "Horóscopo diario",
+            SeekingInterestEnum.DailyFortune => "Predicción diaria de Lumen",
             SeekingInterestEnum.CareerGuidance => "Orientación profesional",
             _ => "Desconocido"
         };
