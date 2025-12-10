@@ -16,4 +16,10 @@ public class StartStreamChatInput
     [Id(8)] public DateTime? UserLocalTime { get; set; } = null;
     [Id(9)] public string? UserTimeZoneId { get; set; } = string.Empty;
     [Id(10)] public string? Context { get; set; } = null;
+    
+    /// <summary>
+    /// Optional alternative message content sent to LLM instead of Content
+    /// If provided, this will be sent to LLM while Content is saved to history
+    /// </summary>
+    [Id(11)] public string? LlmContent { get; set; } = null;
 }

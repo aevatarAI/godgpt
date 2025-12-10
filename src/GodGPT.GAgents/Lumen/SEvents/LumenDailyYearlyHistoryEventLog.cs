@@ -26,3 +26,12 @@ public class DailyPredictionAddedEvent : LumenDailyYearlyHistoryEventLog
     [Id(7)] public DateTime AddedAt { get; set; }
 }
 
+/// <summary>
+/// Event: Yearly history cleared
+/// </summary>
+[GenerateSerializer]
+public class DailyYearlyHistoryClearedEvent : LumenDailyYearlyHistoryEventLog
+{
+    [Id(0)] public DateTime ClearedAt { get; set; }
+}
+

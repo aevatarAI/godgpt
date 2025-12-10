@@ -42,6 +42,11 @@ public interface ILumenDailyYearlyHistoryGAgent : IGrainWithGuidKey
     /// </summary>
     [ReadOnly]
     Task<List<DailyPredictionRecord>> GetDailyPredictionsByRangeAsync(DateOnly startDate, DateOnly endDate);
+    
+    /// <summary>
+    /// Clear all daily predictions for this year
+    /// </summary>
+    Task ClearYearlyHistoryAsync();
 }
 
 [GAgent(nameof(LumenDailyYearlyHistoryGAgent))]
@@ -85,6 +90,14 @@ public class LumenDailyYearlyHistoryGAgent :
                     MultilingualResults = addedEvent.MultilingualResults,
                     AvailableLanguages = addedEvent.AvailableLanguages
                 };
+                break;
+                
+            case DailyYearlyHistoryClearedEvent clearEvent:
+                // Clear all predictions data
+                state.UserId = string.Empty;
+                state.Year = 0;
+                state.Predictions.Clear();
+                state.LastUpdatedAt = clearEvent.ClearedAt;
                 break;
         }
     }
@@ -181,6 +194,34 @@ public class LumenDailyYearlyHistoryGAgent :
             startDate, endDate, predictions.Count);
         
         return Task.FromResult(predictions);
+    }
+    
+    public async Task ClearYearlyHistoryAsync()
+    {
+        try
+        {
+            _logger.LogDebug(
+                "[LumenDailyYearlyHistory] Clearing yearly history - Year: {Year}, Count: {Count}",
+                State.Year, State.Predictions.Count);
+            
+            // Raise event to clear history
+            RaiseEvent(new DailyYearlyHistoryClearedEvent
+            {
+                ClearedAt = DateTime.UtcNow
+            });
+            
+            // Confirm event to persist
+            await ConfirmEvents();
+            
+            _logger.LogInformation(
+                "[LumenDailyYearlyHistory] Yearly history cleared successfully");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, 
+                "[LumenDailyYearlyHistory] Error clearing yearly history");
+            throw;
+        }
     }
 }
 

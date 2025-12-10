@@ -20,7 +20,7 @@ public interface IGodChat : IGAgent
 
     Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false, string? region = null,
-        bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null, string? userTimeZoneId = null, string? context = null);
+        bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null, string? userTimeZoneId = null, string? context = null, string? originalUserMessage = null);
 
     [ReadOnly]
     Task<List<ChatMessage>> GetChatMessageAsync();
@@ -31,7 +31,7 @@ public interface IGodChat : IGAgent
     [Obsolete("Recommend using StartStreamChatAsync")]
     Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null,
-        List<string>? images = null, string? context = null);
+        List<string>? images = null, string? context = null, string? llmContent = null);
     
     Task StreamVoiceChatWithSessionAsync(Guid sessionId, string sysmLLM, string? voiceData, string fileName, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, VoiceLanguageEnum voiceLanguage = VoiceLanguageEnum.English, double voiceDurationSeconds = 0.0);

@@ -169,7 +169,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     {
         Guid sessionId = input.SessionId;
         string sysmLLM = input.SysmLLM; 
-        string content = input.Content;
+        string content = input.Content;  // Original user message (saved to history)
+        string? llmContent = input.LlmContent;  // Optional alternative message for LLM
         string chatId = input.ChatId;
         ExecutionPromptSettings promptSettings = input.PromptSettings;
         bool isHttpRequest = input.IsHttpRequest;
@@ -177,8 +178,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         List<string>? images = input.images;
         string? context = input.Context;
         
+        // Determine which message to send to LLM: use llmContent if provided, otherwise use content
+        string messageForLLM = !string.IsNullOrEmpty(llmContent) ? llmContent : content;
+        
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region} hasContext:{!string.IsNullOrEmpty(context)}");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region} hasContext:{!string.IsNullOrEmpty(context)}, usingLlmContent:{!string.IsNullOrEmpty(llmContent)}");
 
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
@@ -264,11 +268,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         await SetSessionTitleAsync(sessionId, content);
         var configuration = GetConfiguration();
-        // Pass original content and context separately, merge will happen in GodStreamChatAsync
+        // Pass messageForLLM for LLM call, original content for history, context separately
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
-            content, chatId, promptSettings, isHttpRequest, region, images: images, 
-            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context);
+            messageForLLM, chatId, promptSettings, isHttpRequest, region, images: images, 
+            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context, originalUserMessage: content);
         
         totalStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
@@ -276,14 +280,15 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
-        List<string>? images = null, string? context = null)
+        List<string>? images = null, string? context = null, string? llmContent = null)
     {
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSessionAsync] start: {sessionId.ToString()}");
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSessionAsync] start: {sessionId.ToString()}, hasLlmContent: {!string.IsNullOrEmpty(llmContent)}");
         await StartStreamChatAsync(new StartStreamChatInput
         {
             SessionId = sessionId,
             SysmLLM = sysmLLM,
             Content = content,
+            LlmContent = llmContent,
             ChatId = chatId,
             PromptSettings = promptSettings,
             IsHttpRequest = isHttpRequest,
@@ -610,11 +615,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
         string? region = null, bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null,
-        string? userTimeZoneId = null, string? context = null)
+        string? userTimeZoneId = null, string? context = null, string? originalUserMessage = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug(
             $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}, hasContext:{!string.IsNullOrEmpty(context)}");
+        
+        // Use originalUserMessage if provided (when LlmContent was used), otherwise use message
+        var messageToSaveInHistory = originalUserMessage ?? message;
         
         // Merge context and content for LLM call
         var enhancedMessage = message;
@@ -710,7 +718,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                         new ChatMessage
                         {
                             ChatRole = ChatRole.User,
-                            Content = message,  // Store original content (context stored separately in meta)
+                            Content = messageToSaveInHistory,  // Store original user message (not the LLM message)
                             ImageKeys = images
                         }
                     },
