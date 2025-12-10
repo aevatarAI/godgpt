@@ -1477,8 +1477,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     {
                         "zh" => $"今日之路 - {pathAdjective}之路",
                         "zh-tw" => $"今日之路 - {pathAdjective}之路",
-                        "es" => $"Tu Camino Hoy - Un Camino {pathAdjective}",
-                        _ => $"Your Path Today - A {pathAdjective} Path"
+                        "es" => $"Tu Camino Hoy - Un Camino {char.ToUpper(pathAdjective[0])}{pathAdjective.Substring(1)}",
+                        _ => $"Your Path Today - A {char.ToUpper(pathAdjective[0])}{pathAdjective.Substring(1)} Path"
                     };
                     parsedResults["todaysReading_pathTitle"] = pathTitle;
                 }
@@ -2315,8 +2315,8 @@ FORMAT REQUIREMENTS:
             {
                 "zh" => "4-8字，诗意隐喻",
                 "zh-tw" => "4-8字，詩意隱喻",
-                "es" => "4-8 palabras metafóricas (Title Case: cada palabra con mayúscula inicial, ej: Día De Reflexión)",
-                _ => "4-8 words poetic metaphor (Title Case: capitalize first letter of each word, e.g. Day Of Reflection)"
+                "es" => "4-8 palabras metafóricas (Title Case: capitalizar palabras principales, minúsculas para preposiciones/artículos cortos como 'de', 'en', 'el', 'y', ej: Día de Reflexión, Camino al Éxito)",
+                _ => "4-8 words poetic metaphor (Title Case: capitalize major words, lowercase short prepositions/articles/conjunctions like 'of', 'in', 'the', 'and', e.g. Day of Reflection, Path to Success)"
             };
             
             var desc_fortune_do = targetLanguage switch
