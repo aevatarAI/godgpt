@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Common;
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Application.Grains.Lumen.Helpers;
 using Aevatar.Application.Grains.Lumen.SEvents;
@@ -88,6 +89,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     private readonly ILogger<LumenPredictionGAgent> _logger;
     private readonly IClusterClient _clusterClient;
     private readonly LumenPredictionOptions _options;
+    private readonly IMetricsRecorder _metricsRecorder;
 
     // Default fallback values if options are not configured
     private const string DEFAULT_DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
@@ -288,11 +290,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     public LumenPredictionGAgent(
         ILogger<LumenPredictionGAgent> logger,
         IClusterClient clusterClient,
-        IOptions<LumenPredictionOptions> options)
+        IOptions<LumenPredictionOptions> options,
+        IMetricsRecorder metricsRecorder)
     {
         _logger = logger;
         _clusterClient = clusterClient;
         _options = options?.Value ?? new LumenPredictionOptions(); // Fallback to default if options not configured
+        _metricsRecorder = metricsRecorder;
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -1176,6 +1180,11 @@ Your task is to create engaging, inspirational, and reflective content that invi
             llmStopwatch.Stop();
             _logger.LogInformation(
                 $"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+            
+            // Record to OpenTelemetry Metrics
+            _metricsRecorder.Record("lumen_prediction", llmStopwatch,
+                new KeyValuePair<string, object?>("user_id", userInfo.UserId),
+                new KeyValuePair<string, object?>("prediction_type", type.ToString()));
 
             if (response == null || response.Count() == 0)
             {
@@ -3172,6 +3181,12 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             batchStopwatch.Stop();
             _logger.LogInformation(
                 $"[PERF][Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} LLM_Call: {batchStopwatch.ElapsedMilliseconds}ms");
+            
+            // Record to OpenTelemetry Metrics
+            _metricsRecorder.Record("lumen_translation", batchStopwatch,
+                new KeyValuePair<string, object?>("user_id", userInfo.UserId),
+                new KeyValuePair<string, object?>("batch_type", batchName),
+                new KeyValuePair<string, object?>("target_language", targetLanguage));
             
             if (response == null || response.Count() == 0)
             {
@@ -6482,6 +6497,12 @@ location_latlong	UNKNOWN";
             _logger.LogInformation(
                 "[PERF][Lumen][Batch] {UserId} {BatchType}: {ElapsedMs}ms, {ResponseLength} chars",
                 userInfo.UserId, batchType, llmStopwatch.ElapsedMilliseconds, aiResponse.Length);
+            
+            // Record to OpenTelemetry Metrics
+            _metricsRecorder.Record("lumen_prediction", llmStopwatch,
+                new KeyValuePair<string, object?>("user_id", userInfo.UserId),
+                new KeyValuePair<string, object?>("prediction_type", "Lifetime"),
+                new KeyValuePair<string, object?>("batch_type", batchType.ToString()));
 
             // Parse TSV response
             var parsedResults = ParseTsvResponse(aiResponse);
