@@ -1127,10 +1127,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             var godChat = _clusterClient.GetGrain<IGodChat>(predictionGrainKey);
             var chatId = Guid.NewGuid().ToString();
 
-            var settings = new ExecutionPromptSettings
-            {
-                Temperature = "0.7"
-            };
+            var settings = new ExecutionPromptSettings();
 
             // System prompt with clear field value language requirement
             var systemPrompt =
@@ -6456,10 +6453,7 @@ location_latlong	UNKNOWN";
             var godChat = _clusterClient.GetGrain<IGodChat>(batchGrainKey);
             var chatId = Guid.NewGuid().ToString();
 
-            var settings = new ExecutionPromptSettings
-            {
-                Temperature = "0.7"
-            };
+            var settings = new ExecutionPromptSettings();
 
             // Build system prompt for this batch
             var systemPrompt = BuildLifetimeBatchSystemPrompt(targetLanguage, batchType);
