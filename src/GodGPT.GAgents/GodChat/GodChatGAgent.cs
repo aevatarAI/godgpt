@@ -1200,15 +1200,24 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             if (!isAggregationVoiceChat && !string.IsNullOrEmpty(chatContent.AggregationMsg))
             {
                 var (mainContent, suggestions) = ParseResponseWithSuggestions(chatContent.AggregationMsg);
+                
+                // Always use cleaned content to ensure [SUGGESTIONS] block is removed from history
+                cleanMainContent = mainContent;
+                
                 if (suggestions.Any())
                 {
                     conversationSuggestions = suggestions;
-                    cleanMainContent = mainContent; // Use clean content without suggestions
                     Logger.LogDebug(
                         $"[GodChatGAgent][ChatMessageCallbackAsync] Parsed {suggestions.Count} conversation suggestions for text chat");
-                    Logger.LogDebug(
-                        $"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned main content length: {cleanMainContent?.Length ?? 0}");
                 }
+                else
+                {
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][ChatMessageCallbackAsync] [SUGGESTIONS] block processed but no numbered items extracted");
+                }
+                
+                Logger.LogDebug(
+                    $"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned main content length: {cleanMainContent?.Length ?? 0}");
             }
 
             RaiseEvent(new GodAddChatHistoryLogEvent
@@ -2239,8 +2248,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
     /// <summary>
     /// Extract numbered items from text (e.g., "1. item", "2. item", etc.)
+    /// Also supports non-numbered format where each line is treated as an item
     /// </summary>
-    /// <param name="text">Text containing numbered items</param>
+    /// <param name="text">Text containing numbered items or plain lines</param>
     /// <returns>List of extracted items</returns>
     private List<string> ExtractNumberedItems(string text)
     {
@@ -2255,7 +2265,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         foreach (var line in lines)
         {
             var trimmedLine = line.Trim();
-            // Match numbered items like "1. content" or "1) content" using precompiled regex
+            
+            // First try to match numbered format "1. content" or "1) content"
             var match = ChatRegexPatterns.NumberedItem.Match(trimmedLine);
             if (match.Success)
             {
@@ -2265,9 +2276,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     items.Add(item);
                 }
             }
+            // If no number prefix, treat non-empty line as a suggestion item
+            else if (!string.IsNullOrWhiteSpace(trimmedLine))
+            {
+                items.Add(trimmedLine);
+            }
         }
 
-        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} numbered items");
+        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} items");
         return items;
     }
 
