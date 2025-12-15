@@ -78,6 +78,11 @@ public interface ILumenPredictionGAgent : IGAgent
     /// Update daily reminder with new timezone (triggered when user updates timezone)
     /// </summary>
     Task UpdateTimeZoneReminderAsync(string timeZoneId);
+    
+    /// <summary>
+    /// Update user activity and ensure daily reminder is registered (for read-only queries)
+    /// </summary>
+    Task UpdateUserActivityAsync(string? userTimeZone = null);
 }
 
 [GAgent(nameof(LumenPredictionGAgent))]
@@ -5581,6 +5586,15 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         {
             _logger.LogError(ex, $"[Lumen][DailyReminder] {State.UserId} Error updating timezone reminder");
         }
+    }
+    
+    /// <summary>
+    /// Update user activity and ensure daily reminder is registered (for read-only queries)
+    /// Public wrapper for UpdateActivityAndEnsureReminderAsync to be called from service layer
+    /// </summary>
+    public async Task UpdateUserActivityAsync(string? userTimeZone = null)
+    {
+        await UpdateActivityAndEnsureReminderAsync(userTimeZone);
     }
     
     /// <summary>
