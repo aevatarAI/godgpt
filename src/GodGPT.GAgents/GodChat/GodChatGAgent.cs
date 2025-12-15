@@ -897,9 +897,6 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             }
             else
             {
-                // Add conversation suggestions prompt and timestamp to system prompt
-                var dateInfo = $"Today's date is: {DateTime.UtcNow:yyyy-MM-dd}. Please use this date as reference for time-related questions.";
-            
                 if (llm != LocalBackupModel)
                 {
                     systemPrompt = $"{systemPrompt}\n\n{ChatPrompts.ConversationSuggestionsPrompt}\n\n{dateInfo}";
