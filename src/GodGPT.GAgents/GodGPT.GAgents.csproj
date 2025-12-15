@@ -15,6 +15,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="AElf.OpenTelemetry" />
         <PackageReference Include="Aevatar.Core" />
         <PackageReference Include="Aevatar.Core.Abstractions" />
         <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" />

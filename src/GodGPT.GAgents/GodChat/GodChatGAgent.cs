@@ -169,7 +169,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     {
         Guid sessionId = input.SessionId;
         string sysmLLM = input.SysmLLM; 
-        string content = input.Content;
+        string content = input.Content;  // Original user message (saved to history)
+        string? llmContent = input.LlmContent;  // Optional alternative message for LLM
         string chatId = input.ChatId;
         ExecutionPromptSettings promptSettings = input.PromptSettings;
         bool isHttpRequest = input.IsHttpRequest;
@@ -177,8 +178,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         List<string>? images = input.images;
         string? context = input.Context;
         
+        // Determine which message to send to LLM: use llmContent if provided, otherwise use content
+        string messageForLLM = !string.IsNullOrEmpty(llmContent) ? llmContent : content;
+        
         var totalStopwatch = Stopwatch.StartNew();
-        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region}, hasContext:{!string.IsNullOrEmpty(context)}");
+        Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] {sessionId.ToString()} start. region:{region} hasContext:{!string.IsNullOrEmpty(context)}, usingLlmContent:{!string.IsNullOrEmpty(llmContent)}");
 
         // Get language from RequestContext with error handling
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
@@ -264,11 +268,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         
         await SetSessionTitleAsync(sessionId, content);
         var configuration = GetConfiguration();
-        // Pass original content and context separately, merge will happen in GodStreamChatAsync
+        // Pass messageForLLM for LLM call, original content for history, context separately
         await GodStreamChatAsync(sessionId, await configuration.GetSystemLLM(),
             await configuration.GetStreamingModeEnabled(),
-            content, chatId, promptSettings, isHttpRequest, region, images: images, 
-            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context);
+            messageForLLM, chatId, promptSettings, isHttpRequest, region, images: images, 
+            userLocalTime: input.UserLocalTime, userTimeZoneId: input.UserTimeZoneId, context: context, originalUserMessage: content);
         
         totalStopwatch.Stop();
         Logger.LogDebug($"[GodChatGAgent][StartStreamChatAsync] TOTAL_Time - Duration: {totalStopwatch.ElapsedMilliseconds}ms, SessionId: {sessionId}");
@@ -276,14 +280,15 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
     public async Task StreamChatWithSessionAsync(Guid sessionId, string sysmLLM, string content, string chatId,
         ExecutionPromptSettings promptSettings = null, bool isHttpRequest = false, string? region = null, 
-        List<string>? images = null, string? context = null)
+        List<string>? images = null, string? context = null, string? llmContent = null)
     {
-        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSessionAsync] start: {sessionId.ToString()}");
+        Logger.LogDebug($"[GodChatGAgent][StreamChatWithSessionAsync] start: {sessionId.ToString()}, hasLlmContent: {!string.IsNullOrEmpty(llmContent)}");
         await StartStreamChatAsync(new StartStreamChatInput
         {
             SessionId = sessionId,
             SysmLLM = sysmLLM,
             Content = content,
+            LlmContent = llmContent,
             ChatId = chatId,
             PromptSettings = promptSettings,
             IsHttpRequest = isHttpRequest,
@@ -610,11 +615,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     public async Task<string> GodStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled, string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
         string? region = null, bool addToHistory = true, List<string>? images = null, DateTime? userLocalTime = null,
-        string? userTimeZoneId = null, string? context = null)
+        string? userTimeZoneId = null, string? context = null, string? originalUserMessage = null)
     {
         var totalStopwatch = Stopwatch.StartNew();
         Logger.LogDebug(
             $"[GodChatGAgent][GodStreamChatAsync] agent start  session {sessionId.ToString()}, chat {chatId}, region {region}, hasContext:{!string.IsNullOrEmpty(context)}");
+        
+        // Use originalUserMessage if provided (when LlmContent was used), otherwise use message
+        var messageToSaveInHistory = originalUserMessage ?? message;
         
         // Merge context and content for LLM call
         var enhancedMessage = message;
@@ -665,7 +673,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                 var chatPageMessageAfterSync = _localizationService.GetLocalizedMessage(ExceptionMessageKeys.ChatPageMessageAfterSync,language);
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} homeDosAndDontPromptMessage: {homeDosAndDontPromptMessage}");
                 Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} message: {message}, {message == homeDosAndDontPromptMessage}");
-                if (message.StartsWith(homeDosAndDontPromptMessage) || message.StartsWith(chatPageMessageAfterSync))
+                var isDailyGuide = State.PromptTemplate == DailyGuide;
+                if (isDailyGuide && (message.StartsWith(homeDosAndDontPromptMessage) || message.StartsWith(chatPageMessageAfterSync)))
                 {
                     enhancedMessage = await GenerateDailyRecommendationsAsync(language, userLocalTime, userTimeZoneId);
                     Logger.LogDebug($"[GodChatGAgent][GodStreamChatAsync] {sessionId} enhancedMessage: {enhancedMessage}");
@@ -709,7 +718,7 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                         new ChatMessage
                         {
                             ChatRole = ChatRole.User,
-                            Content = message,  // Store original content (context stored separately in meta)
+                            Content = messageToSaveInHistory,  // Store original user message (not the LLM message)
                             ImageKeys = images
                         }
                     },
@@ -877,6 +886,10 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         foreach (var llm in llmsForRegion)
         {
             var systemPrompt = rolePrompts.IsNullOrWhiteSpace() ? State.PromptTemplate : rolePrompts;
+            
+            // Add conversation suggestions prompt and timestamp to system prompt
+            var dateInfo = $"Today's date is: {DateTime.UtcNow:yyyy-MM-dd}. Please use this date as reference for time-related questions.";
+            
             var isDailyGuide = systemPrompt == DailyGuide;
             if (isDailyGuide)
             {
@@ -1195,15 +1208,24 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
             if (!isAggregationVoiceChat && !string.IsNullOrEmpty(chatContent.AggregationMsg))
             {
                 var (mainContent, suggestions) = ParseResponseWithSuggestions(chatContent.AggregationMsg);
+                
+                // Always use cleaned content to ensure [SUGGESTIONS] block is removed from history
+                cleanMainContent = mainContent;
+                
                 if (suggestions.Any())
                 {
                     conversationSuggestions = suggestions;
-                    cleanMainContent = mainContent; // Use clean content without suggestions
                     Logger.LogDebug(
                         $"[GodChatGAgent][ChatMessageCallbackAsync] Parsed {suggestions.Count} conversation suggestions for text chat");
-                    Logger.LogDebug(
-                        $"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned main content length: {cleanMainContent?.Length ?? 0}");
                 }
+                else
+                {
+                    Logger.LogDebug(
+                        $"[GodChatGAgent][ChatMessageCallbackAsync] [SUGGESTIONS] block processed but no numbered items extracted");
+                }
+                
+                Logger.LogDebug(
+                    $"[GodChatGAgent][ChatMessageCallbackAsync] Cleaned main content length: {cleanMainContent?.Length ?? 0}");
             }
 
             RaiseEvent(new GodAddChatHistoryLogEvent
@@ -2079,6 +2101,11 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
     }
 
 
+    // private string GetFormulaFormatPrompt()
+    // {
+    //     return "When outputting mathematical formulas, use standard Markdown LaTeX format: inline formulas with single dollar signs like $\\psi$, block formulas with double dollar signs on separate lines. Use single backslash in formulas (e.g., \\psi, \\frac), never double backslashes. Example: $$\\psi = \\psi(\\psi)$$";
+    // }
+
     public async Task<string> GodVoiceStreamChatAsync(Guid sessionId, string llm, bool streamingModeEnabled,
         string message,
         string chatId, ExecutionPromptSettings? promptSettings = null, bool isHttpRequest = false,
@@ -2229,8 +2256,9 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
 
     /// <summary>
     /// Extract numbered items from text (e.g., "1. item", "2. item", etc.)
+    /// Also supports non-numbered format where each line is treated as an item
     /// </summary>
-    /// <param name="text">Text containing numbered items</param>
+    /// <param name="text">Text containing numbered items or plain lines</param>
     /// <returns>List of extracted items</returns>
     private List<string> ExtractNumberedItems(string text)
     {
@@ -2245,7 +2273,8 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
         foreach (var line in lines)
         {
             var trimmedLine = line.Trim();
-            // Match numbered items like "1. content" or "1) content" using precompiled regex
+            
+            // First try to match numbered format "1. content" or "1) content"
             var match = ChatRegexPatterns.NumberedItem.Match(trimmedLine);
             if (match.Success)
             {
@@ -2255,9 +2284,14 @@ public class GodChatGAgent : GAgentBase<GodChatState, GodChatEventLog, EventBase
                     items.Add(item);
                 }
             }
+            // If no number prefix, treat non-empty line as a suggestion item
+            else if (!string.IsNullOrWhiteSpace(trimmedLine))
+            {
+                items.Add(trimmedLine);
+            }
         }
 
-        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} numbered items");
+        Logger.LogDebug($"[GodChatGAgent][ExtractNumberedItems] Extracted {items.Count} items");
         return items;
     }
 

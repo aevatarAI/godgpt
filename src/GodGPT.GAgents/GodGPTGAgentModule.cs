@@ -19,11 +19,13 @@ using GodGPT.GAgents.DailyPush.Options;
 using GodGPT.GAgents.DailyPush.Services;
 using Microsoft.Extensions.Configuration;
 using StackExchange.Redis;
+using AElf.OpenTelemetry;
 
 namespace Aevatar.Application.Grains;
 
 [DependsOn(
-    typeof(AbpAutoMapperModule))]
+    typeof(AbpAutoMapperModule),
+    typeof(OpenTelemetryModule))]
 public class GodGPTGAgentModule : AbpModule
 {
     public override void ConfigureServices(ServiceConfigurationContext context)

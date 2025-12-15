@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using Aevatar.Application.Grains.Agents.ChatManager.Chat;
 using Aevatar.Application.Grains.Agents.ChatManager.Common;
 using Aevatar.Application.Grains.Common;
+using Aevatar.Application.Grains.Common.Observability;
 using Aevatar.Application.Grains.Lumen.Dtos;
 using Aevatar.Application.Grains.Lumen.Helpers;
 using Aevatar.Application.Grains.Lumen.SEvents;
@@ -61,7 +62,7 @@ public interface ILumenPredictionGAgent : IGAgent
     Task<PredictionResultDto?> GetPredictionAsync(string userLanguage = "en");
     
     [ReadOnly]
-    Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null);
+    Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null, string? userTimeZone = null);
     
     Task ClearCurrentPredictionAsync();
     
@@ -88,6 +89,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     private readonly ILogger<LumenPredictionGAgent> _logger;
     private readonly IClusterClient _clusterClient;
     private readonly LumenPredictionOptions _options;
+    private readonly IMetricsRecorder _metricsRecorder;
 
     // Default fallback values if options are not configured
     private const string DEFAULT_DAILY_REMINDER_NAME = "LumenDailyPredictionReminder";
@@ -288,11 +290,13 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     public LumenPredictionGAgent(
         ILogger<LumenPredictionGAgent> logger,
         IClusterClient clusterClient,
-        IOptions<LumenPredictionOptions> options)
+        IOptions<LumenPredictionOptions> options,
+        IMetricsRecorder metricsRecorder)
     {
         _logger = logger;
         _clusterClient = clusterClient;
         _options = options?.Value ?? new LumenPredictionOptions(); // Fallback to default if options not configured
+        _metricsRecorder = metricsRecorder;
     }
 
     public override Task<string> GetDescriptionAsync()
@@ -391,8 +395,12 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 state.TranslationLocks.Clear();
                 state.TodayProcessDate = null;
                 state.TodayProcessedLanguages.Clear();
-                // Note: Do NOT clear LastActiveDate, DailyReminderTargetId, IsDailyReminderEnabled
-                // These are user activity tracking fields, not prediction data
+                
+                // CRITICAL: Also clear Reminder state to allow re-registration after account deletion
+                // This ensures that when a user deletes and re-registers, the Reminder will be properly re-initialized
+                state.LastActiveDate = default;
+                state.IsDailyReminderEnabled = false;
+                state.DailyReminderTargetId = Guid.Empty;
                 break;
         }
     }
@@ -403,9 +411,9 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
         var totalStopwatch = Stopwatch.StartNew();
         try
         {
-            // Use provided date or default to today
-            var targetDate = predictionDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            // Use provided date or default to today (in user's local timezone for Daily predictions)
+            var today = GetUserLocalDate(userInfo.CurrentTimeZone);
+            var targetDate = predictionDate ?? today;
             var currentYear = today.Year;
             
             // Note: Location warning is generated in GeneratePredictionAsync method
@@ -414,7 +422,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                 $"[PERF][Lumen] {userInfo.UserId} START - Type: {type}, Date: {targetDate}, Language: {userLanguage}");
             
             // Update user activity and ensure daily reminder is registered (for Daily predictions only)
-            await UpdateActivityAndEnsureReminderAsync();
+            await UpdateActivityAndEnsureReminderAsync(userInfo.CurrentTimeZone);
             
             // ========== IDEMPOTENCY CHECK: Prevent concurrent generation for this type ==========
             if (State.GenerationLocks.TryGetValue(type, out var lockInfo) && lockInfo.IsGenerating)
@@ -516,28 +524,17 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                         $"[Lumen] {userInfo.UserId} Language '{userLanguage}' not available, returning empty Results with AvailableLanguages");
                 }
                 
-                // Add currentPhase for Lifetime predictions
+                // Add currentPhase for Lifetime predictions (runtime calculation, not cached)
                 if (type == PredictionType.Lifetime)
                 {
-                    var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                    var currentPhase = CalculateCurrentPhase(userInfo.BirthDate, userInfo.CurrentTimeZone);
                     localizedResults = new Dictionary<string, string>(localizedResults);
                     localizedResults["currentPhase"] = currentPhase.ToString();
                 }
                 
-                // Add lucky number for Daily predictions (backend-calculated, not from LLM)
-                if (type == PredictionType.Daily && localizedResults.Count > 0)
-                {
-                    localizedResults = new Dictionary<string, string>(localizedResults);
-                    var luckyNumberResult = Services.LuckyNumberService.CalculateLuckyNumber(
-                        userInfo.BirthDate,
-                        State.PredictionDate,
-                        returnedLanguage);
-                    
-                    localizedResults["luckyAlignments_luckyNumber_number"] = luckyNumberResult.NumberWord;
-                    localizedResults["luckyAlignments_luckyNumber_digit"] = luckyNumberResult.Digit.ToString();
-                    localizedResults["luckyAlignments_luckyNumber_description"] = luckyNumberResult.Description;
-                    localizedResults["luckyAlignments_luckyNumber_calculation"] = luckyNumberResult.CalculationFormula;
-                }
+                // NOTE: Lucky number for Daily predictions is already in cached multilingualResults
+                // It was calculated and stored during initial generation (see line 1545-1562)
+                // No need to recalculate here - just return cached value to ensure consistency
                 
                 // Get available languages from MultilingualResults (actual available languages)
                 // If MultilingualResults is empty (but not null), fallback to GeneratedLanguages
@@ -700,7 +697,7 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
     /// <summary>
     /// Get prediction generation status
     /// </summary>
-    public async Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null)
+    public async Task<PredictionStatusDto?> GetPredictionStatusAsync(DateTime? profileUpdatedAt = null, string? userTimeZone = null)
     {
         // Determine the actual prediction type from GenerationLocks (since State.Type defaults to 0)
         // Each grain only handles one type, so use the first (and only) key if available
@@ -793,10 +790,10 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
                                 profileUpdatedAt.Value > State.ProfileUpdatedAt.Value;
         }
 
-        // For Daily predictions, also check if prediction is for today
+        // For Daily predictions, also check if prediction is for today (in user's local timezone)
         if (State.Type == PredictionType.Daily)
         {
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var today = GetUserLocalDate(userTimeZone);
             if (State.PredictionDate != today)
             {
                 needsRegeneration = true;
@@ -996,62 +993,62 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             
             if (type == PredictionType.Lifetime)
             {
-                // Determine effective LatLong: prioritize user-provided, fallback to LLM-inferred
-                var effectiveLatLong = !string.IsNullOrWhiteSpace(userInfo.LatLong) 
-                    ? userInfo.LatLong 
-                    : userInfo.LatLongInferred;
-                
-                var latLongSource = !string.IsNullOrWhiteSpace(userInfo.LatLong) ? "user-provided" : 
-                                   !string.IsNullOrWhiteSpace(userInfo.LatLongInferred) ? "LLM-inferred" : "none";
-                
-                // Diagnostic logging
-                _logger.LogInformation(
+            // Determine effective LatLong: prioritize user-provided, fallback to LLM-inferred
+            var effectiveLatLong = !string.IsNullOrWhiteSpace(userInfo.LatLong) 
+                ? userInfo.LatLong 
+                : userInfo.LatLongInferred;
+            
+            var latLongSource = !string.IsNullOrWhiteSpace(userInfo.LatLong) ? "user-provided" : 
+                               !string.IsNullOrWhiteSpace(userInfo.LatLongInferred) ? "LLM-inferred" : "none";
+            
+            // Diagnostic logging
+            _logger.LogInformation(
                     $"[LumenPredictionGAgent][Lifetime] Moon/Rising calculation check - BirthTime: {userInfo.BirthTime}, BirthTime.HasValue: {userInfo.BirthTime.HasValue}, LatLong: '{userInfo.LatLong}', LatLongInferred: '{userInfo.LatLongInferred}', Effective: '{effectiveLatLong}', Source: {latLongSource}");
-                
-                if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(effectiveLatLong))
+            
+            if (calcBirthTime.HasValue && !string.IsNullOrWhiteSpace(effectiveLatLong))
+            {
+                try
                 {
-                    try
-                    {
-                        // Parse latitude and longitude from "lat, long" format
-                        var parts = effectiveLatLong.Split(',', StringSplitOptions.TrimEntries);
-                        _logger.LogInformation(
+                    // Parse latitude and longitude from "lat, long" format
+                    var parts = effectiveLatLong.Split(',', StringSplitOptions.TrimEntries);
+                    _logger.LogInformation(
                             $"[LumenPredictionGAgent][Lifetime] Parsing LatLong ({latLongSource}) - Parts count: {parts.Length}, Part[0]: '{parts.ElementAtOrDefault(0)}', Part[1]: '{parts.ElementAtOrDefault(1)}'");
-                        
-                        if (parts.Length == 2 && 
-                            double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture,
-                                out double latitude) &&
-                            double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture,
-                                out double longitude))
-                        {
-                            _logger.LogInformation(
-                                $"[LumenPredictionGAgent][Lifetime] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}] using Corrected UTC: {calcBirthDate} {calcBirthTime}");
-                            var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
-                                calcBirthDate,
-                                calcBirthTime.Value,
-                                latitude,
-                                longitude);
-                            
-                            moonSign = calculatedMoonSign;
-                            risingSign = calculatedRisingSign;
-                            
-                            _logger.LogInformation(
-                                $"[LumenPredictionGAgent][Lifetime] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}]");
-                        }
-                        else
-                        {
-                            _logger.LogWarning(
-                                $"[LumenPredictionGAgent][Lifetime] Invalid latlong format or parse failed ({latLongSource}): '{effectiveLatLong}'");
-                        }
-                    }
-                    catch (Exception ex)
+                    
+                    if (parts.Length == 2 && 
+                        double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out double latitude) &&
+                        double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture,
+                            out double longitude))
                     {
-                        _logger.LogWarning(ex,
-                            $"[LumenPredictionGAgent][Lifetime] Failed to calculate Moon/Rising signs for user {userInfo.UserId}, will use Sun sign as fallback");
+                        _logger.LogInformation(
+                                $"[LumenPredictionGAgent][Lifetime] Starting Western Astrology calculation for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}] using Corrected UTC: {calcBirthDate} {calcBirthTime}");
+                        var (_, calculatedMoonSign, calculatedRisingSign) = CalculateSigns(
+                            calcBirthDate,
+                            calcBirthTime.Value,
+                            latitude,
+                            longitude);
+                        
+                        moonSign = calculatedMoonSign;
+                        risingSign = calculatedRisingSign;
+                        
+                        _logger.LogInformation(
+                                $"[LumenPredictionGAgent][Lifetime] Calculated Moon: {moonSign}, Rising: {risingSign} for user {userInfo.UserId} at ({latitude}, {longitude}) [{latLongSource}]");
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                                $"[LumenPredictionGAgent][Lifetime] Invalid latlong format or parse failed ({latLongSource}): '{effectiveLatLong}'");
                     }
                 }
-                else
+                catch (Exception ex)
                 {
-                    _logger.LogInformation(
+                    _logger.LogWarning(ex,
+                            $"[LumenPredictionGAgent][Lifetime] Failed to calculate Moon/Rising signs for user {userInfo.UserId}, will use Sun sign as fallback");
+                }
+            }
+            else
+            {
+                _logger.LogInformation(
                         $"[LumenPredictionGAgent][Lifetime] Skipping Moon/Rising calculation - BirthTime: {calcBirthTime.HasValue}, LatLong available: {!string.IsNullOrWhiteSpace(effectiveLatLong)}");
                 }
             }
@@ -1116,32 +1113,29 @@ public class LumenPredictionGAgent : GAgentBase<LumenPredictionState, LumenPredi
             // ========== DAILY/YEARLY: Use single LLM call (smaller prompts, less risk of refusal) ==========
             else
             {
-                // Build prompt
-                var promptStopwatch = Stopwatch.StartNew();
-                var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage, moonSign, risingSign);
-                promptStopwatch.Stop();
-                var promptTokens = TokenHelper.EstimateTokenCount(prompt);
-                _logger.LogInformation(
-                    $"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}, Type: {type}, TargetLanguage: {targetLanguage}");
-                
-                var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
-                
-                // Use deterministic grain key based on userId + predictionType
-                // This enables concurrent LLM calls for different prediction types (daily/yearly/lifetime)
-                // while keeping grain count minimal (3 grains per user)
-                // Format: userId_daily, userId_yearly, userId_lifetime
-                var predictionGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}");
-                var godChat = _clusterClient.GetGrain<IGodChat>(predictionGrainKey);
-                var chatId = Guid.NewGuid().ToString();
+            // Build prompt
+            var promptStopwatch = Stopwatch.StartNew();
+            var prompt = BuildPredictionPrompt(userInfo, predictionDate, type, targetLanguage, moonSign, risingSign);
+            promptStopwatch.Stop();
+            var promptTokens = TokenHelper.EstimateTokenCount(prompt);
+            _logger.LogInformation(
+                $"[PERF][Lumen] {userInfo.UserId} Prompt_Build: {promptStopwatch.ElapsedMilliseconds}ms, Length: {prompt.Length} chars, Tokens: ~{promptTokens}, Type: {type}, TargetLanguage: {targetLanguage}");
+            
+            var userGuid = CommonHelper.StringToGuid(userInfo.UserId);
+            
+            // Use deterministic grain key based on userId + predictionType
+            // This enables concurrent LLM calls for different prediction types (daily/yearly/lifetime)
+            // while keeping grain count minimal (3 grains per user)
+            // Format: userId_daily, userId_yearly, userId_lifetime
+            var predictionGrainKey = CommonHelper.StringToGuid($"{userInfo.UserId}_{type.ToString().ToLower()}");
+            var godChat = _clusterClient.GetGrain<IGodChat>(predictionGrainKey);
+            var chatId = Guid.NewGuid().ToString();
 
-                var settings = new ExecutionPromptSettings
-                {
-                    Temperature = "0.7"
-                };
+            var settings = new ExecutionPromptSettings();
 
-                // System prompt with clear field value language requirement
-                var systemPrompt =
-                    $@"You are a creative astrology guide helping users explore self-reflection through symbolic and thematic narratives.
+            // System prompt with clear field value language requirement
+            var systemPrompt =
+                $@"You are a creative astrology guide helping users explore self-reflection through symbolic and thematic narratives.
 
 ===== LANGUAGE REQUIREMENT (CRITICAL) =====
 Target Language: {languageName}
@@ -1173,54 +1167,59 @@ CONTENT GUIDELINES:
 
 Your task is to create engaging, inspirational, and reflective content that invites users to contemplate their unique path and potential.";
 
-                // Use "LUMEN" region for LLM calls
-                var llmStopwatch = Stopwatch.StartNew();
-                var response = await godChat.ChatWithoutHistoryAsync(
-                    userGuid, 
-                    systemPrompt, 
-                    prompt, 
-                    chatId, 
-                    settings, 
-                    true, 
-                    "LUMEN");
-                llmStopwatch.Stop();
-                _logger.LogInformation(
-                    $"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+            // Use "LUMEN" region for LLM calls
+            var llmStopwatch = Stopwatch.StartNew();
+            var response = await godChat.ChatWithoutHistoryAsync(
+                userGuid, 
+                systemPrompt, 
+                prompt, 
+                chatId, 
+                settings, 
+                true, 
+                "LUMEN");
+            llmStopwatch.Stop();
+            _logger.LogInformation(
+                $"[PERF][Lumen] {userInfo.UserId} LLM_Call: {llmStopwatch.ElapsedMilliseconds}ms - Type: {type}");
+            
+            // Record to OpenTelemetry Metrics
+            _metricsRecorder.Record("lumen_prediction", llmStopwatch,
+                new KeyValuePair<string, object?>("user_id", userInfo.UserId),
+                new KeyValuePair<string, object?>("prediction_type", type.ToString()));
 
-                if (response == null || response.Count() == 0)
+            if (response == null || response.Count() == 0)
+            {
+                _logger.LogWarning(
+                    "[LumenPredictionGAgent][GeneratePredictionAsync] No response from AI for user {UserId}",
+                    userInfo.UserId);
+                return new GetTodayPredictionResult
                 {
-                    _logger.LogWarning(
-                        "[LumenPredictionGAgent][GeneratePredictionAsync] No response from AI for user {UserId}",
-                        userInfo.UserId);
-                    return new GetTodayPredictionResult
-                    {
-                        Success = false,
-                        Message = "AI service returned no response"
-                    };
-                }
-
-                var aiResponse = response[0].Content;
-                _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Response: {aiResponse.Length} chars");
-
-                // Parse AI response based on type (returns flattened structure)
-                var parseStopwatch = Stopwatch.StartNew();
-                (parsedResults, multilingualResults) = type switch
-                {
-                    PredictionType.Yearly => ParseLifetimeResponse(aiResponse), // Yearly uses same parser
-                    PredictionType.Daily => ParseDailyResponse(aiResponse),
-                    _ => throw new ArgumentException($"Unsupported prediction type: {type}")
+                    Success = false,
+                    Message = "AI service returned no response"
                 };
+            }
+
+            var aiResponse = response[0].Content;
+            _logger.LogInformation($"[PERF][Lumen] {userInfo.UserId} LLM_Response: {aiResponse.Length} chars");
+
+            // Parse AI response based on type (returns flattened structure)
+            var parseStopwatch = Stopwatch.StartNew();
+            (parsedResults, multilingualResults) = type switch
+            {
+                PredictionType.Yearly => ParseLifetimeResponse(aiResponse), // Yearly uses same parser
+                PredictionType.Daily => ParseDailyResponse(aiResponse),
+                _ => throw new ArgumentException($"Unsupported prediction type: {type}")
+            };
                 parseStopwatch.Stop();
-                
-                if (parsedResults == null)
+            
+            if (parsedResults == null)
+            {
+                _logger.LogError("[LumenPredictionGAgent][GeneratePredictionAsync] Failed to parse {Type} response",
+                    type);
+                return new GetTodayPredictionResult
                 {
-                    _logger.LogError("[LumenPredictionGAgent][GeneratePredictionAsync] Failed to parse {Type} response",
-                        type);
-                    return new GetTodayPredictionResult
-                    {
-                        Success = false,
-                        Message = "Failed to parse AI response"
-                    };
+                    Success = false,
+                    Message = "Failed to parse AI response"
+                };
                 }
             }
             
@@ -1413,9 +1412,9 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     {
                         // Other languages: Fallback to Chinese name if missing
                         parsedResults["zodiacCycle_cycleName"] = cycleNameChinese;
-                        _logger.LogWarning(
-                            "[Lumen][Lifetime] zodiacCycle_cycleName missing for language {Language}, using Chinese fallback",
-                            targetLanguage);
+                    _logger.LogWarning(
+                        "[Lumen][Lifetime] zodiacCycle_cycleName missing for language {Language}, using Chinese fallback",
+                        targetLanguage);
                     }
                 }
                 
@@ -1484,8 +1483,8 @@ Your task is to create engaging, inspirational, and reflective content that invi
                     {
                         "zh" => $"今日之路 - {pathAdjective}之路",
                         "zh-tw" => $"今日之路 - {pathAdjective}之路",
-                        "es" => $"Tu Camino Hoy - Un Camino {pathAdjective}",
-                        _ => $"Your Path Today - A {pathAdjective} Path"
+                        "es" => $"Tu Camino Hoy - Un Camino {char.ToUpper(pathAdjective[0])}{pathAdjective.Substring(1)}",
+                        _ => $"Your Path Today - A {char.ToUpper(pathAdjective[0])}{pathAdjective.Substring(1)} Path"
                     };
                     parsedResults["todaysReading_pathTitle"] = pathTitle;
                 }
@@ -1503,7 +1502,7 @@ Your task is to create engaging, inspirational, and reflective content that invi
             // Add currentPhase for lifetime predictions
             if (type == PredictionType.Lifetime)
             {
-                var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+                var currentPhase = CalculateCurrentPhase(userInfo.BirthDate, userInfo.CurrentTimeZone);
                 parsedResults["currentPhase"] = currentPhase.ToString();
                 
                 // Construct cn_year from birthYearAnimal (backend-generated, not from LLM)
@@ -2064,18 +2063,18 @@ Start output now with first field
             
             var desc_do = targetLanguage switch
             {
-                "zh" => "建议1|建议2|建议3 (竖线分隔)",
-                "zh-tw" => "建議1|建議2|建議3 (豎線分隔)",
-                "es" => "item1|item2 (áreas a explorar, separado por |)",
-                _ => "item1|item2 (areas to explore)"
+                "zh" => "2条完整的行动短句，每条必须是完整的句子而非短语 (如：在重要项目上主动展现你的专业能力|与导师或前辈建立更深层的连接关系，竖线分隔)",
+                "zh-tw" => "2條完整的行動短句，每條必須是完整的句子而非短語 (如：在重要項目上主動展現你的專業能力|與導師或前輩建立更深層的連接關係，豎線分隔)",
+                "es" => "2 oraciones completas de acción, cada una debe ser una oración completa no una frase (ej: Demuestra proactivamente tu experiencia profesional en proyectos clave|Construye conexiones más profundas con mentores y personas con experiencia, separado por |)",
+                _ => "2 complete action sentences, each MUST be a full sentence not a phrase (e.g. Proactively demonstrate your professional expertise on key projects|Build deeper connections with mentors and experienced people, separated by |)"
             };
             
             var desc_avoid = targetLanguage switch
             {
-                "zh" => "注意1|注意2|注意3 (竖线分隔)",
-                "zh-tw" => "注意1|注意2|注意3 (豎線分隔)",
-                "es" => "item1|item2 (patrones a tener en cuenta, separado por |)",
-                _ => "item1|item2 (patterns to be mindful of)"
+                "zh" => "2条完整的注意事项短句，每条必须是完整的句子而非短语 (如：避免在没有充分准备的情况下做出重大职业决策|不要忽略内心真实的价值观去追随外界期待，竖线分隔)",
+                "zh-tw" => "2條完整的注意事項短句，每條必須是完整的句子而非短語 (如：避免在沒有充分準備的情況下做出重大職業決策|不要忽略內心真實的價值觀去追隨外界期待，豎線分隔)",
+                "es" => "2 oraciones completas de precaución, cada una debe ser una oración completa no una frase (ej: Evita tomar decisiones profesionales importantes sin preparación adecuada|No ignores tus valores internos reales para seguir expectativas externas, separado por |)",
+                _ => "2 complete caution sentences, each MUST be a full sentence not a phrase (e.g. Avoid making major career decisions without adequate preparation|Don't ignore your true inner values to follow external expectations, separated by |)"
             };
             
             var desc_detail = targetLanguage switch
@@ -2322,8 +2321,8 @@ FORMAT REQUIREMENTS:
             {
                 "zh" => "4-8字，诗意隐喻",
                 "zh-tw" => "4-8字，詩意隱喻",
-                "es" => "4-8 palabras metafóricas",
-                _ => "4-8 words poetic metaphor"
+                "es" => "4-8 palabras metafóricas (Title Case: capitalizar palabras principales, minúsculas para preposiciones/artículos cortos como 'de', 'en', 'el', 'y', ej: Día de Reflexión, Camino al Éxito)",
+                _ => "4-8 words poetic metaphor (Title Case: capitalize major words, lowercase short prepositions/articles/conjunctions like 'of', 'in', 'the', 'and', e.g. Day of Reflection, Path to Success)"
             };
             
             var desc_fortune_do = targetLanguage switch
@@ -2534,15 +2533,15 @@ Generate translations for: {targetLangNames}
         {
             // Check if data needs regeneration (date expired, profile updated, or prompt version changed)
             var needsRegeneration = false;
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
-            var currentYear = DateTime.UtcNow.Year;
+            var today = GetUserLocalDate(userInfo.CurrentTimeZone);
+            var currentYear = today.Year;
             
-            // Check expiration based on type
+            // Check expiration based on type (using user's local date for Daily predictions)
             bool dataExpired = type switch
             {
                 PredictionType.Lifetime => false, // Lifetime never expires by date
                 PredictionType.Yearly => State.PredictionDate.Year != currentYear, // Yearly expires after 1 year
-                PredictionType.Daily => State.PredictionDate != today, // Daily expires every day
+                PredictionType.Daily => State.PredictionDate != today, // Daily expires every day (in user's timezone)
                 _ => false
             };
             
@@ -2778,7 +2777,7 @@ Generate translations for: {targetLangNames}
                 };
                 
                 var lifetimeUpdatedLanguages = (State.GeneratedLanguages ?? new List<string>()).Union(new[] { targetLanguage }).ToList();
-                var lifetimeLastGenDate = DateOnly.FromDateTime(DateTime.UtcNow);
+                var lifetimeLastGenDate = GetUserLocalDate(userInfo.CurrentTimeZone);
                 
                 RaiseEvent(new LanguagesTranslatedEvent
                 {
@@ -2943,7 +2942,7 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             // For Yearly/Lifetime: LastGeneratedDate = today (to prevent duplicate translations on the same day)
             var lastGenDate = type == PredictionType.Daily 
                 ? predictionDate 
-                : DateOnly.FromDateTime(DateTime.UtcNow);
+                : GetUserLocalDate(userInfo.CurrentTimeZone);
             
             RaiseEvent(new LanguagesTranslatedEvent
             {
@@ -3182,6 +3181,12 @@ All content is for entertainment, self-exploration, and contemplative purposes o
             batchStopwatch.Stop();
             _logger.LogInformation(
                 $"[PERF][Lumen][OnDemandTranslation][Batch:{batchName}] {userInfo.UserId} LLM_Call: {batchStopwatch.ElapsedMilliseconds}ms");
+            
+            // Record to OpenTelemetry Metrics
+            _metricsRecorder.Record("lumen_translation", batchStopwatch,
+                new KeyValuePair<string, object?>("user_id", userInfo.UserId),
+                new KeyValuePair<string, object?>("batch_type", batchName),
+                new KeyValuePair<string, object?>("target_language", targetLanguage));
             
             if (response == null || response.Count() == 0)
             {
@@ -3619,7 +3624,7 @@ Start translation now:";
     /// <summary>
     /// Get fallback language based on priority: en > zh > zh-tw > es
     /// </summary>
-    private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
+        private string BuildSingleLanguageTranslationPrompt(Dictionary<string, string> sourceContent,
             string sourceLanguage, string targetLanguage, PredictionType type)
     {
         // Validate source content (should not happen as callers check, but defensive)
@@ -3698,11 +3703,35 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     }
 
     /// <summary>
+    /// Get user's local date based on their timezone (for Daily prediction date calculation)
+    /// </summary>
+    private DateOnly GetUserLocalDate(string? timeZoneId)
+    {
+        if (string.IsNullOrEmpty(timeZoneId))
+        {
+            // Fallback to UTC if timezone not provided (backward compatibility)
+            return DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+
+        try
+        {
+            var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            var userNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, userTimeZone);
+            return DateOnly.FromDateTime(userNow);
+        }
+        catch (TimeZoneNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "[Lumen] Invalid timezone: {TimeZoneId}, falling back to UTC", timeZoneId);
+            return DateOnly.FromDateTime(DateTime.UtcNow);
+        }
+    }
+
+    /// <summary>
     /// Calculate current life phase based on birth date
     /// </summary>
-    private string CalculateCurrentPhase(DateOnly birthDate)
+    private string CalculateCurrentPhase(DateOnly birthDate, string? timeZoneId = null)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var today = GetUserLocalDate(timeZoneId);
         var age = today.Year - birthDate.Year;
         
         // Adjust if birthday hasn't occurred this year
@@ -3715,7 +3744,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         if (age <= 35) return "phase2";
         return "phase3";
     }
-
+    
     /// <summary>
     /// Convert array fields from pipe-separated strings to JSON array strings for frontend
     /// </summary>
@@ -5406,7 +5435,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 CreatedAt = fullProfileResult.UserProfile.CreatedAt,
                 CurrentResidence = fullProfileResult.UserProfile.CurrentResidence,
                 UpdatedAt = fullProfileResult.UserProfile.UpdatedAt,
-                Occupation = fullProfileResult.UserProfile.Occupation
+                Occupation = fullProfileResult.UserProfile.Occupation,
+                CurrentTimeZone = fullProfileResult.UserProfile.CurrentTimeZone, // CRITICAL: Include timezone for local date calculations
+                CurrentLanguage = targetLanguage
             };
             
             // Trigger generation (this will update LastGeneratedDate)
@@ -5422,7 +5453,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// Register daily reminder (called when user becomes active)
     /// Uses user's timezone to calculate reminder time (default: 00:01 in user's local time)
     /// </summary>
-    private async Task RegisterDailyReminderAsync()
+    private async Task RegisterDailyReminderAsync(string? userTimeZone = null)
     {
         // Only register for Daily predictions
         if (State.Type != PredictionType.Daily)
@@ -5444,11 +5475,8 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             return;
         }
         
-        // Get user's timezone from profile
-        var profileGrainId = CommonHelper.StringToGuid(State.UserId);
-        var profileGAgent = _clusterClient.GetGrain<ILumenUserProfileGAgent>(profileGrainId);
-        var profileResult = await profileGAgent.GetRawStateAsync();
-        var userTimeZoneId = profileResult?.CurrentTimeZone ?? "UTC";
+        // Use provided timezone or fallback to UTC
+        var userTimeZoneId = userTimeZone ?? "UTC";
         
         // Record current TargetId for version control
         var currentReminderTargetId = _options?.ReminderTargetId ?? CURRENT_REMINDER_TARGET_ID;
@@ -5545,7 +5573,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             await UnregisterDailyReminderAsync();
             
             // Re-register with new timezone
-            await RegisterDailyReminderAsync();
+            await RegisterDailyReminderAsync(timeZoneId);
             
             _logger.LogInformation($"[Lumen][DailyReminder] {State.UserId} Reminder updated successfully for timezone: {timeZoneId}");
         }
@@ -5574,7 +5602,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
     /// Update user activity and ensure reminder is registered
     /// Optimized: Only update LastActiveDate once per day to reduce State writes
     /// </summary>
-    private async Task UpdateActivityAndEnsureReminderAsync()
+    private async Task UpdateActivityAndEnsureReminderAsync(string? userTimeZone = null)
     {
         // Only for Daily predictions
         if (State.Type != PredictionType.Daily)
@@ -5599,7 +5627,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
         // If user was inactive and is now active again, register reminder
         if (wasInactive || !State.IsDailyReminderEnabled)
         {
-            await RegisterDailyReminderAsync();
+            await RegisterDailyReminderAsync(userTimeZone);
         }
     }
     
@@ -5615,7 +5643,15 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
                 "[LumenPredictionGAgent][ClearCurrentPredictionAsync] Clearing prediction data for: {GrainId}",
                 this.GetPrimaryKey());
 
-            // Raise event to clear prediction state
+            // Unregister daily reminder if this is a Daily grain
+            if (State.Type == PredictionType.Daily && State.IsDailyReminderEnabled)
+            {
+                await UnregisterDailyReminderAsync();
+                _logger.LogInformation(
+                    "[LumenPredictionGAgent][ClearCurrentPredictionAsync] Daily reminder unregistered during clear");
+            }
+
+            // Raise event to clear prediction state (this will also clear Reminder state)
             RaiseEvent(new PredictionClearedEvent
             {
                 ClearedAt = DateTime.UtcNow
@@ -5648,8 +5684,9 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             
             var results = new Dictionary<string, string>();
             
-            // Calculate current date/time values
-            var currentYear = DateTime.UtcNow.Year;
+            // Calculate current date/time values (using user's local timezone for accurate age/date calculations)
+            var today = GetUserLocalDate(userInfo.CurrentTimeZone);
+            var currentYear = today.Year;
             var birthYear = userInfo.BirthDate.Year;
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
@@ -5814,7 +5851,7 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             results["futureCycle_period"] = TranslateCyclePeriod(futureCycle.Period, userLanguage);
             
             // Current Phase (for Lifetime)
-            var currentPhase = CalculateCurrentPhase(userInfo.BirthDate);
+            var currentPhase = CalculateCurrentPhase(userInfo.BirthDate, userInfo.CurrentTimeZone);
             results["currentPhase"] = currentPhase.ToString();
             
             // ========== FOUR PILLARS (BA ZI) ==========
@@ -6432,10 +6469,7 @@ location_latlong	UNKNOWN";
             var godChat = _clusterClient.GetGrain<IGodChat>(batchGrainKey);
             var chatId = Guid.NewGuid().ToString();
 
-            var settings = new ExecutionPromptSettings
-            {
-                Temperature = "0.7"
-            };
+            var settings = new ExecutionPromptSettings();
 
             // Build system prompt for this batch
             var systemPrompt = BuildLifetimeBatchSystemPrompt(targetLanguage, batchType);
@@ -6464,6 +6498,12 @@ location_latlong	UNKNOWN";
             _logger.LogInformation(
                 "[PERF][Lumen][Batch] {UserId} {BatchType}: {ElapsedMs}ms, {ResponseLength} chars",
                 userInfo.UserId, batchType, llmStopwatch.ElapsedMilliseconds, aiResponse.Length);
+            
+            // Record to OpenTelemetry Metrics
+            _metricsRecorder.Record("lumen_prediction", llmStopwatch,
+                new KeyValuePair<string, object?>("user_id", userInfo.UserId),
+                new KeyValuePair<string, object?>("prediction_type", "Lifetime"),
+                new KeyValuePair<string, object?>("batch_type", batchType.ToString()));
 
             // Parse TSV response
             var parsedResults = ParseTsvResponse(aiResponse);
@@ -6877,6 +6917,6 @@ Start output now:";
             CurrentYearStemsFormatted = LumenCalculator.CalculateStemsAndBranches(currentYear)
         };
     }
-
+    
     #endregion
 }

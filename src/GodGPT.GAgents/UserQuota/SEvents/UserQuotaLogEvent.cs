@@ -84,6 +84,14 @@ public class MarkInitializedLogEvent : UserQuotaLogEvent
 }
 
 [GenerateSerializer]
+public class AddPurchasedCreditsLogEvent : UserQuotaLogEvent
+{
+    [Id(0)] public int CreditsAmount { get; set; }
+    [Id(1)] public string TransactionId { get; set; }
+    [Id(2)] public DateTime PurchaseDate { get; set; }
+}
+
+[GenerateSerializer]
 public class UpdateDailyImageConversationLogEvent : UserQuotaLogEvent
 {
     [Id(0)] public DailyImageConversationInfo DailyImageConversation { get; set; }
