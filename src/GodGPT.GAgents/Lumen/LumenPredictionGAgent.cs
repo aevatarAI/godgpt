@@ -5688,7 +5688,6 @@ Output ONLY TSV format with translated values. Keep field names unchanged.
             var today = GetUserLocalDate(userInfo.CurrentTimeZone);
             var currentYear = today.Year;
             var birthYear = userInfo.BirthDate.Year;
-            var today = DateOnly.FromDateTime(DateTime.UtcNow);
             
             // TIMEZONE HANDLING
             // IMPORTANT: Chinese Four Pillars (BaZi) MUST use LOCAL time, not UTC!
