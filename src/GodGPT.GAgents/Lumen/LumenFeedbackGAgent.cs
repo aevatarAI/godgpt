@@ -86,47 +86,13 @@ public class LumenFeedbackGAgent : GAgentBase<LumenFeedbackState, LumenFeedbackE
             }
 
             // Validate prediction method is required
-            if (string.IsNullOrEmpty(request.PredictionMethod))
+            if (string.IsNullOrWhiteSpace(request.PredictionMethod))
             {
                 return new SubmitFeedbackResult
                 {
                     Success = false,
                     Message = "PredictionMethod is required"
                 };
-            }
-
-            // Validate prediction method
-                var validMethods = new[]
-                {
-                // Daily prediction sections
-                "todaysReading",    // Today's Reading
-                "luckyAlignments",  // Lucky Alignments
-                "twistOfFate",      // Twist of Fate
-                
-                // Yearly prediction sections
-                "yearlyTheme",      // Yearly Theme
-                "divineInfluence",  // Divine Influence (career/love/wealth/health)
-                
-                // Profile (Lifetime) sections
-                "fourPillars",      // Four Pillars of Destiny
-                "chineseAstrology", // Chinese Astrology Traits
-                "westernOverview",  // Western Astrology Overview
-                "strengths",        // Strength Highlights
-                "challenges",       // Potential Challenges
-                "destiny",          // Destiny Direction
-                "zodiacCycle",      // Zodiac Cycle Influence
-                "lifePlot",         // Life Plot
-                "activationSteps",  // Activation Steps
-                "cyclesInLife"      // Cycles In Life
-                };
-
-                if (!validMethods.Contains(request.PredictionMethod))
-                {
-                    return new SubmitFeedbackResult
-                    {
-                        Success = false,
-                        Message = $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}"
-                    };
             }
 
             var now = DateTime.UtcNow;
@@ -397,25 +363,9 @@ public class LumenFeedbackGAgent : GAgentBase<LumenFeedbackState, LumenFeedbackE
         }
 
         // Validate prediction method is required
-        if (string.IsNullOrEmpty(request.PredictionMethod))
+        if (string.IsNullOrWhiteSpace(request.PredictionMethod))
         {
             return (false, "PredictionMethod is required");
-        }
-
-        // Validate prediction method
-            var validMethods = new[]
-            {
-            // Daily prediction sections
-            "todaysReading", "luckyAlignments", "twistOfFate",
-            // Yearly prediction sections
-            "yearlyTheme", "divineInfluence",
-            // Profile (Lifetime) sections
-            "fourPillars", "chineseAstrology", "westernOverview", "strengths", "challenges", "destiny", "zodiacCycle", "lifePlot", "activationSteps", "cyclesInLife"
-            };
-
-            if (!validMethods.Contains(request.PredictionMethod))
-            {
-                return (false, $"Invalid prediction method: {request.PredictionMethod}. Valid methods are: {string.Join(", ", validMethods)}");
         }
 
         return (true, string.Empty);
