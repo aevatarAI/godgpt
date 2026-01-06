@@ -1391,10 +1391,10 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     var cycleTitlePrefix = targetLanguage switch
                     {
-                        "zh" => "生肖周期影响",
-                        "zh-tw" => "生肖週期影響",
-                        "es" => "Influencia del Ciclo Zodiacal",
-                        _ => "Zodiac Cycle Influence"
+                        "zh" => "出生周期洞见",
+                        "zh-tw" => "出生週期洞見",
+                        "es" => "Perspectivas del Ciclo de Nacimiento",
+                        _ => "Birth Cycle Insights"
                     };
                     parsedResults["zodiacCycle_title"] = $"{cycleTitlePrefix} ({yearRange})";
                 }
@@ -1486,10 +1486,10 @@ Your task is to create engaging, inspirational, and reflective content that invi
                 {
                     var pathTitle = targetLanguage switch
                     {
-                        "zh" => $"今日之路 - {pathAdjective}之路",
-                        "zh-tw" => $"今日之路 - {pathAdjective}之路",
-                        "es" => $"Tu Camino Hoy - Un Camino {char.ToUpper(pathAdjective[0])}{pathAdjective.Substring(1)}",
-                        _ => $"Your Path Today - A {char.ToUpper(pathAdjective[0])}{pathAdjective.Substring(1)} Path"
+                        "zh" => $"今日成长 - {pathAdjective}之路",
+                        "zh-tw" => $"今日成長 - {pathAdjective}之路",
+                        "es" => $"Tu Crecimiento Hoy - Un Camino {char.ToUpper(pathAdjective[0])}{pathAdjective.Substring(1)}",
+                        _ => $"Your Growth Today - A {char.ToUpper(pathAdjective[0])}{pathAdjective.Substring(1)} Path"
                     };
                     parsedResults["todaysReading_pathTitle"] = pathTitle;
                 }
@@ -2036,10 +2036,10 @@ Start output now with first field
             // DYNAMIC DESCRIPTIONS BASED ON LANGUAGE (Yearly)
             var desc_theme_title = targetLanguage switch
             {
-                "zh" => "4-7字，年度主题 (使用'之'字结构)",
-                "zh-tw" => "4-7字，年度主題 (使用'之'字結構)",
-                "es" => "4-7 palabras, tema anual (usando estructura 'de')",
-                _ => "[VARIED: 4-7 words using 'of' structure]"
+                "zh" => "一段[3-5个字]的自我发现之旅",
+                "zh-tw" => "一段[3-5字]的自我發現之旅",
+                "es" => "Un viaje de autodescubrimiento de [3-5 palabras]",
+                _ => "[VARIED: 'A self-discovery journey of' + 3-5 words ONLY]"
             };
             
             var desc_theme_glance = targetLanguage switch
@@ -3528,10 +3528,10 @@ Start translation now:";
                 {
                     var cycleTitlePrefix = targetLanguage switch
                     {
-                        "zh" => "生肖周期影响",
-                        "zh-tw" => "生肖週期影響",
-                        "es" => "Influencia del Ciclo Zodiacal",
-                        _ => "Zodiac Cycle Influence"
+                        "zh" => "出生周期洞见",
+                        "zh-tw" => "出生週期洞見",
+                        "es" => "Perspectivas del Ciclo de Nacimiento",
+                        _ => "Birth Cycle Insights"
                     };
                     targetDict["zodiacCycle_title"] = $"{cycleTitlePrefix} ({yearRange})";
                 }
@@ -3578,10 +3578,10 @@ Start translation now:";
                 {
                     var pathTitle = targetLanguage switch
                     {
-                        "zh" => $"今日之路 - {pathAdjective}之路",
-                        "zh-tw" => $"今日之路 - {pathAdjective}之路",
-                        "es" => $"Tu Camino Hoy - Un Camino {pathAdjective}",
-                        _ => $"Your Path Today - A {pathAdjective} Path"
+                        "zh" => $"今日成长 - {pathAdjective}之路",
+                        "zh-tw" => $"今日成長 - {pathAdjective}之路",
+                        "es" => $"Tu Crecimiento Hoy - Un Camino {pathAdjective}",
+                        _ => $"Your Growth Today - A {pathAdjective} Path"
                     };
                     targetDict["todaysReading_pathTitle"] = pathTitle;
                 }
