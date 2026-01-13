@@ -297,7 +297,9 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
 
     private string BuildPrompt(List<SessionContentDto> sessionContent, VoiceLanguageEnum language)
     {
-        var template = "@"+_options.CurrentValue.PromptTemplate+"Format your response as JSON: {{\"level\": number, \"message\": \"string\"}}";
+        var template = _options.CurrentValue.PromptTemplate + 
+            "\n\nIMPORTANT: Return ONLY a valid JSON object in this exact format: {\"level\": number, \"message\": \"string\"}" +
+            "\nDo NOT include any additional text, explanations, suggestions, or tags before or after the JSON.";
         var basePrompt = template.Replace("{USER_CONTEXT}", BuildUserContext(sessionContent, language));
         
         // Check multi-language switch
@@ -417,7 +419,9 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
     private int CalculateReservedTokens(VoiceLanguageEnum language)
     {
         // Calculate tokens for prompt template and fixed content
-        var templateContent = "@" + _options.CurrentValue.PromptTemplate + "Format your response as JSON: {{\"level\": number, \"message\": \"string\"}}";
+        var templateContent = _options.CurrentValue.PromptTemplate + 
+            "\n\nIMPORTANT: Return ONLY a valid JSON object in this exact format: {\"level\": number, \"message\": \"string\"}" +
+            "\nDo NOT include any additional text, explanations, suggestions, or tags before or after the JSON.";
         int templateTokens = TokenHelper.EstimateTokenCount(templateContent);
         
         // Calculate tokens for language-specific instructions if enabled
