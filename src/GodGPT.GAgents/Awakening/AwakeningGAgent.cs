@@ -504,6 +504,9 @@ public class AwakeningGAgent : GAgentBase<AwakeningState, AwakeningLogEvent>, IA
         {
             // Clean up the response content - remove markdown code blocks
             var cleanedContent = responseContent.Trim();
+
+            // Remove [SUGGESTIONS]...[/SUGGESTIONS] tags that may be appended by LLM
+            cleanedContent = Regex.Replace(cleanedContent, @"\s*\[SUGGESTIONS\].*?\[/SUGGESTIONS\]\s*", "", RegexOptions.Singleline | RegexOptions.IgnoreCase);
             
             // Remove markdown code block markers more robustly
             // Handle cases like "```json\n" or "```\n"
