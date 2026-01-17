@@ -51,7 +51,7 @@ public class StripePriceGAgent : Grain, IStripePriceGAgent
         Event stripeEvent;
         try
         {
-            stripeEvent = EventUtility.ConstructEvent(json, signature, _stripeOptions.WebhookSecret);
+            stripeEvent = EventUtility.ConstructEvent(json, signature, _stripeOptions.PriceWebhookSecret);
         }
         catch (StripeException ex)
         {

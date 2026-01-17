@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.Common.Options;
+using Aevatar.Application.Grains.Subscription.Providers;
 using GodGPT.GAgents.SpeechChat;
 using Microsoft.Extensions.DependencyInjection;
 using Volo.Abp.Modularity;

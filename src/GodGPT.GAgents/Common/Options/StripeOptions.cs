@@ -13,6 +13,7 @@ public class StripeOptions
     [Id(7)] public string ReturnUrl { get; set; }
     [Id(8)] public string WebhookHostName { get; set; }
     [Id(9)] public List<StripeProduct> Products { get; set; } = new List<StripeProduct>();
+    [Id(10)] public string PriceWebhookSecret { get; set; }
 }
 
 [GenerateSerializer]
