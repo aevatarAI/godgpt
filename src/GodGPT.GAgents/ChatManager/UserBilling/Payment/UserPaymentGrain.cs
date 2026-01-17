@@ -398,7 +398,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
 
     private async Task<GrainResultDto<PaymentDetailsDto>> ProcessSubscriptionEventAsync(Event stripeEvent)
     {
-        var subscription = stripeEvent.Data.Object as Subscription;
+        var subscription = stripeEvent.Data.Object as Stripe.Subscription;
         if (subscription == null)
         {
             _logger.LogError("[PaymentGAgent][ProcessSubscriptionEventAsync] Failed to cast event data to Subscription");
@@ -434,7 +434,7 @@ public class UserPaymentGrain : Grain<UserPaymentState>, IUserPaymentGrain
     
     public bool IsAutoRenewalCancelled(Event stripeEvent)
     {
-        var subscription = stripeEvent.Data.Object as Subscription;
+        var subscription = stripeEvent.Data.Object as Stripe.Subscription;
         dynamic previousAttributes = stripeEvent.Data.PreviousAttributes;
 
         if (subscription != null && previousAttributes != null)

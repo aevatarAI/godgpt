@@ -5,6 +5,7 @@ using Aevatar.Application.Grains.Agents.Anonymous.Options;
 using Aevatar.Application.Grains.Lumen.Helpers;
 using Aevatar.Application.Grains.Lumen.Options;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
+using Aevatar.Application.Grains.Subscription.Providers;
 using Aevatar.Application.Grains.UserFeedback.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -71,6 +72,10 @@ public class GodGPTGAgentModule : AbpModule
         context.Services.AddSingleton<ISpeechService, SpeechService>();
         context.Services.AddSingleton<IGooglePayService, GooglePayService>();
         context.Services.AddSingleton<ILocalizationService, LocalizationService>();
+        
+        // Register platform price providers (Strategy Pattern)
+        context.Services.AddSingleton<IPlatformPriceProvider, StripePriceProvider>();
+        context.Services.AddSingleton<IPlatformPriceProviderFactory, PlatformPriceProviderFactory>();
         
         // Register HttpClient factory first
         context.Services.AddHttpClient();

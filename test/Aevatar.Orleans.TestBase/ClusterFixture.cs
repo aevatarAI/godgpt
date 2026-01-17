@@ -12,6 +12,8 @@ using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.Common.Service;
 using Aevatar.Application.Grains.PaymentAnalytics.Dtos;
 using Aevatar.Application.Grains.UserFeedback.Options;
+using Aevatar.Application.Grains.Subscription.Providers;
+using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Extensions;
 using Aevatar.GAgents.AI.Options;
 using Aevatar.GAgents.SemanticKernel.Extensions;
@@ -167,6 +169,18 @@ public class ClusterFixture : IDisposable, ISingletonDependency
                     ConfigureGooglePayMock(googlePayServiceMock);
                     services.AddSingleton(googlePayServiceMock.Object);
                     services.AddSingleton(googlePayServiceMock); // Register the mock itself for tests
+                    
+                    // Register platform price provider mock for testing
+                    var platformPriceProviderMock = new Mock<IPlatformPriceProvider>();
+                    platformPriceProviderMock.Setup(p => p.Platform).Returns(PaymentPlatform.Stripe);
+                    platformPriceProviderMock.Setup(p => p.GetPricesAsync(It.IsAny<string>()))
+                        .ReturnsAsync(new List<PlatformPriceInfo>());
+                    platformPriceProviderMock.Setup(p => p.GetAllPricesAsync())
+                        .ReturnsAsync(new List<PlatformPriceInfo>());
+                    platformPriceProviderMock.Setup(p => p.GetPriceByIdAsync(It.IsAny<string>()))
+                        .ReturnsAsync((PlatformPriceInfo?)null);
+                    services.AddSingleton(platformPriceProviderMock.Object);
+                    services.AddSingleton<IPlatformPriceProviderFactory, PlatformPriceProviderFactory>();
                 })
                 .AddMemoryStreams("Aevatar")
                 .AddMemoryGrainStorage("PubSubStore")

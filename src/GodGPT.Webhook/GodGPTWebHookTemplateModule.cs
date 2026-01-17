@@ -26,6 +26,7 @@ public class GodGPTWebHookTemplateModule : AbpModule
         services.AddSingleton<IWebhookHandler, GodGPTWebhookHandler>();
         services.AddSingleton<IWebhookHandler, AppleStoreWebhookHandler>();
         services.AddSingleton<IWebhookHandler, GooglePayWebhookHandler>();
+        services.AddSingleton<IWebhookHandler, StripePriceWebhookHandler>();
         
         // Register Google Pay security validator
         services.AddSingleton<GooglePaySecurityValidator>();
