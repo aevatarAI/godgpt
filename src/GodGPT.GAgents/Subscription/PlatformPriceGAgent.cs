@@ -170,9 +170,7 @@ public class PlatformPriceGAgent :
         await ConfirmEvents();
         
         // Find the price we just set
-        var prices = State.ProductPrices.GetValueOrDefault(productId) ?? new List<PlatformPrice>();
-        var price = prices.FirstOrDefault(p => 
-            p.Platform == dto.Platform && p.Currency == dto.Currency);
+        var price = GetPrice(productId, dto.PlatformPriceId, dto.Platform, dto.Currency);
         
         return MapToDto(price!);
     }
@@ -185,7 +183,7 @@ public class PlatformPriceGAgent :
 
         // Find the platform price ID if exists
         var prices = State.ProductPrices.GetValueOrDefault(productId) ?? new List<PlatformPrice>();
-        var price = prices.FirstOrDefault(p => p.Platform == platform && p.Currency == currency);
+        var price = GetPrice(productId, string.Empty, platform, currency);
         
         RaiseEvent(new PriceDeletedEvent
         {
@@ -196,6 +194,14 @@ public class PlatformPriceGAgent :
         });
         
         await ConfirmEvents();
+    }
+
+    private PlatformPrice? GetPrice(Guid productId, string platformPriceId, PaymentPlatform platform, string currency)
+    {
+        var prices = State.ProductPrices.GetValueOrDefault(productId) ?? new List<PlatformPrice>();
+        return string.IsNullOrWhiteSpace(platformPriceId) ? prices.FirstOrDefault(p => 
+                    p.Platform == platform && p.Currency == currency) : 
+                    prices.FirstOrDefault(p => p.PlatformPriceId == platformPriceId);
     }
 
     public async Task DeletePriceByPlatformIdAsync(string platformPriceId)
@@ -262,9 +268,7 @@ public class PlatformPriceGAgent :
                     state.ProductPrices[priceSet.ProductId] = new List<PlatformPrice>();
                 
                 var prices = state.ProductPrices[priceSet.ProductId];
-                var existing = string.IsNullOrWhiteSpace(priceSet.PlatformPriceId) ? prices.FirstOrDefault(p => 
-                    p.Platform == priceSet.Platform && p.Currency == priceSet.Currency) : 
-                    prices.FirstOrDefault(p => p.PlatformPriceId == priceSet.PlatformPriceId);
+                var existing = GetPrice(priceSet.ProductId, priceSet.PlatformPriceId, priceSet.Platform, priceSet.Currency);
                 
                 if (existing != null)
                 {

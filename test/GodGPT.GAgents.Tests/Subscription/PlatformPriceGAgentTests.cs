@@ -136,7 +136,7 @@ public class PlatformPriceGAgentTests : AevatarGodGPTTestsBase
         });
 
         // Assert
-        updated.Price.ShouldBe(9.99m);
+        updated.Price.ShouldBe(14.99m);
 
         var prices = await priceGAgent.GetPricesByProductIdAsync(productId);
         var usdPrice = prices.FirstOrDefault(p => p.Currency == "USD" && p.Platform == PaymentPlatform.Stripe);
