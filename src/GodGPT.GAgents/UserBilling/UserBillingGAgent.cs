@@ -402,7 +402,11 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 : null,
             AllowPromotionCodes = true
         };
-        
+        if (!string.IsNullOrWhiteSpace(createCheckoutSessionDto.Referral))
+        {
+            options.Metadata.Add("tolt_referral", createCheckoutSessionDto.Referral);
+        }
+
         var successUrl = _stripeOptions.CurrentValue.SuccessUrl;
         var cancelUrl = _stripeOptions.CurrentValue.CancelUrl;
         if (trialDays > 0)
