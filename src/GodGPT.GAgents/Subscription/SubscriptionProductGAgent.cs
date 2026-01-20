@@ -33,7 +33,7 @@ public class SubscriptionProductGAgent :
 
     #region CRUD Operations
 
-    public async Task<SubscriptionProductDto> CreateProductAsync(CreateProductDto dto)
+    public async Task<SubscriptionProduct> CreateProductAsync(CreateProductDto dto)
     {
         var productId = Guid.NewGuid();
         
@@ -57,10 +57,10 @@ public class SubscriptionProductGAgent :
         
         await ConfirmEvents();
         
-        return MapToDto(State.Products[productId]);
+        return State.Products[productId];
     }
 
-    public async Task<SubscriptionProductDto> UpdateProductAsync(Guid productId, UpdateProductDto dto)
+    public async Task<SubscriptionProduct> UpdateProductAsync(Guid productId, UpdateProductDto dto)
     {
         if (!State.Products.ContainsKey(productId))
             throw new KeyNotFoundException($"Product not found: {productId}");
@@ -82,7 +82,7 @@ public class SubscriptionProductGAgent :
         
         await ConfirmEvents();
         
-        return MapToDto(State.Products[productId]);
+        return State.Products[productId];
     }
 
     public async Task DeleteProductAsync(Guid productId)
@@ -97,7 +97,7 @@ public class SubscriptionProductGAgent :
         await ConfirmEvents();
     }
 
-    public async Task<SubscriptionProductDto> SetProductListedAsync(Guid productId, bool isListed)
+    public async Task<SubscriptionProduct> SetProductListedAsync(Guid productId, bool isListed)
     {
         if (!State.Products.ContainsKey(productId))
             throw new KeyNotFoundException($"Product not found: {productId}");
@@ -113,7 +113,7 @@ public class SubscriptionProductGAgent :
         
         await ConfirmEvents();
         
-        return MapToDto(State.Products[productId]);
+        return State.Products[productId];
     }
 
     #endregion
@@ -209,26 +209,6 @@ public class SubscriptionProductGAgent :
                 }
                 break;
         }
-    }
-
-    #endregion
-
-    #region Private Helpers
-
-    private static SubscriptionProductDto MapToDto(SubscriptionProduct product)
-    {
-        return new SubscriptionProductDto
-        {
-            Id = product.Id,
-            NameKey = product.NameKey,
-            Name = product.NameKey,
-            PlanType = product.PlanType,
-            Description = product.DescriptionKey,
-            Highlight = product.HighlightKey,
-            IsUltimate = product.IsUltimate,
-            Platform = product.Platform,
-            DisplayOrder = product.DisplayOrder
-        };
     }
 
     #endregion

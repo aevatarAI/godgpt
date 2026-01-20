@@ -16,10 +16,10 @@ namespace Aevatar.Application.Grains.Subscription;
 public interface ISubscriptionProductGAgent : IGAgent
 {
     // CRUD
-    Task<SubscriptionProductDto> CreateProductAsync(CreateProductDto dto);
-    Task<SubscriptionProductDto> UpdateProductAsync(Guid productId, UpdateProductDto dto);
+    Task<SubscriptionProduct> CreateProductAsync(CreateProductDto dto);
+    Task<SubscriptionProduct> UpdateProductAsync(Guid productId, UpdateProductDto dto);
     Task DeleteProductAsync(Guid productId);
-    Task<SubscriptionProductDto> SetProductListedAsync(Guid productId, bool isListed);
+    Task<SubscriptionProduct> SetProductListedAsync(Guid productId, bool isListed);
     
     // Query - [AlwaysInterleave] for high concurrency reads
     [AlwaysInterleave]

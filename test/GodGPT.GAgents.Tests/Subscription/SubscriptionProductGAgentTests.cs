@@ -1,4 +1,5 @@
 using Aevatar.Application.Grains.Common.Constants;
+using Aevatar.Application.Grains.Subscription.Models;
 using Aevatar.Application.Grains.Subscription;
 using Aevatar.Application.Grains.Subscription.Dtos;
 using Aevatar.GodGPT.Tests;
@@ -137,7 +138,7 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
         };
 
         // Act
-        var results = new List<SubscriptionProductDto>();
+        var results = new List<SubscriptionProduct>();
         foreach (var dto in products)
         {
             var result = await productGAgent.CreateProductAsync(dto);
