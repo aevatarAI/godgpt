@@ -51,7 +51,8 @@ public class SubscriptionProductGAgent :
             IsUltimate = dto.IsUltimate,
             FeatureIds = dto.FeatureIds,
             PlatformProductId = dto.PlatformProductId,
-            Platform = dto.Platform
+            Platform = dto.Platform,
+            DisplayOrder = dto.DisplayOrder
         });
         
         await ConfirmEvents();
@@ -75,7 +76,8 @@ public class SubscriptionProductGAgent :
             DescriptionKey = dto.DescriptionKey,
             HighlightKey = dto.HighlightKey,
             IsUltimate = dto.IsUltimate,
-            FeatureIds = dto.FeatureIds
+            FeatureIds = dto.FeatureIds,
+            DisplayOrder = dto.DisplayOrder
         });
         
         await ConfirmEvents();
@@ -174,7 +176,8 @@ public class SubscriptionProductGAgent :
                     PlatformProductId = created.PlatformProductId,
                     Platform = created.Platform,
                     IsListed = null,
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    DisplayOrder = created.DisplayOrder
                 };
                 break;
                 
@@ -189,6 +192,7 @@ public class SubscriptionProductGAgent :
                     if (updated.HighlightKey != null) product.HighlightKey = updated.HighlightKey;
                     if (updated.IsUltimate.HasValue) product.IsUltimate = updated.IsUltimate.Value;
                     if (updated.FeatureIds != null) product.FeatureIds = updated.FeatureIds;
+                    if (updated.DisplayOrder.HasValue) product.DisplayOrder = updated.DisplayOrder.Value;
                     product.UpdatedAt = DateTime.UtcNow;
                 }
                 break;
@@ -222,7 +226,8 @@ public class SubscriptionProductGAgent :
             Description = product.DescriptionKey,
             Highlight = product.HighlightKey,
             IsUltimate = product.IsUltimate,
-            Platform = product.Platform
+            Platform = product.Platform,
+            DisplayOrder = product.DisplayOrder
         };
     }
 

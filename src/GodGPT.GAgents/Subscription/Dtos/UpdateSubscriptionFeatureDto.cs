@@ -23,4 +23,10 @@ public class UpdateSubscriptionFeatureDto
     
     [Id(3)]
     public int? DisplayOrder { get; set; }
+    
+    /// <summary>
+    /// Usage context for this feature (Comparison or ProductDisplay).
+    /// </summary>
+    [Id(4)]
+    public SubscriptionFeatureUsage? Usage { get; set; }
 }

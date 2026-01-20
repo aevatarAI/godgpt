@@ -31,6 +31,7 @@ public class ProductCreatedEvent : ProductEventBase
     [Id(8)] public List<Guid>? FeatureIds { get; set; }
     [Id(9)] public string PlatformProductId { get; set; } = string.Empty;
     [Id(10)] public PaymentPlatform Platform { get; set; }
+    [Id(11)] public int DisplayOrder { get; set; }
 }
 
 /// <summary>
@@ -47,6 +48,7 @@ public class ProductUpdatedEvent : ProductEventBase
     [Id(6)] public string? HighlightKey { get; set; }
     [Id(7)] public bool? IsUltimate { get; set; }
     [Id(8)] public List<Guid>? FeatureIds { get; set; }
+    [Id(9)] public int? DisplayOrder { get; set; }
 }
 
 /// <summary>

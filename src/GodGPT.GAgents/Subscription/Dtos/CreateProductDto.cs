@@ -47,4 +47,10 @@ public class CreateProductDto
     [Id(8)]
     [Required]
     public PaymentPlatform Platform { get; set; }
+    
+    /// <summary>
+    /// Display order for page presentation (lower values appear first).
+    /// </summary>
+    [Id(9)]
+    public int DisplayOrder { get; set; }
 }

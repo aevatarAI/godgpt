@@ -37,7 +37,8 @@ public class SubscriptionFeatureGAgentTests : AevatarGodGPTTestsBase
             NameKey = "feature_unlimited_chats",
             DescriptionKey = "feature_unlimited_chats_desc",
             Type = SubscriptionFeatureType.Core,
-            DisplayOrder = 1
+            DisplayOrder = 1,
+            Usage = SubscriptionFeatureUsage.Comparison
         };
 
         // Act
@@ -49,8 +50,36 @@ public class SubscriptionFeatureGAgentTests : AevatarGodGPTTestsBase
         result.NameKey.ShouldBe(createDto.NameKey);
         result.Type.ShouldBe(SubscriptionFeatureType.Core);
         result.DisplayOrder.ShouldBe(1);
+        result.Usage.ShouldBe(SubscriptionFeatureUsage.Comparison);
 
-        _testOutputHelper.WriteLine($"Created feature: Id={result.Id}, NameKey={result.NameKey}");
+        _testOutputHelper.WriteLine($"Created feature: Id={result.Id}, NameKey={result.NameKey}, Usage={result.Usage}");
+    }
+
+    [Fact]
+    public async Task CreateFeatureAsync_Should_Create_ProductDisplay_Feature()
+    {
+        // Arrange
+        var featureGAgent = GetFeatureGAgent();
+        var createDto = new CreateSubscriptionFeatureDto
+        {
+            NameKey = "feature_premium_support",
+            DescriptionKey = "feature_premium_support_desc",
+            Type = SubscriptionFeatureType.None,
+            DisplayOrder = 1,
+            Usage = SubscriptionFeatureUsage.ProductDisplay
+        };
+
+        // Act
+        var result = await featureGAgent.CreateFeatureAsync(createDto);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Id.ShouldNotBe(Guid.Empty);
+        result.NameKey.ShouldBe(createDto.NameKey);
+        result.Type.ShouldBe(SubscriptionFeatureType.None);
+        result.Usage.ShouldBe(SubscriptionFeatureUsage.ProductDisplay);
+
+        _testOutputHelper.WriteLine($"Created ProductDisplay feature: Id={result.Id}, NameKey={result.NameKey}, Usage={result.Usage}");
     }
 
     [Fact]
@@ -97,7 +126,8 @@ public class SubscriptionFeatureGAgentTests : AevatarGodGPTTestsBase
             NameKey = "feature_to_update",
             DescriptionKey = "original_description",
             Type = SubscriptionFeatureType.Core,
-            DisplayOrder = 10
+            DisplayOrder = 10,
+            Usage = SubscriptionFeatureUsage.Comparison
         };
         var created = await featureGAgent.CreateFeatureAsync(createDto);
 
@@ -118,8 +148,40 @@ public class SubscriptionFeatureGAgentTests : AevatarGodGPTTestsBase
         result.NameKey.ShouldBe("feature_updated");
         result.Type.ShouldBe(SubscriptionFeatureType.Advanced);
         result.DisplayOrder.ShouldBe(20);
+        result.Usage.ShouldBe(SubscriptionFeatureUsage.Comparison); // Usage should remain unchanged
 
         _testOutputHelper.WriteLine($"Updated feature: Id={result.Id}, NameKey={result.NameKey}");
+    }
+
+    [Fact]
+    public async Task UpdateFeatureAsync_Should_Update_Usage_Successfully()
+    {
+        // Arrange
+        var featureGAgent = GetFeatureGAgent();
+        var createDto = new CreateSubscriptionFeatureDto
+        {
+            NameKey = "feature_to_update_usage",
+            Type = SubscriptionFeatureType.Core,
+            DisplayOrder = 1,
+            Usage = SubscriptionFeatureUsage.Comparison
+        };
+        var created = await featureGAgent.CreateFeatureAsync(createDto);
+
+        var updateDto = new UpdateSubscriptionFeatureDto
+        {
+            Type = SubscriptionFeatureType.None,
+            Usage = SubscriptionFeatureUsage.ProductDisplay
+        };
+
+        // Act
+        var result = await featureGAgent.UpdateFeatureAsync(created.Id, updateDto);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.Type.ShouldBe(SubscriptionFeatureType.None);
+        result.Usage.ShouldBe(SubscriptionFeatureUsage.ProductDisplay);
+
+        _testOutputHelper.WriteLine($"Updated feature usage: Id={result.Id}, Usage={result.Usage}");
     }
 
     [Fact]
@@ -339,6 +401,44 @@ public class SubscriptionFeatureGAgentTests : AevatarGodGPTTestsBase
         updatedFeature2.DisplayOrder.ShouldBe(5);
 
         _testOutputHelper.WriteLine($"Reordered features: {feature1.Id}={updatedFeature1.DisplayOrder}, {feature2.Id}={updatedFeature2.DisplayOrder}");
+    }
+
+    #endregion
+
+    #region GetFeaturesByUsageAsync Tests
+
+    [Fact]
+    public async Task GetFeaturesByUsageAsync_Should_Return_Features_By_Usage()
+    {
+        // Arrange
+        var featureGAgent = GetFeatureGAgent();
+        
+        await featureGAgent.CreateFeatureAsync(new CreateSubscriptionFeatureDto
+        {
+            NameKey = "usage_comparison_feature",
+            Type = SubscriptionFeatureType.Core,
+            DisplayOrder = 1,
+            Usage = SubscriptionFeatureUsage.Comparison
+        });
+        await featureGAgent.CreateFeatureAsync(new CreateSubscriptionFeatureDto
+        {
+            NameKey = "usage_product_display_feature",
+            Type = SubscriptionFeatureType.None,
+            DisplayOrder = 2,
+            Usage = SubscriptionFeatureUsage.ProductDisplay
+        });
+
+        // Act
+        var comparisonFeatures = await featureGAgent.GetFeaturesByUsageAsync(SubscriptionFeatureUsage.Comparison);
+        var productDisplayFeatures = await featureGAgent.GetFeaturesByUsageAsync(SubscriptionFeatureUsage.ProductDisplay);
+
+        // Assert
+        comparisonFeatures.ShouldNotBeNull();
+        productDisplayFeatures.ShouldNotBeNull();
+        comparisonFeatures.All(f => f.Usage == SubscriptionFeatureUsage.Comparison).ShouldBeTrue();
+        productDisplayFeatures.All(f => f.Usage == SubscriptionFeatureUsage.ProductDisplay).ShouldBeTrue();
+
+        _testOutputHelper.WriteLine($"Comparison features: {comparisonFeatures.Count}, ProductDisplay features: {productDisplayFeatures.Count}");
     }
 
     #endregion

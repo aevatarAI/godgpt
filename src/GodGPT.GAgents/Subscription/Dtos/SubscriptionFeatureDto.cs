@@ -42,4 +42,10 @@ public class SubscriptionFeatureDto
     
     [Id(6)]
     public int DisplayOrder { get; set; }
+    
+    /// <summary>
+    /// Usage context for this feature (Comparison or ProductDisplay).
+    /// </summary>
+    [Id(7)]
+    public SubscriptionFeatureUsage Usage { get; set; }
 }

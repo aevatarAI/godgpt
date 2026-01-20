@@ -26,6 +26,7 @@ public class SubscriptionFeatureCreatedEvent : SubscriptionFeatureEventBase
     [Id(3)] public string? DescriptionKey { get; set; }
     [Id(4)] public SubscriptionFeatureType Type { get; set; }
     [Id(5)] public int DisplayOrder { get; set; }
+    [Id(6)] public SubscriptionFeatureUsage Usage { get; set; }
 }
 
 /// <summary>
@@ -39,6 +40,7 @@ public class SubscriptionFeatureUpdatedEvent : SubscriptionFeatureEventBase
     [Id(3)] public string? DescriptionKey { get; set; }
     [Id(4)] public SubscriptionFeatureType? Type { get; set; }
     [Id(5)] public int? DisplayOrder { get; set; }
+    [Id(6)] public SubscriptionFeatureUsage? Usage { get; set; }
 }
 
 /// <summary>

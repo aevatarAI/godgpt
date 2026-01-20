@@ -41,7 +41,8 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
             IsUltimate = false,
             FeatureIds = new List<Guid>(),
             PlatformProductId = "prod_test_001",
-            Platform = PaymentPlatform.Stripe
+            Platform = PaymentPlatform.Stripe,
+            DisplayOrder = 10
         };
 
         // Act
@@ -53,8 +54,9 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
         result.NameKey.ShouldBe("pro_monthly");
         result.PlanType.ShouldBe(PlanType.Month);
         result.Platform.ShouldBe(PaymentPlatform.Stripe);
+        result.DisplayOrder.ShouldBe(10);
 
-        _testOutputHelper.WriteLine($"Created product: Id={result.Id}, NameKey={result.NameKey}");
+        _testOutputHelper.WriteLine($"Created product: Id={result.Id}, NameKey={result.NameKey}, DisplayOrder={result.DisplayOrder}");
     }
 
     [Fact]
@@ -110,7 +112,8 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
                 PlanType = PlanType.None,
                 DescriptionKey = "basic_desc",
                 PlatformProductId = "prod_basic",
-                Platform = PaymentPlatform.Stripe
+                Platform = PaymentPlatform.Stripe,
+                DisplayOrder = 1
             },
             new()
             {
@@ -118,7 +121,8 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
                 PlanType = PlanType.Month,
                 DescriptionKey = "pro_desc",
                 PlatformProductId = "prod_pro",
-                Platform = PaymentPlatform.Stripe
+                Platform = PaymentPlatform.Stripe,
+                DisplayOrder = 2
             },
             new()
             {
@@ -127,7 +131,8 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
                 DescriptionKey = "ultimate_desc",
                 IsUltimate = true,
                 PlatformProductId = "prod_ultimate",
-                Platform = PaymentPlatform.Stripe
+                Platform = PaymentPlatform.Stripe,
+                DisplayOrder = 3
             }
         };
 
@@ -172,7 +177,8 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
             NameKey = "product_updated",
             DescriptionKey = "updated_description",
             HighlightKey = "new_highlight",
-            IsUltimate = true
+            IsUltimate = true,
+            DisplayOrder = 5
         };
 
         // Act
@@ -183,8 +189,9 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
         result.Id.ShouldBe(created.Id);
         result.NameKey.ShouldBe("product_updated");
         result.IsUltimate.ShouldBeTrue();
+        result.DisplayOrder.ShouldBe(5);
 
-        _testOutputHelper.WriteLine($"Updated product: Id={result.Id}, NameKey={result.NameKey}");
+        _testOutputHelper.WriteLine($"Updated product: Id={result.Id}, NameKey={result.NameKey}, DisplayOrder={result.DisplayOrder}");
     }
 
     [Fact]
@@ -480,6 +487,173 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
 
     #endregion
 
+    #region DisplayOrder Tests
+
+    [Fact]
+    public async Task CreateProductAsync_Should_Create_Product_With_DisplayOrder()
+    {
+        // Arrange
+        var productGAgent = GetProductGAgent();
+        var createDto = new CreateProductDto
+        {
+            NameKey = "product_with_order",
+            PlanType = PlanType.Month,
+            DescriptionKey = "order_test_desc",
+            PlatformProductId = $"prod_order_{Guid.NewGuid():N}",
+            Platform = PaymentPlatform.Stripe,
+            DisplayOrder = 100
+        };
+
+        // Act
+        var result = await productGAgent.CreateProductAsync(createDto);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.DisplayOrder.ShouldBe(100);
+        
+        var product = await productGAgent.GetProductAsync(result.Id);
+        product.ShouldNotBeNull();
+        product.DisplayOrder.ShouldBe(100);
+
+        _testOutputHelper.WriteLine($"Created product with DisplayOrder: Id={result.Id}, DisplayOrder={result.DisplayOrder}");
+    }
+
+    [Fact]
+    public async Task CreateProductAsync_Should_Default_DisplayOrder_To_Zero()
+    {
+        // Arrange
+        var productGAgent = GetProductGAgent();
+        var createDto = new CreateProductDto
+        {
+            NameKey = "product_default_order",
+            PlanType = PlanType.Month,
+            DescriptionKey = "default_order_desc",
+            PlatformProductId = $"prod_default_order_{Guid.NewGuid():N}",
+            Platform = PaymentPlatform.Stripe
+            // DisplayOrder not set, should default to 0
+        };
+
+        // Act
+        var result = await productGAgent.CreateProductAsync(createDto);
+
+        // Assert
+        result.ShouldNotBeNull();
+        result.DisplayOrder.ShouldBe(0);
+
+        _testOutputHelper.WriteLine($"Created product with default DisplayOrder: Id={result.Id}, DisplayOrder={result.DisplayOrder}");
+    }
+
+    [Fact]
+    public async Task UpdateProductAsync_Should_Update_DisplayOrder()
+    {
+        // Arrange
+        var productGAgent = GetProductGAgent();
+        var createDto = new CreateProductDto
+        {
+            NameKey = "product_update_order",
+            PlanType = PlanType.Month,
+            DescriptionKey = "update_order_desc",
+            PlatformProductId = $"prod_update_order_{Guid.NewGuid():N}",
+            Platform = PaymentPlatform.Stripe,
+            DisplayOrder = 50
+        };
+        var created = await productGAgent.CreateProductAsync(createDto);
+        created.DisplayOrder.ShouldBe(50);
+
+        // Act
+        var updateDto = new UpdateProductDto
+        {
+            DisplayOrder = 25
+        };
+        var updated = await productGAgent.UpdateProductAsync(created.Id, updateDto);
+
+        // Assert
+        updated.DisplayOrder.ShouldBe(25);
+        
+        var product = await productGAgent.GetProductAsync(created.Id);
+        product.ShouldNotBeNull();
+        product.DisplayOrder.ShouldBe(25);
+
+        _testOutputHelper.WriteLine($"Updated DisplayOrder: {50} -> {updated.DisplayOrder}");
+    }
+
+    [Fact]
+    public async Task UpdateProductAsync_Should_Not_Change_DisplayOrder_When_Not_Provided()
+    {
+        // Arrange
+        var productGAgent = GetProductGAgent();
+        var createDto = new CreateProductDto
+        {
+            NameKey = "product_preserve_order",
+            PlanType = PlanType.Month,
+            DescriptionKey = "preserve_order_desc",
+            PlatformProductId = $"prod_preserve_order_{Guid.NewGuid():N}",
+            Platform = PaymentPlatform.Stripe,
+            DisplayOrder = 75
+        };
+        var created = await productGAgent.CreateProductAsync(createDto);
+        created.DisplayOrder.ShouldBe(75);
+
+        // Act - Update without DisplayOrder
+        var updateDto = new UpdateProductDto
+        {
+            NameKey = "product_preserve_order_updated"
+        };
+        var updated = await productGAgent.UpdateProductAsync(created.Id, updateDto);
+
+        // Assert - DisplayOrder should remain unchanged
+        updated.DisplayOrder.ShouldBe(75);
+        
+        var product = await productGAgent.GetProductAsync(created.Id);
+        product.ShouldNotBeNull();
+        product.DisplayOrder.ShouldBe(75);
+
+        _testOutputHelper.WriteLine($"DisplayOrder preserved: {product.DisplayOrder}");
+    }
+
+    [Fact]
+    public async Task GetAllProductsAsync_Should_Return_Products_With_DisplayOrder()
+    {
+        // Arrange
+        var productGAgent = GetProductGAgent();
+        
+        await productGAgent.CreateProductAsync(new CreateProductDto
+        {
+            NameKey = "order_test_first",
+            PlanType = PlanType.Month,
+            DescriptionKey = "first_desc",
+            PlatformProductId = $"prod_order_first_{Guid.NewGuid():N}",
+            Platform = PaymentPlatform.Stripe,
+            DisplayOrder = 1
+        });
+        await productGAgent.CreateProductAsync(new CreateProductDto
+        {
+            NameKey = "order_test_second",
+            PlanType = PlanType.Month,
+            DescriptionKey = "second_desc",
+            PlatformProductId = $"prod_order_second_{Guid.NewGuid():N}",
+            Platform = PaymentPlatform.Stripe,
+            DisplayOrder = 2
+        });
+
+        // Act
+        var products = await productGAgent.GetAllProductsAsync();
+
+        // Assert
+        products.ShouldNotBeNull();
+        var orderedProducts = products
+            .Where(p => p.NameKey.StartsWith("order_test_"))
+            .OrderBy(p => p.DisplayOrder)
+            .ToList();
+        
+        orderedProducts.Count.ShouldBeGreaterThanOrEqualTo(2);
+        orderedProducts.First().DisplayOrder.ShouldBeLessThanOrEqualTo(orderedProducts.Last().DisplayOrder);
+
+        _testOutputHelper.WriteLine($"Products can be ordered by DisplayOrder");
+    }
+
+    #endregion
+
     #region Integration Tests
 
     [Fact]
@@ -495,20 +669,24 @@ public class SubscriptionProductGAgentTests : AevatarGodGPTTestsBase
             PlanType = PlanType.Month,
             DescriptionKey = "integration_desc",
             PlatformProductId = $"prod_integration_{Guid.NewGuid():N}",
-            Platform = PaymentPlatform.Stripe
+            Platform = PaymentPlatform.Stripe,
+            DisplayOrder = 10
         };
         var created = await productGAgent.CreateProductAsync(createDto);
         created.ShouldNotBeNull();
+        created.DisplayOrder.ShouldBe(10);
 
         // Update
         var updateDto = new UpdateProductDto
         {
             NameKey = "integration_product_updated",
-            IsUltimate = true
+            IsUltimate = true,
+            DisplayOrder = 5
         };
         var updated = await productGAgent.UpdateProductAsync(created.Id, updateDto);
         updated.NameKey.ShouldBe("integration_product_updated");
         updated.IsUltimate.ShouldBeTrue();
+        updated.DisplayOrder.ShouldBe(5);
 
         // Set Listed
         await productGAgent.SetProductListedAsync(created.Id, true);

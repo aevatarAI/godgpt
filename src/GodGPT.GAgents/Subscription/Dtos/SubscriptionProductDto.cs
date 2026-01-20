@@ -68,4 +68,10 @@ public class SubscriptionProductDto
     /// </summary>
     [Id(11)]
     public PlatformPriceDto? Price { get; set; }
+    
+    /// <summary>
+    /// Display order for page presentation (lower values appear first).
+    /// </summary>
+    [Id(12)]
+    public int DisplayOrder { get; set; }
 }

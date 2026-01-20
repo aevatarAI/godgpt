@@ -46,7 +46,8 @@ public class SubscriptionFeatureGAgent :
             NameKey = dto.NameKey,
             DescriptionKey = dto.DescriptionKey,
             Type = dto.Type,
-            DisplayOrder = dto.DisplayOrder
+            DisplayOrder = dto.DisplayOrder,
+            Usage = dto.Usage
         });
         
         await ConfirmEvents();
@@ -68,7 +69,8 @@ public class SubscriptionFeatureGAgent :
             NameKey = dto.NameKey,
             DescriptionKey = dto.DescriptionKey,
             Type = dto.Type,
-            DisplayOrder = dto.DisplayOrder
+            DisplayOrder = dto.DisplayOrder,
+            Usage = dto.Usage
         });
         
         await ConfirmEvents();
@@ -140,6 +142,15 @@ public class SubscriptionFeatureGAgent :
         return Task.FromResult(features);
     }
 
+    public Task<List<SubscriptionFeature>> GetFeaturesByUsageAsync(SubscriptionFeatureUsage usage)
+    {
+        var features = State.Features.Values
+            .Where(f => f.Usage == usage)
+            .OrderBy(f => f.DisplayOrder)
+            .ToList();
+        return Task.FromResult(features);
+    }
+
     #endregion
 
     #region Abstract Implementation
@@ -163,6 +174,7 @@ public class SubscriptionFeatureGAgent :
                     DescriptionKey = created.DescriptionKey,
                     Type = created.Type,
                     DisplayOrder = created.DisplayOrder,
+                    Usage = created.Usage,
                     CreatedAt = DateTime.UtcNow
                 };
                 break;
@@ -174,6 +186,7 @@ public class SubscriptionFeatureGAgent :
                     if (updated.DescriptionKey != null) feature.DescriptionKey = updated.DescriptionKey;
                     if (updated.Type.HasValue) feature.Type = updated.Type.Value;
                     if (updated.DisplayOrder.HasValue) feature.DisplayOrder = updated.DisplayOrder.Value;
+                    if (updated.Usage.HasValue) feature.Usage = updated.Usage.Value;
                     feature.UpdatedAt = DateTime.UtcNow;
                 }
                 break;
@@ -209,7 +222,8 @@ public class SubscriptionFeatureGAgent :
             Description = feature.DescriptionKey,
             Type = feature.Type,
             TypeName = feature.Type.ToString(),
-            DisplayOrder = feature.DisplayOrder
+            DisplayOrder = feature.DisplayOrder,
+            Usage = feature.Usage
         };
     }
 

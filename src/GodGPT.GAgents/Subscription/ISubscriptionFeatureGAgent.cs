@@ -32,4 +32,7 @@ public interface ISubscriptionFeatureGAgent : IGAgent
     
     [AlwaysInterleave]
     Task<List<SubscriptionFeature>> GetFeaturesByTypeAsync(SubscriptionFeatureType type);
+    
+    [AlwaysInterleave]
+    Task<List<SubscriptionFeature>> GetFeaturesByUsageAsync(SubscriptionFeatureUsage usage);
 }

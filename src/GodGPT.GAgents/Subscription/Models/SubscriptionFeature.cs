@@ -17,4 +17,9 @@ public class SubscriptionFeature
     [Id(4)] public int DisplayOrder { get; set; }
     [Id(5)] public DateTime CreatedAt { get; set; }
     [Id(6)] public DateTime? UpdatedAt { get; set; }
+    
+    /// <summary>
+    /// Usage context for this feature (Comparison or ProductDisplay).
+    /// </summary>
+    [Id(7)] public SubscriptionFeatureUsage Usage { get; set; } = SubscriptionFeatureUsage.Comparison;
 }

@@ -24,4 +24,9 @@ public class SubscriptionProduct
     [Id(10)] public bool? IsListed { get; set; }
     [Id(11)] public DateTime CreatedAt { get; set; }
     [Id(12)] public DateTime? UpdatedAt { get; set; }
+    
+    /// <summary>
+    /// Display order for page presentation (lower values appear first).
+    /// </summary>
+    [Id(13)] public int DisplayOrder { get; set; }
 }
