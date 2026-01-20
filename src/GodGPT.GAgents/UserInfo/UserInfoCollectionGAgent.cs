@@ -79,63 +79,64 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         // Validate required fields if they are being updated
         if (updateDto.NameInfo != null)
         {
-            if ((updateDto.NameInfo.Gender != 1 &&  updateDto.NameInfo.Gender != 2) || 
-                string.IsNullOrWhiteSpace(updateDto.NameInfo.FirstName) || 
+            // FirstName and LastName are required if NameInfo is provided
+            if (string.IsNullOrWhiteSpace(updateDto.NameInfo.FirstName) || 
                 string.IsNullOrWhiteSpace(updateDto.NameInfo.LastName))
             {
                 return new UserInfoCollectionResponseDto
                 {
                     Success = false,
-                    Message = "Gender, FirstName, and LastName are required",
+                    Message = "FirstName and LastName are required",
                     Data = ConvertStateToDto()
                 };
             }
-        }
-        
-        if (updateDto.LocationInfo != null)
-        {
-            if (string.IsNullOrWhiteSpace(updateDto.LocationInfo.Country) || 
-                string.IsNullOrWhiteSpace(updateDto.LocationInfo.City))
+            
+            // Gender is optional, but if provided must be valid (1 or 2)
+            if (updateDto.NameInfo.Gender.HasValue && 
+                updateDto.NameInfo.Gender != 1 && updateDto.NameInfo.Gender != 2)
             {
                 return new UserInfoCollectionResponseDto
                 {
                     Success = false,
-                    Message = "Country and City are required",
+                    Message = "Gender is invalid",
                     Data = ConvertStateToDto()
                 };
             }
         }
         
+        // BirthDateInfo is optional - validate only if values are provided
         if (updateDto.BirthDateInfo != null)
         {
-            if (!updateDto.BirthDateInfo.Day.HasValue || !updateDto.BirthDateInfo.Month.HasValue || !updateDto.BirthDateInfo.Year.HasValue)
+            // Validate individual fields only if they have values
+            if (updateDto.BirthDateInfo.Day.HasValue && 
+                (updateDto.BirthDateInfo.Day.Value <= 0 || updateDto.BirthDateInfo.Day.Value > 31))
             {
                 return new UserInfoCollectionResponseDto
                 {
                     Success = false,
-                    Message = "Day, Month, and Year are required",
+                    Message = "Day must be between 1 and 31",
                     Data = ConvertStateToDto()
                 };
             }
             
-            if (updateDto.BirthDateInfo.Day.Value <= 0 || updateDto.BirthDateInfo.Month.Value <= 0 || updateDto.BirthDateInfo.Year.Value <= 0)
+            if (updateDto.BirthDateInfo.Month.HasValue && 
+                (updateDto.BirthDateInfo.Month.Value <= 0 || updateDto.BirthDateInfo.Month.Value > 12))
             {
                 return new UserInfoCollectionResponseDto
                 {
                     Success = false,
-                    Message = "Valid Day, Month, and Year are required",
+                    Message = "Month must be between 1 and 12",
                     Data = ConvertStateToDto()
                 };
             }
             
-            // Validate date range
-            if (updateDto.BirthDateInfo.Day.Value > 31 || updateDto.BirthDateInfo.Month.Value > 12 || 
-                updateDto.BirthDateInfo.Year.Value < 1800 || updateDto.BirthDateInfo.Year.Value > DateTime.Now.Year)
+            if (updateDto.BirthDateInfo.Year.HasValue && 
+                (updateDto.BirthDateInfo.Year.Value < 1800 || updateDto.BirthDateInfo.Year.Value > DateTime.Now.Year))
             {
                 return new UserInfoCollectionResponseDto
                 {
                     Success = false,
-                    Message = "Invalid birthDate values",
+                    Message = "Year is invalid",
                     Data = ConvertStateToDto()
                 };
             }
@@ -713,15 +714,12 @@ User Language: {languageText}";
     
     /// <summary>
     /// Check if all required information is collected
+    /// Gender, Country, City, and BirthDate are optional
     /// </summary>
     private bool IsCollectionCompleted()
     {
-        return State.Gender !=0 &&
-               !string.IsNullOrWhiteSpace(State.FirstName) &&
+        return !string.IsNullOrWhiteSpace(State.FirstName) &&
                !string.IsNullOrWhiteSpace(State.LastName) &&
-               !string.IsNullOrWhiteSpace(State.Country) &&
-               !string.IsNullOrWhiteSpace(State.City) &&
-               State.Day > 0 && State.Month > 0 && State.Year > 0 &&
                (State.SeekingInterests?.Count > 0) &&
                (State.SourceChannels?.Count > 0);
     }

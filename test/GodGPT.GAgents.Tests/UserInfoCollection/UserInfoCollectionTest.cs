@@ -411,7 +411,7 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         finalResult.BirthDateInfo.Year.ShouldBe(1992);
         finalResult.SeekingInterests.ShouldNotBeNull();
         finalResult.SeekingInterests.Count.ShouldBe(2);
-        finalResult.SeekingInterests.ShouldContain("Daily fortune telling");
+        finalResult.SeekingInterests.ShouldContain("Daily lumen prediction");
         finalResult.SeekingInterests.ShouldContain("Career guidance");
         finalResult.SourceChannels.ShouldNotBeNull();
         finalResult.SourceChannels.Count.ShouldBe(2);
@@ -567,11 +567,11 @@ public class UserInfoCollectionTest : AevatarOrleansTestBase<AevatarGodGPTTestsM
         // Act & Assert
         var result1 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidNameDto);
         result1.Success.ShouldBeFalse();
-        result1.Message.ShouldContain("Gender, FirstName, and LastName are required");
+        result1.Message.ShouldContain("Gender is invalid");
 
         var result2 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidBirthDateDto);
         result2.Success.ShouldBeFalse();
-        result2.Message.ShouldContain("Invalid birthDate values");
+        result2.Message.ShouldContain("Day must be between 1 and 31");
 
         var result3 = await userInfoCollectionGAgent.UpdateUserInfoCollectionAsync(invalidBirthTimeDto);
         result3.Success.ShouldBeFalse();
