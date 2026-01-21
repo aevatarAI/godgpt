@@ -76,21 +76,9 @@ public class UserInfoCollectionGAgent: GAgentBase<UserInfoCollectionGAgentState,
         _logger.LogInformation("[UserInfoCollectionGAgent][UpdateUserInfoCollectionAsync] Updating user info collection userId:{userId}",userId);
         var language = GodGPTLanguageHelper.GetGodGPTLanguageFromContext();
 
-        // Validate required fields if they are being updated
+        // Validate optional fields if they are being updated
         if (updateDto.NameInfo != null)
         {
-            // FirstName and LastName are required if NameInfo is provided
-            if (string.IsNullOrWhiteSpace(updateDto.NameInfo.FirstName) || 
-                string.IsNullOrWhiteSpace(updateDto.NameInfo.LastName))
-            {
-                return new UserInfoCollectionResponseDto
-                {
-                    Success = false,
-                    Message = "FirstName and LastName are required",
-                    Data = ConvertStateToDto()
-                };
-            }
-            
             // Gender is optional, but if provided must be valid (1 or 2)
             if (updateDto.NameInfo.Gender.HasValue && 
                 updateDto.NameInfo.Gender != 1 && updateDto.NameInfo.Gender != 2)
