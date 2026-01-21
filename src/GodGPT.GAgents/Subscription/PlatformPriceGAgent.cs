@@ -274,6 +274,7 @@ public class PlatformPriceGAgent :
                 {
                     existing.Price = priceSet.Price;
                     existing.PlatformPriceId = priceSet.PlatformPriceId;
+                    existing.Currency = priceSet.Currency;
                     existing.LastSyncedAt = DateTime.UtcNow;
                 }
                 else
