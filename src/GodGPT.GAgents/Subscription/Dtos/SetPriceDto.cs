@@ -16,9 +16,8 @@ public class SetPriceDto
     public PaymentPlatform Platform { get; set; }
     
     [Id(1)]
-    [Required]
     [MaxLength(128)]
-    public string PlatformPriceId { get; set; } = string.Empty;
+    public string? PlatformPriceId { get; set; }
     
     [Id(2)]
     [Required]
