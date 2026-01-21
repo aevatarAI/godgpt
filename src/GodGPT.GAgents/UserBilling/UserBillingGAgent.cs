@@ -21,6 +21,8 @@ using Aevatar.Application.Grains.FreeTrialCode;
 using Aevatar.Application.Grains.FreeTrialCode.Dtos;
 using Aevatar.Application.Grains.Invitation;
 using Aevatar.Application.Grains.PaymentAnalytics;
+using Aevatar.Application.Grains.Subscription;
+using Aevatar.Application.Grains.Subscription.Models;
 using Aevatar.Application.Grains.UserBilling.SEvents;
 using Aevatar.Application.Grains.UserQuota;
 using Aevatar.Core;
@@ -1802,8 +1804,13 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
     private async Task<StripeProduct> GetProductConfigAsync(string priceId)
     {
-        var productConfig = _stripeOptions.CurrentValue.Products.FirstOrDefault(p => p.PriceId == priceId);
-        if (productConfig == null)
+        var product = await GetProductByPriceIdAsync(priceId);
+        if (product != null)
+        {
+            return product;
+        }
+        product = _stripeOptions.CurrentValue.Products.FirstOrDefault(p => p.PriceId == priceId);
+        if (product == null)
         {
             _logger.LogError(
                 "[UserBillingGAgent][GetProductConfigAsync] Invalid priceId: {PriceId}. Product not found in configuration.",
@@ -1813,13 +1820,61 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
 
         _logger.LogInformation(
             "[UserBillingGAgent][GetProductConfigAsync] Found product with priceId: {PriceId}, planType: {PlanType}, amount: {Amount} {Currency}",
-            productConfig.PriceId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
+            product.PriceId, product.PlanType, product.Amount, product.Currency);
 
-        return productConfig;
+        return product;
+    }
+
+    private async Task<StripeProduct?> GetProductByPriceIdAsync(string priceId)
+    {
+        var priceGAgent = GrainFactory.GetGrain<IPlatformPriceGAgent>(SubscriptionGAgentKeys.PriceGAgentKey);
+        var platformPrice =  await priceGAgent.GetPriceByPlatformPriceIdAsync(priceId);
+
+        if (platformPrice == null)
+        {
+            _logger.LogDebug(
+                "[UserBillingGAgent][GetProductAsync] PriceId: {PriceId}. Platform price not found.",
+                priceId);
+            // throw new ArgumentException($"Invalid priceId: {priceId}. Platform price not found.");
+            return null;
+        }
+        var productGAgent = GrainFactory.GetGrain<ISubscriptionProductGAgent>(SubscriptionGAgentKeys.ProductGAgentKey);
+        var product = await productGAgent.GetProductAsync(platformPrice.ProductId);
+
+        if(product == null){
+            _logger.LogDebug(
+                "[UserBillingGAgent][GetProductAsync] ProductId: {ProductId}. Product not found.",
+                platformPrice.ProductId);
+            //throw new ArgumentException($"Invalid productId: {platformPrice.ProductId}. Product not found.");
+            return null;
+        }
+
+        _logger.LogDebug(
+            "[UserBillingGAgent][GetProductAsync] Found product with priceId: {PriceId}, planType: {PlanType}, amount: {Amount} {Currency}",
+            platformPrice.Id, product.PlanType, platformPrice.Price, platformPrice.Currency);
+
+        return new StripeProduct{
+            PriceId = platformPrice.PlatformPriceId,
+            PlanType = (int)product.PlanType,
+            Amount = platformPrice.Price,
+            Currency = platformPrice.Currency,
+            IsUltimate = product.IsUltimate,
+            Mode = "subscription"
+        };
     }
     
     private async Task<AppleProduct> GetAppleProductConfigAsync(string productId)
     {
+        var product = await GetSubscriptionProductAsync(productId, PaymentPlatform.AppStore);
+        if (product != null)
+        {
+            return new AppleProduct
+            {
+                ProductId = product.PlatformProductId,
+                IsUltimate = product.IsUltimate,
+                PlanType = (int)product.PlanType
+            };
+        }
         var productConfig = _appleOptions.CurrentValue.Products.FirstOrDefault(p => p.ProductId == productId);
         if (productConfig == null)
         {
@@ -1836,6 +1891,40 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         return productConfig;
     }
 
+    private async Task<SubscriptionProduct?> GetSubscriptionProductAsync(string productId, PaymentPlatform platform)
+    {
+        var productGAgent = GrainFactory.GetGrain<ISubscriptionProductGAgent>(SubscriptionGAgentKeys.ProductGAgentKey);
+        var product = await productGAgent.GetProductByPlatformProductIdAsync(productId, platform);
+        if (product == null)
+        {
+            _logger.LogDebug(
+                "[UserBillingGAgent][GetSubscriptionProductAsync] ProductId: {ProductId}. Product not found.",
+                productId);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "[UserBillingGAgent][GetSubscriptionProductAsync] Found product with ProductId: {ProductId}, planType: {PlanType}",
+                product.PlatformProductId, product.PlanType);
+        }
+
+        return product;
+    }
+    
+    private async Task<PlatformPrice?> GetPlatformPriceAsync(Guid productId)
+    {
+        var priceGAgent = GrainFactory.GetGrain<IPlatformPriceGAgent>(SubscriptionGAgentKeys.PriceGAgentKey);
+        var prices = await priceGAgent.GetPricesByProductIdAsync(productId);
+        if (prices.IsNullOrEmpty())
+        {
+            _logger.LogDebug(
+                "[UserBillingGAgent][GetPlatformPriceAsync] ProductId: {ProductId}. Platform price not found.",
+                productId);
+        }
+
+        return prices.FirstOrDefault();
+    }
+
     private async Task<GooglePayProduct> GetGooglePayProductConfigAsync(string productId)
     {
         // Configuration is now in key1:key2 format, so we need to ensure productId is also in that format
@@ -1848,6 +1937,14 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 "[UserBillingGAgent][GetGooglePayProductConfigAsync] ProductId is in base format: {ProductId}. Expected full format key1:key2.",
                 productId);
             // For now, we'll still try to find it, but this should not happen with the new flow
+        }
+        
+        var product = await GetSubscriptionProductAsync(productId, PaymentPlatform.GooglePlay);
+        if (product != null)
+        {
+            var platformPrice = await GetPlatformPriceAsync(product.Id);
+            var googlePayProduct = GetGooglePayProduct(product, platformPrice);
+            if (googlePayProduct != null) return googlePayProduct;
         }
         
         // Direct match with full format configuration (key1:key2)
@@ -1865,6 +1962,23 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             "[UserBillingGAgent][GetGooglePayProductConfigAsync] Invalid ProductId: {ProductId}. Product not found in configuration. Available products: {AvailableProducts}",
             fullProductId, string.Join(", ", _googlePayOptions.CurrentValue.Products.Select(p => p.ProductId)));
         throw new ArgumentException($"Invalid ProductId: {fullProductId}. Product not found in configuration.");
+    }
+
+    private GooglePayProduct? GetGooglePayProduct(SubscriptionProduct product, PlatformPrice? price)
+    {
+        if (price == null)
+        {
+            return null;
+        }
+        return new GooglePayProduct
+        {
+            ProductId = product.PlatformProductId,
+            IsUltimate = product.IsUltimate,
+            PlanType = (int)product.PlanType,
+            IsSubscription = true,
+            Amount = price.Price,
+            Currency = price.Currency
+        };
     }
 
     private async Task<ChatManager.UserBilling.PaymentSummary> CreateOrUpdateGooglePlayPaymentSummaryAsync(Guid userId, PaymentVerificationResultDto verificationResult)

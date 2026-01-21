@@ -2,6 +2,7 @@ using Aevatar.Application.Grains.Common;
 using Aevatar.Application.Grains.Common.Constants;
 using Aevatar.Application.Grains.Common.Options;
 using Aevatar.Application.Grains.FreeTrialCode.Dtos;
+using Aevatar.Application.Grains.Subscription;
 using Aevatar.Core;
 using Aevatar.Core.Abstractions;
 using GodGPT.GAgents.FreeTrialCode;
@@ -384,10 +385,15 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
         return authorizedUsers.Contains(operatorUserId);
     }
 
-    private Task<StripeProduct> GetStripeProductConfigAsync(string priceId)
+    private async Task<StripeProduct> GetStripeProductConfigAsync(string priceId)
     {
-        var productConfig = _stripeOptions.CurrentValue.Products.FirstOrDefault(p => p.PriceId == priceId);
-        if (productConfig == null)
+        var product = await GetProductAsync(priceId);
+        if (product != null)
+        {
+            return product;
+        }
+        product = _stripeOptions.CurrentValue.Products.FirstOrDefault(p => p.PriceId == priceId);
+        if (product == null)
         {
             _logger.LogError(
                 "[FreeTrialCodeFactoryGAgent][GetStripeProductConfigAsync] Invalid priceId: {PriceId}. Product not found in configuration.",
@@ -397,9 +403,47 @@ public class FreeTrialCodeFactoryGAgent : GAgentBase<FreeTrialCodeFactoryState, 
 
         _logger.LogDebug(
             "[FreeTrialCodeFactoryGAgent][GetStripeProductConfigAsync] Found product with priceId: {PriceId}, planType: {PlanType}, amount: {Amount} {Currency}",
-            productConfig.PriceId, productConfig.PlanType, productConfig.Amount, productConfig.Currency);
+            product.PriceId, product.PlanType, product.Amount, product.Currency);
 
-        return Task.FromResult(productConfig);
+        return product;
+    }
+    
+    private async Task<StripeProduct?> GetProductAsync(string priceId)
+    {
+        var priceGAgent = GrainFactory.GetGrain<IPlatformPriceGAgent>(SubscriptionGAgentKeys.PriceGAgentKey);
+        var platformPrice =  await priceGAgent.GetPriceByPlatformPriceIdAsync(priceId);
+
+        if (platformPrice == null)
+        {
+            _logger.LogDebug(
+                "[FreeTrialCodeFactoryGAgent][GetProductAsync] PriceId: {PriceId}. Platform price not found.",
+                priceId);
+            // throw new ArgumentException($"Invalid priceId: {priceId}. Platform price not found.");
+            return null;
+        }
+        var productGAgent = GrainFactory.GetGrain<ISubscriptionProductGAgent>(SubscriptionGAgentKeys.ProductGAgentKey);
+        var subscriptionProduct = await productGAgent.GetProductAsync(platformPrice.ProductId);
+
+        if(subscriptionProduct == null){
+            _logger.LogDebug(
+                "[FreeTrialCodeFactoryGAgent][GetProductAsync] ProductId: {ProductId}. Product not found.",
+                platformPrice.ProductId);
+            //throw new ArgumentException($"Invalid productId: {platformPrice.ProductId}. Product not found.");
+            return null;
+        }
+
+        _logger.LogDebug(
+            "[FreeTrialCodeFactoryGAgent][GetProductAsync] Found product with priceId: {PriceId}, planType: {PlanType}, amount: {Amount} {Currency}",
+            platformPrice.Id, subscriptionProduct.PlanType, platformPrice.Price, platformPrice.Currency);
+
+        return new StripeProduct{
+            PriceId = platformPrice.PlatformPriceId,
+            PlanType = (int)subscriptionProduct.PlanType,
+            Amount = platformPrice.Price,
+            Currency = platformPrice.Currency,
+            IsUltimate = subscriptionProduct.IsUltimate,
+            Mode = "subscription"
+        };
     }
 
     protected sealed override void GAgentTransitionState(FreeTrialCodeFactoryState state,
