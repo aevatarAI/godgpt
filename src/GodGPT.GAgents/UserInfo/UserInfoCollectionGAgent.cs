@@ -702,13 +702,11 @@ User Language: {languageText}";
     
     /// <summary>
     /// Check if all required information is collected
-    /// Gender, Country, City, and BirthDate are optional
+    /// FirstName, LastName, Gender, Country, City, and BirthDate are optional
     /// </summary>
     private bool IsCollectionCompleted()
     {
-        return !string.IsNullOrWhiteSpace(State.FirstName) &&
-               !string.IsNullOrWhiteSpace(State.LastName) &&
-               (State.SeekingInterests?.Count > 0) &&
+        return (State.SeekingInterests?.Count > 0) &&
                (State.SourceChannels?.Count > 0);
     }
     
