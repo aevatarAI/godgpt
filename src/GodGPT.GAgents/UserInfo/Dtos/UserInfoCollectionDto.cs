@@ -76,10 +76,10 @@ public class UserBirthTimeInfoDto
 public class UpdateUserInfoCollectionDto
 {
     [Id(0)] public Guid UserId { get; set; }
-    [Id(1)] public UserNameInfoDto NameInfo { get; set; }
-    [Id(2)] public UserLocationInfoDto LocationInfo { get; set; }
-    [Id(3)] public UserBirthDateInfoDto BirthDateInfo { get; set; }
-    [Id(4)] public UserBirthTimeInfoDto BirthTimeInfo { get; set; }
+    [Id(1)] public UserNameInfoDto? NameInfo { get; set; }
+    [Id(2)] public UserLocationInfoDto? LocationInfo { get; set; }
+    [Id(3)] public UserBirthDateInfoDto? BirthDateInfo { get; set; }
+    [Id(4)] public UserBirthTimeInfoDto? BirthTimeInfo { get; set; }
     [Id(5)] public List<SeekingInterestEnum> SeekingInterests { get; set; }
     [Id(6)] public List<SourceChannelEnum> SourceChannels { get; set; }
 }
