@@ -34,8 +34,8 @@ public class UserInfoCollectionDto
 public class UserNameInfoDto
 {
     [Id(0)] public int? Gender { get; set; } // Optional
-    [Id(1)] public string FirstName { get; set; } // Required
-    [Id(2)] public string LastName { get; set; } // Required
+    [Id(1)] public string? FirstName { get; set; } // Optional
+    [Id(2)] public string? LastName { get; set; } // Optional
 }
 
 /// <summary>
@@ -44,8 +44,8 @@ public class UserNameInfoDto
 [GenerateSerializer]
 public class UserLocationInfoDto
 {
-    [Id(0)] public string Country { get; set; } // Optional
-    [Id(1)] public string City { get; set; } // Optional
+    [Id(0)] public string? Country { get; set; } // Optional
+    [Id(1)] public string? City { get; set; } // Optional
 }
 
 /// <summary>
