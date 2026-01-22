@@ -667,13 +667,13 @@ User Language: {languageText}";
         return new UserInfoCollectionDto
         {
             UserId = State.UserId,
-            NameInfo = !string.IsNullOrWhiteSpace(State.FirstName) ? new UserNameInfoDto
+            NameInfo = !string.IsNullOrWhiteSpace(State.FirstName) || !string.IsNullOrWhiteSpace(State.LastName) || State.Gender > 0 ? new UserNameInfoDto
             {
                 Gender = State.Gender,
                 FirstName = State.FirstName,
                 LastName = State.LastName
             } : null,
-            LocationInfo = !string.IsNullOrWhiteSpace(State.Country) ? new UserLocationInfoDto
+            LocationInfo = !string.IsNullOrWhiteSpace(State.Country) || !string.IsNullOrWhiteSpace(State.City) ? new UserLocationInfoDto
             {
                 Country = State.Country,
                 City = State.City
