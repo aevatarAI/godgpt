@@ -124,7 +124,7 @@ public static class SubscriptionHelper
         var toOrder = GetPlanTypeLogicalOrder(toPlan);
             
         // Allow upgrades (higher logical order) or same plan (renewal)
-        return toOrder > fromOrder;
+        return toOrder >= fromOrder;
     }
 
     /// <summary>

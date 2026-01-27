@@ -1536,7 +1536,9 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
                         StartDate = payment.SubscriptionStartDate,
                         EndDate = payment.SubscriptionEndDate,
                         SubscriptionIds = new List<string> { payment.SubscriptionId },
-                        InvoiceIds = new List<string>()
+                        InvoiceIds = new List<string>(),
+                        PlatformProductId = payment.Platform == PaymentPlatform.AppStore || payment.Platform == PaymentPlatform.GooglePlay ? payment.PriceId : null,
+                        PlatformPriceId = payment.Platform == PaymentPlatform.Stripe ? payment.PriceId : null
                     };
 
                     await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionToSync, isUltimate);

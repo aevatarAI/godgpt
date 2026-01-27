@@ -992,6 +992,7 @@ public class UserBillingGrain : Grain<UserBillingState>, IUserBillingGrain
             subscriptionInfoDto.Status = PaymentStatus.Completed;
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
             subscriptionInfoDto.InvoiceIds = invoiceIds;
+            subscriptionInfoDto.PlatformPriceId = detailsDto.PriceId;
             await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
 
             if (productConfig.IsUltimate)

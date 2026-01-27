@@ -149,7 +149,9 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 StartDate = subscriptionInfo.StartDate,
                 EndDate = subscriptionInfo.EndDate,
                 SubscriptionIds = subscriptionInfo.SubscriptionIds,
-                InvoiceIds = subscriptionInfo.InvoiceIds
+                InvoiceIds = subscriptionInfo.InvoiceIds,
+                PlatformProductId = subscriptionInfo.PlatformProductId,
+                PlatformPriceId = subscriptionInfo.PlatformPriceId
             };
 
             RaiseEvent(new UpdateSubscriptionLogEvent
@@ -224,7 +226,9 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             StartDate = subscriptionInfo.StartDate,
             EndDate = subscriptionInfo.EndDate,
             SubscriptionIds = subscriptionInfo.SubscriptionIds,
-            InvoiceIds = subscriptionInfo.InvoiceIds
+            InvoiceIds = subscriptionInfo.InvoiceIds,
+            PlatformProductId = subscriptionInfo.PlatformProductId,
+            PlatformPriceId = subscriptionInfo.PlatformPriceId
         };
     }
 
@@ -584,7 +588,9 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             EndDate = expiresDate,
             Status = PaymentStatus.Completed,
             SubscriptionIds = State.Subscription.SubscriptionIds,
-            InvoiceIds = State.Subscription.InvoiceIds
+            InvoiceIds = State.Subscription.InvoiceIds,
+            PlatformProductId = productId,
+            PlatformPriceId = State.Subscription.PlatformPriceId
         };
 
         RaiseEvent(new UpdateSubscriptionLogEvent
@@ -611,7 +617,9 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
             StartDate = State.Subscription.StartDate,
             EndDate = State.Subscription.EndDate,
             SubscriptionIds = State.Subscription.SubscriptionIds,
-            InvoiceIds = State.Subscription.InvoiceIds
+            InvoiceIds = State.Subscription.InvoiceIds,
+            PlatformProductId = State.Subscription.PlatformProductId,
+            PlatformPriceId = State.Subscription.PlatformPriceId
         };
 
         RaiseEvent(new UpdateSubscriptionLogEvent
@@ -943,6 +951,8 @@ public class UserQuotaGAgent : GAgentBase<UserQuotaGAgentState, UserQuotaLogEven
                 subscription.EndDate = updateSubscription.SubscriptionInfo.EndDate;
                 subscription.SubscriptionIds = updateSubscription.SubscriptionInfo.SubscriptionIds;
                 subscription.InvoiceIds = updateSubscription.SubscriptionInfo.InvoiceIds;
+                subscription.PlatformProductId = updateSubscription.SubscriptionInfo.PlatformProductId;
+                subscription.PlatformPriceId = updateSubscription.SubscriptionInfo.PlatformPriceId;
                 break;
 
             case CancelSubscriptionLogEvent cancelSubscription:

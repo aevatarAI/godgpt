@@ -28,6 +28,8 @@ public class SubscriptionInfo
     [Id(4)] public DateTime EndDate { get; set; }
     [Id(5)] public List<string> SubscriptionIds { get; set; } = new List<string>();
     [Id(6)] public List<string> InvoiceIds { get; set; } = new List<string>();
+    [Id(7)] public string? PlatformProductId { get; set; }
+    [Id(8)] public string? PlatformPriceId { get; set; }
 }
 
 [GenerateSerializer]

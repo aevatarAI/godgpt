@@ -1163,6 +1163,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
             subscriptionInfoDto.Status = PaymentStatus.Completed;
             subscriptionInfoDto.SubscriptionIds = subscriptionIds;
             subscriptionInfoDto.InvoiceIds = invoiceIds;
+            subscriptionInfoDto.PlatformPriceId = detailsDto.PriceId;
             await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionInfoDto, productConfig.IsUltimate);
 
             if (productConfig.IsUltimate)
@@ -2142,6 +2143,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         {
             subscription.SubscriptionIds.Add(paymentSummary.SubscriptionId);
         }
+        subscription.PlatformProductId = verificationResult.ProductId;
 
         await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
         
@@ -2212,6 +2214,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
         
         subscription.Status = PaymentStatus.Completed;
+        subscription.PlatformProductId = verificationResult.ProductId;
         await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
         
         // Fix: Handle subscription activation - only Ultimate changes affect Premium subscription time 
@@ -3435,6 +3438,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
         }
 
         subscriptionDto.Status = PaymentStatus.Completed;
+        subscriptionDto.PlatformProductId = appleProduct.ProductId;
         await userQuotaGAgent.UpdateSubscriptionAsync(subscriptionDto, appleProduct.IsUltimate);
 
         //UpdatePremium quota
@@ -5238,6 +5242,7 @@ public class UserBillingGAgent : GAgentBase<UserBillingGAgentState, UserBillingL
                 _logger.LogInformation("[UserBillingGAgent][ProcessRevenueCatRenewalAsync] Reactivated expired/inactive subscription. New StartDate: {StartDate}, EndDate: {EndDate}", subscription.StartDate, subscription.EndDate);
             }
 
+            subscription.PlatformProductId = verificationResult.ProductId;
             await userQuotaAgent.UpdateSubscriptionAsync(subscription, productConfig.IsUltimate);
 
             // Fix: Handle renewal - only Ultimate changes affect Premium subscription time 
