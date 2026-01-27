@@ -33,9 +33,9 @@ public class UserInfoCollectionDto
 [GenerateSerializer]
 public class UserNameInfoDto
 {
-    [Id(0)] public int Gender { get; set; } // Required, single selection
-    [Id(1)] public string FirstName { get; set; } // Required
-    [Id(2)] public string LastName { get; set; } // Required
+    [Id(0)] public int? Gender { get; set; } // Optional
+    [Id(1)] public string? FirstName { get; set; } // Optional
+    [Id(2)] public string? LastName { get; set; } // Optional
 }
 
 /// <summary>
@@ -44,8 +44,8 @@ public class UserNameInfoDto
 [GenerateSerializer]
 public class UserLocationInfoDto
 {
-    [Id(0)] public string Country { get; set; } // Required
-    [Id(1)] public string City { get; set; } // Required
+    [Id(0)] public string? Country { get; set; } // Optional
+    [Id(1)] public string? City { get; set; } // Optional
 }
 
 /// <summary>
@@ -54,9 +54,9 @@ public class UserLocationInfoDto
 [GenerateSerializer]
 public class UserBirthDateInfoDto
 {
-    [Id(0)] public int? Day { get; set; } // Required, but nullable to distinguish from default 0
-    [Id(1)] public int? Month { get; set; } // Required, but nullable to distinguish from default 0
-    [Id(2)] public int? Year { get; set; } // Required, but nullable to distinguish from default 0
+    [Id(0)] public int? Day { get; set; } // Optional
+    [Id(1)] public int? Month { get; set; } // Optional
+    [Id(2)] public int? Year { get; set; } // Optional
 }
 
 /// <summary>
@@ -76,10 +76,10 @@ public class UserBirthTimeInfoDto
 public class UpdateUserInfoCollectionDto
 {
     [Id(0)] public Guid UserId { get; set; }
-    [Id(1)] public UserNameInfoDto NameInfo { get; set; }
-    [Id(2)] public UserLocationInfoDto LocationInfo { get; set; }
-    [Id(3)] public UserBirthDateInfoDto BirthDateInfo { get; set; }
-    [Id(4)] public UserBirthTimeInfoDto BirthTimeInfo { get; set; }
+    [Id(1)] public UserNameInfoDto? NameInfo { get; set; }
+    [Id(2)] public UserLocationInfoDto? LocationInfo { get; set; }
+    [Id(3)] public UserBirthDateInfoDto? BirthDateInfo { get; set; }
+    [Id(4)] public UserBirthTimeInfoDto? BirthTimeInfo { get; set; }
     [Id(5)] public List<SeekingInterestEnum> SeekingInterests { get; set; }
     [Id(6)] public List<SourceChannelEnum> SourceChannels { get; set; }
 }
