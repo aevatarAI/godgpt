@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
@@ -50,6 +50,8 @@
         <PackageReference Include="Microsoft.Orleans.Runtime" />
         <PackageReference Include="Microsoft.Orleans.EventSourcing" />
         <PackageReference Include="Microsoft.CognitiveServices.Speech" />
+        <PackageReference Include="MongoDB.Driver" />
+        <PackageReference Include="Orleans.Providers.MongoDB" />
     </ItemGroup>
 
     <ItemGroup>
