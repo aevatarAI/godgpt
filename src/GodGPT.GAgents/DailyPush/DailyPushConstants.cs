@@ -31,7 +31,11 @@ public static class DailyPushConstants
     public enum PushType
     {
         DailyPush = 1,
-        AfternoonRetry = 2,
+
+        /// <summary>
+        /// Price change notification
+        /// </summary>
+        PriceChange = 2
     }
 
     // === GAgent Instance Configuration ===
