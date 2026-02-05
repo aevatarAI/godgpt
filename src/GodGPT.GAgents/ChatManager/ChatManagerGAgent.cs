@@ -2842,7 +2842,7 @@ public class ChatGAgentManager : GAgentBase<ChatManagerGAgentState, ChatManageEv
 
                 var pushData = new Dictionary<string, object>
                 {
-                    ["type"] = (int)DailyPushConstants.PushType.DailyPush,
+                    ["type"] = (int)DailyPushConstants.PushType.PriceChange,
                     ["contentId"] = contentToSend.Id,
                     ["contentIndex"] = contentIndex,
                     ["totalContents"] = totalContents,

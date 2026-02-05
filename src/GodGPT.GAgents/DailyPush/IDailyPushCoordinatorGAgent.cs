@@ -43,4 +43,13 @@ public interface IDailyPushCoordinatorGAgent : IGAgent, IGrainWithGuidKey
     /// Force initialize this grain with specific timezone (admin/debugging use)
     /// </summary>
     Task ForceInitializeAsync(string timeZoneId);
+
+    /// <summary>
+    /// Process custom content push for this timezone with specified content
+    /// </summary>
+    /// <param name="contents">Custom content to push</param>
+    /// <param name="targetDate">Target date for deduplication (defaults to today if not specified)</param>
+    Task ProcessCustomContentPushAsync(
+        List<DailyNotificationContent> contents, 
+        DateTime? targetDate = null);
 }

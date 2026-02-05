@@ -447,6 +447,101 @@ public class DailyPushCoordinatorGAgent : GAgentBase<DailyPushCoordinatorState, 
         }
     }
 
+    /// <summary>
+    /// Process custom content push with specified content
+    /// </summary>
+    public async Task ProcessCustomContentPushAsync(
+        List<DailyNotificationContent> contents,
+        DateTime? targetDate = null)
+    {
+        // Use provided date or default to today
+        var pushDate = targetDate ?? DateTime.UtcNow.Date;
+
+        // Safety check: ensure timezone is initialized
+        if (string.IsNullOrEmpty(_timeZoneId))
+        {
+            _logger.LogError(
+                "Cannot process custom content push: timezone ID is not set. Grain needs to be initialized first.");
+            return;
+        }
+
+        if (State.Status != SchedulerStatus.Active)
+        {
+            _logger.LogWarning("Skipping custom content push for {TimeZone} - scheduler status: {Status}",
+                _timeZoneId, State.Status);
+            return;
+        }        
+
+        // Validate content
+        if (contents == null || !contents.Any())
+        {
+            _logger.LogWarning("No content provided for custom push in {TimeZone}", _timeZoneId);
+            return;
+        }
+
+        _logger.LogInformation(
+            "Processing custom content push for timezone {TimeZone} on {Date} with {ContentCount} content(s)",
+            _timeZoneId, pushDate, contents.Count);
+
+        try
+        {
+            // Get users in this timezone
+            var timezoneIndexGAgent =
+                _grainFactory.GetGrain<IPushSubscriberIndexGAgent>(DailyPushConstants.TimezoneToGuid(_timeZoneId));
+
+            // Process users in batches
+            const int batchSize = 1000;
+            int skip = 0;
+            int processedUsers = 0;
+            int failureCount = 0;
+            List<Guid> userBatch;
+
+            do
+            {
+                userBatch = await timezoneIndexGAgent.GetActiveUsersInTimezoneAsync(skip, batchSize);
+
+                if (userBatch.Any())
+                {
+                    // Use isManualTrigger=true to indicate this is an API-triggered push
+                    var batchResult =
+                        await ProcessUserBatchAsync(userBatch, contents, pushDate, isManualTrigger: true);
+                    processedUsers += batchResult.processedCount;
+                    failureCount += batchResult.failureCount;
+                    skip += batchSize;
+                }
+            } while (userBatch.Count == batchSize);
+
+            // Record custom push completion (reuse MorningPushCompletedEventLog for state tracking)
+            RaiseEvent(new MorningPushCompletedEventLog
+            {
+                PushDate = pushDate,
+                UserCount = processedUsers,
+                FailureCount = failureCount,
+                CompletionTime = DateTime.UtcNow
+            });
+
+            await ConfirmEvents();
+
+            _logger.LogInformation(
+                "Completed custom content push for {TimeZone}: {Users} users, {Failures} failures, {Contents} content(s)",
+                _timeZoneId, processedUsers, failureCount, contents.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to process custom content push for {TimeZone}", _timeZoneId);
+
+            // Use event sourcing for error status
+            RaiseEvent(new SchedulerStatusLogEvent
+            {
+                OldStatus = State.Status,
+                NewStatus = SchedulerStatus.Error,
+                ChangeTime = DateTime.UtcNow
+            });
+
+            await ConfirmEvents();
+        }
+    }
+
     public async Task<DailyPushCoordinatorState> GetStatusAsync()
     {
         return State;
